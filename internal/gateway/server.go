@@ -3,96 +3,24 @@ package gateway
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/chenyu/1-tok/internal/core"
+	"github.com/chenyu/1-tok/internal/platform"
 )
 
-type ProviderProfile struct {
-	ID             string   `json:"id"`
-	Name           string   `json:"name"`
-	Capabilities   []string `json:"capabilities"`
-	ReputationTier string   `json:"reputationTier"`
-}
-
-type Listing struct {
-	ID             string   `json:"id"`
-	ProviderOrgID  string   `json:"providerOrgId"`
-	Title          string   `json:"title"`
-	Category       string   `json:"category"`
-	BasePriceCents int64    `json:"basePriceCents"`
-	Tags           []string `json:"tags"`
-}
-
-type Message struct {
-	ID        string    `json:"id"`
-	OrderID   string    `json:"orderId"`
-	Author    string    `json:"author"`
-	Body      string    `json:"body"`
-	CreatedAt time.Time `json:"createdAt"`
-}
-
-type Dispute struct {
-	ID          string    `json:"id"`
-	OrderID     string    `json:"orderId"`
-	MilestoneID string    `json:"milestoneId"`
-	Reason      string    `json:"reason"`
-	RefundCents int64     `json:"refundCents"`
-	CreatedAt   time.Time `json:"createdAt"`
-}
-
-type Store struct {
-	mu         sync.RWMutex
-	orderSeq   int
-	messageSeq int
-	disputeSeq int
-	Orders     map[string]*core.Order
-	Providers  []ProviderProfile
-	Listings   []Listing
-	Messages   []Message
-	Disputes   []Dispute
-}
-
 type Server struct {
-	store        *Store
-	creditEngine core.CreditDecisionEngine
+	app *platform.App
 }
 
 func NewServer() *Server {
-	return &Server{
-		store: &Store{
-			Orders: map[string]*core.Order{},
-			Providers: []ProviderProfile{
-				{
-					ID:             "provider_1",
-					Name:           "Atlas Ops",
-					Capabilities:   []string{"carrier", "diagnostics", "token_metering"},
-					ReputationTier: "gold",
-				},
-			},
-			Listings: []Listing{
-				{
-					ID:             "listing_1",
-					ProviderOrgID:  "provider_1",
-					Title:          "Managed Agent Operations",
-					Category:       "agent-ops",
-					BasePriceCents: 1500,
-					Tags:           []string{"carrier-compatible", "milestone-ready"},
-				},
-			},
-		},
-		creditEngine: core.CreditDecisionEngine{
-			BaseLimitCents:        50_000,
-			MaxLimitCents:         500_000,
-			DisputePenaltyCents:   75_000,
-			FailurePenaltyCents:   50_000,
-			ConsumptionMultiplier: 2,
-		},
-	}
+	return NewServerWithApp(platform.NewAppWithMemory())
+}
+
+func NewServerWithApp(app *platform.App) *Server {
+	return &Server{app: app}
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -125,26 +53,30 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListProviders(w http.ResponseWriter) {
-	s.store.mu.RLock()
-	defer s.store.mu.RUnlock()
+	providers, err := s.app.ListProviders()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"providers": s.store.Providers})
+	writeJSON(w, http.StatusOK, map[string]any{"providers": providers})
 }
 
 func (s *Server) handleListListings(w http.ResponseWriter) {
-	s.store.mu.RLock()
-	defer s.store.mu.RUnlock()
+	listings, err := s.app.ListListings()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"listings": s.store.Listings})
+	writeJSON(w, http.StatusOK, map[string]any{"listings": listings})
 }
 
 func (s *Server) handleListOrders(w http.ResponseWriter) {
-	s.store.mu.RLock()
-	defer s.store.mu.RUnlock()
-
-	orders := make([]*core.Order, 0, len(s.store.Orders))
-	for _, order := range s.store.Orders {
-		orders = append(orders, order)
+	orders, err := s.app.ListOrders()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"orders": orders})
@@ -157,12 +89,13 @@ func (s *Server) handleGetOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.store.mu.RLock()
-	defer s.store.mu.RUnlock()
-
-	order, ok := s.store.Orders[orderID]
-	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "order not found"})
+	order, err := s.app.GetOrder(orderID)
+	if err != nil {
+		if err.Error() == "order not found" {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -193,38 +126,29 @@ func (s *Server) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.store.mu.Lock()
-	defer s.store.mu.Unlock()
-
-	s.store.orderSeq++
-	orderID := fmt.Sprintf("ord_%d", s.store.orderSeq)
-	order := &core.Order{
-		ID:             orderID,
-		BuyerOrgID:     payload.BuyerOrgID,
-		ProviderOrgID:  payload.ProviderOrgID,
-		FundingMode:    core.FundingMode(payload.FundingMode),
-		CreditLineID:   payload.CreditLineID,
-		PlatformWallet: "platform_main",
-		Status:         core.OrderStatusRunning,
-		Milestones:     make([]core.Milestone, 0, len(payload.Milestones)),
+	input := platform.CreateOrderInput{
+		BuyerOrgID:    payload.BuyerOrgID,
+		ProviderOrgID: payload.ProviderOrgID,
+		Title:         payload.Title,
+		FundingMode:   core.FundingMode(payload.FundingMode),
+		CreditLineID:  payload.CreditLineID,
+		Milestones:    make([]platform.CreateMilestoneInput, 0, len(payload.Milestones)),
 	}
-	for index, milestone := range payload.Milestones {
-		state := core.MilestoneStatePending
-		if index == 0 {
-			state = core.MilestoneStateRunning
-		}
-
-		order.Milestones = append(order.Milestones, core.Milestone{
+	for _, milestone := range payload.Milestones {
+		input.Milestones = append(input.Milestones, platform.CreateMilestoneInput{
 			ID:             milestone.ID,
 			Title:          milestone.Title,
 			BasePriceCents: milestone.BasePriceCents,
 			BudgetCents:    milestone.BudgetCents,
-			State:          state,
-			DisputeStatus:  core.DisputeStatusNone,
 		})
 	}
 
-	s.store.Orders[orderID] = order
+	order, err := s.app.CreateOrder(input)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
 	writeJSON(w, http.StatusCreated, map[string]any{"order": order})
 }
 
@@ -245,27 +169,17 @@ func (s *Server) handleSettleMilestone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.store.mu.Lock()
-	defer s.store.mu.Unlock()
-
-	order, ok := s.store.Orders[orderID]
-	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "order not found"})
-		return
-	}
-
-	entry, err := order.SettleMilestone(core.SettleMilestoneInput{
+	order, entry, err := s.app.SettleMilestone(orderID, platform.SettleMilestoneInput{
 		MilestoneID: milestoneID,
 		Summary:     payload.Summary,
 		Source:      payload.Source,
 		OccurredAt:  time.Now().UTC(),
 	})
 	if err != nil {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		writeGatewayError(w, err)
 		return
 	}
 
-	s.advanceNextMilestone(order, milestoneID)
 	writeJSON(w, http.StatusOK, map[string]any{"order": order, "ledgerEntry": entry})
 }
 
@@ -286,23 +200,14 @@ func (s *Server) handleRecordUsage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.store.mu.Lock()
-	defer s.store.mu.Unlock()
-
-	order, ok := s.store.Orders[orderID]
-	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "order not found"})
-		return
-	}
-
-	charge, err := order.RecordUsageCharge(core.RecordUsageChargeInput{
+	order, charge, err := s.app.RecordUsageCharge(orderID, platform.RecordUsageChargeInput{
 		MilestoneID: milestoneID,
 		Kind:        payload.Kind,
 		AmountCents: payload.AmountCents,
 		ProofRef:    payload.ProofRef,
 	})
 	if err != nil {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		writeGatewayError(w, err)
 		return
 	}
 
@@ -326,40 +231,17 @@ func (s *Server) handleCreateDispute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.store.mu.Lock()
-	defer s.store.mu.Unlock()
-
-	order, ok := s.store.Orders[orderID]
-	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "order not found"})
-		return
-	}
-
-	refund, recovery, err := order.OpenDispute(core.OpenDisputeInput{
+	order, refund, recovery, err := s.app.OpenDispute(orderID, platform.OpenDisputeInput{
 		MilestoneID: payload.MilestoneID,
 		Reason:      payload.Reason,
 		RefundCents: payload.RefundCents,
 	})
 	if err != nil {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		writeGatewayError(w, err)
 		return
 	}
 
-	s.store.disputeSeq++
-	s.store.Disputes = append(s.store.Disputes, Dispute{
-		ID:          fmt.Sprintf("disp_%d", s.store.disputeSeq),
-		OrderID:     orderID,
-		MilestoneID: payload.MilestoneID,
-		Reason:      payload.Reason,
-		RefundCents: payload.RefundCents,
-		CreatedAt:   time.Now().UTC(),
-	})
-
-	writeJSON(w, http.StatusCreated, map[string]any{
-		"order":         order,
-		"refundEntry":   refund,
-		"recoveryEntry": recovery,
-	})
+	writeJSON(w, http.StatusCreated, map[string]any{"order": order, "refundEntry": refund, "recoveryEntry": recovery})
 }
 
 func (s *Server) handleCreditDecision(w http.ResponseWriter, r *http.Request) {
@@ -369,7 +251,7 @@ func (s *Server) handleCreditDecision(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"decision": s.creditEngine.Decide(history)})
+	writeJSON(w, http.StatusOK, map[string]any{"decision": s.app.DecideCredit(history)})
 }
 
 func (s *Server) handleCreateMessage(w http.ResponseWriter, r *http.Request) {
@@ -383,36 +265,13 @@ func (s *Server) handleCreateMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.store.mu.Lock()
-	defer s.store.mu.Unlock()
-
-	s.store.messageSeq++
-	message := Message{
-		ID:        fmt.Sprintf("msg_%d", s.store.messageSeq),
-		OrderID:   payload.OrderID,
-		Author:    payload.Author,
-		Body:      payload.Body,
-		CreatedAt: time.Now().UTC(),
+	message, err := s.app.CreateMessage(payload.OrderID, payload.Author, payload.Body)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
 	}
-	s.store.Messages = append(s.store.Messages, message)
 
 	writeJSON(w, http.StatusCreated, map[string]any{"message": message})
-}
-
-func (s *Server) advanceNextMilestone(order *core.Order, settledMilestoneID string) {
-	foundSettled := false
-	for index := range order.Milestones {
-		milestone := &order.Milestones[index]
-		if milestone.ID == settledMilestoneID {
-			foundSettled = true
-			continue
-		}
-
-		if foundSettled && milestone.State == core.MilestoneStatePending {
-			milestone.State = core.MilestoneStateRunning
-			return
-		}
-	}
 }
 
 func orderIDFromPath(path string) (string, error) {
@@ -451,4 +310,13 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func writeGatewayError(w http.ResponseWriter, err error) {
+	switch err.Error() {
+	case "order not found":
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+	default:
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+	}
 }
