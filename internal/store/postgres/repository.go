@@ -40,6 +40,24 @@ func Migrate(db *sql.DB) error {
 	return err
 }
 
+func SeedCatalog(db *sql.DB) error {
+	providers := NewProviderRepository(db)
+	for _, provider := range platform.DefaultProviderProfiles() {
+		if err := providers.Upsert(provider); err != nil {
+			return err
+		}
+	}
+
+	listings := NewListingRepository(db)
+	for _, listing := range platform.DefaultListings() {
+		if err := listings.Upsert(listing); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 type OrderRepository struct {
 	db *sql.DB
 }
@@ -164,4 +182,119 @@ func decodeOrder(payload []byte) (*core.Order, error) {
 		return nil, err
 	}
 	return &order, nil
+}
+
+type ProviderRepository struct {
+	db *sql.DB
+}
+
+func NewProviderRepository(db *sql.DB) *ProviderRepository {
+	return &ProviderRepository{db: db}
+}
+
+func (r *ProviderRepository) List() ([]platform.ProviderProfile, error) {
+	rows, err := r.db.Query(`
+		SELECT id, name, capabilities, reputation_tier
+		FROM providers
+		ORDER BY id ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	providers := make([]platform.ProviderProfile, 0)
+	for rows.Next() {
+		var provider platform.ProviderProfile
+		var capabilities []byte
+		if err := rows.Scan(&provider.ID, &provider.Name, &capabilities, &provider.ReputationTier); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(capabilities, &provider.Capabilities); err != nil {
+			return nil, err
+		}
+		providers = append(providers, provider)
+	}
+
+	return providers, rows.Err()
+}
+
+func (r *ProviderRepository) Upsert(provider platform.ProviderProfile) error {
+	capabilities, err := json.Marshal(provider.Capabilities)
+	if err != nil {
+		return err
+	}
+
+	_, err = r.db.Exec(`
+		INSERT INTO providers (id, name, capabilities, reputation_tier, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, NOW(), NOW())
+		ON CONFLICT (id) DO UPDATE SET
+			name = EXCLUDED.name,
+			capabilities = EXCLUDED.capabilities,
+			reputation_tier = EXCLUDED.reputation_tier,
+			updated_at = NOW()
+	`, provider.ID, provider.Name, capabilities, provider.ReputationTier)
+	return err
+}
+
+type ListingRepository struct {
+	db *sql.DB
+}
+
+func NewListingRepository(db *sql.DB) *ListingRepository {
+	return &ListingRepository{db: db}
+}
+
+func (r *ListingRepository) List() ([]platform.Listing, error) {
+	rows, err := r.db.Query(`
+		SELECT id, provider_org_id, title, category, base_price_cents, tags
+		FROM listings
+		ORDER BY id ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	listings := make([]platform.Listing, 0)
+	for rows.Next() {
+		var listing platform.Listing
+		var tags []byte
+		if err := rows.Scan(
+			&listing.ID,
+			&listing.ProviderOrgID,
+			&listing.Title,
+			&listing.Category,
+			&listing.BasePriceCents,
+			&tags,
+		); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(tags, &listing.Tags); err != nil {
+			return nil, err
+		}
+		listings = append(listings, listing)
+	}
+
+	return listings, rows.Err()
+}
+
+func (r *ListingRepository) Upsert(listing platform.Listing) error {
+	tags, err := json.Marshal(listing.Tags)
+	if err != nil {
+		return err
+	}
+
+	_, err = r.db.Exec(`
+		INSERT INTO listings (id, provider_org_id, title, category, base_price_cents, tags, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+		ON CONFLICT (id) DO UPDATE SET
+			provider_org_id = EXCLUDED.provider_org_id,
+			title = EXCLUDED.title,
+			category = EXCLUDED.category,
+			base_price_cents = EXCLUDED.base_price_cents,
+			tags = EXCLUDED.tags,
+			updated_at = NOW()
+	`, listing.ID, listing.ProviderOrgID, listing.Title, listing.Category, listing.BasePriceCents, tags)
+	return err
 }

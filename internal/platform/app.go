@@ -102,6 +102,30 @@ type EventPublisher interface {
 	Publish(subject string, payload any) error
 }
 
+func DefaultProviderProfiles() []ProviderProfile {
+	return []ProviderProfile{
+		{
+			ID:             "provider_1",
+			Name:           "Atlas Ops",
+			Capabilities:   []string{"carrier", "diagnostics", "token_metering"},
+			ReputationTier: "gold",
+		},
+	}
+}
+
+func DefaultListings() []Listing {
+	return []Listing{
+		{
+			ID:             "listing_1",
+			ProviderOrgID:  "provider_1",
+			Title:          "Managed Agent Operations",
+			Category:       "agent-ops",
+			BasePriceCents: 1500,
+			Tags:           []string{"carrier-compatible", "milestone-ready"},
+		},
+	}
+}
+
 func NewAppWithMemory() *App {
 	memory := newMemoryStores()
 	return &App{
@@ -121,9 +145,21 @@ func NewAppWithMemory() *App {
 	}
 }
 
-func NewAppWithStorage(orders OrderRepository, messages MessageRepository, disputes DisputeRepository) *App {
+func NewAppWithStorage(
+	orders OrderRepository,
+	providers ProviderRepository,
+	listings ListingRepository,
+	messages MessageRepository,
+	disputes DisputeRepository,
+) *App {
 	memory := newMemoryStores()
-	return NewApp(orders, memory.providers, memory.listings, messages, disputes)
+	if providers == nil {
+		providers = memory.providers
+	}
+	if listings == nil {
+		listings = memory.listings
+	}
+	return NewApp(orders, providers, listings, messages, disputes)
 }
 
 func NewApp(
@@ -407,26 +443,10 @@ func newMemoryStores() *memoryStores {
 			data: map[string]*core.Order{},
 		},
 		providers: &memoryProviderRepository{
-			data: []ProviderProfile{
-				{
-					ID:             "provider_1",
-					Name:           "Atlas Ops",
-					Capabilities:   []string{"carrier", "diagnostics", "token_metering"},
-					ReputationTier: "gold",
-				},
-			},
+			data: DefaultProviderProfiles(),
 		},
 		listings: &memoryListingRepository{
-			data: []Listing{
-				{
-					ID:             "listing_1",
-					ProviderOrgID:  "provider_1",
-					Title:          "Managed Agent Operations",
-					Category:       "agent-ops",
-					BasePriceCents: 1500,
-					Tags:           []string{"carrier-compatible", "milestone-ready"},
-				},
-			},
+			data: DefaultListings(),
 		},
 		messages: &memoryMessageRepository{},
 		disputes: &memoryDisputeRepository{},

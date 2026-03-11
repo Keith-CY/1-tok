@@ -12,8 +12,8 @@ import (
 )
 
 type stubFiberClient struct {
-	createInput  fiberclient.CreateInvoiceInput
-	createResult fiberclient.CreateInvoiceResult
+	createInput   fiberclient.CreateInvoiceInput
+	createResult  fiberclient.CreateInvoiceResult
 	statusInvoice string
 	statusResult  fiberclient.InvoiceStatusResult
 }

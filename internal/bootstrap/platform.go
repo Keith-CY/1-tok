@@ -34,8 +34,16 @@ func LoadPlatformApp() (*platform.App, func() error, error) {
 		return nil, nil, err
 	}
 
+	if err := postgresstore.SeedCatalog(db); err != nil {
+		_ = db.Close()
+		_ = publisherCleanup()
+		return nil, nil, err
+	}
+
 	app := platform.NewAppWithStorage(
 		postgresstore.NewOrderRepository(db),
+		postgresstore.NewProviderRepository(db),
+		postgresstore.NewListingRepository(db),
 		postgresstore.NewMessageRepository(db),
 		postgresstore.NewDisputeRepository(db),
 	)

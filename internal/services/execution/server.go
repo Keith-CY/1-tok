@@ -9,8 +9,8 @@ import (
 	"os"
 	"time"
 
-	carrierclient "github.com/chenyu/1-tok/internal/integrations/carrier"
 	"github.com/chenyu/1-tok/internal/core"
+	carrierclient "github.com/chenyu/1-tok/internal/integrations/carrier"
 )
 
 type Server struct {

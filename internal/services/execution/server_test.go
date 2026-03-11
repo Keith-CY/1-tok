@@ -12,12 +12,12 @@ import (
 )
 
 type stubCarrierClient struct {
-	healthInput  carrierclient.CodeAgentHealthInput
-	healthResult carrierclient.CodeAgentHealthResult
+	healthInput   carrierclient.CodeAgentHealthInput
+	healthResult  carrierclient.CodeAgentHealthResult
 	versionInput  carrierclient.CodeAgentVersionInput
 	versionResult carrierclient.CodeAgentVersionResult
-	runInput     carrierclient.CodeAgentRunInput
-	runResult    carrierclient.CodeAgentRunResult
+	runInput      carrierclient.CodeAgentRunInput
+	runResult     carrierclient.CodeAgentRunResult
 }
 
 func (s *stubCarrierClient) GetCodeAgentHealth(_ context.Context, input carrierclient.CodeAgentHealthInput) (carrierclient.CodeAgentHealthResult, error) {
