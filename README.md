@@ -20,6 +20,8 @@
 
 ## Run
 
+Go service builds now target Go `1.25`.
+
 ### Go tests
 
 ```bash
@@ -42,6 +44,7 @@ To enable persistence locally:
 
 ```bash
 export DATABASE_URL='postgres://onetok:onetok@127.0.0.1:5432/onetok?sslmode=disable'
+export NATS_URL='nats://127.0.0.1:4222'
 CGO_ENABLED=0 go run ./cmd/api-gateway
 ```
 

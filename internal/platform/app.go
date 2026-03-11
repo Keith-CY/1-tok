@@ -95,6 +95,11 @@ type App struct {
 	messages     MessageRepository
 	disputes     DisputeRepository
 	creditEngine core.CreditDecisionEngine
+	publisher    EventPublisher
+}
+
+type EventPublisher interface {
+	Publish(subject string, payload any) error
 }
 
 func NewAppWithMemory() *App {
@@ -105,6 +110,7 @@ func NewAppWithMemory() *App {
 		listings:  memory.listings,
 		messages:  memory.messages,
 		disputes:  memory.disputes,
+		publisher: noopPublisher{},
 		creditEngine: core.CreditDecisionEngine{
 			BaseLimitCents:        50_000,
 			MaxLimitCents:         500_000,
@@ -133,6 +139,7 @@ func NewApp(
 		listings:  listings,
 		messages:  messages,
 		disputes:  disputes,
+		publisher: noopPublisher{},
 		creditEngine: core.CreditDecisionEngine{
 			BaseLimitCents:        50_000,
 			MaxLimitCents:         500_000,
@@ -141,6 +148,14 @@ func NewApp(
 			ConsumptionMultiplier: 2,
 		},
 	}
+}
+
+func (a *App) SetPublisher(publisher EventPublisher) {
+	if publisher == nil {
+		a.publisher = noopPublisher{}
+		return
+	}
+	a.publisher = publisher
 }
 
 func (a *App) ListProviders() ([]ProviderProfile, error) {
@@ -200,6 +215,15 @@ func (a *App) CreateOrder(input CreateOrderInput) (*core.Order, error) {
 		return nil, err
 	}
 
+	if err := a.publish("market.order.created", map[string]any{
+		"orderId":       order.ID,
+		"buyerOrgId":    order.BuyerOrgID,
+		"providerOrgId": order.ProviderOrgID,
+		"fundingMode":   order.FundingMode,
+	}); err != nil {
+		return nil, err
+	}
+
 	return a.orders.Get(order.ID)
 }
 
@@ -216,6 +240,17 @@ func (a *App) SettleMilestone(orderID string, input SettleMilestoneInput) (*core
 
 	advanceNextMilestone(order, input.MilestoneID)
 	if err := a.orders.Save(order); err != nil {
+		return nil, core.LedgerEntry{}, err
+	}
+
+	if err := a.publish("market.milestone.settled", map[string]any{
+		"orderId":     order.ID,
+		"milestoneId": input.MilestoneID,
+		"ledgerKind":  entry.Kind,
+		"amountCents": entry.AmountCents,
+		"occurredAt":  input.OccurredAt,
+		"fundingMode": order.FundingMode,
+	}); err != nil {
 		return nil, core.LedgerEntry{}, err
 	}
 
@@ -239,6 +274,17 @@ func (a *App) RecordUsageCharge(orderID string, input RecordUsageChargeInput) (*
 	}
 
 	if err := a.orders.Save(order); err != nil {
+		return nil, core.UsageCharge{}, err
+	}
+
+	if err := a.publish("market.usage.recorded", map[string]any{
+		"orderId":     order.ID,
+		"milestoneId": input.MilestoneID,
+		"kind":        input.Kind,
+		"amountCents": input.AmountCents,
+		"proofRef":    input.ProofRef,
+		"orderStatus": order.Status,
+	}); err != nil {
 		return nil, core.UsageCharge{}, err
 	}
 
@@ -281,6 +327,15 @@ func (a *App) OpenDispute(orderID string, input OpenDisputeInput) (*core.Order, 
 		return nil, core.LedgerEntry{}, core.LedgerEntry{}, err
 	}
 
+	if err := a.publish("market.dispute.opened", map[string]any{
+		"orderId":     order.ID,
+		"milestoneId": input.MilestoneID,
+		"reason":      input.Reason,
+		"refundCents": input.RefundCents,
+	}); err != nil {
+		return nil, core.LedgerEntry{}, core.LedgerEntry{}, err
+	}
+
 	updated, err := a.orders.Get(orderID)
 	if err != nil {
 		return nil, core.LedgerEntry{}, core.LedgerEntry{}, err
@@ -304,6 +359,14 @@ func (a *App) CreateMessage(orderID, author, body string) (Message, error) {
 	}
 
 	if err := a.messages.Save(message); err != nil {
+		return Message{}, err
+	}
+
+	if err := a.publish("market.message.created", map[string]any{
+		"messageId": message.ID,
+		"orderId":   message.OrderID,
+		"author":    message.Author,
+	}); err != nil {
 		return Message{}, err
 	}
 
@@ -494,4 +557,14 @@ func compareStrings(a, b string) int {
 	default:
 		return 0
 	}
+}
+
+func (a *App) publish(subject string, payload any) error {
+	return a.publisher.Publish(subject, payload)
+}
+
+type noopPublisher struct{}
+
+func (noopPublisher) Publish(string, any) error {
+	return nil
 }
