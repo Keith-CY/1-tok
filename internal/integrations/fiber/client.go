@@ -22,6 +22,8 @@ var ErrNotConfigured = errors.New("fiber client is not configured")
 type InvoiceClient interface {
 	CreateInvoice(ctx context.Context, input CreateInvoiceInput) (CreateInvoiceResult, error)
 	GetInvoiceStatus(ctx context.Context, invoice string) (InvoiceStatusResult, error)
+	QuotePayout(ctx context.Context, input QuotePayoutInput) (QuotePayoutResult, error)
+	RequestPayout(ctx context.Context, input RequestPayoutInput) (RequestPayoutResult, error)
 }
 
 type CreateInvoiceInput struct {
@@ -38,6 +40,43 @@ type CreateInvoiceResult struct {
 }
 
 type InvoiceStatusResult struct {
+	State string `json:"state"`
+}
+
+type WithdrawalDestination struct {
+	Kind           string `json:"kind"`
+	Address        string `json:"address,omitempty"`
+	PaymentRequest string `json:"paymentRequest,omitempty"`
+}
+
+type QuotePayoutInput struct {
+	UserID      string                `json:"userId"`
+	Asset       string                `json:"asset"`
+	Amount      string                `json:"amount"`
+	Destination WithdrawalDestination `json:"destination"`
+}
+
+type QuotePayoutResult struct {
+	Asset             string  `json:"asset"`
+	Amount            string  `json:"amount"`
+	MinimumAmount     string  `json:"minimumAmount"`
+	AvailableBalance  string  `json:"availableBalance"`
+	LockedBalance     string  `json:"lockedBalance"`
+	NetworkFee        string  `json:"networkFee"`
+	ReceiveAmount     string  `json:"receiveAmount"`
+	DestinationValid  bool    `json:"destinationValid"`
+	ValidationMessage *string `json:"validationMessage"`
+}
+
+type RequestPayoutInput struct {
+	UserID      string                `json:"userId"`
+	Asset       string                `json:"asset"`
+	Amount      string                `json:"amount"`
+	Destination WithdrawalDestination `json:"destination"`
+}
+
+type RequestPayoutResult struct {
+	ID    string `json:"id"`
 	State string `json:"state"`
 }
 
@@ -83,6 +122,22 @@ func (c *Client) GetInvoiceStatus(ctx context.Context, invoice string) (InvoiceS
 	var result InvoiceStatusResult
 	if err := c.call(ctx, "tip.status", map[string]string{"invoice": invoice}, &result); err != nil {
 		return InvoiceStatusResult{}, err
+	}
+	return result, nil
+}
+
+func (c *Client) QuotePayout(ctx context.Context, input QuotePayoutInput) (QuotePayoutResult, error) {
+	var result QuotePayoutResult
+	if err := c.call(ctx, "withdrawal.quote", input, &result); err != nil {
+		return QuotePayoutResult{}, err
+	}
+	return result, nil
+}
+
+func (c *Client) RequestPayout(ctx context.Context, input RequestPayoutInput) (RequestPayoutResult, error) {
+	var result RequestPayoutResult
+	if err := c.call(ctx, "withdrawal.request", input, &result); err != nil {
+		return RequestPayoutResult{}, err
 	}
 	return result, nil
 }
@@ -155,6 +210,14 @@ func (m missingClient) CreateInvoice(context.Context, CreateInvoiceInput) (Creat
 
 func (m missingClient) GetInvoiceStatus(context.Context, string) (InvoiceStatusResult, error) {
 	return InvoiceStatusResult{}, m.err
+}
+
+func (m missingClient) QuotePayout(context.Context, QuotePayoutInput) (QuotePayoutResult, error) {
+	return QuotePayoutResult{}, m.err
+}
+
+func (m missingClient) RequestPayout(context.Context, RequestPayoutInput) (RequestPayoutResult, error) {
+	return RequestPayoutResult{}, m.err
 }
 
 func signPayload(secret string, payload []byte, ts, nonce string) string {

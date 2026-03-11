@@ -62,6 +62,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.Method == http.MethodPost && r.URL.Path == "/v1/withdrawals/quote" {
+		s.handleQuoteWithdrawal(w, r)
+		return
+	}
+
+	if r.Method == http.MethodPost && r.URL.Path == "/v1/withdrawals" {
+		s.handleRequestWithdrawal(w, r)
+		return
+	}
+
 	if strings.HasPrefix(r.URL.Path, "/v1/orders/") {
 		s.inner.ServeHTTP(w, r)
 		return
@@ -130,12 +140,72 @@ func (s *Server) handleGetInvoiceStatus(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+func (s *Server) handleQuoteWithdrawal(w http.ResponseWriter, r *http.Request) {
+	input, err := parseWithdrawalRequest(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	result, err := s.fiber.QuotePayout(r.Context(), fiberclient.QuotePayoutInput{
+		UserID:      input.ProviderOrgID,
+		Asset:       input.Asset,
+		Amount:      input.Amount,
+		Destination: input.Destination,
+	})
+	if err != nil {
+		writeFiberError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (s *Server) handleRequestWithdrawal(w http.ResponseWriter, r *http.Request) {
+	input, err := parseWithdrawalRequest(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	result, err := s.fiber.RequestPayout(r.Context(), fiberclient.RequestPayoutInput{
+		UserID:      input.ProviderOrgID,
+		Asset:       input.Asset,
+		Amount:      input.Amount,
+		Destination: input.Destination,
+	})
+	if err != nil {
+		writeFiberError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, result)
+}
+
 func invoiceFromPath(path string) (string, error) {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	if len(parts) != 3 || parts[0] != "v1" || parts[1] != "invoices" || parts[2] == "" {
 		return "", errors.New("invalid invoice path")
 	}
 	return parts[2], nil
+}
+
+type withdrawalRequest struct {
+	ProviderOrgID string                            `json:"providerOrgId"`
+	Asset         string                            `json:"asset"`
+	Amount        string                            `json:"amount"`
+	Destination   fiberclient.WithdrawalDestination `json:"destination"`
+}
+
+func parseWithdrawalRequest(r *http.Request) (withdrawalRequest, error) {
+	var payload withdrawalRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		return withdrawalRequest{}, errors.New("invalid json")
+	}
+	if payload.ProviderOrgID == "" || payload.Asset == "" || payload.Amount == "" || payload.Destination.Kind == "" {
+		return withdrawalRequest{}, errors.New("missing required fields")
+	}
+	return payload, nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
