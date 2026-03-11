@@ -5,9 +5,11 @@
 - a shared Go domain model for orders, milestones, usage charges, disputes, and credit decisions
 - a JSON HTTP gateway that exposes the core marketplace and settlement flows
 - service entrypoints for `iam`, `marketplace`, `settlement`, `risk`, `execution`, and `notification`
+- Fiber JSON-RPC integration for invoice creation, invoice status, withdrawal quote, and withdrawal request
+- Carrier gateway integration for remote codeagent health, version, and run control-plane calls
 - shared TypeScript contracts for the web portal
 - local container topology for Go services plus Postgres and NATS
-- Postgres-backed repositories for orders, messages, and disputes when `DATABASE_URL` is set
+- Postgres-backed repositories for orders, providers, listings, messages, and disputes when `DATABASE_URL` is set
 
 ## Layout
 
@@ -61,6 +63,40 @@ export ONE_TOK_TEST_DATABASE_URL='postgres://onetok:onetok@127.0.0.1:5432/onetok
 CGO_ENABLED=0 go test ./internal/store/postgres
 ```
 
+### Settlement service with Fiber
+
+```bash
+export FIBER_RPC_URL='http://127.0.0.1:3000/rpc'
+export FIBER_APP_ID='app_1'
+export FIBER_HMAC_SECRET='replace-me'
+CGO_ENABLED=0 go run ./cmd/settlement
+```
+
+HTTP routes added by `settlement`:
+
+- `POST /v1/invoices`
+- `GET /v1/invoices/:invoice`
+- `POST /v1/withdrawals/quote`
+- `POST /v1/withdrawals`
+
+### Execution service with Carrier
+
+```bash
+export API_GATEWAY_UPSTREAM='http://127.0.0.1:8080'
+export CARRIER_GATEWAY_URL='http://127.0.0.1:8787'
+export CARRIER_GATEWAY_API_TOKEN='test-gateway-token'
+CGO_ENABLED=0 go run ./cmd/execution
+```
+
+HTTP routes added by `execution`:
+
+- `POST /v1/carrier/events`
+- `GET /v1/carrier/codeagent/health`
+- `GET /v1/carrier/codeagent/version`
+- `POST /v1/carrier/codeagent/run`
+
 ## Current scope
 
-Provider and listing catalogs are still seeded in memory, and NATS/Fiber/Carrier are still adapter placeholders. Orders, messages, and disputes can now run against Postgres through `DATABASE_URL`, which moves the core task lifecycle off in-memory state.
+- Provider and listing catalogs are durably backed by Postgres and seeded on bootstrap.
+- Settlement and execution now speak to real Fiber and Carrier interfaces, but they still depend on externally managed `fiber-link` and `carrier` services.
+- IAM, RFQ/bidding flows, dispute backoffice, and ledger-grade reconciliation are still skeletal and are not yet release-complete.

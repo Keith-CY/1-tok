@@ -67,6 +67,9 @@ services:
     environment:
       SETTLEMENT_ADDR: ":8083"
       API_GATEWAY_UPSTREAM: http://api-gateway:8080
+      FIBER_RPC_URL: ${FIBER_RPC_URL:-http://fiber-rpc:3000/rpc}
+      FIBER_APP_ID: ${FIBER_APP_ID:-app_1}
+      FIBER_HMAC_SECRET: ${FIBER_HMAC_SECRET:-replace-me}
     ports:
       - "8083:8083"
     depends_on:
@@ -95,6 +98,8 @@ services:
     environment:
       EXECUTION_ADDR: ":8085"
       API_GATEWAY_UPSTREAM: http://api-gateway:8080
+      CARRIER_GATEWAY_URL: ${CARRIER_GATEWAY_URL:-http://carrier-gateway:8787}
+      CARRIER_GATEWAY_API_TOKEN: ${CARRIER_GATEWAY_API_TOKEN:-}
     ports:
       - "8085:8085"
     depends_on:
