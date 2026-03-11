@@ -9,12 +9,19 @@ import (
 	"os"
 	"time"
 
+	carrierclient "github.com/chenyu/1-tok/internal/integrations/carrier"
 	"github.com/chenyu/1-tok/internal/core"
 )
 
 type Server struct {
 	client   *http.Client
 	upstream string
+	carrier  carrierclient.CodeAgentClient
+}
+
+type Options struct {
+	APIUpstream string
+	Carrier     carrierclient.CodeAgentClient
 }
 
 type carrierEventPayload struct {
@@ -28,13 +35,31 @@ type carrierEventPayload struct {
 }
 
 func NewServer() *Server {
-	return NewServerWithUpstream(upstream())
+	return NewServerWithOptions(Options{
+		APIUpstream: upstream(),
+		Carrier:     carrierclient.NewClientFromEnv(),
+	})
 }
 
 func NewServerWithUpstream(upstream string) *Server {
+	return NewServerWithOptions(Options{
+		APIUpstream: upstream,
+		Carrier:     carrierclient.NewClientFromEnv(),
+	})
+}
+
+func NewServerWithOptions(options Options) *Server {
+	if options.APIUpstream == "" {
+		options.APIUpstream = upstream()
+	}
+	if options.Carrier == nil {
+		options.Carrier = carrierclient.NewClientFromEnv()
+	}
+
 	return &Server{
 		client:   &http.Client{Timeout: 5 * time.Second},
-		upstream: upstream,
+		upstream: options.APIUpstream,
+		carrier:  options.Carrier,
 	}
 }
 
@@ -43,6 +68,21 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok","service":"execution"}`))
+		return
+	}
+
+	if r.Method == http.MethodGet && r.URL.Path == "/v1/carrier/codeagent/health" {
+		s.handleCodeAgentHealth(w, r)
+		return
+	}
+
+	if r.Method == http.MethodGet && r.URL.Path == "/v1/carrier/codeagent/version" {
+		s.handleCodeAgentVersion(w, r)
+		return
+	}
+
+	if r.Method == http.MethodPost && r.URL.Path == "/v1/carrier/codeagent/run" {
+		s.handleCodeAgentRun(w, r)
 		return
 	}
 
@@ -67,6 +107,64 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.NotFound(w, r)
+}
+
+func (s *Server) handleCodeAgentHealth(w http.ResponseWriter, r *http.Request) {
+	input := carrierclient.CodeAgentHealthInput{
+		HostID:        r.URL.Query().Get("hostId"),
+		AgentID:       r.URL.Query().Get("agentId"),
+		Backend:       r.URL.Query().Get("backend"),
+		WorkspaceRoot: r.URL.Query().Get("workspaceRoot"),
+	}
+	if input.HostID == "" || input.AgentID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required fields"})
+		return
+	}
+
+	result, err := s.carrier.GetCodeAgentHealth(r.Context(), input)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"health": result})
+}
+
+func (s *Server) handleCodeAgentVersion(w http.ResponseWriter, r *http.Request) {
+	input := carrierclient.CodeAgentVersionInput{
+		HostID:  r.URL.Query().Get("hostId"),
+		AgentID: r.URL.Query().Get("agentId"),
+		Backend: r.URL.Query().Get("backend"),
+	}
+	if input.HostID == "" || input.AgentID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required fields"})
+		return
+	}
+
+	result, err := s.carrier.GetCodeAgentVersion(r.Context(), input)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"version": result})
+}
+
+func (s *Server) handleCodeAgentRun(w http.ResponseWriter, r *http.Request) {
+	var input carrierclient.CodeAgentRunInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	if input.HostID == "" || input.AgentID == "" || input.Capability == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required fields"})
+		return
+	}
+
+	result, err := s.carrier.RunCodeAgent(r.Context(), input)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"run": result})
 }
 
 func actionForEvent(eventType string) string {
@@ -175,6 +273,12 @@ func (s *Server) postJSON(path string, payload any, target any) error {
 	}
 
 	return json.NewDecoder(res.Body).Decode(target)
+}
+
+func writeJSON(w http.ResponseWriter, status int, payload any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(payload)
 }
 
 func upstream() string {
