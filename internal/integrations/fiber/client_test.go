@@ -1,0 +1,140 @@
+package fiber
+
+import (
+	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
+
+func TestClientCreateInvoiceSignsJSONRPCRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST, got %s", r.Method)
+		}
+		if r.URL.Path != "/rpc" {
+			t.Fatalf("expected /rpc, got %s", r.URL.Path)
+		}
+
+		payload, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read request body: %v", err)
+		}
+
+		if got := r.Header.Get("x-app-id"); got != "app_1" {
+			t.Fatalf("expected x-app-id app_1, got %q", got)
+		}
+		ts := r.Header.Get("x-ts")
+		nonce := r.Header.Get("x-nonce")
+		if ts == "" || nonce == "" {
+			t.Fatalf("expected auth timestamp and nonce headers")
+		}
+		if want := signPayloadForTest("secret_1", payload, ts, nonce); r.Header.Get("x-signature") != want {
+			t.Fatalf("unexpected signature: got=%q want=%q", r.Header.Get("x-signature"), want)
+		}
+
+		var rpc struct {
+			Method string `json:"method"`
+			Params struct {
+				PostID     string `json:"postId"`
+				FromUserID string `json:"fromUserId"`
+				ToUserID   string `json:"toUserId"`
+				Asset      string `json:"asset"`
+				Amount     string `json:"amount"`
+				Message    string `json:"message"`
+			} `json:"params"`
+		}
+		if err := json.Unmarshal(payload, &rpc); err != nil {
+			t.Fatalf("decode rpc payload: %v", err)
+		}
+		if rpc.Method != "tip.create" {
+			t.Fatalf("expected method tip.create, got %q", rpc.Method)
+		}
+		if rpc.Params.PostID != "ord_1:ms_1" || rpc.Params.FromUserID != "buyer_1" || rpc.Params.ToUserID != "provider_1" {
+			t.Fatalf("unexpected params: %+v", rpc.Params)
+		}
+
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0",
+			"id":      "req_1",
+			"result": map[string]any{
+				"invoice": "inv_123",
+			},
+		})
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL+"/rpc", "app_1", "secret_1")
+	result, err := client.CreateInvoice(context.Background(), CreateInvoiceInput{
+		PostID:     "ord_1:ms_1",
+		FromUserID: "buyer_1",
+		ToUserID:   "provider_1",
+		Asset:      "CKB",
+		Amount:     "12.5",
+		Message:    "prefund milestone",
+	})
+	if err != nil {
+		t.Fatalf("create invoice: %v", err)
+	}
+	if result.Invoice != "inv_123" {
+		t.Fatalf("expected invoice inv_123, got %q", result.Invoice)
+	}
+}
+
+func TestClientGetsInvoiceStatusFromJSONRPC(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		payload, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read request body: %v", err)
+		}
+
+		var rpc struct {
+			Method string `json:"method"`
+			Params struct {
+				Invoice string `json:"invoice"`
+			} `json:"params"`
+		}
+		if err := json.Unmarshal(payload, &rpc); err != nil {
+			t.Fatalf("decode rpc payload: %v", err)
+		}
+		if rpc.Method != "tip.status" {
+			t.Fatalf("expected method tip.status, got %q", rpc.Method)
+		}
+		if rpc.Params.Invoice != "inv_123" {
+			t.Fatalf("expected invoice inv_123, got %q", rpc.Params.Invoice)
+		}
+
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0",
+			"id":      "req_2",
+			"result": map[string]any{
+				"state": "SETTLED",
+			},
+		})
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL+"/rpc", "app_1", "secret_1")
+	result, err := client.GetInvoiceStatus(context.Background(), "inv_123")
+	if err != nil {
+		t.Fatalf("get invoice status: %v", err)
+	}
+	if result.State != "SETTLED" {
+		t.Fatalf("expected state SETTLED, got %q", result.State)
+	}
+}
+
+func signPayloadForTest(secret string, payload []byte, ts, nonce string) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(ts))
+	_, _ = mac.Write([]byte("."))
+	_, _ = mac.Write([]byte(nonce))
+	_, _ = mac.Write([]byte("."))
+	_, _ = mac.Write(payload)
+	return hex.EncodeToString(mac.Sum(nil))
+}
