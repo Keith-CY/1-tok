@@ -1,0 +1,19 @@
+FROM golang:1.21.4-alpine AS builder
+
+ARG SERVICE=api-gateway
+WORKDIR /app
+
+COPY go.mod ./
+COPY cmd ./cmd
+COPY internal ./internal
+
+RUN CGO_ENABLED=0 GOOS=linux go build -o /out/service ./cmd/${SERVICE}
+
+FROM alpine:3.20
+
+WORKDIR /srv
+COPY --from=builder /out/service /usr/local/bin/service
+
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/service"]
+

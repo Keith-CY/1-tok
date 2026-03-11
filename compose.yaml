@@ -1,0 +1,124 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: onetok
+      POSTGRES_USER: onetok
+      POSTGRES_PASSWORD: onetok
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  nats:
+    image: nats:2.10-alpine
+    command: ["-js"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.go-service
+      args:
+        SERVICE: api-gateway
+    environment:
+      API_GATEWAY_ADDR: ":8080"
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - nats
+
+  iam:
+    build:
+      context: .
+      dockerfile: Dockerfile.go-service
+      args:
+        SERVICE: iam
+    environment:
+      IAM_ADDR: ":8081"
+    ports:
+      - "8081:8081"
+
+  marketplace:
+    build:
+      context: .
+      dockerfile: Dockerfile.go-service
+      args:
+        SERVICE: marketplace
+    environment:
+      MARKETPLACE_ADDR: ":8082"
+      API_GATEWAY_UPSTREAM: http://api-gateway:8080
+    ports:
+      - "8082:8082"
+    depends_on:
+      - api-gateway
+
+  settlement:
+    build:
+      context: .
+      dockerfile: Dockerfile.go-service
+      args:
+        SERVICE: settlement
+    environment:
+      SETTLEMENT_ADDR: ":8083"
+      API_GATEWAY_UPSTREAM: http://api-gateway:8080
+    ports:
+      - "8083:8083"
+    depends_on:
+      - api-gateway
+
+  risk:
+    build:
+      context: .
+      dockerfile: Dockerfile.go-service
+      args:
+        SERVICE: risk
+    environment:
+      RISK_ADDR: ":8084"
+      API_GATEWAY_UPSTREAM: http://api-gateway:8080
+    ports:
+      - "8084:8084"
+    depends_on:
+      - api-gateway
+
+  execution:
+    build:
+      context: .
+      dockerfile: Dockerfile.go-service
+      args:
+        SERVICE: execution
+    environment:
+      EXECUTION_ADDR: ":8085"
+    ports:
+      - "8085:8085"
+
+  notification:
+    build:
+      context: .
+      dockerfile: Dockerfile.go-service
+      args:
+        SERVICE: notification
+    environment:
+      NOTIFICATION_ADDR: ":8086"
+      API_GATEWAY_UPSTREAM: http://api-gateway:8080
+    ports:
+      - "8086:8086"
+    depends_on:
+      - api-gateway
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://api-gateway:8080
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api-gateway
+
+volumes:
+  postgres-data:

@@ -1,0 +1,262 @@
+package core
+
+import (
+	"testing"
+	"time"
+)
+
+func TestMilestoneSettlementUsesCreditAndCreatesExposure(t *testing.T) {
+	now := time.Date(2026, 3, 11, 12, 0, 0, 0, time.UTC)
+	order := Order{
+		ID:             "ord_1",
+		BuyerOrgID:     "buyer_1",
+		ProviderOrgID:  "provider_1",
+		FundingMode:    FundingModeCredit,
+		Status:         OrderStatusRunning,
+		CreditLineID:   "credit_1",
+		PlatformWallet: "platform_main",
+		Milestones: []Milestone{
+			{
+				ID:             "ms_1",
+				Title:          "Plan execution",
+				BasePriceCents: 1_000,
+				BudgetCents:    1_500,
+				State:          MilestoneStateRunning,
+			},
+			{
+				ID:             "ms_2",
+				Title:          "Verify delivery",
+				BasePriceCents: 500,
+				BudgetCents:    900,
+				State:          MilestoneStatePending,
+			},
+		},
+	}
+
+	entry, err := order.SettleMilestone(SettleMilestoneInput{
+		MilestoneID: "ms_1",
+		Summary:     "completed",
+		Source:      "carrier",
+		OccurredAt:  now,
+	})
+	if err != nil {
+		t.Fatalf("expected settlement to succeed, got %v", err)
+	}
+
+	if order.Status != OrderStatusRunning {
+		t.Fatalf("expected order to keep running for remaining milestones, got %s", order.Status)
+	}
+
+	if order.Milestones[0].State != MilestoneStateSettled {
+		t.Fatalf("expected milestone settled, got %s", order.Milestones[0].State)
+	}
+
+	if entry.Kind != LedgerEntryKindPlatformExposure {
+		t.Fatalf("expected exposure ledger entry, got %s", entry.Kind)
+	}
+
+	if entry.AmountCents != 1_000 {
+		t.Fatalf("expected exposure amount 1000, got %d", entry.AmountCents)
+	}
+}
+
+func TestUsageChargePausesOrderWhenBudgetIsExceeded(t *testing.T) {
+	order := Order{
+		ID:            "ord_2",
+		BuyerOrgID:    "buyer_1",
+		ProviderOrgID: "provider_1",
+		FundingMode:   FundingModePrepaid,
+		Status:        OrderStatusRunning,
+		Milestones: []Milestone{
+			{
+				ID:             "ms_1",
+				Title:          "Run agent",
+				BasePriceCents: 900,
+				BudgetCents:    1_000,
+				State:          MilestoneStateRunning,
+				UsageCharges: []UsageCharge{
+					{Kind: UsageChargeKindToken, AmountCents: 50},
+				},
+			},
+		},
+	}
+
+	charge, err := order.RecordUsageCharge(RecordUsageChargeInput{
+		MilestoneID: "ms_1",
+		Kind:        UsageChargeKindExternalAPI,
+		AmountCents: 60,
+		ProofRef:    "evt_1",
+	})
+	if err != nil {
+		t.Fatalf("expected charge to be accepted, got %v", err)
+	}
+
+	if charge.Kind != UsageChargeKindExternalAPI {
+		t.Fatalf("expected external_api charge, got %s", charge.Kind)
+	}
+
+	if order.Status != OrderStatusAwaitingBudget {
+		t.Fatalf("expected order awaiting budget, got %s", order.Status)
+	}
+
+	if order.Milestones[0].State != MilestoneStatePaused {
+		t.Fatalf("expected milestone paused, got %s", order.Milestones[0].State)
+	}
+}
+
+func TestDisputeCreatesRecoveryAgainstProvider(t *testing.T) {
+	order := Order{
+		ID:            "ord_3",
+		BuyerOrgID:    "buyer_1",
+		ProviderOrgID: "provider_1",
+		FundingMode:   FundingModeCredit,
+		Status:        OrderStatusRunning,
+		Milestones: []Milestone{
+			{
+				ID:             "ms_1",
+				Title:          "Diagnose",
+				BasePriceCents: 800,
+				BudgetCents:    1_000,
+				State:          MilestoneStateSettled,
+				SettledCents:   800,
+			},
+		},
+	}
+
+	refund, recovery, err := order.OpenDispute(OpenDisputeInput{
+		MilestoneID: "ms_1",
+		Reason:      "bad output",
+		RefundCents: 300,
+	})
+	if err != nil {
+		t.Fatalf("expected dispute to succeed, got %v", err)
+	}
+
+	if refund.Kind != LedgerEntryKindBuyerReimbursement {
+		t.Fatalf("expected buyer reimbursement, got %s", refund.Kind)
+	}
+
+	if recovery.Kind != LedgerEntryKindProviderRecovery {
+		t.Fatalf("expected provider recovery, got %s", recovery.Kind)
+	}
+
+	if order.Milestones[0].DisputeStatus != DisputeStatusOpen {
+		t.Fatalf("expected open dispute, got %s", order.Milestones[0].DisputeStatus)
+	}
+}
+
+func TestMilestoneSettlementFromPrepaidCreatesProviderPayout(t *testing.T) {
+	now := time.Date(2026, 3, 11, 13, 0, 0, 0, time.UTC)
+	order := Order{
+		ID:            "ord_4",
+		BuyerOrgID:    "buyer_1",
+		ProviderOrgID: "provider_1",
+		FundingMode:   FundingModePrepaid,
+		Status:        OrderStatusRunning,
+		Milestones: []Milestone{
+			{
+				ID:             "ms_1",
+				Title:          "Deliver",
+				BasePriceCents: 700,
+				BudgetCents:    1200,
+				State:          MilestoneStateRunning,
+			},
+			{
+				ID:             "ms_2",
+				Title:          "Closeout",
+				BasePriceCents: 200,
+				BudgetCents:    300,
+				State:          MilestoneStatePending,
+			},
+		},
+	}
+
+	entry, err := order.SettleMilestone(SettleMilestoneInput{
+		MilestoneID: "ms_1",
+		Summary:     "done",
+		Source:      "carrier",
+		OccurredAt:  now,
+	})
+	if err != nil {
+		t.Fatalf("expected settlement to succeed, got %v", err)
+	}
+
+	if entry.Kind != LedgerEntryKindProviderPayout {
+		t.Fatalf("expected provider payout entry, got %s", entry.Kind)
+	}
+}
+
+func TestMilestoneSettlementUsesReservedFundsWhenPrepaid(t *testing.T) {
+	now := time.Date(2026, 3, 11, 12, 15, 0, 0, time.UTC)
+	order := Order{
+		ID:            "ord_4",
+		BuyerOrgID:    "buyer_2",
+		ProviderOrgID: "provider_1",
+		FundingMode:   FundingModePrepaid,
+		Status:        OrderStatusRunning,
+		Milestones: []Milestone{
+			{
+				ID:             "ms_1",
+				Title:          "Execute",
+				BasePriceCents: 700,
+				BudgetCents:    900,
+				State:          MilestoneStateRunning,
+			},
+			{
+				ID:             "ms_2",
+				Title:          "Deliver",
+				BasePriceCents: 400,
+				BudgetCents:    700,
+				State:          MilestoneStatePending,
+			},
+		},
+	}
+
+	entry, err := order.SettleMilestone(SettleMilestoneInput{
+		MilestoneID: "ms_1",
+		Summary:     "done",
+		Source:      "carrier",
+		OccurredAt:  now,
+	})
+	if err != nil {
+		t.Fatalf("expected settlement to succeed, got %v", err)
+	}
+
+	if entry.Kind != LedgerEntryKindProviderPayout {
+		t.Fatalf("expected provider payout entry, got %s", entry.Kind)
+	}
+
+	if entry.AmountCents != 700 {
+		t.Fatalf("expected reserved capture amount 700, got %d", entry.AmountCents)
+	}
+}
+
+func TestCreditDecisionUsesHistorySignals(t *testing.T) {
+	engine := CreditDecisionEngine{
+		BaseLimitCents:        50_000,
+		MaxLimitCents:         500_000,
+		DisputePenaltyCents:   75_000,
+		FailurePenaltyCents:   50_000,
+		ConsumptionMultiplier: 2,
+	}
+
+	decision := engine.Decide(CreditHistory{
+		CompletedOrders:    24,
+		SuccessfulPayments: 22,
+		FailedPayments:     0,
+		DisputedOrders:     1,
+		LifetimeSpendCents: 240_000,
+	})
+
+	if !decision.Approved {
+		t.Fatalf("expected approved decision")
+	}
+
+	if decision.RecommendedLimitCents <= 0 {
+		t.Fatalf("expected positive limit, got %d", decision.RecommendedLimitCents)
+	}
+
+	if decision.RecommendedLimitCents >= engine.MaxLimitCents {
+		t.Fatalf("expected capped limit below max, got %d", decision.RecommendedLimitCents)
+	}
+}
