@@ -7,6 +7,7 @@
 - service entrypoints for `iam`, `marketplace`, `settlement`, `risk`, `execution`, and `notification`
 - shared TypeScript contracts for the web portal
 - local container topology for Go services plus Postgres and NATS
+- Postgres-backed repositories for orders, messages, and disputes when `DATABASE_URL` is set
 
 ## Layout
 
@@ -37,12 +38,26 @@ bun run test:contracts
 CGO_ENABLED=0 go run ./cmd/api-gateway
 ```
 
+To enable persistence locally:
+
+```bash
+export DATABASE_URL='postgres://onetok:onetok@127.0.0.1:5432/onetok?sslmode=disable'
+CGO_ENABLED=0 go run ./cmd/api-gateway
+```
+
 ### Compose
 
 ```bash
 docker compose up --build
 ```
 
+### Postgres repository integration test
+
+```bash
+export ONE_TOK_TEST_DATABASE_URL='postgres://onetok:onetok@127.0.0.1:5432/onetok?sslmode=disable'
+CGO_ENABLED=0 go test ./internal/store/postgres
+```
+
 ## Current scope
 
-The Go services currently use in-memory state for orders, disputes, and messages. Postgres and NATS are wired in the deployment topology but are not yet used as the persistence/event backbone. This keeps the first pass executable while preserving the service and deployment shape from the plan.
+Provider and listing catalogs are still seeded in memory, and NATS/Fiber/Carrier are still adapter placeholders. Orders, messages, and disputes can now run against Postgres through `DATABASE_URL`, which moves the core task lifecycle off in-memory state.

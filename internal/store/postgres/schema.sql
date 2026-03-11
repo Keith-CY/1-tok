@@ -1,0 +1,31 @@
+CREATE SEQUENCE IF NOT EXISTS order_seq START 1;
+CREATE SEQUENCE IF NOT EXISTS message_seq START 1;
+CREATE SEQUENCE IF NOT EXISTS dispute_seq START 1;
+
+CREATE TABLE IF NOT EXISTS orders (
+  id TEXT PRIMARY KEY,
+  buyer_org_id TEXT NOT NULL,
+  provider_org_id TEXT NOT NULL,
+  funding_mode TEXT NOT NULL,
+  status TEXT NOT NULL,
+  payload JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id TEXT PRIMARY KEY,
+  order_id TEXT NOT NULL,
+  author TEXT NOT NULL,
+  body TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS disputes (
+  id TEXT PRIMARY KEY,
+  order_id TEXT NOT NULL,
+  milestone_id TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  refund_cents BIGINT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL
+);

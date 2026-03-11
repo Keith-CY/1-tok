@@ -64,7 +64,7 @@ type RecordUsageChargeInput = core.RecordUsageChargeInput
 type OpenDisputeInput = core.OpenDisputeInput
 
 type OrderRepository interface {
-	NextID() string
+	NextID() (string, error)
 	Save(order *core.Order) error
 	Get(id string) (*core.Order, error)
 	List() ([]*core.Order, error)
@@ -79,12 +79,12 @@ type ListingRepository interface {
 }
 
 type MessageRepository interface {
-	NextID() string
+	NextID() (string, error)
 	Save(message Message) error
 }
 
 type DisputeRepository interface {
-	NextID() string
+	NextID() (string, error)
 	Save(dispute Dispute) error
 }
 
@@ -113,6 +113,11 @@ func NewAppWithMemory() *App {
 			ConsumptionMultiplier: 2,
 		},
 	}
+}
+
+func NewAppWithStorage(orders OrderRepository, messages MessageRepository, disputes DisputeRepository) *App {
+	memory := newMemoryStores()
+	return NewApp(orders, memory.providers, memory.listings, messages, disputes)
 }
 
 func NewApp(
@@ -159,8 +164,13 @@ func (a *App) CreateOrder(input CreateOrderInput) (*core.Order, error) {
 		return nil, errors.New("missing required fields")
 	}
 
+	orderID, err := a.orders.NextID()
+	if err != nil {
+		return nil, err
+	}
+
 	order := &core.Order{
-		ID:             a.orders.NextID(),
+		ID:             orderID,
 		BuyerOrgID:     input.BuyerOrgID,
 		ProviderOrgID:  input.ProviderOrgID,
 		FundingMode:    input.FundingMode,
@@ -251,8 +261,13 @@ func (a *App) OpenDispute(orderID string, input OpenDisputeInput) (*core.Order, 
 		return nil, core.LedgerEntry{}, core.LedgerEntry{}, err
 	}
 
+	disputeID, err := a.disputes.NextID()
+	if err != nil {
+		return nil, core.LedgerEntry{}, core.LedgerEntry{}, err
+	}
+
 	if err := a.disputes.Save(Dispute{
-		ID:          a.disputes.NextID(),
+		ID:          disputeID,
 		OrderID:     orderID,
 		MilestoneID: input.MilestoneID,
 		Reason:      input.Reason,
@@ -275,8 +290,13 @@ func (a *App) OpenDispute(orderID string, input OpenDisputeInput) (*core.Order, 
 }
 
 func (a *App) CreateMessage(orderID, author, body string) (Message, error) {
+	messageID, err := a.messages.NextID()
+	if err != nil {
+		return Message{}, err
+	}
+
 	message := Message{
-		ID:        a.messages.NextID(),
+		ID:        messageID,
 		OrderID:   orderID,
 		Author:    author,
 		Body:      body,
@@ -356,11 +376,11 @@ type memoryOrderRepository struct {
 	data map[string]*core.Order
 }
 
-func (r *memoryOrderRepository) NextID() string {
+func (r *memoryOrderRepository) NextID() (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.seq++
-	return fmt.Sprintf("ord_%d", r.seq)
+	return fmt.Sprintf("ord_%d", r.seq), nil
 }
 
 func (r *memoryOrderRepository) Save(order *core.Order) error {
@@ -415,11 +435,11 @@ type memoryMessageRepository struct {
 	data []Message
 }
 
-func (r *memoryMessageRepository) NextID() string {
+func (r *memoryMessageRepository) NextID() (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.seq++
-	return fmt.Sprintf("msg_%d", r.seq)
+	return fmt.Sprintf("msg_%d", r.seq), nil
 }
 
 func (r *memoryMessageRepository) Save(message Message) error {
@@ -435,11 +455,11 @@ type memoryDisputeRepository struct {
 	data []Dispute
 }
 
-func (r *memoryDisputeRepository) NextID() string {
+func (r *memoryDisputeRepository) NextID() (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.seq++
-	return fmt.Sprintf("disp_%d", r.seq)
+	return fmt.Sprintf("disp_%d", r.seq), nil
 }
 
 func (r *memoryDisputeRepository) Save(dispute Dispute) error {
