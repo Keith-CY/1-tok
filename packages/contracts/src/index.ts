@@ -84,6 +84,22 @@ export interface Listing {
   tags: string[];
 }
 
+export const rfqStatuses = ["open", "awarded", "closed"] as const;
+export type RFQStatus = (typeof rfqStatuses)[number];
+
+export interface RFQ {
+  id: string;
+  buyerOrgId: string;
+  title: string;
+  category: string;
+  scope: string;
+  budgetCents: number;
+  status: RFQStatus;
+  responseDeadlineAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const fundingRecordKinds = ["invoice", "withdrawal"] as const;
 export type FundingRecordKind = (typeof fundingRecordKinds)[number];
 

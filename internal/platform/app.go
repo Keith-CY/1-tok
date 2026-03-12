@@ -26,6 +26,27 @@ type Listing struct {
 	Tags           []string `json:"tags"`
 }
 
+type RFQStatus string
+
+const (
+	RFQStatusOpen    RFQStatus = "open"
+	RFQStatusAwarded RFQStatus = "awarded"
+	RFQStatusClosed  RFQStatus = "closed"
+)
+
+type RFQ struct {
+	ID                 string    `json:"id"`
+	BuyerOrgID         string    `json:"buyerOrgId"`
+	Title              string    `json:"title"`
+	Category           string    `json:"category"`
+	Scope              string    `json:"scope"`
+	BudgetCents        int64     `json:"budgetCents"`
+	Status             RFQStatus `json:"status"`
+	ResponseDeadlineAt time.Time `json:"responseDeadlineAt"`
+	CreatedAt          time.Time `json:"createdAt"`
+	UpdatedAt          time.Time `json:"updatedAt"`
+}
+
 type Message struct {
 	ID        string    `json:"id"`
 	OrderID   string    `json:"orderId"`
@@ -59,6 +80,15 @@ type CreateOrderInput struct {
 	Milestones    []CreateMilestoneInput
 }
 
+type CreateRFQInput struct {
+	BuyerOrgID         string
+	Title              string
+	Category           string
+	Scope              string
+	BudgetCents        int64
+	ResponseDeadlineAt time.Time
+}
+
 type SettleMilestoneInput = core.SettleMilestoneInput
 type RecordUsageChargeInput = core.RecordUsageChargeInput
 type OpenDisputeInput = core.OpenDisputeInput
@@ -78,6 +108,12 @@ type ListingRepository interface {
 	List() ([]Listing, error)
 }
 
+type RFQRepository interface {
+	NextID() (string, error)
+	Save(rfq RFQ) error
+	List() ([]RFQ, error)
+}
+
 type MessageRepository interface {
 	NextID() (string, error)
 	Save(message Message) error
@@ -92,6 +128,7 @@ type App struct {
 	orders       OrderRepository
 	providers    ProviderRepository
 	listings     ListingRepository
+	rfqs         RFQRepository
 	messages     MessageRepository
 	disputes     DisputeRepository
 	creditEngine core.CreditDecisionEngine
@@ -132,6 +169,7 @@ func NewAppWithMemory() *App {
 		orders:    memory.orders,
 		providers: memory.providers,
 		listings:  memory.listings,
+		rfqs:      memory.rfqs,
 		messages:  memory.messages,
 		disputes:  memory.disputes,
 		publisher: noopPublisher{},
@@ -149,6 +187,7 @@ func NewAppWithStorage(
 	orders OrderRepository,
 	providers ProviderRepository,
 	listings ListingRepository,
+	rfqs RFQRepository,
 	messages MessageRepository,
 	disputes DisputeRepository,
 ) *App {
@@ -159,13 +198,17 @@ func NewAppWithStorage(
 	if listings == nil {
 		listings = memory.listings
 	}
-	return NewApp(orders, providers, listings, messages, disputes)
+	if rfqs == nil {
+		rfqs = memory.rfqs
+	}
+	return NewApp(orders, providers, listings, rfqs, messages, disputes)
 }
 
 func NewApp(
 	orders OrderRepository,
 	providers ProviderRepository,
 	listings ListingRepository,
+	rfqs RFQRepository,
 	messages MessageRepository,
 	disputes DisputeRepository,
 ) *App {
@@ -173,6 +216,7 @@ func NewApp(
 		orders:    orders,
 		providers: providers,
 		listings:  listings,
+		rfqs:      rfqs,
 		messages:  messages,
 		disputes:  disputes,
 		publisher: noopPublisher{},
@@ -202,12 +246,60 @@ func (a *App) ListListings() ([]Listing, error) {
 	return a.listings.List()
 }
 
+func (a *App) ListRFQs() ([]RFQ, error) {
+	return a.rfqs.List()
+}
+
 func (a *App) ListOrders() ([]*core.Order, error) {
 	return a.orders.List()
 }
 
 func (a *App) GetOrder(id string) (*core.Order, error) {
 	return a.orders.Get(id)
+}
+
+func (a *App) CreateRFQ(input CreateRFQInput) (RFQ, error) {
+	if input.BuyerOrgID == "" || input.Title == "" || input.Category == "" || input.Scope == "" || input.BudgetCents <= 0 {
+		return RFQ{}, errors.New("missing required fields")
+	}
+	if input.ResponseDeadlineAt.IsZero() {
+		return RFQ{}, errors.New("response deadline is required")
+	}
+
+	rfqID, err := a.rfqs.NextID()
+	if err != nil {
+		return RFQ{}, err
+	}
+
+	now := time.Now().UTC()
+	rfq := RFQ{
+		ID:                 rfqID,
+		BuyerOrgID:         input.BuyerOrgID,
+		Title:              input.Title,
+		Category:           input.Category,
+		Scope:              input.Scope,
+		BudgetCents:        input.BudgetCents,
+		Status:             RFQStatusOpen,
+		ResponseDeadlineAt: input.ResponseDeadlineAt.UTC(),
+		CreatedAt:          now,
+		UpdatedAt:          now,
+	}
+
+	if err := a.rfqs.Save(rfq); err != nil {
+		return RFQ{}, err
+	}
+
+	if err := a.publish("market.rfq.created", map[string]any{
+		"rfqId":              rfq.ID,
+		"buyerOrgId":         rfq.BuyerOrgID,
+		"category":           rfq.Category,
+		"budgetCents":        rfq.BudgetCents,
+		"responseDeadlineAt": rfq.ResponseDeadlineAt,
+	}); err != nil {
+		return RFQ{}, err
+	}
+
+	return rfq, nil
 }
 
 func (a *App) CreateOrder(input CreateOrderInput) (*core.Order, error) {
@@ -433,6 +525,7 @@ type memoryStores struct {
 	orders    *memoryOrderRepository
 	providers *memoryProviderRepository
 	listings  *memoryListingRepository
+	rfqs      *memoryRFQRepository
 	messages  *memoryMessageRepository
 	disputes  *memoryDisputeRepository
 }
@@ -448,6 +541,7 @@ func newMemoryStores() *memoryStores {
 		listings: &memoryListingRepository{
 			data: DefaultListings(),
 		},
+		rfqs:     &memoryRFQRepository{},
 		messages: &memoryMessageRepository{},
 		disputes: &memoryDisputeRepository{},
 	}
@@ -510,6 +604,42 @@ type memoryListingRepository struct {
 
 func (r *memoryListingRepository) List() ([]Listing, error) {
 	return slices.Clone(r.data), nil
+}
+
+type memoryRFQRepository struct {
+	mu   sync.Mutex
+	seq  int
+	data []RFQ
+}
+
+func (r *memoryRFQRepository) NextID() (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.seq++
+	return fmt.Sprintf("rfq_%d", r.seq), nil
+}
+
+func (r *memoryRFQRepository) Save(rfq RFQ) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for index := range r.data {
+		if r.data[index].ID == rfq.ID {
+			r.data[index] = rfq
+			return nil
+		}
+	}
+	r.data = append(r.data, rfq)
+	return nil
+}
+
+func (r *memoryRFQRepository) List() ([]RFQ, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	rfqs := slices.Clone(r.data)
+	slices.SortFunc(rfqs, func(a, b RFQ) int {
+		return compareStrings(a.ID, b.ID)
+	})
+	return rfqs, nil
 }
 
 type memoryMessageRepository struct {

@@ -44,6 +44,7 @@ func LoadPlatformApp() (*platform.App, func() error, error) {
 		postgresstore.NewOrderRepository(db),
 		postgresstore.NewProviderRepository(db),
 		postgresstore.NewListingRepository(db),
+		postgresstore.NewRFQRepository(db),
 		postgresstore.NewMessageRepository(db),
 		postgresstore.NewDisputeRepository(db),
 	)

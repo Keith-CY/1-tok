@@ -306,3 +306,69 @@ func (r *ListingRepository) Upsert(listing platform.Listing) error {
 	`, listing.ID, listing.ProviderOrgID, listing.Title, listing.Category, listing.BasePriceCents, tags)
 	return err
 }
+
+type RFQRepository struct {
+	db *sql.DB
+}
+
+func NewRFQRepository(db *sql.DB) *RFQRepository {
+	return &RFQRepository{db: db}
+}
+
+func (r *RFQRepository) NextID() (string, error) {
+	return nextID(r.db, "rfq_seq", "rfq")
+}
+
+func (r *RFQRepository) Save(rfq platform.RFQ) error {
+	_, err := r.db.Exec(`
+		INSERT INTO rfqs (
+			id, buyer_org_id, title, category, scope, budget_cents, status, response_deadline_at, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		ON CONFLICT (id) DO UPDATE SET
+			buyer_org_id = EXCLUDED.buyer_org_id,
+			title = EXCLUDED.title,
+			category = EXCLUDED.category,
+			scope = EXCLUDED.scope,
+			budget_cents = EXCLUDED.budget_cents,
+			status = EXCLUDED.status,
+			response_deadline_at = EXCLUDED.response_deadline_at,
+			updated_at = EXCLUDED.updated_at
+	`, rfq.ID, rfq.BuyerOrgID, rfq.Title, rfq.Category, rfq.Scope, rfq.BudgetCents, string(rfq.Status), rfq.ResponseDeadlineAt, rfq.CreatedAt, rfq.UpdatedAt)
+	return err
+}
+
+func (r *RFQRepository) List() ([]platform.RFQ, error) {
+	rows, err := r.db.Query(`
+		SELECT id, buyer_org_id, title, category, scope, budget_cents, status, response_deadline_at, created_at, updated_at
+		FROM rfqs
+		ORDER BY created_at ASC, id ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	rfqs := make([]platform.RFQ, 0)
+	for rows.Next() {
+		var rfq platform.RFQ
+		var status string
+		if err := rows.Scan(
+			&rfq.ID,
+			&rfq.BuyerOrgID,
+			&rfq.Title,
+			&rfq.Category,
+			&rfq.Scope,
+			&rfq.BudgetCents,
+			&status,
+			&rfq.ResponseDeadlineAt,
+			&rfq.CreatedAt,
+			&rfq.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		rfq.Status = platform.RFQStatus(status)
+		rfqs = append(rfqs, rfq)
+	}
+
+	return rfqs, rows.Err()
+}

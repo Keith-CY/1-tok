@@ -55,8 +55,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleListProviders(w)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/listings":
 		s.handleListListings(w)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/rfqs":
+		s.handleListRFQs(w)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/orders":
 		s.handleListOrders(w)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/rfqs":
+		s.handleCreateRFQ(w, r)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/v1/orders/"):
 		s.handleGetOrder(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/orders":
@@ -94,6 +98,16 @@ func (s *Server) handleListListings(w http.ResponseWriter) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"listings": listings})
+}
+
+func (s *Server) handleListRFQs(w http.ResponseWriter) {
+	rfqs, err := s.app.ListRFQs()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"rfqs": rfqs})
 }
 
 func (s *Server) handleListOrders(w http.ResponseWriter) {
@@ -180,6 +194,48 @@ func (s *Server) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]any{"order": order})
+}
+
+func (s *Server) handleCreateRFQ(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		BuyerOrgID         string `json:"buyerOrgId"`
+		Title              string `json:"title"`
+		Category           string `json:"category"`
+		Scope              string `json:"scope"`
+		BudgetCents        int64  `json:"budgetCents"`
+		ResponseDeadlineAt string `json:"responseDeadlineAt"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+
+	buyerOrgID, err := s.resolveBuyerOrg(r, payload.BuyerOrgID)
+	if err != nil {
+		writeAuthError(w, err)
+		return
+	}
+
+	responseDeadlineAt, err := time.Parse(time.RFC3339, payload.ResponseDeadlineAt)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid responseDeadlineAt"})
+		return
+	}
+
+	rfq, err := s.app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID:         buyerOrgID,
+		Title:              payload.Title,
+		Category:           payload.Category,
+		Scope:              payload.Scope,
+		BudgetCents:        payload.BudgetCents,
+		ResponseDeadlineAt: responseDeadlineAt,
+	})
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, map[string]any{"rfq": rfq})
 }
 
 func (s *Server) resolveBuyerOrg(r *http.Request, requestedBuyerOrgID string) (string, error) {

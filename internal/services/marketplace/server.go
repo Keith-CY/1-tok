@@ -28,7 +28,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch r.URL.Path {
-	case "/v1/providers", "/v1/listings", "/v1/orders":
+	case "/v1/providers", "/v1/listings", "/v1/rfqs", "/v1/orders":
 		s.inner.ServeHTTP(w, r)
 	default:
 		http.NotFound(w, r)

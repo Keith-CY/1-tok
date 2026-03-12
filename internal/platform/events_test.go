@@ -40,6 +40,32 @@ func TestAppCreateOrderPublishesOrderCreatedEvent(t *testing.T) {
 	}
 }
 
+func TestAppCreateRFQPublishesCreatedEvent(t *testing.T) {
+	publisher := &spyPublisher{}
+	app := NewAppWithMemory()
+	app.publisher = publisher
+
+	_, err := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID:         "buyer_1",
+		Title:              "Need carrier-backed triage",
+		Category:           "agent-ops",
+		Scope:              "Investigate failures and propose a fix plan.",
+		BudgetCents:        8_000,
+		ResponseDeadlineAt: time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("create rfq: %v", err)
+	}
+
+	if len(publisher.subjects) != 1 {
+		t.Fatalf("expected one event, got %d", len(publisher.subjects))
+	}
+
+	if publisher.subjects[0] != "market.rfq.created" {
+		t.Fatalf("expected rfq created subject, got %s", publisher.subjects[0])
+	}
+}
+
 func TestAppSettleMilestonePublishesSettledEvent(t *testing.T) {
 	publisher := &spyPublisher{}
 	app := NewAppWithMemory()

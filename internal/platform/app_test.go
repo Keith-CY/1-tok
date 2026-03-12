@@ -43,6 +43,39 @@ func TestAppCreateOrderPersistsAndListsOrders(t *testing.T) {
 	}
 }
 
+func TestAppCreateRFQPersistsAndListsRFQs(t *testing.T) {
+	app := NewAppWithMemory()
+
+	rfq, err := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID:         "buyer_1",
+		Title:              "Need carrier-backed triage",
+		Category:           "agent-ops",
+		Scope:              "Investigate failures, stabilize runtime, and report next steps.",
+		BudgetCents:        9_500,
+		ResponseDeadlineAt: time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("create rfq: %v", err)
+	}
+
+	rfqs, err := app.ListRFQs()
+	if err != nil {
+		t.Fatalf("list rfqs: %v", err)
+	}
+
+	if len(rfqs) != 1 {
+		t.Fatalf("expected one rfq, got %d", len(rfqs))
+	}
+
+	if rfqs[0].ID != rfq.ID {
+		t.Fatalf("expected rfq %s, got %s", rfq.ID, rfqs[0].ID)
+	}
+
+	if rfqs[0].Status != RFQStatusOpen {
+		t.Fatalf("expected open rfq, got %s", rfqs[0].Status)
+	}
+}
+
 func TestAppSettleMilestoneAdvancesNextMilestone(t *testing.T) {
 	app := NewAppWithMemory()
 	order, err := app.CreateOrder(CreateOrderInput{

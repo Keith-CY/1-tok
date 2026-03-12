@@ -137,6 +137,62 @@ func TestCreateOrderDerivesBuyerOrgFromAuthenticatedMembership(t *testing.T) {
 	}
 }
 
+func TestCreateRFQDerivesBuyerOrgFromAuthenticatedMembership(t *testing.T) {
+	server := NewServerWithOptions(Options{
+		App: platform.NewAppWithMemory(),
+		IAM: &stubIAMClient{
+			actor: iamclient.Actor{
+				UserID: "usr_1",
+				Memberships: []iamclient.ActorMembership{
+					{
+						OrganizationID:   "buyer_auth_1",
+						OrganizationKind: "buyer",
+						Role:             "procurement",
+					},
+				},
+			},
+		},
+	})
+
+	payload := map[string]any{
+		"title":              "Need carrier-backed triage",
+		"category":           "agent-ops",
+		"scope":              "Investigate failures and propose a fix plan.",
+		"budgetCents":        8000,
+		"responseDeadlineAt": "2026-03-15T12:00:00Z",
+	}
+	body, _ := json.Marshal(payload)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer buyer-session-token")
+	res := httptest.NewRecorder()
+
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d body=%s", res.Code, res.Body.String())
+	}
+
+	var response struct {
+		RFQ struct {
+			BuyerOrgID string `json:"buyerOrgId"`
+			Status     string `json:"status"`
+		} `json:"rfq"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if response.RFQ.BuyerOrgID != "buyer_auth_1" {
+		t.Fatalf("expected authenticated buyer org, got %+v", response)
+	}
+
+	if response.RFQ.Status != "open" {
+		t.Fatalf("expected open rfq, got %s", response.RFQ.Status)
+	}
+}
+
 func TestCarrierMilestoneSettlementReturnsLedgerEntry(t *testing.T) {
 	server := NewServer()
 

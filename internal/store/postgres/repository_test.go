@@ -167,6 +167,52 @@ func TestListingRepositoryRoundTrip(t *testing.T) {
 	}
 }
 
+func TestRFQRepositoryRoundTrip(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+
+	db, err := Open(dsn)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	if err := Migrate(db); err != nil {
+		t.Fatalf("migrate db: %v", err)
+	}
+
+	repo := NewRFQRepository(db)
+	rfq := platform.RFQ{
+		ID:                 "rfq_persist",
+		BuyerOrgID:         "buyer_1",
+		Title:              "Persistent RFQ",
+		Category:           "agent-ops",
+		Scope:              "Handle live triage and stabilize the carrier workflow.",
+		BudgetCents:        4200,
+		Status:             platform.RFQStatusOpen,
+		ResponseDeadlineAt: time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC),
+		CreatedAt:          time.Date(2026, 3, 12, 9, 0, 0, 0, time.UTC),
+		UpdatedAt:          time.Date(2026, 3, 12, 9, 0, 0, 0, time.UTC),
+	}
+
+	if err := repo.Save(rfq); err != nil {
+		t.Fatalf("save rfq: %v", err)
+	}
+
+	rfqs, err := repo.List()
+	if err != nil {
+		t.Fatalf("list rfqs: %v", err)
+	}
+
+	if !slices.ContainsFunc(rfqs, func(candidate platform.RFQ) bool {
+		return candidate.ID == rfq.ID && candidate.BuyerOrgID == rfq.BuyerOrgID && candidate.Status == platform.RFQStatusOpen
+	}) {
+		t.Fatalf("expected rfq %+v in %+v", rfq, rfqs)
+	}
+}
+
 func TestSeedCatalogInsertsDefaultProvidersAndListings(t *testing.T) {
 	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
 	if dsn == "" {
