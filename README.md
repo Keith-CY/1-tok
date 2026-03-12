@@ -30,6 +30,22 @@ Go service builds now target Go `1.25`.
 CGO_ENABLED=0 go test ./...
 ```
 
+### Release smoke
+
+```bash
+export RELEASE_SMOKE_API_BASE_URL='http://127.0.0.1:8080'
+export RELEASE_SMOKE_SETTLEMENT_BASE_URL='http://127.0.0.1:8083'
+export RELEASE_SMOKE_EXECUTION_BASE_URL='http://127.0.0.1:8085'
+bun run release:smoke
+```
+
+The smoke command defaults to the smallest cross-service path: create an order, drive a milestone-ready execution event, create an invoice, sync settlement state, and assert invoice funding records. Optional probes can be enabled with:
+
+```bash
+export RELEASE_SMOKE_INCLUDE_WITHDRAWAL=true
+export RELEASE_SMOKE_INCLUDE_CARRIER_PROBE=true
+```
+
 ### Contracts tests
 
 ```bash
