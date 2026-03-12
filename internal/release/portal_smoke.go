@@ -11,14 +11,18 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/chenyu/1-tok/internal/serviceauth"
 )
 
 const portalSessionCookieName = "one_tok_session"
 
 type PortalConfig struct {
-	WebBaseURL string
-	APIBaseURL string
-	IAMBaseURL string
+	WebBaseURL          string
+	APIBaseURL          string
+	IAMBaseURL          string
+	ExecutionBaseURL    string
+	ExecutionEventToken string
 }
 
 type PortalSummary struct {
@@ -37,9 +41,11 @@ type portalAccount struct {
 
 func PortalConfigFromEnv() PortalConfig {
 	return PortalConfig{
-		WebBaseURL: envOrDefault("RELEASE_PORTAL_SMOKE_WEB_BASE_URL", "http://127.0.0.1:3000"),
-		APIBaseURL: envOrDefault("RELEASE_PORTAL_SMOKE_API_BASE_URL", "http://127.0.0.1:8080"),
-		IAMBaseURL: envOrDefault("RELEASE_PORTAL_SMOKE_IAM_BASE_URL", "http://127.0.0.1:8081"),
+		WebBaseURL:          envOrDefault("RELEASE_PORTAL_SMOKE_WEB_BASE_URL", "http://127.0.0.1:3000"),
+		APIBaseURL:          envOrDefault("RELEASE_PORTAL_SMOKE_API_BASE_URL", "http://127.0.0.1:8080"),
+		IAMBaseURL:          envOrDefault("RELEASE_PORTAL_SMOKE_IAM_BASE_URL", "http://127.0.0.1:8081"),
+		ExecutionBaseURL:    envOrDefault("RELEASE_PORTAL_SMOKE_EXECUTION_BASE_URL", "http://127.0.0.1:8085"),
+		ExecutionEventToken: envOrDefault("RELEASE_PORTAL_SMOKE_EXECUTION_EVENT_TOKEN", ""),
 	}
 }
 
@@ -47,8 +53,9 @@ func RunPortalSmoke(ctx context.Context, cfg PortalConfig) (PortalSummary, error
 	webBaseURL := strings.TrimRight(cfg.WebBaseURL, "/")
 	apiBaseURL := strings.TrimRight(cfg.APIBaseURL, "/")
 	iamBaseURL := strings.TrimRight(cfg.IAMBaseURL, "/")
-	if webBaseURL == "" || apiBaseURL == "" || iamBaseURL == "" {
-		return PortalSummary{}, errors.New("web, api, and iam base urls are required")
+	executionBaseURL := strings.TrimRight(cfg.ExecutionBaseURL, "/")
+	if webBaseURL == "" || apiBaseURL == "" || iamBaseURL == "" || executionBaseURL == "" {
+		return PortalSummary{}, errors.New("web, api, iam, and execution base urls are required")
 	}
 
 	client := &smokeClient{httpClient: &http.Client{Timeout: 10 * time.Second}}
@@ -163,7 +170,7 @@ func RunPortalSmoke(ctx context.Context, cfg PortalConfig) (PortalSummary, error
 		return PortalSummary{}, errors.New("portal smoke: awarded rfq missing order id")
 	}
 
-	if err := client.settleOrderMilestone(ctx, apiBaseURL, rfq.OrderID); err != nil {
+	if err := client.settleOrderMilestone(ctx, executionBaseURL, cfg.ExecutionEventToken, rfq.OrderID); err != nil {
 		return PortalSummary{}, err
 	}
 
@@ -337,9 +344,13 @@ func (c *smokeClient) createDispute(ctx context.Context, apiBaseURL, token, orde
 	}, nil)
 }
 
-func (c *smokeClient) settleOrderMilestone(ctx context.Context, apiBaseURL, orderID string) error {
-	return c.postJSONWithToken(ctx, fmt.Sprintf("%s/api/v1/orders/%s/milestones/ms_1/settle", apiBaseURL, orderID), "", map[string]any{
+func (c *smokeClient) settleOrderMilestone(ctx context.Context, executionBaseURL, eventToken, orderID string) error {
+	return c.postJSONWithHeaders(ctx, fmt.Sprintf("%s/v1/carrier/events", executionBaseURL), map[string]string{
+		serviceauth.HeaderName: strings.TrimSpace(eventToken),
+	}, map[string]any{
+		"orderId":     orderID,
 		"milestoneId": "ms_1",
+		"eventType":   "milestone_ready",
 		"summary":     "Portal smoke milestone settled before dispute.",
 		"source":      "portal_smoke",
 	}, nil)

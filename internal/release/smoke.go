@@ -15,13 +15,14 @@ import (
 )
 
 type Config struct {
-	APIBaseURL          string
-	SettlementBaseURL   string
+	APIBaseURL             string
+	IAMBaseURL             string
+	SettlementBaseURL      string
 	SettlementServiceToken string
-	ExecutionBaseURL    string
-	ExecutionEventToken string
-	IncludeWithdrawal   bool
-	IncludeCarrierProbe bool
+	ExecutionBaseURL       string
+	ExecutionEventToken    string
+	IncludeWithdrawal      bool
+	IncludeCarrierProbe    bool
 }
 
 type Summary struct {
@@ -30,6 +31,11 @@ type Summary struct {
 	WithdrawalID       string
 	FundingRecordCount int
 	CodeAgentPolicy    string
+}
+
+type actorIdentity struct {
+	Token string
+	OrgID string
 }
 
 type smokeClient struct {
@@ -57,10 +63,25 @@ func RunSmoke(ctx context.Context, cfg Config) (Summary, error) {
 		return Summary{}, fmt.Errorf("execution health: %w", err)
 	}
 
-	orderID, err := client.createMarketplaceOrder(ctx, cfg.APIBaseURL)
+	buyer := actorIdentity{OrgID: "buyer_1"}
+	provider := actorIdentity{OrgID: "provider_1"}
+	if strings.TrimSpace(cfg.IAMBaseURL) != "" {
+		suffix := fmt.Sprintf("%d", time.Now().UTC().UnixNano())
+		var err error
+		buyer, err = client.createIAMUser(ctx, cfg.IAMBaseURL, "buyer", suffix)
+		if err != nil {
+			return Summary{}, fmt.Errorf("iam buyer signup: %w", err)
+		}
+		provider, err = client.createIAMUser(ctx, cfg.IAMBaseURL, "provider", suffix)
+		if err != nil {
+			return Summary{}, fmt.Errorf("iam provider signup: %w", err)
+		}
+	}
+
+	orderID, err := client.createMarketplaceOrder(ctx, cfg.APIBaseURL, buyer, provider)
 	if err != nil {
 		if isStatusCode(err, http.StatusNotFound) {
-			orderID, err = client.createOrder(ctx, cfg.APIBaseURL)
+			orderID, err = client.createOrder(ctx, cfg.APIBaseURL, buyer, provider.OrgID)
 		}
 		if err != nil {
 			return Summary{}, err
@@ -70,7 +91,7 @@ func RunSmoke(ctx context.Context, cfg Config) (Summary, error) {
 		return Summary{}, err
 	}
 
-	invoice, err := client.createInvoice(ctx, cfg.SettlementBaseURL, cfg.SettlementServiceToken, orderID)
+	invoice, err := client.createInvoice(ctx, cfg.SettlementBaseURL, cfg.SettlementServiceToken, orderID, buyer.OrgID, provider.OrgID)
 	if err != nil {
 		return Summary{}, err
 	}
@@ -78,7 +99,7 @@ func RunSmoke(ctx context.Context, cfg Config) (Summary, error) {
 		return Summary{}, err
 	}
 
-	fundingCount, err := client.countFundingRecords(ctx, cfg.SettlementBaseURL, map[string]string{
+	fundingCount, err := client.countFundingRecords(ctx, cfg.SettlementBaseURL, provider.Token, map[string]string{
 		"kind":    "invoice",
 		"orderId": orderID,
 	})
@@ -93,14 +114,14 @@ func RunSmoke(ctx context.Context, cfg Config) (Summary, error) {
 	}
 
 	if cfg.IncludeWithdrawal {
-		withdrawalID, err := client.requestWithdrawal(ctx, cfg.SettlementBaseURL)
+		withdrawalID, err := client.requestWithdrawal(ctx, cfg.SettlementBaseURL, provider)
 		if err != nil {
 			return Summary{}, err
 		}
-		if err := client.syncWithdrawals(ctx, cfg.SettlementBaseURL); err != nil {
+		if err := client.syncWithdrawals(ctx, cfg.SettlementBaseURL, provider); err != nil {
 			return Summary{}, err
 		}
-		fundingCount, err = client.countFundingRecords(ctx, cfg.SettlementBaseURL, nil)
+		fundingCount, err = client.countFundingRecords(ctx, cfg.SettlementBaseURL, provider.Token, nil)
 		if err != nil {
 			return Summary{}, err
 		}
@@ -122,6 +143,7 @@ func RunSmoke(ctx context.Context, cfg Config) (Summary, error) {
 func ConfigFromEnv() Config {
 	return Config{
 		APIBaseURL:             envOrDefault("RELEASE_SMOKE_API_BASE_URL", "http://127.0.0.1:8080"),
+		IAMBaseURL:             envOrDefault("RELEASE_SMOKE_IAM_BASE_URL", ""),
 		SettlementBaseURL:      envOrDefault("RELEASE_SMOKE_SETTLEMENT_BASE_URL", "http://127.0.0.1:8083"),
 		SettlementServiceToken: envOrDefault("RELEASE_SMOKE_SETTLEMENT_SERVICE_TOKEN", ""),
 		ExecutionBaseURL:       envOrDefault("RELEASE_SMOKE_EXECUTION_BASE_URL", "http://127.0.0.1:8085"),
@@ -147,15 +169,14 @@ func (c *smokeClient) health(ctx context.Context, baseURL string) error {
 	return nil
 }
 
-func (c *smokeClient) createOrder(ctx context.Context, baseURL string) (string, error) {
+func (c *smokeClient) createOrder(ctx context.Context, baseURL string, buyer actorIdentity, providerOrgID string) (string, error) {
 	var response struct {
 		Order struct {
 			ID string `json:"id"`
 		} `json:"order"`
 	}
-	err := c.postJSON(ctx, strings.TrimRight(baseURL, "/")+"/api/v1/orders", map[string]any{
-		"buyerOrgId":    "buyer_1",
-		"providerOrgId": "provider_1",
+	payload := map[string]any{
+		"providerOrgId": providerOrgID,
 		"title":         "release smoke order",
 		"fundingMode":   "credit",
 		"creditLineId":  "credit_1",
@@ -167,7 +188,11 @@ func (c *smokeClient) createOrder(ctx context.Context, baseURL string) (string, 
 				"budgetCents":    1800,
 			},
 		},
-	}, &response)
+	}
+	if strings.TrimSpace(buyer.Token) == "" {
+		payload["buyerOrgId"] = buyer.OrgID
+	}
+	err := c.postJSONWithHeaders(ctx, strings.TrimRight(baseURL, "/")+"/api/v1/orders", authHeaders(buyer.Token), payload, &response)
 	if err != nil {
 		return "", fmt.Errorf("create order: %w", err)
 	}
@@ -177,32 +202,35 @@ func (c *smokeClient) createOrder(ctx context.Context, baseURL string) (string, 
 	return response.Order.ID, nil
 }
 
-func (c *smokeClient) createMarketplaceOrder(ctx context.Context, baseURL string) (string, error) {
-	rfqID, err := c.createRFQ(ctx, baseURL)
+func (c *smokeClient) createMarketplaceOrder(ctx context.Context, baseURL string, buyer, provider actorIdentity) (string, error) {
+	rfqID, err := c.createRFQ(ctx, baseURL, buyer)
 	if err != nil {
 		return "", err
 	}
-	bidID, err := c.createBid(ctx, baseURL, rfqID)
+	bidID, err := c.createBid(ctx, baseURL, provider, rfqID)
 	if err != nil {
 		return "", err
 	}
-	return c.awardRFQ(ctx, baseURL, rfqID, bidID)
+	return c.awardRFQ(ctx, baseURL, buyer.Token, rfqID, bidID)
 }
 
-func (c *smokeClient) createRFQ(ctx context.Context, baseURL string) (string, error) {
+func (c *smokeClient) createRFQ(ctx context.Context, baseURL string, buyer actorIdentity) (string, error) {
 	var response struct {
 		RFQ struct {
 			ID string `json:"id"`
 		} `json:"rfq"`
 	}
-	err := c.postJSON(ctx, strings.TrimRight(baseURL, "/")+"/api/v1/rfqs", map[string]any{
-		"buyerOrgId":         "buyer_1",
+	payload := map[string]any{
 		"title":              "release smoke rfq",
 		"category":           "agent-ops",
 		"scope":              "Need a carrier-ready operator to run a one-step smoke order.",
 		"budgetCents":        1800,
 		"responseDeadlineAt": "2026-03-15T12:00:00Z",
-	}, &response)
+	}
+	if strings.TrimSpace(buyer.Token) == "" {
+		payload["buyerOrgId"] = buyer.OrgID
+	}
+	err := c.postJSONWithHeaders(ctx, strings.TrimRight(baseURL, "/")+"/api/v1/rfqs", authHeaders(buyer.Token), payload, &response)
 	if err != nil {
 		return "", fmt.Errorf("create rfq: %w", err)
 	}
@@ -212,16 +240,15 @@ func (c *smokeClient) createRFQ(ctx context.Context, baseURL string) (string, er
 	return response.RFQ.ID, nil
 }
 
-func (c *smokeClient) createBid(ctx context.Context, baseURL, rfqID string) (string, error) {
+func (c *smokeClient) createBid(ctx context.Context, baseURL string, provider actorIdentity, rfqID string) (string, error) {
 	var response struct {
 		Bid struct {
 			ID string `json:"id"`
 		} `json:"bid"`
 	}
-	err := c.postJSON(ctx, strings.TrimRight(baseURL, "/")+"/api/v1/rfqs/"+rfqID+"/bids", map[string]any{
-		"providerOrgId": "provider_1",
-		"message":       "release smoke provider bid",
-		"quoteCents":    1200,
+	payload := map[string]any{
+		"message":    "release smoke provider bid",
+		"quoteCents": 1200,
 		"milestones": []map[string]any{
 			{
 				"id":             "ms_1",
@@ -230,7 +257,11 @@ func (c *smokeClient) createBid(ctx context.Context, baseURL, rfqID string) (str
 				"budgetCents":    1800,
 			},
 		},
-	}, &response)
+	}
+	if strings.TrimSpace(provider.Token) == "" {
+		payload["providerOrgId"] = provider.OrgID
+	}
+	err := c.postJSONWithHeaders(ctx, strings.TrimRight(baseURL, "/")+"/api/v1/rfqs/"+rfqID+"/bids", authHeaders(provider.Token), payload, &response)
 	if err != nil {
 		return "", fmt.Errorf("create bid: %w", err)
 	}
@@ -240,13 +271,13 @@ func (c *smokeClient) createBid(ctx context.Context, baseURL, rfqID string) (str
 	return response.Bid.ID, nil
 }
 
-func (c *smokeClient) awardRFQ(ctx context.Context, baseURL, rfqID, bidID string) (string, error) {
+func (c *smokeClient) awardRFQ(ctx context.Context, baseURL, token, rfqID, bidID string) (string, error) {
 	var response struct {
 		Order struct {
 			ID string `json:"id"`
 		} `json:"order"`
 	}
-	err := c.postJSON(ctx, strings.TrimRight(baseURL, "/")+"/api/v1/rfqs/"+rfqID+"/award", map[string]any{
+	err := c.postJSONWithHeaders(ctx, strings.TrimRight(baseURL, "/")+"/api/v1/rfqs/"+rfqID+"/award", authHeaders(token), map[string]any{
 		"bidId":        bidID,
 		"fundingMode":  "credit",
 		"creditLineId": "credit_1",
@@ -271,7 +302,7 @@ func (c *smokeClient) settleViaExecution(ctx context.Context, baseURL, token, or
 	}, nil)
 }
 
-func (c *smokeClient) createInvoice(ctx context.Context, baseURL, token, orderID string) (string, error) {
+func (c *smokeClient) createInvoice(ctx context.Context, baseURL, token, orderID, buyerOrgID, providerOrgID string) (string, error) {
 	var response struct {
 		Invoice string `json:"invoice"`
 	}
@@ -280,8 +311,8 @@ func (c *smokeClient) createInvoice(ctx context.Context, baseURL, token, orderID
 	}, map[string]any{
 		"orderId":       orderID,
 		"milestoneId":   "ms_1",
-		"buyerOrgId":    "buyer_1",
-		"providerOrgId": "provider_1",
+		"buyerOrgId":    buyerOrgID,
+		"providerOrgId": providerOrgID,
 		"asset":         "CKB",
 		"amount":        "12.5",
 	}, &response)
@@ -313,19 +344,22 @@ func (c *smokeClient) syncSettledFeed(ctx context.Context, baseURL, token string
 	return nil
 }
 
-func (c *smokeClient) requestWithdrawal(ctx context.Context, baseURL string) (string, error) {
+func (c *smokeClient) requestWithdrawal(ctx context.Context, baseURL string, provider actorIdentity) (string, error) {
 	var response struct {
 		ID string `json:"id"`
 	}
-	err := c.postJSON(ctx, strings.TrimRight(baseURL, "/")+"/v1/withdrawals", map[string]any{
-		"providerOrgId": "provider_1",
-		"asset":         "USDI",
-		"amount":        "10",
+	payload := map[string]any{
+		"asset":  "USDI",
+		"amount": "10",
 		"destination": map[string]any{
 			"kind":           "PAYMENT_REQUEST",
 			"paymentRequest": "fiber:invoice:example",
 		},
-	}, &response)
+	}
+	if strings.TrimSpace(provider.Token) == "" {
+		payload["providerOrgId"] = provider.OrgID
+	}
+	err := c.postJSONWithHeaders(ctx, strings.TrimRight(baseURL, "/")+"/v1/withdrawals", authHeaders(provider.Token), payload, &response)
 	if err != nil {
 		return "", fmt.Errorf("request withdrawal: %w", err)
 	}
@@ -335,10 +369,18 @@ func (c *smokeClient) requestWithdrawal(ctx context.Context, baseURL string) (st
 	return response.ID, nil
 }
 
-func (c *smokeClient) syncWithdrawals(ctx context.Context, baseURL string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(baseURL, "/")+"/v1/withdrawals/status?providerOrgId=provider_1", nil)
+func (c *smokeClient) syncWithdrawals(ctx context.Context, baseURL string, provider actorIdentity) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(baseURL, "/")+"/v1/withdrawals/status", nil)
 	if err != nil {
 		return err
+	}
+	if strings.TrimSpace(provider.Token) == "" {
+		query := req.URL.Query()
+		query.Set("providerOrgId", provider.OrgID)
+		req.URL.RawQuery = query.Encode()
+	}
+	for key, value := range authHeaders(provider.Token) {
+		req.Header.Set(key, value)
 	}
 	res, err := c.httpClient.Do(req)
 	if err != nil {
@@ -389,10 +431,13 @@ func (c *smokeClient) verifyCarrier(ctx context.Context, baseURL string) (string
 	return runResponse.Run.Result.PolicyDecision, nil
 }
 
-func (c *smokeClient) countFundingRecords(ctx context.Context, baseURL string, filters map[string]string) (int, error) {
+func (c *smokeClient) countFundingRecords(ctx context.Context, baseURL, token string, filters map[string]string) (int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(baseURL, "/")+"/v1/funding-records", nil)
 	if err != nil {
 		return 0, err
+	}
+	for key, value := range authHeaders(token) {
+		req.Header.Set(key, value)
 	}
 	query := req.URL.Query()
 	for key, value := range filters {
@@ -474,5 +519,45 @@ func envBool(key string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func (c *smokeClient) createIAMUser(ctx context.Context, baseURL, kind, suffix string) (actorIdentity, error) {
+	var response struct {
+		Organization struct {
+			ID string `json:"id"`
+		} `json:"organization"`
+		Session struct {
+			Token string `json:"token"`
+		} `json:"session"`
+	}
+	err := c.postJSON(ctx, strings.TrimRight(baseURL, "/")+"/v1/signup", map[string]any{
+		"email":            fmt.Sprintf("%s-%s@example.com", kind, suffix),
+		"password":         "correct horse battery staple",
+		"name":             strings.ToUpper(kind[:1]) + kind[1:] + " User",
+		"organizationName": strings.ToUpper(kind[:1]) + kind[1:] + " Org " + suffix,
+		"organizationKind": kind,
+	}, &response)
+	if err != nil {
+		return actorIdentity{}, err
+	}
+	if strings.TrimSpace(response.Session.Token) == "" {
+		return actorIdentity{}, errors.New("missing iam session token")
+	}
+	if strings.TrimSpace(response.Organization.ID) == "" {
+		return actorIdentity{}, errors.New("missing iam organization id")
+	}
+	return actorIdentity{
+		Token: response.Session.Token,
+		OrgID: response.Organization.ID,
+	}, nil
+}
+
+func authHeaders(token string) map[string]string {
+	if strings.TrimSpace(token) == "" {
+		return nil
+	}
+	return map[string]string{
+		"Authorization": "Bearer " + strings.TrimSpace(token),
 	}
 }

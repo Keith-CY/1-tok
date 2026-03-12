@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/chenyu/1-tok/internal/serviceauth"
 )
 
 type portalUser struct {
@@ -25,6 +27,7 @@ func TestRunPortalSmokeExercisesPortalForms(t *testing.T) {
 	var orderID string
 	var disputeID string
 	var settledOrderID string
+	var executionToken string
 
 	iam := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -198,14 +201,6 @@ func TestRunPortalSmokeExercisesPortalForms(t *testing.T) {
 					},
 				},
 			})
-		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/orders/ord_web_1/milestones/ms_1/settle":
-			settledOrderID = "ord_web_1"
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"order": map[string]any{"id": orderID, "status": "completed"},
-				"ledgerEntry": map[string]any{
-					"kind": "platform_exposure",
-				},
-			})
 		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/orders/ord_web_1/disputes":
 			if settledOrderID != orderID {
 				t.Fatalf("dispute opened before settlement: settled=%q order=%q", settledOrderID, orderID)
@@ -237,10 +232,38 @@ func TestRunPortalSmokeExercisesPortalForms(t *testing.T) {
 	}))
 	defer api.Close()
 
+	execution := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/carrier/events":
+			executionToken = r.Header.Get(serviceauth.HeaderName)
+			var payload struct {
+				OrderID     string `json:"orderId"`
+				MilestoneID string `json:"milestoneId"`
+				EventType   string `json:"eventType"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode execution payload: %v", err)
+			}
+			if payload.EventType != "milestone_ready" || payload.MilestoneID != "ms_1" {
+				t.Fatalf("unexpected execution payload %+v", payload)
+			}
+			settledOrderID = payload.OrderID
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"accepted":        true,
+				"continueAllowed": true,
+			})
+		default:
+			t.Fatalf("unexpected execution request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer execution.Close()
+
 	summary, err := RunPortalSmoke(context.Background(), PortalConfig{
-		WebBaseURL: web.URL,
-		APIBaseURL: api.URL,
-		IAMBaseURL: iam.URL,
+		WebBaseURL:          web.URL,
+		APIBaseURL:          api.URL,
+		IAMBaseURL:          iam.URL,
+		ExecutionBaseURL:    execution.URL,
+		ExecutionEventToken: "portal-event-token",
 	})
 	if err != nil {
 		t.Fatalf("run portal smoke: %v", err)
@@ -254,6 +277,9 @@ func TestRunPortalSmokeExercisesPortalForms(t *testing.T) {
 	}
 	if !summary.CreditApproved {
 		t.Fatalf("expected approved credit summary, got %+v", summary)
+	}
+	if executionToken != "portal-event-token" {
+		t.Fatalf("expected execution event token, got %q", executionToken)
 	}
 }
 

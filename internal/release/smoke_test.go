@@ -451,3 +451,272 @@ func TestRunSmokeSendsSettlementServiceTokenWhenConfigured(t *testing.T) {
 		t.Fatalf("expected settlement service token on invoice and settled feed, got invoice=%q settledFeed=%q", invoiceToken, settledFeedToken)
 	}
 }
+
+func TestRunSmokeUsesIAMSessionsForMarketplaceAndFundingReads(t *testing.T) {
+	type identity struct {
+		Token string
+		OrgID string
+	}
+	identities := map[string]identity{
+		"buyer": {
+			Token: "buyer-session-token",
+			OrgID: "org_buyer_secure",
+		},
+		"provider": {
+			Token: "provider-session-token",
+			OrgID: "org_provider_secure",
+		},
+	}
+
+	iam := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/signup":
+			var payload struct {
+				OrganizationKind string `json:"organizationKind"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode iam signup: %v", err)
+			}
+			identity, ok := identities[payload.OrganizationKind]
+			if !ok {
+				t.Fatalf("unexpected organization kind %q", payload.OrganizationKind)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"organization": map[string]any{
+					"id": identity.OrgID,
+				},
+				"session": map[string]any{
+					"token": identity.Token,
+				},
+			})
+		default:
+			t.Fatalf("unexpected iam request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer iam.Close()
+
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/healthz":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/rfqs":
+			if got := r.Header.Get("Authorization"); got != "Bearer "+identities["buyer"].Token {
+				t.Fatalf("expected buyer auth on rfq create, got %q", got)
+			}
+			var payload struct {
+				BuyerOrgID string `json:"buyerOrgId"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode rfq payload: %v", err)
+			}
+			if payload.BuyerOrgID != "" {
+				t.Fatalf("expected buyerOrgId to be omitted under IAM, got %+v", payload)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"rfq": map[string]any{"id": "rfq_secure"},
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/rfqs/rfq_secure/bids":
+			if got := r.Header.Get("Authorization"); got != "Bearer "+identities["provider"].Token {
+				t.Fatalf("expected provider auth on bid create, got %q", got)
+			}
+			var payload struct {
+				ProviderOrgID string `json:"providerOrgId"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode bid payload: %v", err)
+			}
+			if payload.ProviderOrgID != "" {
+				t.Fatalf("expected providerOrgId to be omitted under IAM, got %+v", payload)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"bid": map[string]any{"id": "bid_secure"},
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/rfqs/rfq_secure/award":
+			if got := r.Header.Get("Authorization"); got != "Bearer "+identities["buyer"].Token {
+				t.Fatalf("expected buyer auth on award, got %q", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"rfq":   map[string]any{"id": "rfq_secure", "status": "awarded"},
+				"order": map[string]any{"id": "ord_secure"},
+			})
+		default:
+			t.Fatalf("unexpected api request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer api.Close()
+
+	settlement := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/healthz":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/invoices":
+			var payload struct {
+				BuyerOrgID    string `json:"buyerOrgId"`
+				ProviderOrgID string `json:"providerOrgId"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode invoice payload: %v", err)
+			}
+			if payload.BuyerOrgID != identities["buyer"].OrgID || payload.ProviderOrgID != identities["provider"].OrgID {
+				t.Fatalf("unexpected invoice payload %+v", payload)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"invoice": "inv_secure"})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/settled-feed":
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{"invoice": "inv_secure"}}})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/funding-records":
+			if got := r.Header.Get("Authorization"); got != "Bearer "+identities["provider"].Token {
+				t.Fatalf("expected provider auth on funding records, got %q", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"records": []map[string]any{{"id": "fund_secure"}}})
+		default:
+			t.Fatalf("unexpected settlement request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer settlement.Close()
+
+	execution := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/healthz":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/carrier/events":
+			_ = json.NewEncoder(w).Encode(map[string]any{"accepted": true, "continueAllowed": true})
+		default:
+			t.Fatalf("unexpected execution request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer execution.Close()
+
+	_, err := RunSmoke(context.Background(), Config{
+		APIBaseURL:        api.URL,
+		SettlementBaseURL: settlement.URL,
+		ExecutionBaseURL:  execution.URL,
+		IAMBaseURL:        iam.URL,
+	})
+	if err != nil {
+		t.Fatalf("run smoke: %v", err)
+	}
+}
+
+func TestRunSmokeUsesIAMProviderOrgForDirectOrderFallback(t *testing.T) {
+	type identity struct {
+		Token string
+		OrgID string
+	}
+	identities := map[string]identity{
+		"buyer": {
+			Token: "buyer-session-token",
+			OrgID: "org_buyer_direct",
+		},
+		"provider": {
+			Token: "provider-session-token",
+			OrgID: "org_provider_direct",
+		},
+	}
+
+	iam := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/signup":
+			var payload struct {
+				OrganizationKind string `json:"organizationKind"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode iam signup: %v", err)
+			}
+			identity, ok := identities[payload.OrganizationKind]
+			if !ok {
+				t.Fatalf("unexpected organization kind %q", payload.OrganizationKind)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"organization": map[string]any{
+					"id": identity.OrgID,
+				},
+				"session": map[string]any{
+					"token": identity.Token,
+				},
+			})
+		default:
+			t.Fatalf("unexpected iam request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer iam.Close()
+
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/healthz":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
+		case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/api/v1/rfqs"):
+			http.NotFound(w, r)
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/orders":
+			if got := r.Header.Get("Authorization"); got != "Bearer "+identities["buyer"].Token {
+				t.Fatalf("expected buyer auth on direct order create, got %q", got)
+			}
+			var payload struct {
+				BuyerOrgID    string `json:"buyerOrgId"`
+				ProviderOrgID string `json:"providerOrgId"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode direct order payload: %v", err)
+			}
+			if payload.BuyerOrgID != "" || payload.ProviderOrgID != identities["provider"].OrgID {
+				t.Fatalf("unexpected direct order payload %+v", payload)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"order": map[string]any{"id": "ord_direct_secure"},
+			})
+		default:
+			t.Fatalf("unexpected api request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer api.Close()
+
+	settlement := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/healthz":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/invoices":
+			var payload struct {
+				BuyerOrgID    string `json:"buyerOrgId"`
+				ProviderOrgID string `json:"providerOrgId"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode invoice payload: %v", err)
+			}
+			if payload.BuyerOrgID != identities["buyer"].OrgID || payload.ProviderOrgID != identities["provider"].OrgID {
+				t.Fatalf("unexpected invoice payload %+v", payload)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"invoice": "inv_direct_secure"})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/settled-feed":
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{"invoice": "inv_direct_secure"}}})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/funding-records":
+			if got := r.Header.Get("Authorization"); got != "Bearer "+identities["provider"].Token {
+				t.Fatalf("expected provider auth on funding records, got %q", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"records": []map[string]any{{"id": "fund_direct_secure"}}})
+		default:
+			t.Fatalf("unexpected settlement request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer settlement.Close()
+
+	execution := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/healthz":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/carrier/events":
+			_ = json.NewEncoder(w).Encode(map[string]any{"accepted": true, "continueAllowed": true})
+		default:
+			t.Fatalf("unexpected execution request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer execution.Close()
+
+	_, err := RunSmoke(context.Background(), Config{
+		APIBaseURL:        api.URL,
+		SettlementBaseURL: settlement.URL,
+		ExecutionBaseURL:  execution.URL,
+		IAMBaseURL:        iam.URL,
+	})
+	if err != nil {
+		t.Fatalf("run smoke: %v", err)
+	}
+}

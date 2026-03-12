@@ -54,10 +54,12 @@ export RELEASE_SMOKE_INCLUDE_CARRIER_PROBE=true
 export RELEASE_PORTAL_SMOKE_WEB_BASE_URL='http://127.0.0.1:3000'
 export RELEASE_PORTAL_SMOKE_API_BASE_URL='http://127.0.0.1:8080'
 export RELEASE_PORTAL_SMOKE_IAM_BASE_URL='http://127.0.0.1:8081'
+export RELEASE_PORTAL_SMOKE_EXECUTION_BASE_URL='http://127.0.0.1:8085'
+export RELEASE_PORTAL_SMOKE_EXECUTION_EVENT_TOKEN='replace-me'
 bun run release:portal-smoke
 ```
 
-This smoke exercises the web login shell plus buyer/provider/ops form flows over real HTTP cookies:
+This smoke exercises the web login shell plus buyer/provider/ops form flows over real HTTP cookies, then settles the awarded order through the execution service's carrier event path:
 
 - buyer login and RFQ publish
 - provider login and bid submit
@@ -80,6 +82,14 @@ bun run release:services-local-smoke
 ```
 
 This script starts local `mock-fiber`, `api-gateway`, `settlement`, and `execution` processes on dedicated localhost ports, wires the required service tokens, and then runs the minimal cross-service `release:smoke` flow against those real HTTP services.
+
+### Full local release smoke
+
+```bash
+bun run release:full-local-smoke
+```
+
+This script starts local `mock-fiber`, `iam`, `api-gateway`, `settlement`, `execution`, and `web`, wires IAM plus service-token auth, and then runs both `release:smoke` and `release:portal-smoke` against the same stack.
 
 ### Contracts tests
 
@@ -197,6 +207,6 @@ When `IAM_UPSTREAM` is configured for `api-gateway` and `settlement`, the platfo
 - Settlement and execution now speak to real Fiber and Carrier interfaces, and settlement keeps local funding records when `DATABASE_URL` or `SETTLEMENT_DATABASE_URL` is configured.
 - IAM now supports persisted `signup`, `session`, and `me` flows when `DATABASE_URL` or `IAM_DATABASE_URL` is configured, but full gateway/web enforcement is still not wired.
 - Gateway order creation and settlement funding-record reads can now honor authenticated memberships when `IAM_UPSTREAM` is configured, but the rest of the platform still has unauthenticated paths.
-- Execution event ingestion and gateway settlement/usage mutations can now be bound to a shared service token, but broader service-to-service auth and live end-to-end execution smoke still need more work.
+- Execution event ingestion and gateway settlement/usage mutations can now be bound to a shared service token, and the local full-stack smoke covers that protected path end to end. Real external Carrier/Fiber release rehearsals still need more work.
 - RFQ publishing, bidding, award, credit review, and dispute resolution now have live web entry points, and ops-only dispute/credit routes are membership-gated when `IAM_UPSTREAM` is configured.
-- Ledger-grade reconciliation, broad read-path authorization, and an end-to-end live smoke spanning web + gateway + execution + settlement still need more work before a production release claim would be accurate.
+- Ledger-grade reconciliation, broad read-path authorization, and an end-to-end release rehearsal against real external Carrier/Fiber dependencies still need more work before a production release claim would be accurate.
