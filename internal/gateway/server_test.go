@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	iamclient "github.com/chenyu/1-tok/internal/integrations/iam"
 	"github.com/chenyu/1-tok/internal/platform"
@@ -190,6 +191,168 @@ func TestCreateRFQDerivesBuyerOrgFromAuthenticatedMembership(t *testing.T) {
 
 	if response.RFQ.Status != "open" {
 		t.Fatalf("expected open rfq, got %s", response.RFQ.Status)
+	}
+}
+
+func TestCreateBidDerivesProviderOrgFromAuthenticatedMembership(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, err := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID:         "buyer_1",
+		Title:              "Need carrier-backed triage",
+		Category:           "agent-ops",
+		Scope:              "Investigate failures and propose a fix plan.",
+		BudgetCents:        8_000,
+		ResponseDeadlineAt: time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("create rfq: %v", err)
+	}
+
+	server := NewServerWithOptions(Options{
+		App: app,
+		IAM: &stubIAMClient{
+			actor: iamclient.Actor{
+				UserID: "usr_provider_1",
+				Memberships: []iamclient.ActorMembership{
+					{
+						OrganizationID:   "provider_auth_1",
+						OrganizationKind: "provider",
+						Role:             "sales",
+					},
+				},
+			},
+		},
+	})
+
+	payload := map[string]any{
+		"message":    "Carrier-ready response",
+		"quoteCents": 7200,
+		"milestones": []map[string]any{
+			{
+				"id":             "ms_1",
+				"title":          "Triage",
+				"basePriceCents": 3000,
+				"budgetCents":    3600,
+			},
+		},
+	}
+	body, _ := json.Marshal(payload)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs/"+rfq.ID+"/bids", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer provider-session-token")
+	res := httptest.NewRecorder()
+
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d body=%s", res.Code, res.Body.String())
+	}
+
+	var response struct {
+		Bid struct {
+			ProviderOrgID string `json:"providerOrgId"`
+			Status        string `json:"status"`
+		} `json:"bid"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if response.Bid.ProviderOrgID != "provider_auth_1" {
+		t.Fatalf("expected authenticated provider org, got %+v", response)
+	}
+
+	if response.Bid.Status != "open" {
+		t.Fatalf("expected open bid, got %s", response.Bid.Status)
+	}
+}
+
+func TestAwardRFQCreatesOrderFromWinningBid(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, err := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID:         "buyer_auth_1",
+		Title:              "Need carrier-backed triage",
+		Category:           "agent-ops",
+		Scope:              "Investigate failures and propose a fix plan.",
+		BudgetCents:        8_000,
+		ResponseDeadlineAt: time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("create rfq: %v", err)
+	}
+
+	bid, err := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "provider_1",
+		Message:       "Carrier-ready response",
+		QuoteCents:    7_200,
+		Milestones: []platform.BidMilestoneInput{
+			{
+				ID:             "ms_1",
+				Title:          "Triage",
+				BasePriceCents: 3000,
+				BudgetCents:    3600,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create bid: %v", err)
+	}
+
+	server := NewServerWithOptions(Options{
+		App: app,
+		IAM: &stubIAMClient{
+			actor: iamclient.Actor{
+				UserID: "usr_buyer_1",
+				Memberships: []iamclient.ActorMembership{
+					{
+						OrganizationID:   "buyer_auth_1",
+						OrganizationKind: "buyer",
+						Role:             "procurement",
+					},
+				},
+			},
+		},
+	})
+
+	payload := map[string]any{
+		"bidId":        bid.ID,
+		"fundingMode":  "credit",
+		"creditLineId": "credit_1",
+	}
+	body, _ := json.Marshal(payload)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs/"+rfq.ID+"/award", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer buyer-session-token")
+	res := httptest.NewRecorder()
+
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", res.Code, res.Body.String())
+	}
+
+	var response struct {
+		RFQ struct {
+			Status       string `json:"status"`
+			AwardedBidID string `json:"awardedBidId"`
+		} `json:"rfq"`
+		Order struct {
+			ProviderOrgID string `json:"providerOrgId"`
+			FundingMode   string `json:"fundingMode"`
+		} `json:"order"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if response.RFQ.Status != "awarded" || response.RFQ.AwardedBidID != bid.ID {
+		t.Fatalf("unexpected rfq response: %+v", response.RFQ)
+	}
+
+	if response.Order.ProviderOrgID != "provider_1" || response.Order.FundingMode != "credit" {
+		t.Fatalf("unexpected order response: %+v", response.Order)
 	}
 }
 

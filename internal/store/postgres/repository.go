@@ -319,11 +319,20 @@ func (r *RFQRepository) NextID() (string, error) {
 	return nextID(r.db, "rfq_seq", "rfq")
 }
 
+func (r *RFQRepository) Get(id string) (platform.RFQ, error) {
+	row := r.db.QueryRow(`
+		SELECT id, buyer_org_id, title, category, scope, budget_cents, status, COALESCE(awarded_bid_id, ''), COALESCE(awarded_provider_org_id, ''), COALESCE(order_id, ''), response_deadline_at, created_at, updated_at
+		FROM rfqs
+		WHERE id = $1
+	`, id)
+	return scanRFQ(row)
+}
+
 func (r *RFQRepository) Save(rfq platform.RFQ) error {
 	_, err := r.db.Exec(`
 		INSERT INTO rfqs (
-			id, buyer_org_id, title, category, scope, budget_cents, status, response_deadline_at, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			id, buyer_org_id, title, category, scope, budget_cents, status, awarded_bid_id, awarded_provider_org_id, order_id, response_deadline_at, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		ON CONFLICT (id) DO UPDATE SET
 			buyer_org_id = EXCLUDED.buyer_org_id,
 			title = EXCLUDED.title,
@@ -331,15 +340,18 @@ func (r *RFQRepository) Save(rfq platform.RFQ) error {
 			scope = EXCLUDED.scope,
 			budget_cents = EXCLUDED.budget_cents,
 			status = EXCLUDED.status,
+			awarded_bid_id = EXCLUDED.awarded_bid_id,
+			awarded_provider_org_id = EXCLUDED.awarded_provider_org_id,
+			order_id = EXCLUDED.order_id,
 			response_deadline_at = EXCLUDED.response_deadline_at,
 			updated_at = EXCLUDED.updated_at
-	`, rfq.ID, rfq.BuyerOrgID, rfq.Title, rfq.Category, rfq.Scope, rfq.BudgetCents, string(rfq.Status), rfq.ResponseDeadlineAt, rfq.CreatedAt, rfq.UpdatedAt)
+	`, rfq.ID, rfq.BuyerOrgID, rfq.Title, rfq.Category, rfq.Scope, rfq.BudgetCents, string(rfq.Status), rfq.AwardedBidID, rfq.AwardedProviderOrgID, rfq.OrderID, rfq.ResponseDeadlineAt, rfq.CreatedAt, rfq.UpdatedAt)
 	return err
 }
 
 func (r *RFQRepository) List() ([]platform.RFQ, error) {
 	rows, err := r.db.Query(`
-		SELECT id, buyer_org_id, title, category, scope, budget_cents, status, response_deadline_at, created_at, updated_at
+		SELECT id, buyer_org_id, title, category, scope, budget_cents, status, COALESCE(awarded_bid_id, ''), COALESCE(awarded_provider_org_id, ''), COALESCE(order_id, ''), response_deadline_at, created_at, updated_at
 		FROM rfqs
 		ORDER BY created_at ASC, id ASC
 	`)
@@ -350,25 +362,136 @@ func (r *RFQRepository) List() ([]platform.RFQ, error) {
 
 	rfqs := make([]platform.RFQ, 0)
 	for rows.Next() {
-		var rfq platform.RFQ
-		var status string
-		if err := rows.Scan(
-			&rfq.ID,
-			&rfq.BuyerOrgID,
-			&rfq.Title,
-			&rfq.Category,
-			&rfq.Scope,
-			&rfq.BudgetCents,
-			&status,
-			&rfq.ResponseDeadlineAt,
-			&rfq.CreatedAt,
-			&rfq.UpdatedAt,
-		); err != nil {
+		rfq, err := scanRFQ(rows)
+		if err != nil {
 			return nil, err
 		}
-		rfq.Status = platform.RFQStatus(status)
 		rfqs = append(rfqs, rfq)
 	}
 
 	return rfqs, rows.Err()
+}
+
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanRFQ(row rowScanner) (platform.RFQ, error) {
+	var rfq platform.RFQ
+	var status string
+	if err := row.Scan(
+		&rfq.ID,
+		&rfq.BuyerOrgID,
+		&rfq.Title,
+		&rfq.Category,
+		&rfq.Scope,
+		&rfq.BudgetCents,
+		&status,
+		&rfq.AwardedBidID,
+		&rfq.AwardedProviderOrgID,
+		&rfq.OrderID,
+		&rfq.ResponseDeadlineAt,
+		&rfq.CreatedAt,
+		&rfq.UpdatedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return platform.RFQ{}, errors.New("rfq not found")
+		}
+		return platform.RFQ{}, err
+	}
+	rfq.Status = platform.RFQStatus(status)
+	return rfq, nil
+}
+
+type BidRepository struct {
+	db *sql.DB
+}
+
+func NewBidRepository(db *sql.DB) *BidRepository {
+	return &BidRepository{db: db}
+}
+
+func (r *BidRepository) NextID() (string, error) {
+	return nextID(r.db, "bid_seq", "bid")
+}
+
+func (r *BidRepository) Get(id string) (platform.Bid, error) {
+	row := r.db.QueryRow(`
+		SELECT id, rfq_id, provider_org_id, message, quote_cents, status, milestones, created_at, updated_at
+		FROM bids
+		WHERE id = $1
+	`, id)
+	return scanBid(row)
+}
+
+func (r *BidRepository) Save(bid platform.Bid) error {
+	milestones, err := json.Marshal(bid.Milestones)
+	if err != nil {
+		return err
+	}
+
+	_, err = r.db.Exec(`
+		INSERT INTO bids (
+			id, rfq_id, provider_org_id, message, quote_cents, status, milestones, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		ON CONFLICT (id) DO UPDATE SET
+			rfq_id = EXCLUDED.rfq_id,
+			provider_org_id = EXCLUDED.provider_org_id,
+			message = EXCLUDED.message,
+			quote_cents = EXCLUDED.quote_cents,
+			status = EXCLUDED.status,
+			milestones = EXCLUDED.milestones,
+			updated_at = EXCLUDED.updated_at
+	`, bid.ID, bid.RFQID, bid.ProviderOrgID, bid.Message, bid.QuoteCents, string(bid.Status), milestones, bid.CreatedAt, bid.UpdatedAt)
+	return err
+}
+
+func (r *BidRepository) ListByRFQ(rfqID string) ([]platform.Bid, error) {
+	rows, err := r.db.Query(`
+		SELECT id, rfq_id, provider_org_id, message, quote_cents, status, milestones, created_at, updated_at
+		FROM bids
+		WHERE rfq_id = $1
+		ORDER BY created_at ASC, id ASC
+	`, rfqID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	bids := make([]platform.Bid, 0)
+	for rows.Next() {
+		bid, err := scanBid(rows)
+		if err != nil {
+			return nil, err
+		}
+		bids = append(bids, bid)
+	}
+	return bids, rows.Err()
+}
+
+func scanBid(row rowScanner) (platform.Bid, error) {
+	var bid platform.Bid
+	var status string
+	var milestones []byte
+	if err := row.Scan(
+		&bid.ID,
+		&bid.RFQID,
+		&bid.ProviderOrgID,
+		&bid.Message,
+		&bid.QuoteCents,
+		&status,
+		&milestones,
+		&bid.CreatedAt,
+		&bid.UpdatedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return platform.Bid{}, errors.New("bid not found")
+		}
+		return platform.Bid{}, err
+	}
+	bid.Status = platform.BidStatus(status)
+	if err := json.Unmarshal(milestones, &bid.Milestones); err != nil {
+		return platform.Bid{}, err
+	}
+	return bid, nil
 }

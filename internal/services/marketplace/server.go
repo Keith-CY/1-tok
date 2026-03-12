@@ -3,6 +3,7 @@ package marketplace
 import (
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/chenyu/1-tok/internal/services/proxy"
 )
@@ -27,8 +28,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch r.URL.Path {
-	case "/v1/providers", "/v1/listings", "/v1/rfqs", "/v1/orders":
+	switch {
+	case r.URL.Path == "/v1/providers", r.URL.Path == "/v1/listings":
+		s.inner.ServeHTTP(w, r)
+	case strings.HasPrefix(r.URL.Path, "/v1/rfqs"), strings.HasPrefix(r.URL.Path, "/v1/orders"):
 		s.inner.ServeHTTP(w, r)
 	default:
 		http.NotFound(w, r)

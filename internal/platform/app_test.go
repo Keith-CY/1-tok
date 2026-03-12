@@ -76,6 +76,141 @@ func TestAppCreateRFQPersistsAndListsRFQs(t *testing.T) {
 	}
 }
 
+func TestAppCreateBidPersistsAndListsRFQBids(t *testing.T) {
+	app := NewAppWithMemory()
+
+	rfq, err := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID:         "buyer_1",
+		Title:              "Need carrier-backed triage",
+		Category:           "agent-ops",
+		Scope:              "Investigate failures, stabilize runtime, and report next steps.",
+		BudgetCents:        9_500,
+		ResponseDeadlineAt: time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("create rfq: %v", err)
+	}
+
+	bid, err := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "provider_1",
+		Message:       "We can take the incident and deliver a stabilization report.",
+		QuoteCents:    7_200,
+		Milestones: []BidMilestoneInput{
+			{
+				ID:             "ms_1",
+				Title:          "Triage",
+				BasePriceCents: 3000,
+				BudgetCents:    3600,
+			},
+			{
+				ID:             "ms_2",
+				Title:          "Stabilize",
+				BasePriceCents: 4200,
+				BudgetCents:    5000,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create bid: %v", err)
+	}
+
+	bids, err := app.ListRFQBids(rfq.ID)
+	if err != nil {
+		t.Fatalf("list bids: %v", err)
+	}
+
+	if len(bids) != 1 {
+		t.Fatalf("expected one bid, got %d", len(bids))
+	}
+
+	if bids[0].ID != bid.ID {
+		t.Fatalf("expected bid %s, got %s", bid.ID, bids[0].ID)
+	}
+
+	if bids[0].Status != BidStatusOpen {
+		t.Fatalf("expected open bid, got %s", bids[0].Status)
+	}
+}
+
+func TestAppAwardRFQCreatesOrderAndMarksWinningBid(t *testing.T) {
+	app := NewAppWithMemory()
+
+	rfq, err := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID:         "buyer_1",
+		Title:              "Need carrier-backed triage",
+		Category:           "agent-ops",
+		Scope:              "Investigate failures, stabilize runtime, and report next steps.",
+		BudgetCents:        9_500,
+		ResponseDeadlineAt: time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("create rfq: %v", err)
+	}
+
+	winningBid, err := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "provider_1",
+		Message:       "We can take the incident and deliver a stabilization report.",
+		QuoteCents:    7_200,
+		Milestones: []BidMilestoneInput{
+			{
+				ID:             "ms_1",
+				Title:          "Triage",
+				BasePriceCents: 3000,
+				BudgetCents:    3600,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create winning bid: %v", err)
+	}
+
+	if _, err := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "provider_2",
+		Message:       "Alternate bid",
+		QuoteCents:    7_500,
+		Milestones: []BidMilestoneInput{
+			{
+				ID:             "ms_1",
+				Title:          "Triage",
+				BasePriceCents: 3200,
+				BudgetCents:    3600,
+			},
+		},
+	}); err != nil {
+		t.Fatalf("create losing bid: %v", err)
+	}
+
+	awardedRFQ, order, err := app.AwardRFQ(rfq.ID, AwardRFQInput{
+		BidID:        winningBid.ID,
+		FundingMode:  core.FundingModeCredit,
+		CreditLineID: "credit_1",
+	})
+	if err != nil {
+		t.Fatalf("award rfq: %v", err)
+	}
+
+	if awardedRFQ.Status != RFQStatusAwarded {
+		t.Fatalf("expected awarded rfq, got %s", awardedRFQ.Status)
+	}
+
+	if awardedRFQ.AwardedBidID != winningBid.ID {
+		t.Fatalf("expected awarded bid %s, got %s", winningBid.ID, awardedRFQ.AwardedBidID)
+	}
+
+	if order.ProviderOrgID != "provider_1" || order.BuyerOrgID != "buyer_1" {
+		t.Fatalf("unexpected order parties: %+v", order)
+	}
+
+	bids, err := app.ListRFQBids(rfq.ID)
+	if err != nil {
+		t.Fatalf("list bids: %v", err)
+	}
+
+	if bids[0].Status != BidStatusAwarded && bids[1].Status != BidStatusAwarded {
+		t.Fatalf("expected one awarded bid, got %+v", bids)
+	}
+}
+
 func TestAppSettleMilestoneAdvancesNextMilestone(t *testing.T) {
 	app := NewAppWithMemory()
 	order, err := app.CreateOrder(CreateOrderInput{

@@ -66,6 +66,96 @@ func TestAppCreateRFQPublishesCreatedEvent(t *testing.T) {
 	}
 }
 
+func TestAppCreateBidPublishesSubmittedEvent(t *testing.T) {
+	publisher := &spyPublisher{}
+	app := NewAppWithMemory()
+	app.publisher = publisher
+
+	rfq, err := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID:         "buyer_1",
+		Title:              "Need carrier-backed triage",
+		Category:           "agent-ops",
+		Scope:              "Investigate failures and propose a fix plan.",
+		BudgetCents:        8_000,
+		ResponseDeadlineAt: time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("create rfq: %v", err)
+	}
+
+	_, err = app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "provider_1",
+		Message:       "Carrier-ready response",
+		QuoteCents:    7_200,
+		Milestones: []BidMilestoneInput{
+			{
+				ID:             "ms_1",
+				Title:          "Triage",
+				BasePriceCents: 3000,
+				BudgetCents:    3600,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create bid: %v", err)
+	}
+
+	if len(publisher.subjects) != 2 {
+		t.Fatalf("expected two events, got %d", len(publisher.subjects))
+	}
+
+	if publisher.subjects[1] != "market.bid.submitted" {
+		t.Fatalf("expected bid submitted subject, got %s", publisher.subjects[1])
+	}
+}
+
+func TestAppAwardRFQPublishesAwardedEvent(t *testing.T) {
+	publisher := &spyPublisher{}
+	app := NewAppWithMemory()
+	app.publisher = publisher
+
+	rfq, err := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID:         "buyer_1",
+		Title:              "Need carrier-backed triage",
+		Category:           "agent-ops",
+		Scope:              "Investigate failures and propose a fix plan.",
+		BudgetCents:        8_000,
+		ResponseDeadlineAt: time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("create rfq: %v", err)
+	}
+
+	bid, err := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "provider_1",
+		Message:       "Carrier-ready response",
+		QuoteCents:    7_200,
+		Milestones: []BidMilestoneInput{
+			{
+				ID:             "ms_1",
+				Title:          "Triage",
+				BasePriceCents: 3000,
+				BudgetCents:    3600,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create bid: %v", err)
+	}
+
+	_, _, err = app.AwardRFQ(rfq.ID, AwardRFQInput{
+		BidID:       bid.ID,
+		FundingMode: core.FundingModeCredit,
+	})
+	if err != nil {
+		t.Fatalf("award rfq: %v", err)
+	}
+
+	if publisher.subjects[len(publisher.subjects)-1] != "market.rfq.awarded" {
+		t.Fatalf("expected rfq awarded subject, got %s", publisher.subjects[len(publisher.subjects)-1])
+	}
+}
+
 func TestAppSettleMilestonePublishesSettledEvent(t *testing.T) {
 	publisher := &spyPublisher{}
 	app := NewAppWithMemory()

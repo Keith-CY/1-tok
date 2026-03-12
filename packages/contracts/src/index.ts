@@ -95,7 +95,32 @@ export interface RFQ {
   scope: string;
   budgetCents: number;
   status: RFQStatus;
+  awardedBidId?: string;
+  awardedProviderOrgId?: string;
+  orderId?: string;
   responseDeadlineAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const bidStatuses = ["open", "awarded", "rejected"] as const;
+export type BidStatus = (typeof bidStatuses)[number];
+
+export interface BidMilestone {
+  id: string;
+  title: string;
+  basePriceCents: number;
+  budgetCents: number;
+}
+
+export interface Bid {
+  id: string;
+  rfqId: string;
+  providerOrgId: string;
+  message: string;
+  quoteCents: number;
+  status: BidStatus;
+  milestones: BidMilestone[];
   createdAt: string;
   updatedAt: string;
 }

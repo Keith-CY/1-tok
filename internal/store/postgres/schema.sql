@@ -1,5 +1,6 @@
 CREATE SEQUENCE IF NOT EXISTS order_seq START 1;
 CREATE SEQUENCE IF NOT EXISTS rfq_seq START 1;
+CREATE SEQUENCE IF NOT EXISTS bid_seq START 1;
 CREATE SEQUENCE IF NOT EXISTS message_seq START 1;
 CREATE SEQUENCE IF NOT EXISTS dispute_seq START 1;
 CREATE SEQUENCE IF NOT EXISTS user_seq START 1;
@@ -80,7 +81,31 @@ CREATE TABLE IF NOT EXISTS rfqs (
   scope TEXT NOT NULL,
   budget_cents BIGINT NOT NULL,
   status TEXT NOT NULL,
+  awarded_bid_id TEXT,
+  awarded_provider_org_id TEXT,
+  order_id TEXT,
   response_deadline_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL
+);
+
+ALTER TABLE IF EXISTS rfqs
+  ADD COLUMN IF NOT EXISTS awarded_bid_id TEXT;
+
+ALTER TABLE IF EXISTS rfqs
+  ADD COLUMN IF NOT EXISTS awarded_provider_org_id TEXT;
+
+ALTER TABLE IF EXISTS rfqs
+  ADD COLUMN IF NOT EXISTS order_id TEXT;
+
+CREATE TABLE IF NOT EXISTS bids (
+  id TEXT PRIMARY KEY,
+  rfq_id TEXT NOT NULL REFERENCES rfqs(id),
+  provider_org_id TEXT NOT NULL,
+  message TEXT NOT NULL,
+  quote_cents BIGINT NOT NULL,
+  status TEXT NOT NULL,
+  milestones JSONB NOT NULL,
   created_at TIMESTAMPTZ NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL
 );

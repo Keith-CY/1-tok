@@ -213,6 +213,74 @@ func TestRFQRepositoryRoundTrip(t *testing.T) {
 	}
 }
 
+func TestBidRepositoryRoundTrip(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+
+	db, err := Open(dsn)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	if err := Migrate(db); err != nil {
+		t.Fatalf("migrate db: %v", err)
+	}
+
+	rfqRepo := NewRFQRepository(db)
+	if err := rfqRepo.Save(platform.RFQ{
+		ID:                 "rfq_bid_parent",
+		BuyerOrgID:         "buyer_1",
+		Title:              "Persistent RFQ",
+		Category:           "agent-ops",
+		Scope:              "Handle live triage and stabilize the carrier workflow.",
+		BudgetCents:        4200,
+		Status:             platform.RFQStatusOpen,
+		ResponseDeadlineAt: time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC),
+		CreatedAt:          time.Date(2026, 3, 12, 9, 0, 0, 0, time.UTC),
+		UpdatedAt:          time.Date(2026, 3, 12, 9, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("save parent rfq: %v", err)
+	}
+
+	repo := NewBidRepository(db)
+	bid := platform.Bid{
+		ID:            "bid_persist",
+		RFQID:         "rfq_bid_parent",
+		ProviderOrgID: "provider_1",
+		Message:       "Persistent provider response",
+		QuoteCents:    4100,
+		Status:        platform.BidStatusOpen,
+		Milestones: []platform.BidMilestone{
+			{
+				ID:             "ms_1",
+				Title:          "Triage",
+				BasePriceCents: 2000,
+				BudgetCents:    2400,
+			},
+		},
+		CreatedAt: time.Date(2026, 3, 12, 10, 0, 0, 0, time.UTC),
+		UpdatedAt: time.Date(2026, 3, 12, 10, 0, 0, 0, time.UTC),
+	}
+
+	if err := repo.Save(bid); err != nil {
+		t.Fatalf("save bid: %v", err)
+	}
+
+	bids, err := repo.ListByRFQ("rfq_bid_parent")
+	if err != nil {
+		t.Fatalf("list bids: %v", err)
+	}
+
+	if !slices.ContainsFunc(bids, func(candidate platform.Bid) bool {
+		return candidate.ID == bid.ID && candidate.ProviderOrgID == bid.ProviderOrgID && candidate.Status == platform.BidStatusOpen
+	}) {
+		t.Fatalf("expected bid %+v in %+v", bid, bids)
+	}
+}
+
 func TestSeedCatalogInsertsDefaultProvidersAndListings(t *testing.T) {
 	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
 	if dsn == "" {

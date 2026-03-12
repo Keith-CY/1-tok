@@ -57,10 +57,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleListListings(w)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/rfqs":
 		s.handleListRFQs(w)
+	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/bids"):
+		s.handleListRFQBids(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/orders":
 		s.handleListOrders(w)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/rfqs":
 		s.handleCreateRFQ(w, r)
+	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/bids"):
+		s.handleCreateBid(w, r)
+	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/award"):
+		s.handleAwardRFQ(w, r)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/v1/orders/"):
 		s.handleGetOrder(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/orders":
@@ -238,6 +244,121 @@ func (s *Server) handleCreateRFQ(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{"rfq": rfq})
 }
 
+func (s *Server) handleListRFQBids(w http.ResponseWriter, r *http.Request) {
+	rfqID, err := rfqIDFromBidsPath(r.URL.Path)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	bids, err := s.app.ListRFQBids(rfqID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"bids": bids})
+}
+
+func (s *Server) handleCreateBid(w http.ResponseWriter, r *http.Request) {
+	rfqID, err := rfqIDFromBidsPath(r.URL.Path)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	var payload struct {
+		ProviderOrgID string `json:"providerOrgId"`
+		Message       string `json:"message"`
+		QuoteCents    int64  `json:"quoteCents"`
+		Milestones    []struct {
+			ID             string `json:"id"`
+			Title          string `json:"title"`
+			BasePriceCents int64  `json:"basePriceCents"`
+			BudgetCents    int64  `json:"budgetCents"`
+		} `json:"milestones"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+
+	providerOrgID, err := s.resolveProviderOrg(r, payload.ProviderOrgID)
+	if err != nil {
+		writeAuthError(w, err)
+		return
+	}
+
+	input := platform.CreateBidInput{
+		ProviderOrgID: providerOrgID,
+		Message:       payload.Message,
+		QuoteCents:    payload.QuoteCents,
+		Milestones:    make([]platform.BidMilestoneInput, 0, len(payload.Milestones)),
+	}
+	for _, milestone := range payload.Milestones {
+		input.Milestones = append(input.Milestones, platform.BidMilestoneInput{
+			ID:             milestone.ID,
+			Title:          milestone.Title,
+			BasePriceCents: milestone.BasePriceCents,
+			BudgetCents:    milestone.BudgetCents,
+		})
+	}
+
+	bid, err := s.app.CreateBid(rfqID, input)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, map[string]any{"bid": bid})
+}
+
+func (s *Server) handleAwardRFQ(w http.ResponseWriter, r *http.Request) {
+	rfqID, err := rfqIDFromAwardPath(r.URL.Path)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	var payload struct {
+		BidID        string `json:"bidId"`
+		FundingMode  string `json:"fundingMode"`
+		CreditLineID string `json:"creditLineId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+
+	rfq, err := s.app.GetRFQ(rfqID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	buyerOrgID, err := s.resolveBuyerOrg(r, rfq.BuyerOrgID)
+	if err != nil {
+		writeAuthError(w, err)
+		return
+	}
+	if buyerOrgID != rfq.BuyerOrgID {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "buyer org mismatch"})
+		return
+	}
+
+	awardedRFQ, order, err := s.app.AwardRFQ(rfqID, platform.AwardRFQInput{
+		BidID:        payload.BidID,
+		FundingMode:  core.FundingMode(payload.FundingMode),
+		CreditLineID: payload.CreditLineID,
+	})
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"rfq": awardedRFQ, "order": order})
+}
+
 func (s *Server) resolveBuyerOrg(r *http.Request, requestedBuyerOrgID string) (string, error) {
 	if s.auth == nil {
 		return requestedBuyerOrgID, nil
@@ -269,6 +390,37 @@ func (s *Server) resolveBuyerOrg(r *http.Request, requestedBuyerOrgID string) (s
 	return "", errors.New("buyer membership is required")
 }
 
+func (s *Server) resolveProviderOrg(r *http.Request, requestedProviderOrgID string) (string, error) {
+	if s.auth == nil {
+		return requestedProviderOrgID, nil
+	}
+
+	token, ok := bearerToken(r.Header.Get("Authorization"))
+	if !ok {
+		return "", iamclient.ErrUnauthorized
+	}
+
+	actor, err := s.auth.GetActor(r.Context(), token)
+	if err != nil {
+		return "", err
+	}
+
+	for _, membership := range actor.Memberships {
+		if membership.OrganizationKind != "provider" {
+			continue
+		}
+		if !isProviderRole(membership.Role) {
+			continue
+		}
+		if requestedProviderOrgID != "" && requestedProviderOrgID != membership.OrganizationID {
+			return "", errors.New("provider org mismatch")
+		}
+		return membership.OrganizationID, nil
+	}
+
+	return "", errors.New("provider membership is required")
+}
+
 func bearerToken(header string) (string, bool) {
 	if !strings.HasPrefix(header, "Bearer ") {
 		return "", false
@@ -280,6 +432,15 @@ func bearerToken(header string) (string, bool) {
 func isBuyerRole(role string) bool {
 	switch role {
 	case "org_owner", "procurement", "operator":
+		return true
+	default:
+		return false
+	}
+}
+
+func isProviderRole(role string) bool {
+	switch role {
+	case "org_owner", "sales", "delivery_operator":
 		return true
 	default:
 		return false
@@ -416,6 +577,22 @@ func orderIDFromPath(path string) (string, error) {
 	return parts[3], nil
 }
 
+func rfqIDFromBidsPath(path string) (string, error) {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) != 5 || parts[2] != "rfqs" || parts[4] != "bids" {
+		return "", errors.New("invalid bid path")
+	}
+	return parts[3], nil
+}
+
+func rfqIDFromAwardPath(path string) (string, error) {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) != 5 || parts[2] != "rfqs" || parts[4] != "award" {
+		return "", errors.New("invalid award path")
+	}
+	return parts[3], nil
+}
+
 func orderMilestoneFromSettlePath(path string) (string, string, error) {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	if len(parts) != 7 || parts[4] != "milestones" || parts[6] != "settle" {
@@ -449,6 +626,8 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 func writeGatewayError(w http.ResponseWriter, err error) {
 	switch err.Error() {
 	case "order not found":
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+	case "rfq not found", "bid not found":
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 	default:
 		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})

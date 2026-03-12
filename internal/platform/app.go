@@ -35,16 +35,19 @@ const (
 )
 
 type RFQ struct {
-	ID                 string    `json:"id"`
-	BuyerOrgID         string    `json:"buyerOrgId"`
-	Title              string    `json:"title"`
-	Category           string    `json:"category"`
-	Scope              string    `json:"scope"`
-	BudgetCents        int64     `json:"budgetCents"`
-	Status             RFQStatus `json:"status"`
-	ResponseDeadlineAt time.Time `json:"responseDeadlineAt"`
-	CreatedAt          time.Time `json:"createdAt"`
-	UpdatedAt          time.Time `json:"updatedAt"`
+	ID                   string    `json:"id"`
+	BuyerOrgID           string    `json:"buyerOrgId"`
+	Title                string    `json:"title"`
+	Category             string    `json:"category"`
+	Scope                string    `json:"scope"`
+	BudgetCents          int64     `json:"budgetCents"`
+	Status               RFQStatus `json:"status"`
+	AwardedBidID         string    `json:"awardedBidId,omitempty"`
+	AwardedProviderOrgID string    `json:"awardedProviderOrgId,omitempty"`
+	OrderID              string    `json:"orderId,omitempty"`
+	ResponseDeadlineAt   time.Time `json:"responseDeadlineAt"`
+	CreatedAt            time.Time `json:"createdAt"`
+	UpdatedAt            time.Time `json:"updatedAt"`
 }
 
 type Message struct {
@@ -110,8 +113,16 @@ type ListingRepository interface {
 
 type RFQRepository interface {
 	NextID() (string, error)
+	Get(id string) (RFQ, error)
 	Save(rfq RFQ) error
 	List() ([]RFQ, error)
+}
+
+type BidRepository interface {
+	NextID() (string, error)
+	Get(id string) (Bid, error)
+	Save(bid Bid) error
+	ListByRFQ(rfqID string) ([]Bid, error)
 }
 
 type MessageRepository interface {
@@ -129,6 +140,7 @@ type App struct {
 	providers    ProviderRepository
 	listings     ListingRepository
 	rfqs         RFQRepository
+	bids         BidRepository
 	messages     MessageRepository
 	disputes     DisputeRepository
 	creditEngine core.CreditDecisionEngine
@@ -170,6 +182,7 @@ func NewAppWithMemory() *App {
 		providers: memory.providers,
 		listings:  memory.listings,
 		rfqs:      memory.rfqs,
+		bids:      memory.bids,
 		messages:  memory.messages,
 		disputes:  memory.disputes,
 		publisher: noopPublisher{},
@@ -188,6 +201,7 @@ func NewAppWithStorage(
 	providers ProviderRepository,
 	listings ListingRepository,
 	rfqs RFQRepository,
+	bids BidRepository,
 	messages MessageRepository,
 	disputes DisputeRepository,
 ) *App {
@@ -201,7 +215,10 @@ func NewAppWithStorage(
 	if rfqs == nil {
 		rfqs = memory.rfqs
 	}
-	return NewApp(orders, providers, listings, rfqs, messages, disputes)
+	if bids == nil {
+		bids = memory.bids
+	}
+	return NewApp(orders, providers, listings, rfqs, bids, messages, disputes)
 }
 
 func NewApp(
@@ -209,6 +226,7 @@ func NewApp(
 	providers ProviderRepository,
 	listings ListingRepository,
 	rfqs RFQRepository,
+	bids BidRepository,
 	messages MessageRepository,
 	disputes DisputeRepository,
 ) *App {
@@ -217,6 +235,7 @@ func NewApp(
 		providers: providers,
 		listings:  listings,
 		rfqs:      rfqs,
+		bids:      bids,
 		messages:  messages,
 		disputes:  disputes,
 		publisher: noopPublisher{},
@@ -248,6 +267,10 @@ func (a *App) ListListings() ([]Listing, error) {
 
 func (a *App) ListRFQs() ([]RFQ, error) {
 	return a.rfqs.List()
+}
+
+func (a *App) GetRFQ(id string) (RFQ, error) {
+	return a.rfqs.Get(id)
 }
 
 func (a *App) ListOrders() ([]*core.Order, error) {
@@ -526,6 +549,7 @@ type memoryStores struct {
 	providers *memoryProviderRepository
 	listings  *memoryListingRepository
 	rfqs      *memoryRFQRepository
+	bids      *memoryBidRepository
 	messages  *memoryMessageRepository
 	disputes  *memoryDisputeRepository
 }
@@ -542,6 +566,7 @@ func newMemoryStores() *memoryStores {
 			data: DefaultListings(),
 		},
 		rfqs:     &memoryRFQRepository{},
+		bids:     &memoryBidRepository{},
 		messages: &memoryMessageRepository{},
 		disputes: &memoryDisputeRepository{},
 	}
@@ -619,6 +644,17 @@ func (r *memoryRFQRepository) NextID() (string, error) {
 	return fmt.Sprintf("rfq_%d", r.seq), nil
 }
 
+func (r *memoryRFQRepository) Get(id string) (RFQ, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, rfq := range r.data {
+		if rfq.ID == id {
+			return rfq, nil
+		}
+	}
+	return RFQ{}, errors.New("rfq not found")
+}
+
 func (r *memoryRFQRepository) Save(rfq RFQ) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -640,6 +676,59 @@ func (r *memoryRFQRepository) List() ([]RFQ, error) {
 		return compareStrings(a.ID, b.ID)
 	})
 	return rfqs, nil
+}
+
+type memoryBidRepository struct {
+	mu   sync.Mutex
+	seq  int
+	data []Bid
+}
+
+func (r *memoryBidRepository) NextID() (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.seq++
+	return fmt.Sprintf("bid_%d", r.seq), nil
+}
+
+func (r *memoryBidRepository) Get(id string) (Bid, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, bid := range r.data {
+		if bid.ID == id {
+			return cloneBid(bid), nil
+		}
+	}
+	return Bid{}, errors.New("bid not found")
+}
+
+func (r *memoryBidRepository) Save(bid Bid) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for index := range r.data {
+		if r.data[index].ID == bid.ID {
+			r.data[index] = cloneBid(bid)
+			return nil
+		}
+	}
+	r.data = append(r.data, cloneBid(bid))
+	return nil
+}
+
+func (r *memoryBidRepository) ListByRFQ(rfqID string) ([]Bid, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	bids := make([]Bid, 0)
+	for _, bid := range r.data {
+		if bid.RFQID != rfqID {
+			continue
+		}
+		bids = append(bids, cloneBid(bid))
+	}
+	slices.SortFunc(bids, func(a, b Bid) int {
+		return compareStrings(a.ID, b.ID)
+	})
+	return bids, nil
 }
 
 type memoryMessageRepository struct {
