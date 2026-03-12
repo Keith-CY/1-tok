@@ -9,6 +9,7 @@ FNN_ENTRYPOINT="${ROOT_DIR}/deploy/fnn/entrypoint.sh"
 FNN_CONFIG="${ROOT_DIR}/deploy/fnn/config/testnet.yml"
 FNN_SMOKE_SCRIPT="${ROOT_DIR}/scripts/release-compose-fnn-smoke.sh"
 DOCKER_E2E_SCRIPT="${ROOT_DIR}/scripts/release-compose-e2e.sh"
+DUAL_NODE_SCRIPT="${ROOT_DIR}/scripts/release-compose-fnn-dual-node-smoke.sh"
 CARRIER_DOC="${ROOT_DIR}/docs/carrier-pr-support.md"
 PACKAGE_JSON="${ROOT_DIR}/package.json"
 README_FILE="${ROOT_DIR}/README.md"
@@ -23,6 +24,7 @@ required_files=(
   "${FNN_CONFIG}"
   "${FNN_SMOKE_SCRIPT}"
   "${DOCKER_E2E_SCRIPT}"
+  "${DUAL_NODE_SCRIPT}"
   "${CARRIER_DOC}"
   "${E2E_DOCKERFILE}"
 )
@@ -36,6 +38,16 @@ done
 
 grep -q "^  fnn:$" "${COMPOSE_FNN_FILE}" || {
   echo "compose.fnn.yaml missing fnn service" >&2
+  exit 1
+}
+
+grep -q "^  fnn2:$" "${COMPOSE_FNN_FILE}" || {
+  echo "compose.fnn.yaml missing fnn2 service" >&2
+  exit 1
+}
+
+grep -q "^  fiber-adapter:$" "${COMPOSE_FNN_FILE}" || {
+  echo "compose.fnn.yaml missing fiber-adapter service" >&2
   exit 1
 }
 
@@ -59,8 +71,23 @@ grep -Fq '${FNN_PUBLISHED_RPC_PORT:-28227}:8227' "${COMPOSE_FNN_FILE}" || {
   exit 1
 }
 
+grep -Fq '${FNN2_PUBLISHED_RPC_PORT:-29227}:8227' "${COMPOSE_FNN_FILE}" || {
+  echo "compose.fnn.yaml missing consistent fnn2 rpc port mapping" >&2
+  exit 1
+}
+
 grep -q "curl -sS --max-time 3" "${COMPOSE_FNN_FILE}" || {
   echo "compose.fnn.yaml missing fnn curl healthcheck" >&2
+  exit 1
+}
+
+grep -q "FNN_INVOICE_RPC_URL: http://fnn:8227" "${COMPOSE_FNN_FILE}" || {
+  echo "compose.fnn.yaml missing fiber-adapter invoice node wiring" >&2
+  exit 1
+}
+
+grep -q "FNN_PAYER_RPC_URL: http://fnn2:8227" "${COMPOSE_FNN_FILE}" || {
+  echo "compose.fnn.yaml missing fiber-adapter payer node wiring" >&2
   exit 1
 }
 
@@ -84,8 +111,43 @@ grep -q "go build -o /out/release-portal-smoke ./cmd/release-portal-smoke" "${E2
   exit 1
 }
 
+grep -q "go build -o /out/release-fnn-adapter-smoke ./cmd/release-fnn-adapter-smoke" "${E2E_DOCKERFILE}" || {
+  echo "deploy/e2e/Dockerfile missing release-fnn-adapter-smoke build" >&2
+  exit 1
+}
+
+grep -q "go build -o /out/release-fnn-dual-node-smoke ./cmd/release-fnn-dual-node-smoke" "${E2E_DOCKERFILE}" || {
+  echo "deploy/e2e/Dockerfile missing release-fnn-dual-node-smoke build" >&2
+  exit 1
+}
+
 grep -q '"release:compose-fnn-smoke"' "${PACKAGE_JSON}" || {
   echo "package.json missing release:compose-fnn-smoke script" >&2
+  exit 1
+}
+
+grep -q '"release:compose-fnn-dual-node-smoke"' "${PACKAGE_JSON}" || {
+  echo "package.json missing release:compose-fnn-dual-node-smoke script" >&2
+  exit 1
+}
+
+grep -q "derive_ckb_topup_address_with_retry" "${DUAL_NODE_SCRIPT}" || {
+  echo "dual-node fnn smoke script missing top-up address derivation" >&2
+  exit 1
+}
+
+grep -q "ensure_ckb_balance_or_request_faucet" "${DUAL_NODE_SCRIPT}" || {
+  echo "dual-node fnn smoke script missing CKB balance bootstrap" >&2
+  exit 1
+}
+
+grep -q "request_ckb_faucet" "${DUAL_NODE_SCRIPT}" || {
+  echo "dual-node fnn smoke script missing CKB faucet helper" >&2
+  exit 1
+}
+
+grep -q "get_cells" "${DUAL_NODE_SCRIPT}" || {
+  echo "dual-node fnn smoke script missing CKB balance query" >&2
   exit 1
 }
 

@@ -14,6 +14,8 @@ This repository is structured so Coolify can manage each Go service as an indepe
 - `execution`
 - `notification`
 - `fnn` (optional infra service; current app smoke still uses `mock-fiber`)
+- `fiber-adapter` (optional bridge service if you want local `tip.*` / `withdrawal.*` translation onto raw `fnn`)
+- `fnn2` (optional second raw FNN node if you want to rehearse channel bootstrap and real payment routing)
 - `postgres`
 - `nats`
 - `web`
@@ -25,6 +27,7 @@ This repository is structured so Coolify can manage each Go service as an indepe
 - Build context: repository root
 - Dockerfile: `Dockerfile.go-service`
 - Build arg `SERVICE`: one of `bootstrap`, `api-gateway`, `iam`, `marketplace`, `settlement`, `settlement-reconciler`, `risk`, `execution`, `notification`
+- Build arg `SERVICE`: one of `bootstrap`, `api-gateway`, `iam`, `marketplace`, `settlement`, `settlement-reconciler`, `risk`, `execution`, `notification`, `fiber-adapter`
 
 ## Build settings for optional `fnn`
 
@@ -44,6 +47,8 @@ This repository is structured so Coolify can manage each Go service as an indepe
 - Run `bootstrap` as a one-shot job before `iam`, `api-gateway`, `settlement`, and `settlement-reconciler`.
 - Run `settlement-reconciler` as a long-lived worker on the same internal network as `postgres` and `settlement`.
 - If you also want raw Fiber node infra under Coolify, add the optional `fnn` service using [compose.fnn.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.fnn.yaml) as the reference shape.
+- If you want to rehearse real raw-FNN payment routing, add both `fnn` and `fnn2` from [compose.fnn.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.fnn.yaml), then run the dual-node smoke once those nodes are funded.
+- If you want a bridge between existing `tip.*` / `withdrawal.*` calls and raw `fnn`, add the optional `fiber-adapter` service from the same [compose.fnn.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.fnn.yaml) overlay.
 
 ## Minimum environment variables
 
@@ -78,6 +83,12 @@ Optional `fnn` service env:
 - `FNN_CKB_RPC_URL`
 - `FNN_PUBLISHED_RPC_PORT`
 - `FNN_PUBLISHED_P2P_PORT`
+
+Optional `fiber-adapter` service env:
+
+- `FIBER_ADAPTER_ADDR`
+- `FNN_INVOICE_RPC_URL`
+- `FNN_PAYER_RPC_URL`
 
 ## Next steps
 

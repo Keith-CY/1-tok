@@ -16,9 +16,11 @@ Repo-local release work already in place:
 - dedicated `settlement-reconciler` worker
 - rotating internal service-token support
 - release smoke commands for local, persisted, compose, and external-dependency rehearsals
-- CI-safe reference coverage for an optional Dockerized `fnn` runtime overlay
+- CI-safe reference coverage for a Dockerized `fnn` runtime overlay plus local `fiber-adapter`
 - a dedicated `release:compose-fnn-smoke` path for validating raw FNN container startup alongside the stack
-- a Docker-only `release:compose-e2e` path that runs the full smoke suite from an `e2e-runner` container inside the compose network
+- a Docker-only `release:compose-e2e` path that runs both raw-`fnn` adapter smoke and the existing full business smoke suite from an `e2e-runner` container inside the compose network
+- a `release:compose-fnn-dual-node-smoke` path that now includes first-cut CKB faucet/top-up preflight before running the dual-node adapter-backed payment smoke
+- one successful local live verification of `release:compose-fnn-dual-node-smoke` against fresh Dockerized `fnn` / `fnn2` nodes plus testnet faucet/RPC on `2026-03-13`
 - persisted release evidence artifacts plus aggregated `release-manifest.json`
 
 ## Remaining Blocker
@@ -36,9 +38,27 @@ Without those values, the strongest available proof remains the local-mock exter
 There is also an important protocol boundary to keep in mind:
 
 - this repo can now boot a raw `fnn` container in Docker for infra validation
-- but the current `settlement` client still talks to higher-level `tip.*` / `withdrawal.*` RPC methods rather than raw FNN JSON-RPC
+- this repo now also contains a local `fiber-adapter` service that translates `tip.*` / `withdrawal.*` calls into raw FNN JSON-RPC for invoice creation, invoice status, and payment-request validation
+- this repo now also contains a dual-node raw-FNN smoke runner plus a first-cut CKB funding wrapper that derives top-up addresses, checks balances, requests faucet top-ups, and then exercises adapter-backed payment
+- but the full paid-settlement marketplace smoke still talks to `mock-fiber` for commit-safe business coverage
 
-So the current honest release posture is: validate Dockerized `fnn` as runtime infrastructure, while business smoke still uses `mock-fiber` until a real adapter layer exists.
+So the current honest release posture is: validate Dockerized `fnn` plus adapter translation under CI, and keep full paid-settlement marketplace smoke on `mock-fiber` until the dual-node funded FNN path is deterministic enough to replace it in routine release rehearsal.
+
+## Latest Live Dual-Node Result
+
+`bun run release:compose-fnn-dual-node-smoke` completed successfully on `2026-03-13` using:
+
+- `FNN_ASSET_SHA256=8f9a69361f662438fa1fc29ddc668192810b13021536ebd1101c84dc0cfa330f`
+- `FIBER_SECRET_KEY_PASSWORD=local-fnn-dev-password`
+- the default testnet CKB RPC and faucet fallback settings from the repo scripts
+
+Key outputs from that successful run:
+
+- `channelTemporaryId=0x022e4074deb8efa1ab9d04fae59bcc99a65641a078e4e6ca5c1418113c206c1e`
+- `invoicePeerId=QmeDrSbsRmwXeW1omJv4WvGcfhF3u5wj9DaeUpApq4phAP`
+- `payerPeerId=QmfHqijxz8QSVuMcE2pM8x5vTfyqn6squ24LjmwtyGU6m2`
+- `adapter.quoteValid=true`
+- `adapter.withdrawalId=0xd77a0b1baa247e3028844180c0ebee4adc0a9e8e8bdd9ad997efe4f998529165`
 
 ## Final Signoff Runbook
 
@@ -94,5 +114,6 @@ These are still worth doing, but they are not the current hard blocker for a rel
 - add periodic artifact upload or archival to external storage
 - add alerting around `settlement-reconciler` failures
 - run the same external rehearsal from the intended deployment platform, not only from a developer workstation
-- replace `mock-fiber` in business smoke with a real adapter-backed Fiber path once raw FNN integration is actually implemented
+- persist and archive artifacts from the successful dual-node live smoke so it can serve as reusable release evidence
+- replace `mock-fiber` in business smoke with a dual-node, funded adapter-backed FNN path once paid settlement is deterministic enough for CI or release rehearsal
 - upstream the Carrier contract described in [carrier-pr-support.md](/Users/ChenYu/Documents/Github/1-tok/docs/carrier-pr-support.md)

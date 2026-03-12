@@ -1,4 +1,12 @@
 services:
+  fiber-adapter:
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8091/healthz >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
   mock-fiber:
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8090/healthz >/dev/null"]
@@ -72,6 +80,13 @@ services:
       context: .
       dockerfile: deploy/e2e/Dockerfile
     environment:
+      RELEASE_FNN_ADAPTER_BASE_URL: http://fiber-adapter:8091
+      RELEASE_FNN_ADAPTER_APP_ID: app_local
+      RELEASE_FNN_ADAPTER_HMAC_SECRET: secret_local
+      RELEASE_FNN_DUAL_INVOICE_RPC_URL: http://fnn:8227
+      RELEASE_FNN_DUAL_PAYER_RPC_URL: http://fnn2:8227
+      RELEASE_FNN_DUAL_INVOICE_P2P_HOST: fnn
+      RELEASE_FNN_DUAL_PAYER_P2P_HOST: fnn2
       RELEASE_SMOKE_API_BASE_URL: http://api-gateway:8080
       RELEASE_SMOKE_IAM_BASE_URL: http://iam:8081
       RELEASE_SMOKE_SETTLEMENT_BASE_URL: http://settlement:8083
@@ -87,6 +102,10 @@ services:
       RELEASE_PORTAL_SMOKE_EXECUTION_EVENT_TOKEN: ${ONE_TOK_EXECUTION_EVENT_TOKEN:-local-execution-event-token}
     depends_on:
       fnn:
+        condition: service_healthy
+      fnn2:
+        condition: service_healthy
+      fiber-adapter:
         condition: service_healthy
       mock-fiber:
         condition: service_healthy
@@ -109,4 +128,4 @@ services:
     command:
       - /bin/sh
       - -lc
-      - /usr/local/bin/release-smoke && /usr/local/bin/release-portal-smoke
+      - /usr/local/bin/release-fnn-adapter-smoke && /usr/local/bin/release-smoke && /usr/local/bin/release-portal-smoke

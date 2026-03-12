@@ -23,5 +23,54 @@ services:
       retries: 12
       start_period: 20s
 
+  fnn2:
+    platform: ${FNN_PLATFORM:-linux/amd64}
+    build:
+      context: .
+      dockerfile: deploy/fnn/Dockerfile
+      args:
+        FNN_VERSION: ${FNN_VERSION:-v0.6.1}
+        FNN_ASSET: ${FNN_ASSET:-fnn_v0.6.1-x86_64-linux-portable.tar.gz}
+        FNN_ASSET_SHA256: ${FNN_ASSET_SHA256:-}
+    environment:
+      FIBER_SECRET_KEY_PASSWORD: ${FIBER_SECRET_KEY_PASSWORD:-}
+      FNN_CKB_RPC_URL: ${FNN2_CKB_RPC_URL:-${FNN_CKB_RPC_URL:-https://testnet.ckbapp.dev/}}
+    ports:
+      - "${FNN2_PUBLISHED_RPC_PORT:-29227}:8227"
+      - "${FNN2_PUBLISHED_P2P_PORT:-29228}:8228"
+    volumes:
+      - fnn2-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "FNN_HOST_IP=$$(hostname -i | awk '{print $$1}'); curl -sS --max-time 3 \"http://$${FNN_HOST_IP}:8227\" >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  fiber-adapter:
+    build:
+      context: .
+      dockerfile: Dockerfile.go-service
+      args:
+        SERVICE: fiber-adapter
+    environment:
+      FIBER_ADAPTER_ADDR: ":8091"
+      FNN_INVOICE_RPC_URL: http://fnn:8227
+      FNN_PAYER_RPC_URL: http://fnn2:8227
+    ports:
+      - "${FIBER_ADAPTER_PUBLISHED_PORT:-28091}:8091"
+    depends_on:
+      fnn:
+        condition: service_healthy
+      fnn2:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8091/healthz >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
 volumes:
   fnn-data:
+  fnn2-data:

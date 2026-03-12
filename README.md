@@ -30,7 +30,7 @@ Go service builds now target Go `1.25`.
 GitHub Actions now runs two lanes on every `push` and `pull_request`:
 
 - `Unit And Coverage`: Go unit tests plus Bun tests for `apps/web` and `packages/contracts`, with a merged coverage summary artifact and job summary
-- `Integration Smoke`: a Docker-only end-to-end path that boots `postgres`, `nats`, `fnn`, `mock-fiber`, `mock-carrier`, `iam`, `api-gateway`, `marketplace`, `settlement`, `settlement-reconciler`, `execution`, `web`, and a dedicated `e2e-runner`
+- `Integration Smoke`: a Docker-only end-to-end path that boots `postgres`, `nats`, `fnn`, `fiber-adapter`, `mock-fiber`, `mock-carrier`, `iam`, `api-gateway`, `marketplace`, `settlement`, `settlement-reconciler`, `execution`, `web`, and a dedicated `e2e-runner`
 - `Docker FNN reference test`: static contract checks for the `fnn` overlay, `e2e-runner`, and release scripts that support that path
 
 For pull requests opened from the same repository, the `Report` job upserts a sticky PR comment from `github-actions[bot]` with the latest unit/integration status and coverage table. Each new push to the PR updates that same comment in place.
@@ -57,7 +57,18 @@ By default it uses:
 
 You can override those with env vars if you need a different FNN build or password.
 
-This path is fully Dockerized: the services boot inside Docker, and the smoke itself runs from the `e2e-runner` container over the Docker network. The current business path still talks to `mock-fiber`; this is deliberate because the current settlement client targets higher-level `tip.*` and `withdrawal.*` RPCs rather than raw FNN JSON-RPC.
+This path is fully Dockerized: the services boot inside Docker, and the smoke itself runs from the `e2e-runner` container over the Docker network. The runner now executes two settlement checks:
+
+- `release-fnn-adapter-smoke`: verifies that the local `fiber-adapter` can translate `tip.create`, `tip.status`, and `withdrawal.quote` to raw `fnn`
+- the existing marketplace/settlement/portal smoke flow, which still uses `mock-fiber` for commit-safe full business coverage
+
+That split is deliberate. The repo now has a real raw-`fnn` adapter path under CI, but the full paid-settlement business flow still stays on `mock-fiber` until a dual-node, funded FNN environment is available.
+
+There is now also a separate dual-node raw-FNN smoke command:
+
+- `release-fnn-dual-node-smoke`: bootstraps `node_info -> connect_peer -> open_channel -> accept_channel -> list_channels`, then runs adapter-backed payment smoke against `fnn` and `fnn2`
+
+This command is not part of the default every-commit CI lane yet. It assumes the two FNN nodes are funded enough to open a channel and route a payment.
 
 ### Go tests
 
@@ -161,7 +172,11 @@ This script builds and boots the compose stack with `postgres`, `mock-fiber`, `m
 bun run release:compose-e2e
 ```
 
-This is the main Docker-only end-to-end path. It layers [compose.fnn.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.fnn.yaml) and [compose.e2e.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.e2e.yaml) on top of [compose.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.yaml), boots the full stack including `marketplace`, `fnn`, `mock-carrier`, and `mock-fiber`, and then runs both release smoke binaries from the `e2e-runner` container inside the Docker network.
+This is the main Docker-only end-to-end path. It layers [compose.fnn.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.fnn.yaml) and [compose.e2e.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.e2e.yaml) on top of [compose.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.yaml), boots the full stack including `marketplace`, `fnn`, `fiber-adapter`, `mock-carrier`, and `mock-fiber`, and then runs three checks from the `e2e-runner` container inside the Docker network:
+
+- raw `fnn` adapter smoke via `release-fnn-adapter-smoke`
+- backend settlement smoke via `release-smoke`
+- portal workflow smoke via `release-portal-smoke`
 
 ### Compose + FNN release smoke
 
@@ -171,7 +186,43 @@ export FIBER_SECRET_KEY_PASSWORD='replace-me'
 bun run release:compose-fnn-smoke
 ```
 
-This script layers [compose.fnn.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.fnn.yaml) on top of the base compose stack, boots a real Dockerized `fnn` node using the same general image/entrypoint pattern as `fiber-link`, waits for raw FNN reachability, and then runs the existing full Docker smoke against the stack. The application still points to `mock-fiber`; the added `fnn` service is there to validate container shape, health checks, and Coolify-style runtime wiring.
+This script layers [compose.fnn.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.fnn.yaml) on top of the base compose stack, boots a real Dockerized `fnn` node using the same general image/entrypoint pattern as `fiber-link`, and makes the local `fiber-adapter` service available for raw `fnn` translation checks. The commit-safe full business path still points to `mock-fiber`; only the adapter smoke talks to raw `fnn` today.
+
+### Compose + dual-node FNN payment smoke
+
+```bash
+export FNN_ASSET_SHA256='replace-me-with-official-sha256'
+export FIBER_SECRET_KEY_PASSWORD='replace-me'
+bun run release:compose-fnn-dual-node-smoke
+```
+
+This script boots `fnn`, `fnn2`, `fiber-adapter`, and an `e2e-runner` in the same Docker network, then runs `release-fnn-dual-node-smoke` from inside Docker. It is the first repo-local path that is shaped for real raw-FNN channel bootstrap plus adapter-backed payment. It is still not wired into default CI because fresh nodes need enough funds to open the channel and complete the payment.
+
+The wrapper now includes a first-cut CKB funding preflight for fresh nodes:
+
+- derive payer and invoice top-up addresses from `node_info` when you do not provide them explicitly
+- query CKB balances from `FNN_CKB_RPC_URL` via `get_cells`
+- request faucet top-ups when balances are below the required threshold
+- wait for the balance to reach the channel bootstrap threshold before invoking `release-fnn-dual-node-smoke`
+
+Useful overrides:
+
+```bash
+export FNN_DUAL_CKB_TOPUP_ADDRESS='ckt1...'
+export FNN_DUAL_INVOICE_CKB_TOPUP_ADDRESS='ckt1...'
+export FNN_DUAL_TOPUP_INVOICE_NODE_CKB=1
+export FNN_DUAL_CHANNEL_FUNDING_AMOUNT=10000000000
+export RELEASE_FNN_DUAL_ACCEPT_FUNDING_AMOUNT=0x2540be400
+```
+
+This path is still not part of default CI, and I have not claimed a fresh-node live pass in this repo yet. The new wrapper is the first funded-bootstrap slice, not final proof.
+
+As of `2026-03-13`, this command has been live-verified once from this repo against fresh Dockerized `fnn` / `fnn2` nodes plus testnet faucet/RPC. The successful run produced:
+
+- `channelTemporaryId=0x022e4074deb8efa1ab9d04fae59bcc99a65641a078e4e6ca5c1418113c206c1e`
+- a valid raw-FNN invoice under `adapter.invoice`
+- `quoteValid=true`
+- `withdrawalId=0xd77a0b1baa247e3028844180c0ebee4adc0a9e8e8bdd9ad997efe4f998529165`
 
 ### Carrier support contract
 
