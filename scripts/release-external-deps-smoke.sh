@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOG_DIR="$(mktemp -d /tmp/1tok-external-deps-smoke.XXXXXX)"
+ARTIFACT_DIR="${RELEASE_ARTIFACT_DIR:-$(mktemp -d /tmp/1tok-external-deps-artifacts.XXXXXX)}"
 
 POSTGRES_PORT="${POSTGRES_PORT:-15432}"
 POSTGRES_CONTAINER="1tok-external-smoke-postgres-${POSTGRES_PORT}"
@@ -60,6 +61,7 @@ cleanup() {
 
   if [[ $code -ne 0 ]]; then
     echo "external deps smoke failed; logs are in $LOG_DIR" >&2
+    echo "external deps artifacts are in $ARTIFACT_DIR" >&2
     for file in "$POSTGRES_LOG" "$BOOTSTRAP_LOG" "$MOCK_FIBER_LOG" "$MOCK_CARRIER_LOG" "$IAM_LOG" "$API_LOG" "$SETTLEMENT_LOG" "$EXECUTION_LOG" "$WEB_LOG"; do
       if [[ -f "$file" ]]; then
         echo "===== $(basename "$file") =====" >&2
@@ -68,6 +70,7 @@ cleanup() {
     done
   else
     rm -rf "$LOG_DIR"
+    echo "external deps artifacts: $ARTIFACT_DIR"
   fi
 
   exit "$code"
@@ -148,6 +151,7 @@ DEPENDENCY_FIBER_HEALTHCHECK_URL="${DEPENDENCY_FIBER_HEALTHCHECK_URL}" \
 DEPENDENCY_CARRIER_GATEWAY_URL="${DEPENDENCY_CARRIER_GATEWAY_URL}" \
 DEPENDENCY_CARRIER_HEALTHCHECK_URL="${DEPENDENCY_CARRIER_HEALTHCHECK_URL}" \
 DEPENDENCY_CARRIER_GATEWAY_API_TOKEN="${DEPENDENCY_CARRIER_GATEWAY_API_TOKEN}" \
+RELEASE_EXTERNAL_PREFLIGHT_OUTPUT_PATH="$ARTIFACT_DIR/external-preflight.json" \
 CGO_ENABLED=0 go run ./cmd/release-external-preflight >/dev/null
 
 if docker ps -a --format '{{.Names}}' | grep -Fxq "${POSTGRES_CONTAINER}"; then
@@ -241,6 +245,7 @@ RELEASE_SMOKE_EXECUTION_BASE_URL="http://127.0.0.1:${EXECUTION_PORT}" \
 RELEASE_SMOKE_EXECUTION_EVENT_TOKEN="${EXECUTION_EVENT_TOKEN}" \
 RELEASE_SMOKE_INCLUDE_WITHDRAWAL="true" \
 RELEASE_SMOKE_INCLUDE_CARRIER_PROBE="${SMOKE_INCLUDE_CARRIER_PROBE}" \
+RELEASE_SMOKE_OUTPUT_PATH="$ARTIFACT_DIR/release-smoke.json" \
 bun run release:smoke
 
 RELEASE_PORTAL_SMOKE_WEB_BASE_URL="http://${WEB_HOST}:${WEB_PORT}" \
@@ -248,4 +253,5 @@ RELEASE_PORTAL_SMOKE_API_BASE_URL="http://127.0.0.1:${API_GATEWAY_PORT}" \
 RELEASE_PORTAL_SMOKE_IAM_BASE_URL="http://127.0.0.1:${IAM_PORT}" \
 RELEASE_PORTAL_SMOKE_EXECUTION_BASE_URL="http://127.0.0.1:${EXECUTION_PORT}" \
 RELEASE_PORTAL_SMOKE_EXECUTION_EVENT_TOKEN="${EXECUTION_EVENT_TOKEN}" \
+RELEASE_PORTAL_SMOKE_OUTPUT_PATH="$ARTIFACT_DIR/release-portal-smoke.json" \
 bun run release:portal-smoke

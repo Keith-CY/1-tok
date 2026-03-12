@@ -18,6 +18,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if err := release.WriteJSONArtifact(os.Getenv("RELEASE_PORTAL_SMOKE_OUTPUT_PATH"), summary); err != nil {
+		log.Fatal(err)
+	}
 
 	if err := json.NewEncoder(os.Stdout).Encode(summary); err != nil {
 		log.Fatal(err)
