@@ -6,19 +6,22 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	fiberclient "github.com/chenyu/1-tok/internal/integrations/fiber"
 	"github.com/chenyu/1-tok/internal/services/proxy"
 )
 
 type Server struct {
-	inner http.Handler
-	fiber fiberclient.InvoiceClient
+	inner   http.Handler
+	fiber   fiberclient.InvoiceClient
+	funding FundingRecordRepository
 }
 
 type Options struct {
 	Upstream string
 	Fiber    fiberclient.InvoiceClient
+	Funding  FundingRecordRepository
 }
 
 func NewServer() *Server {
@@ -35,12 +38,16 @@ func NewServerWithOptions(options Options) *Server {
 	if options.Fiber == nil {
 		options.Fiber = fiberclient.NewClientFromEnv()
 	}
+	if options.Funding == nil {
+		options.Funding = loadFundingRecordRepository()
+	}
 
 	return &Server{
 		inner: proxy.NewSingleHost(options.Upstream, func(req *http.Request) {
 			req.URL.Path = "/api/v1" + req.URL.Path[3:]
 		}),
-		fiber: options.Fiber,
+		fiber:   options.Fiber,
+		funding: options.Funding,
 	}
 }
 
@@ -69,6 +76,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodPost && r.URL.Path == "/v1/withdrawals" {
 		s.handleRequestWithdrawal(w, r)
+		return
+	}
+
+	if r.Method == http.MethodGet && r.URL.Path == "/v1/funding-records" {
+		s.handleListFundingRecords(w, r)
 		return
 	}
 
@@ -118,6 +130,30 @@ func (s *Server) handleCreateInvoice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	recordID, err := s.funding.NextID()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	now := time.Now().UTC()
+	if err := s.funding.Save(FundingRecord{
+		ID:            recordID,
+		Kind:          FundingRecordKindInvoice,
+		OrderID:       payload.OrderID,
+		MilestoneID:   payload.MilestoneID,
+		BuyerOrgID:    payload.BuyerOrgID,
+		ProviderOrgID: payload.ProviderOrgID,
+		Asset:         payload.Asset,
+		Amount:        payload.Amount,
+		Invoice:       result.Invoice,
+		State:         "UNPAID",
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
 	writeJSON(w, http.StatusCreated, map[string]string{"invoice": result.Invoice})
 }
 
@@ -131,6 +167,10 @@ func (s *Server) handleGetInvoiceStatus(w http.ResponseWriter, r *http.Request) 
 	result, err := s.fiber.GetInvoiceStatus(r.Context(), invoice)
 	if err != nil {
 		writeFiberError(w, err)
+		return
+	}
+	if err := s.funding.UpdateInvoiceState(invoice, result.State); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -179,7 +219,51 @@ func (s *Server) handleRequestWithdrawal(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	recordID, err := s.funding.NextID()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	now := time.Now().UTC()
+	destination := map[string]string{
+		"kind": input.Destination.Kind,
+	}
+	if input.Destination.Address != "" {
+		destination["address"] = input.Destination.Address
+	}
+	if input.Destination.PaymentRequest != "" {
+		destination["paymentRequest"] = input.Destination.PaymentRequest
+	}
+	if err := s.funding.Save(FundingRecord{
+		ID:            recordID,
+		Kind:          FundingRecordKindWithdrawal,
+		ProviderOrgID: input.ProviderOrgID,
+		Asset:         input.Asset,
+		Amount:        input.Amount,
+		ExternalID:    result.ID,
+		State:         result.State,
+		Destination:   destination,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
 	writeJSON(w, http.StatusCreated, result)
+}
+
+func (s *Server) handleListFundingRecords(w http.ResponseWriter, r *http.Request) {
+	records, err := s.funding.List(FundingRecordFilter{
+		Kind:          FundingRecordKind(r.URL.Query().Get("kind")),
+		OrderID:       r.URL.Query().Get("orderId"),
+		ProviderOrgID: r.URL.Query().Get("providerOrgId"),
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"records": records})
 }
 
 func invoiceFromPath(path string) (string, error) {

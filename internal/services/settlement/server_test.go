@@ -46,9 +46,11 @@ func TestCreateInvoiceUsesFiberClient(t *testing.T) {
 	stub := &stubFiberClient{
 		createResult: fiberclient.CreateInvoiceResult{Invoice: "inv_123"},
 	}
+	funding := NewMemoryFundingRecordRepository()
 	server := NewServerWithOptions(Options{
 		Upstream: "http://127.0.0.1:8080",
 		Fiber:    stub,
+		Funding:  funding,
 	})
 
 	body := map[string]any{
@@ -95,16 +97,55 @@ func TestCreateInvoiceUsesFiberClient(t *testing.T) {
 	if response.Invoice != "inv_123" {
 		t.Fatalf("expected invoice inv_123, got %q", response.Invoice)
 	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/funding-records", nil)
+	listRes := httptest.NewRecorder()
+	server.ServeHTTP(listRes, listReq)
+	if listRes.Code != http.StatusOK {
+		t.Fatalf("expected 200 from funding list, got %d body=%s", listRes.Code, listRes.Body.String())
+	}
+
+	var listResponse struct {
+		Records []FundingRecord `json:"records"`
+	}
+	if err := json.Unmarshal(listRes.Body.Bytes(), &listResponse); err != nil {
+		t.Fatalf("decode funding records: %v", err)
+	}
+	if len(listResponse.Records) != 1 {
+		t.Fatalf("expected one funding record, got %+v", listResponse.Records)
+	}
+	if listResponse.Records[0].Kind != FundingRecordKindInvoice || listResponse.Records[0].Invoice != "inv_123" || listResponse.Records[0].State != "UNPAID" {
+		t.Fatalf("unexpected funding record: %+v", listResponse.Records[0])
+	}
 }
 
 func TestGetInvoiceStatusUsesFiberClient(t *testing.T) {
 	stub := &stubFiberClient{
+		createResult: fiberclient.CreateInvoiceResult{Invoice: "inv_123"},
 		statusResult: fiberclient.InvoiceStatusResult{State: "SETTLED"},
 	}
+	funding := NewMemoryFundingRecordRepository()
 	server := NewServerWithOptions(Options{
 		Upstream: "http://127.0.0.1:8080",
 		Fiber:    stub,
+		Funding:  funding,
 	})
+
+	createBody := map[string]any{
+		"orderId":       "ord_1",
+		"milestoneId":   "ms_1",
+		"buyerOrgId":    "buyer_1",
+		"providerOrgId": "provider_1",
+		"asset":         "CKB",
+		"amount":        "12.5",
+	}
+	createPayload, _ := json.Marshal(createBody)
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/invoices", bytes.NewReader(createPayload))
+	createRes := httptest.NewRecorder()
+	server.ServeHTTP(createRes, createReq)
+	if createRes.Code != http.StatusCreated {
+		t.Fatalf("expected 201 from invoice creation, got %d body=%s", createRes.Code, createRes.Body.String())
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/invoices/inv_123", nil)
 	res := httptest.NewRecorder()
@@ -126,6 +167,23 @@ func TestGetInvoiceStatusUsesFiberClient(t *testing.T) {
 	}
 	if response.Invoice != "inv_123" || response.State != "SETTLED" {
 		t.Fatalf("unexpected response: %+v", response)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/funding-records", nil)
+	listRes := httptest.NewRecorder()
+	server.ServeHTTP(listRes, listReq)
+	if listRes.Code != http.StatusOK {
+		t.Fatalf("expected 200 from funding list, got %d body=%s", listRes.Code, listRes.Body.String())
+	}
+
+	var listResponse struct {
+		Records []FundingRecord `json:"records"`
+	}
+	if err := json.Unmarshal(listRes.Body.Bytes(), &listResponse); err != nil {
+		t.Fatalf("decode funding records: %v", err)
+	}
+	if len(listResponse.Records) != 1 || listResponse.Records[0].State != "SETTLED" {
+		t.Fatalf("expected settled funding record, got %+v", listResponse.Records)
 	}
 }
 
@@ -208,9 +266,11 @@ func TestRequestWithdrawalUsesFiberClient(t *testing.T) {
 			State: "PENDING",
 		},
 	}
+	funding := NewMemoryFundingRecordRepository()
 	server := NewServerWithOptions(Options{
 		Upstream: "http://127.0.0.1:8080",
 		Fiber:    stub,
+		Funding:  funding,
 	})
 
 	body := map[string]any{
@@ -247,5 +307,26 @@ func TestRequestWithdrawalUsesFiberClient(t *testing.T) {
 	}
 	if response.ID != "wd_123" || response.State != "PENDING" {
 		t.Fatalf("unexpected response: %+v", response)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/funding-records", nil)
+	listRes := httptest.NewRecorder()
+	server.ServeHTTP(listRes, listReq)
+	if listRes.Code != http.StatusOK {
+		t.Fatalf("expected 200 from funding list, got %d body=%s", listRes.Code, listRes.Body.String())
+	}
+
+	var listResponse struct {
+		Records []FundingRecord `json:"records"`
+	}
+	if err := json.Unmarshal(listRes.Body.Bytes(), &listResponse); err != nil {
+		t.Fatalf("decode funding records: %v", err)
+	}
+	if len(listResponse.Records) != 1 {
+		t.Fatalf("expected one funding record, got %+v", listResponse.Records)
+	}
+	record := listResponse.Records[0]
+	if record.Kind != FundingRecordKindWithdrawal || record.ExternalID != "wd_123" || record.State != "PENDING" {
+		t.Fatalf("unexpected withdrawal funding record: %+v", record)
 	}
 }
