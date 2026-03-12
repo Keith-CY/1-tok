@@ -4,8 +4,10 @@ import (
 	"os"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/chenyu/1-tok/internal/core"
+	"github.com/chenyu/1-tok/internal/identity"
 	"github.com/chenyu/1-tok/internal/platform"
 )
 
@@ -203,5 +205,72 @@ func TestSeedCatalogInsertsDefaultProvidersAndListings(t *testing.T) {
 		return candidate.ID == "listing_1"
 	}) {
 		t.Fatalf("expected seeded listing_1 in %+v", listings)
+	}
+}
+
+func TestIdentityStoreRoundTrip(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+
+	db, err := Open(dsn)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	if err := Migrate(db); err != nil {
+		t.Fatalf("migrate db: %v", err)
+	}
+
+	store := NewIdentityStore(db)
+	actor, err := store.CreateSignup(identity.Signup{
+		Email:            "identity-roundtrip@example.com",
+		Name:             "Identity Owner",
+		PasswordHash:     "hash_123",
+		OrganizationName: "Identity Buyer",
+		OrganizationKind: "buyer",
+	})
+	if err != nil && err != identity.ErrConflict {
+		t.Fatalf("create signup: %v", err)
+	}
+	if actor.User.ID == "" {
+		user, lookupErr := store.FindUserByEmail("identity-roundtrip@example.com")
+		if lookupErr != nil {
+			t.Fatalf("lookup user after conflict: %v", lookupErr)
+		}
+		actor.User = user
+	}
+
+	user, err := store.FindUserByEmail("identity-roundtrip@example.com")
+	if err != nil {
+		t.Fatalf("find user by email: %v", err)
+	}
+	if user.ID == "" || user.Email != "identity-roundtrip@example.com" {
+		t.Fatalf("unexpected user: %+v", user)
+	}
+
+	session, err := store.CreateSession(identity.NewSession{
+		UserID:      user.ID,
+		TokenDigest: "digest-roundtrip",
+		ExpiresAt:   time.Now().UTC().Add(24 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if session.ID == "" {
+		t.Fatalf("expected persisted session id, got %+v", session)
+	}
+
+	authenticated, err := store.GetAuthenticatedActorBySessionDigest("digest-roundtrip")
+	if err != nil {
+		t.Fatalf("get actor by session digest: %v", err)
+	}
+	if authenticated.User.ID != user.ID {
+		t.Fatalf("expected user %s, got %+v", user.ID, authenticated)
+	}
+	if len(authenticated.Memberships) == 0 || authenticated.Memberships[0].Organization.Kind != "buyer" {
+		t.Fatalf("unexpected memberships: %+v", authenticated.Memberships)
 	}
 }

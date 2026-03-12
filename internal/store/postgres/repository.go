@@ -169,6 +169,14 @@ func (r *DisputeRepository) Save(dispute platform.Dispute) error {
 }
 
 func nextID(db *sql.DB, sequenceName, prefix string) (string, error) {
+	return nextIDScanner(db, sequenceName, prefix)
+}
+
+type nextIDQueryer interface {
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+func nextIDScanner(db nextIDQueryer, sequenceName, prefix string) (string, error) {
 	var value int64
 	if err := db.QueryRow(fmt.Sprintf(`SELECT nextval('%s')`, sequenceName)).Scan(&value); err != nil {
 		return "", err

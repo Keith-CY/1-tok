@@ -112,8 +112,23 @@ HTTP routes added by `execution`:
 - `GET /v1/carrier/codeagent/version`
 - `POST /v1/carrier/codeagent/run`
 
+### IAM service with persisted sessions
+
+```bash
+export IAM_DATABASE_URL='postgres://onetok:onetok@127.0.0.1:5432/onetok?sslmode=disable'
+CGO_ENABLED=0 go run ./cmd/iam
+```
+
+HTTP routes added by `iam`:
+
+- `POST /v1/signup`
+- `POST /v1/sessions`
+- `GET /v1/me`
+- `GET /v1/roles`
+
 ## Current scope
 
 - Provider and listing catalogs are durably backed by Postgres and seeded on bootstrap.
 - Settlement and execution now speak to real Fiber and Carrier interfaces, and settlement keeps local funding records when `DATABASE_URL` or `SETTLEMENT_DATABASE_URL` is configured.
-- IAM, RFQ/bidding flows, dispute backoffice, and ledger-grade reconciliation are still skeletal and are not yet release-complete.
+- IAM now supports persisted `signup`, `session`, and `me` flows when `DATABASE_URL` or `IAM_DATABASE_URL` is configured, but gateway/web enforcement is still not wired.
+- RFQ/bidding flows, dispute backoffice, and ledger-grade reconciliation are still skeletal and are not yet release-complete.
