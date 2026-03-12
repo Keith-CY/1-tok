@@ -1,12 +1,13 @@
 import { afterEach, describe, expect, it, mock } from "bun:test";
 
-import { getListings, getOrders } from "./api";
+import { getFundingRecords, getListings, getOrders } from "./api";
 
 const originalFetch = globalThis.fetch;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
   delete process.env.NEXT_PUBLIC_API_BASE_URL;
+  delete process.env.NEXT_PUBLIC_SETTLEMENT_BASE_URL;
 });
 
 describe("api fallback", () => {
@@ -27,5 +28,40 @@ describe("api fallback", () => {
 
     expect(orders.length).toBeGreaterThan(0);
     expect(orders[0]?.id).toBe("ord_14");
+  });
+
+  it("reads funding records from the settlement base url", async () => {
+    process.env.NEXT_PUBLIC_SETTLEMENT_BASE_URL = "http://localhost:8083";
+    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+      expect(String(input)).toBe("http://localhost:8083/v1/funding-records");
+
+      return new Response(
+        JSON.stringify({
+          records: [{ id: "fund_1", kind: "invoice", amount: "12.5", state: "SETTLED" }],
+        }),
+        {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        },
+      );
+    }) as unknown as typeof fetch;
+
+    const records = await getFundingRecords();
+
+    expect(records).toHaveLength(1);
+    expect(records[0]?.id).toBe("fund_1");
+    expect(records[0]?.state).toBe("SETTLED");
+  });
+
+  it("falls back to demo funding records when settlement fetch fails", async () => {
+    process.env.NEXT_PUBLIC_SETTLEMENT_BASE_URL = "http://localhost:8083";
+    globalThis.fetch = mock(async () => {
+      throw new Error("settlement unavailable");
+    }) as unknown as typeof fetch;
+
+    const records = await getFundingRecords();
+
+    expect(records.length).toBeGreaterThan(0);
+    expect(records[0]?.id).toBe("fund_1");
   });
 });

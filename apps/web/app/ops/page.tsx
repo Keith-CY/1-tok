@@ -85,6 +85,25 @@ export default async function OpsPage() {
           ))}
         </div>
       </article>
+
+      <article className="timeline-card">
+        <span className="tag">Funding journal</span>
+        <h3>Live money movement, not demo theater.</h3>
+        <div className="timeline">
+          {data.fundingRecords.map((record) => (
+            <div key={record.id} className="timeline-item">
+              <strong>
+                {record.kind.toUpperCase()} · {record.state}
+              </strong>
+              <p>
+                {record.amount}
+                {record.asset ? ` ${record.asset}` : ""} · {record.providerOrgId ?? record.buyerOrgId ?? "platform"}
+                {record.invoice ? ` · ${record.invoice}` : record.externalId ? ` · ${record.externalId}` : ""}
+              </p>
+            </div>
+          ))}
+        </div>
+      </article>
     </PortalShell>
   );
 }

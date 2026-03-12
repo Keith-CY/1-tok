@@ -84,6 +84,25 @@ export interface Listing {
   tags: string[];
 }
 
+export const fundingRecordKinds = ["invoice", "withdrawal"] as const;
+export type FundingRecordKind = (typeof fundingRecordKinds)[number];
+
+export interface FundingRecord {
+  id: string;
+  kind: FundingRecordKind;
+  orderId?: string;
+  milestoneId?: string;
+  buyerOrgId?: string;
+  providerOrgId?: string;
+  asset?: string;
+  amount: string;
+  invoice?: string;
+  externalId?: string;
+  state: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export const sampleBuyerSummary = {
   activeOrders: 8,
   remainingCreditCents: 138_000,

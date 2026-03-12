@@ -1,4 +1,5 @@
 import {
+  type FundingRecord,
   formatMoney,
   sampleBuyerSummary,
   sampleOpsSummary,
@@ -27,6 +28,7 @@ export interface OpsDashboardData {
   pendingReviews: Array<{ id: string; title: string; detail: string }>;
   treasurySignals: Array<{ id: string; label: string; value: string; tone: "mint" | "warning" | "danger" }>;
   riskFeed: Array<{ id: string; title: string; detail: string }>;
+  fundingRecords: FundingRecord[];
 }
 
 const demoProviders: ProviderProfile[] = [
@@ -118,6 +120,30 @@ const demoOrders: Order[] = [
   },
 ];
 
+const demoFundingRecords: FundingRecord[] = [
+  {
+    id: "fund_1",
+    kind: "invoice",
+    orderId: "ord_14",
+    milestoneId: "ms_1",
+    buyerOrgId: "buyer_1",
+    providerOrgId: "provider_1",
+    asset: "CKB",
+    amount: "12.5",
+    invoice: "inv_123",
+    state: "SETTLED",
+  },
+  {
+    id: "fund_2",
+    kind: "withdrawal",
+    providerOrgId: "provider_2",
+    asset: "USDI",
+    amount: "10",
+    externalId: "wd_123",
+    state: "PROCESSING",
+  },
+];
+
 export async function getProviders(): Promise<ProviderProfile[]> {
   return readCollection("/api/v1/providers", "providers", demoProviders);
 }
@@ -128,6 +154,15 @@ export async function getListings(): Promise<Listing[]> {
 
 export async function getOrders(): Promise<Order[]> {
   return readCollection("/api/v1/orders", "orders", demoOrders);
+}
+
+export async function getFundingRecords(): Promise<FundingRecord[]> {
+  const baseUrl = resolveBaseUrl("settlement");
+  if (!baseUrl) {
+    return demoFundingRecords;
+  }
+
+  return readCollectionFromBase(baseUrl, "/v1/funding-records", "records", demoFundingRecords);
 }
 
 export async function getBuyerDashboardData(): Promise<BuyerDashboardData> {
@@ -169,6 +204,8 @@ export async function getProviderDashboardData(): Promise<ProviderDashboardData>
 }
 
 export async function getOpsDashboardData(): Promise<OpsDashboardData> {
+  const fundingRecords = await getFundingRecords();
+
   return {
     summary: sampleOpsSummary,
     pendingReviews: [
@@ -184,16 +221,21 @@ export async function getOpsDashboardData(): Promise<OpsDashboardData> {
       { id: "risk_1", title: "Delayed buyer settlement", detail: "buyer_7 is 38 minutes past the expected credit reconciliation checkpoint." },
       { id: "risk_2", title: "Budget wall hit", detail: "3 orders paused this morning because token + API usage exceeded milestone ceilings." },
     ],
+    fundingRecords,
   };
 }
 
 async function readCollection<T>(path: string, key: string, fallback: T[]): Promise<T[]> {
-  try {
-    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "");
-    if (!baseUrl) {
-      return fallback;
-    }
+  const baseUrl = resolveBaseUrl("api");
+  if (!baseUrl) {
+    return fallback;
+  }
 
+  return readCollectionFromBase(baseUrl, path, key, fallback);
+}
+
+async function readCollectionFromBase<T>(baseUrl: string, path: string, key: string, fallback: T[]): Promise<T[]> {
+  try {
     const response = await fetch(`${baseUrl}${path}`, {
       headers: { Accept: "application/json" },
       cache: "no-store",
@@ -210,4 +252,11 @@ async function readCollection<T>(path: string, key: string, fallback: T[]): Prom
   } catch {
     return fallback;
   }
+}
+
+function resolveBaseUrl(kind: "api" | "settlement"): string | null {
+  if (kind === "settlement") {
+    return process.env.NEXT_PUBLIC_SETTLEMENT_BASE_URL?.replace(/\/$/, "") ?? null;
+  }
+  return process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? null;
 }
