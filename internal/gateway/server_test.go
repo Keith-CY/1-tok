@@ -612,6 +612,136 @@ func TestCreditDecisionRejectsNonOpsMembershipWhenIAMConfigured(t *testing.T) {
 	}
 }
 
+func TestListOrdersScopesBuyerMembershipWhenIAMConfigured(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	if _, err := app.CreateOrder(platform.CreateOrderInput{
+		BuyerOrgID:    "buyer_1",
+		ProviderOrgID: "provider_1",
+		Title:         "Buyer one order",
+		FundingMode:   "credit",
+		CreditLineID:  "credit_1",
+		Milestones: []platform.CreateMilestoneInput{
+			{ID: "ms_1", Title: "Plan", BasePriceCents: 1200, BudgetCents: 1800},
+		},
+	}); err != nil {
+		t.Fatalf("create order 1: %v", err)
+	}
+	if _, err := app.CreateOrder(platform.CreateOrderInput{
+		BuyerOrgID:    "buyer_2",
+		ProviderOrgID: "provider_2",
+		Title:         "Buyer two order",
+		FundingMode:   "credit",
+		CreditLineID:  "credit_2",
+		Milestones: []platform.CreateMilestoneInput{
+			{ID: "ms_1", Title: "Plan", BasePriceCents: 900, BudgetCents: 1400},
+		},
+	}); err != nil {
+		t.Fatalf("create order 2: %v", err)
+	}
+
+	server := NewServerWithOptions(Options{
+		App: app,
+		IAM: &stubIAMClient{
+			actor: iamclient.Actor{
+				UserID: "usr_buyer_1",
+				Memberships: []iamclient.ActorMembership{
+					{
+						OrganizationID:   "buyer_1",
+						OrganizationKind: "buyer",
+						Role:             "procurement",
+					},
+				},
+			},
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/orders", nil)
+	req.Header.Set("Authorization", "Bearer buyer-session-token")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", res.Code, res.Body.String())
+	}
+
+	var response struct {
+		Orders []struct {
+			BuyerOrgID string `json:"buyerOrgId"`
+		} `json:"orders"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.Orders) != 1 || response.Orders[0].BuyerOrgID != "buyer_1" {
+		t.Fatalf("expected only buyer_1 orders, got %+v", response.Orders)
+	}
+}
+
+func TestListOrdersScopesProviderMembershipWhenIAMConfigured(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	if _, err := app.CreateOrder(platform.CreateOrderInput{
+		BuyerOrgID:    "buyer_1",
+		ProviderOrgID: "provider_1",
+		Title:         "Provider one order",
+		FundingMode:   "credit",
+		CreditLineID:  "credit_1",
+		Milestones: []platform.CreateMilestoneInput{
+			{ID: "ms_1", Title: "Plan", BasePriceCents: 1200, BudgetCents: 1800},
+		},
+	}); err != nil {
+		t.Fatalf("create order 1: %v", err)
+	}
+	if _, err := app.CreateOrder(platform.CreateOrderInput{
+		BuyerOrgID:    "buyer_2",
+		ProviderOrgID: "provider_2",
+		Title:         "Provider two order",
+		FundingMode:   "credit",
+		CreditLineID:  "credit_2",
+		Milestones: []platform.CreateMilestoneInput{
+			{ID: "ms_1", Title: "Plan", BasePriceCents: 900, BudgetCents: 1400},
+		},
+	}); err != nil {
+		t.Fatalf("create order 2: %v", err)
+	}
+
+	server := NewServerWithOptions(Options{
+		App: app,
+		IAM: &stubIAMClient{
+			actor: iamclient.Actor{
+				UserID: "usr_provider_1",
+				Memberships: []iamclient.ActorMembership{
+					{
+						OrganizationID:   "provider_1",
+						OrganizationKind: "provider",
+						Role:             "sales",
+					},
+				},
+			},
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/orders", nil)
+	req.Header.Set("Authorization", "Bearer provider-session-token")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", res.Code, res.Body.String())
+	}
+
+	var response struct {
+		Orders []struct {
+			ProviderOrgID string `json:"providerOrgId"`
+		} `json:"orders"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.Orders) != 1 || response.Orders[0].ProviderOrgID != "provider_1" {
+		t.Fatalf("expected only provider_1 orders, got %+v", response.Orders)
+	}
+}
+
 func TestCarrierMilestoneSettlementReturnsLedgerEntry(t *testing.T) {
 	server := NewServer()
 

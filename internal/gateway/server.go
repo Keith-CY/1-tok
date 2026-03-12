@@ -62,7 +62,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/bids"):
 		s.handleListRFQBids(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/orders":
-		s.handleListOrders(w)
+		s.handleListOrders(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/rfqs":
 		s.handleCreateRFQ(w, r)
 	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/bids"):
@@ -135,11 +135,25 @@ func (s *Server) handleListDisputes(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"disputes": disputes})
 }
 
-func (s *Server) handleListOrders(w http.ResponseWriter) {
+func (s *Server) handleListOrders(w http.ResponseWriter, r *http.Request) {
 	orders, err := s.app.ListOrders()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
+	}
+
+	if s.auth != nil {
+		actor, err := s.authenticatedActor(r)
+		if err != nil {
+			writeAuthError(w, err)
+			return
+		}
+
+		orders, err = filterOrdersForActor(orders, actor)
+		if err != nil {
+			writeAuthError(w, err)
+			return
+		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"orders": orders})
@@ -480,12 +494,7 @@ func (s *Server) resolveOpsUser(r *http.Request) (string, error) {
 		return "", nil
 	}
 
-	token, ok := bearerToken(r.Header.Get("Authorization"))
-	if !ok {
-		return "", iamclient.ErrUnauthorized
-	}
-
-	actor, err := s.auth.GetActor(r.Context(), token)
+	actor, err := s.authenticatedActor(r)
 	if err != nil {
 		return "", err
 	}
@@ -501,6 +510,19 @@ func (s *Server) resolveOpsUser(r *http.Request) (string, error) {
 	}
 
 	return "", errors.New("ops membership is required")
+}
+
+func (s *Server) authenticatedActor(r *http.Request) (iamclient.Actor, error) {
+	if s.auth == nil {
+		return iamclient.Actor{}, nil
+	}
+
+	token, ok := bearerToken(r.Header.Get("Authorization"))
+	if !ok {
+		return iamclient.Actor{}, iamclient.ErrUnauthorized
+	}
+
+	return s.auth.GetActor(r.Context(), token)
 }
 
 func (s *Server) handleSettleMilestone(w http.ResponseWriter, r *http.Request) {
@@ -749,4 +771,44 @@ func writeAuthError(w http.ResponseWriter, err error) {
 	default:
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 	}
+}
+
+func filterOrdersForActor(orders []*core.Order, actor iamclient.Actor) ([]*core.Order, error) {
+	if len(actor.Memberships) == 0 {
+		return nil, errors.New("membership is required")
+	}
+
+	buyerOrgIDs := make(map[string]struct{})
+	providerOrgIDs := make(map[string]struct{})
+
+	for _, membership := range actor.Memberships {
+		switch {
+		case membership.OrganizationKind == "ops" && isOpsRole(membership.Role):
+			return orders, nil
+		case membership.OrganizationKind == "buyer" && isBuyerRole(membership.Role):
+			buyerOrgIDs[membership.OrganizationID] = struct{}{}
+		case membership.OrganizationKind == "provider" && isProviderRole(membership.Role):
+			providerOrgIDs[membership.OrganizationID] = struct{}{}
+		}
+	}
+
+	filtered := make([]*core.Order, 0, len(orders))
+	for _, order := range orders {
+		if order == nil {
+			continue
+		}
+		if _, ok := buyerOrgIDs[order.BuyerOrgID]; ok {
+			filtered = append(filtered, order)
+			continue
+		}
+		if _, ok := providerOrgIDs[order.ProviderOrgID]; ok {
+			filtered = append(filtered, order)
+		}
+	}
+
+	if len(filtered) == 0 && len(buyerOrgIDs) == 0 && len(providerOrgIDs) == 0 {
+		return nil, errors.New("membership is required")
+	}
+
+	return filtered, nil
 }
