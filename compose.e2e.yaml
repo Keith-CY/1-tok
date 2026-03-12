@@ -1,0 +1,112 @@
+services:
+  mock-fiber:
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8090/healthz >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  mock-carrier:
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8787/healthz >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  iam:
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8081/healthz >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  api-gateway:
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/healthz >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  marketplace:
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8082/healthz >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  settlement:
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8083/healthz >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  execution:
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8085/healthz >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  web:
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "HOST_IP=$$(hostname -i | awk '{print $$1}'); HOST_IP=$${HOST_IP} bun -e \"const res = await fetch('http://' + process.env.HOST_IP + ':3000/login'); if (!res.ok) process.exit(1);\"",
+        ]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 10s
+
+  e2e-runner:
+    build:
+      context: .
+      dockerfile: deploy/e2e/Dockerfile
+    environment:
+      RELEASE_SMOKE_API_BASE_URL: http://api-gateway:8080
+      RELEASE_SMOKE_IAM_BASE_URL: http://iam:8081
+      RELEASE_SMOKE_SETTLEMENT_BASE_URL: http://settlement:8083
+      RELEASE_SMOKE_SETTLEMENT_SERVICE_TOKEN: ${ONE_TOK_SETTLEMENT_SERVICE_TOKEN:-local-settlement-service-token}
+      RELEASE_SMOKE_EXECUTION_BASE_URL: http://execution:8085
+      RELEASE_SMOKE_EXECUTION_EVENT_TOKEN: ${ONE_TOK_EXECUTION_EVENT_TOKEN:-local-execution-event-token}
+      RELEASE_SMOKE_INCLUDE_WITHDRAWAL: "true"
+      RELEASE_SMOKE_INCLUDE_CARRIER_PROBE: "true"
+      RELEASE_PORTAL_SMOKE_WEB_BASE_URL: http://web:3000
+      RELEASE_PORTAL_SMOKE_API_BASE_URL: http://api-gateway:8080
+      RELEASE_PORTAL_SMOKE_IAM_BASE_URL: http://iam:8081
+      RELEASE_PORTAL_SMOKE_EXECUTION_BASE_URL: http://execution:8085
+      RELEASE_PORTAL_SMOKE_EXECUTION_EVENT_TOKEN: ${ONE_TOK_EXECUTION_EVENT_TOKEN:-local-execution-event-token}
+    depends_on:
+      fnn:
+        condition: service_healthy
+      mock-fiber:
+        condition: service_healthy
+      mock-carrier:
+        condition: service_healthy
+      iam:
+        condition: service_healthy
+      api-gateway:
+        condition: service_healthy
+      marketplace:
+        condition: service_healthy
+      settlement:
+        condition: service_healthy
+      execution:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+      settlement-reconciler:
+        condition: service_started
+    command:
+      - /bin/sh
+      - -lc
+      - /usr/local/bin/release-smoke && /usr/local/bin/release-portal-smoke

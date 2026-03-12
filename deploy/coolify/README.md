@@ -13,15 +13,27 @@ This repository is structured so Coolify can manage each Go service as an indepe
 - `risk`
 - `execution`
 - `notification`
+- `fnn` (optional infra service; current app smoke still uses `mock-fiber`)
 - `postgres`
 - `nats`
 - `web`
+
+`e2e-runner` is not a long-lived production service. It exists only for Dockerized end-to-end validation and CI.
 
 ## Build settings for Go services
 
 - Build context: repository root
 - Dockerfile: `Dockerfile.go-service`
 - Build arg `SERVICE`: one of `bootstrap`, `api-gateway`, `iam`, `marketplace`, `settlement`, `settlement-reconciler`, `risk`, `execution`, `notification`
+
+## Build settings for optional `fnn`
+
+- Build context: repository root
+- Dockerfile: `deploy/fnn/Dockerfile`
+- Build args:
+  - `FNN_VERSION`
+  - `FNN_ASSET`
+  - `FNN_ASSET_SHA256`
 
 ## Runtime settings
 
@@ -31,6 +43,7 @@ This repository is structured so Coolify can manage each Go service as an indepe
 - Enable JetStream for `nats`.
 - Run `bootstrap` as a one-shot job before `iam`, `api-gateway`, `settlement`, and `settlement-reconciler`.
 - Run `settlement-reconciler` as a long-lived worker on the same internal network as `postgres` and `settlement`.
+- If you also want raw Fiber node infra under Coolify, add the optional `fnn` service using [compose.fnn.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.fnn.yaml) as the reference shape.
 
 ## Minimum environment variables
 
@@ -56,8 +69,19 @@ This repository is structured so Coolify can manage each Go service as an indepe
 - `CARRIER_GATEWAY_API_TOKEN`
 - `SETTLEMENT_RECONCILER_INTERVAL=30s`
 
+Optional `fnn` service env:
+
+- `FNN_VERSION`
+- `FNN_ASSET`
+- `FNN_ASSET_SHA256`
+- `FIBER_SECRET_KEY_PASSWORD`
+- `FNN_CKB_RPC_URL`
+- `FNN_PUBLISHED_RPC_PORT`
+- `FNN_PUBLISHED_P2P_PORT`
+
 ## Next steps
 
 - Provide real preproduction or production `Fiber` and `Carrier` endpoints and credentials.
 - Run `bun run release:external-deps-smoke` from the target deployment environment.
 - Archive the resulting `release-manifest.json` as the deployment evidence package.
+- Upstream the desired Carrier support described in [carrier-pr-support.md](/Users/ChenYu/Documents/Github/1-tok/docs/carrier-pr-support.md).

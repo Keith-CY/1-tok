@@ -30,7 +30,8 @@ Go service builds now target Go `1.25`.
 GitHub Actions now runs two lanes on every `push` and `pull_request`:
 
 - `Unit And Coverage`: Go unit tests plus Bun tests for `apps/web` and `packages/contracts`, with a merged coverage summary artifact and job summary
-- `Integration Smoke`: `docker compose config` plus `bun run release:full-persisted-local-smoke`
+- `Integration Smoke`: a Docker-only end-to-end path that boots `postgres`, `nats`, `fnn`, `mock-fiber`, `mock-carrier`, `iam`, `api-gateway`, `marketplace`, `settlement`, `settlement-reconciler`, `execution`, `web`, and a dedicated `e2e-runner`
+- `Docker FNN reference test`: static contract checks for the `fnn` overlay, `e2e-runner`, and release scripts that support that path
 
 For pull requests opened from the same repository, the `Report` job upserts a sticky PR comment from `github-actions[bot]` with the latest unit/integration status and coverage table. Each new push to the PR updates that same comment in place.
 
@@ -40,6 +41,23 @@ Local entrypoints match the workflow:
 bun run test:coverage
 bun run test:integration
 ```
+
+The Docker-only end-to-end command can also be run directly:
+
+```bash
+bun run release:compose-e2e
+```
+
+By default it uses:
+
+- `FNN_VERSION=v0.6.1`
+- `FNN_ASSET=fnn_v0.6.1-x86_64-linux-portable.tar.gz`
+- `FNN_ASSET_SHA256=8f9a69361f662438fa1fc29ddc668192810b13021536ebd1101c84dc0cfa330f`
+- `FIBER_SECRET_KEY_PASSWORD=local-fnn-dev-password`
+
+You can override those with env vars if you need a different FNN build or password.
+
+This path is fully Dockerized: the services boot inside Docker, and the smoke itself runs from the `e2e-runner` container over the Docker network. The current business path still talks to `mock-fiber`; this is deliberate because the current settlement client targets higher-level `tip.*` and `withdrawal.*` RPCs rather than raw FNN JSON-RPC.
 
 ### Go tests
 
@@ -136,6 +154,28 @@ bun run release:compose-smoke
 ```
 
 This script builds and boots the compose stack with `postgres`, `mock-fiber`, `mock-carrier`, `bootstrap`, `iam`, `api-gateway`, `settlement`, `settlement-reconciler`, `execution`, and `web`, then runs both release smoke commands against the published localhost ports before tearing the stack down.
+
+### Compose Docker-only end-to-end
+
+```bash
+bun run release:compose-e2e
+```
+
+This is the main Docker-only end-to-end path. It layers [compose.fnn.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.fnn.yaml) and [compose.e2e.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.e2e.yaml) on top of [compose.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.yaml), boots the full stack including `marketplace`, `fnn`, `mock-carrier`, and `mock-fiber`, and then runs both release smoke binaries from the `e2e-runner` container inside the Docker network.
+
+### Compose + FNN release smoke
+
+```bash
+export FNN_ASSET_SHA256='replace-me-with-official-sha256'
+export FIBER_SECRET_KEY_PASSWORD='replace-me'
+bun run release:compose-fnn-smoke
+```
+
+This script layers [compose.fnn.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.fnn.yaml) on top of the base compose stack, boots a real Dockerized `fnn` node using the same general image/entrypoint pattern as `fiber-link`, waits for raw FNN reachability, and then runs the existing full Docker smoke against the stack. The application still points to `mock-fiber`; the added `fnn` service is there to validate container shape, health checks, and Coolify-style runtime wiring.
+
+### Carrier support contract
+
+The draft upstream Carrier contract is captured in [carrier-pr-support.md](/Users/ChenYu/Documents/Github/1-tok/docs/carrier-pr-support.md).
 
 Persisted release paths now force `ONE_TOK_REQUIRE_PERSISTENCE=true`, so `iam`, `api-gateway`, and `settlement` fail fast instead of silently falling back to in-memory stores when database configuration is missing or broken.
 

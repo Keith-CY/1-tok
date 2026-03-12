@@ -1,0 +1,27 @@
+services:
+  fnn:
+    platform: ${FNN_PLATFORM:-linux/amd64}
+    build:
+      context: .
+      dockerfile: deploy/fnn/Dockerfile
+      args:
+        FNN_VERSION: ${FNN_VERSION:-v0.6.1}
+        FNN_ASSET: ${FNN_ASSET:-fnn_v0.6.1-x86_64-linux-portable.tar.gz}
+        FNN_ASSET_SHA256: ${FNN_ASSET_SHA256:-}
+    environment:
+      FIBER_SECRET_KEY_PASSWORD: ${FIBER_SECRET_KEY_PASSWORD:-}
+      FNN_CKB_RPC_URL: ${FNN_CKB_RPC_URL:-https://testnet.ckbapp.dev/}
+    ports:
+      - "${FNN_PUBLISHED_RPC_PORT:-28227}:8227"
+      - "${FNN_PUBLISHED_P2P_PORT:-28228}:8228"
+    volumes:
+      - fnn-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "FNN_HOST_IP=$$(hostname -i | awk '{print $$1}'); curl -sS --max-time 3 \"http://$${FNN_HOST_IP}:8227\" >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+volumes:
+  fnn-data:

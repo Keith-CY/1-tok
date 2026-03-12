@@ -16,6 +16,9 @@ Repo-local release work already in place:
 - dedicated `settlement-reconciler` worker
 - rotating internal service-token support
 - release smoke commands for local, persisted, compose, and external-dependency rehearsals
+- CI-safe reference coverage for an optional Dockerized `fnn` runtime overlay
+- a dedicated `release:compose-fnn-smoke` path for validating raw FNN container startup alongside the stack
+- a Docker-only `release:compose-e2e` path that runs the full smoke suite from an `e2e-runner` container inside the compose network
 - persisted release evidence artifacts plus aggregated `release-manifest.json`
 
 ## Remaining Blocker
@@ -29,6 +32,13 @@ The final blocker is a live rehearsal against real external dependencies. The cu
 - `DEPENDENCY_CARRIER_GATEWAY_API_TOKEN`
 
 Without those values, the strongest available proof remains the local-mock external smoke and the compose/persisted local rehearsals.
+
+There is also an important protocol boundary to keep in mind:
+
+- this repo can now boot a raw `fnn` container in Docker for infra validation
+- but the current `settlement` client still talks to higher-level `tip.*` / `withdrawal.*` RPC methods rather than raw FNN JSON-RPC
+
+So the current honest release posture is: validate Dockerized `fnn` as runtime infrastructure, while business smoke still uses `mock-fiber` until a real adapter layer exists.
 
 ## Final Signoff Runbook
 
@@ -84,3 +94,5 @@ These are still worth doing, but they are not the current hard blocker for a rel
 - add periodic artifact upload or archival to external storage
 - add alerting around `settlement-reconciler` failures
 - run the same external rehearsal from the intended deployment platform, not only from a developer workstation
+- replace `mock-fiber` in business smoke with a real adapter-backed Fiber path once raw FNN integration is actually implemented
+- upstream the Carrier contract described in [carrier-pr-support.md](/Users/ChenYu/Documents/Github/1-tok/docs/carrier-pr-support.md)
