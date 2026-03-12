@@ -1,5 +1,6 @@
 import {
   type Bid,
+  type Dispute,
   type FundingRecord,
   type Listing,
   type Order,
@@ -72,11 +73,13 @@ export interface OpsDashboardData {
     fundingRecords: number;
     settledInvoices: number;
     pendingWithdrawals: number;
+    openDisputes: number;
   };
   pendingReviews: Array<{ id: string; title: string; detail: string }>;
   treasurySignals: Array<{ id: string; label: string; value: string; tone: "mint" | "warning" | "danger" }>;
   riskFeed: Array<{ id: string; title: string; detail: string }>;
   fundingRecords: FundingRecord[];
+  disputes: Dispute[];
 }
 
 const demoProviders: ProviderProfile[] = [
@@ -192,6 +195,17 @@ const demoFundingRecords: FundingRecord[] = [
   },
 ];
 
+const demoDisputes: Dispute[] = [
+  {
+    id: "disp_1",
+    orderId: "ord_14",
+    milestoneId: "ms_1",
+    reason: "Carrier summary did not match the actual remediation performed.",
+    refundCents: 900,
+    createdAt: "2026-03-12T00:00:00Z",
+  },
+];
+
 const demoRFQs: RFQ[] = [
   {
     id: "rfq_1",
@@ -277,6 +291,10 @@ export async function getFundingRecords(options?: CollectionRequestOptions): Pro
   }
 
   return readCollectionFromBase(baseUrl, "/v1/funding-records", "records", demoFundingRecords, options);
+}
+
+export async function getDisputes(options?: CollectionRequestOptions): Promise<Dispute[]> {
+  return readCollection("/api/v1/disputes", "disputes", demoDisputes, options);
 }
 
 export async function getBuyerDashboardData(options: {
@@ -423,10 +441,11 @@ export async function getProviderDashboardData(options: {
 }
 
 export async function getOpsDashboardData(options: { authToken: string; requireLive?: boolean }): Promise<OpsDashboardData> {
-  const [providers, orders, fundingRecords] = await Promise.all([
+  const [providers, orders, fundingRecords, disputes] = await Promise.all([
     getProviders({ authToken: options.authToken, requireLive: options.requireLive }),
     getOrders({ authToken: options.authToken, requireLive: options.requireLive }),
     getFundingRecords({ authToken: options.authToken, requireLive: options.requireLive }),
+    getDisputes({ authToken: options.authToken, requireLive: options.requireLive }),
   ]);
   const settledInvoices = fundingRecords.filter((record) => record.kind === "invoice" && record.state === "SETTLED").length;
   const pendingWithdrawals = fundingRecords.filter(
@@ -439,21 +458,23 @@ export async function getOpsDashboardData(options: { authToken: string; requireL
       fundingRecords: fundingRecords.length,
       settledInvoices,
       pendingWithdrawals,
+      openDisputes: disputes.length,
     },
     pendingReviews: [
-      { id: "review_1", title: "Provider coverage", detail: `${providers.length} provider profiles are currently published in the catalog.` },
+      { id: "review_1", title: "Open disputes", detail: `${disputes.length} disputes currently need reimbursement or recovery review.` },
       { id: "review_2", title: "Pending withdrawals", detail: `${pendingWithdrawals} settlement withdrawals still need completion or review.` },
     ],
     treasurySignals: [
       { id: "sig_1", label: "Funding records", value: `${fundingRecords.length}`, tone: "warning" },
       { id: "sig_2", label: "Settled invoices", value: `${settledInvoices}`, tone: "mint" },
-      { id: "sig_3", label: "Pending withdrawals", value: `${pendingWithdrawals}`, tone: "danger" },
+      { id: "sig_3", label: "Open disputes", value: `${disputes.length}`, tone: "danger" },
     ],
     riskFeed: [
-      { id: "risk_1", title: "Order volume", detail: `${orders.length} orders are visible to ops in the current control plane.` },
+      { id: "risk_1", title: "Dispute pressure", detail: `${disputes.length} disputes are visible to ops in the current control plane.` },
       { id: "risk_2", title: "Catalog posture", detail: `${providers.length} providers remain available in the marketplace catalog.` },
     ],
     fundingRecords,
+    disputes,
   };
 }
 

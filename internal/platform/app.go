@@ -133,6 +133,7 @@ type MessageRepository interface {
 type DisputeRepository interface {
 	NextID() (string, error)
 	Save(dispute Dispute) error
+	List() ([]Dispute, error)
 }
 
 type App struct {
@@ -275,6 +276,10 @@ func (a *App) GetRFQ(id string) (RFQ, error) {
 
 func (a *App) ListOrders() ([]*core.Order, error) {
 	return a.orders.List()
+}
+
+func (a *App) ListDisputes() ([]Dispute, error) {
+	return a.disputes.List()
 }
 
 func (a *App) GetOrder(id string) (*core.Order, error) {
@@ -769,6 +774,16 @@ func (r *memoryDisputeRepository) Save(dispute Dispute) error {
 	defer r.mu.Unlock()
 	r.data = append(r.data, dispute)
 	return nil
+}
+
+func (r *memoryDisputeRepository) List() ([]Dispute, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	disputes := slices.Clone(r.data)
+	slices.SortFunc(disputes, func(a, b Dispute) int {
+		return compareStrings(a.ID, b.ID)
+	})
+	return disputes, nil
 }
 
 func cloneOrder(order *core.Order) *core.Order {

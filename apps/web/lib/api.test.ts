@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, mock } from "bun:test";
 
-import { getBuyerDashboardData, getFundingRecords, getListings, getOrders, getProviderDashboardData } from "./api";
+import { getBuyerDashboardData, getFundingRecords, getListings, getOpsDashboardData, getOrders, getProviderDashboardData } from "./api";
 
 const originalFetch = globalThis.fetch;
 
@@ -277,5 +277,52 @@ describe("api fallback", () => {
     expect(data.marketQueue[0]?.providerBidStatus).toBe("open");
     expect(data.marketOpportunities).toHaveLength(1);
     expect(data.marketOpportunities[0]?.id).toBe("rfq_live_1");
+  });
+
+  it("builds ops dashboard data from live disputes and funding records", async () => {
+    process.env.NEXT_PUBLIC_API_BASE_URL = "http://localhost:8080";
+    process.env.NEXT_PUBLIC_SETTLEMENT_BASE_URL = "http://localhost:8083";
+    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.endsWith("/api/v1/providers")) {
+        return new Response(JSON.stringify({ providers: [{ id: "provider_1", name: "Atlas Ops", capabilities: [], reputationTier: "gold" }] }), {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+
+      if (url.endsWith("/api/v1/orders")) {
+        return new Response(JSON.stringify({ orders: [{ id: "ord_live_1", buyerOrgId: "buyer_1", providerOrgId: "provider_1", fundingMode: "credit", platformWallet: "platform_main", status: "running", milestones: [] }] }), {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+
+      if (url.endsWith("/api/v1/disputes")) {
+        return new Response(JSON.stringify({ disputes: [{ id: "disp_1", orderId: "ord_live_1", milestoneId: "ms_1", reason: "Output incomplete", refundCents: 900, createdAt: "2026-03-12T00:00:00Z" }] }), {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+
+      if (url.endsWith("/v1/funding-records")) {
+        return new Response(JSON.stringify({ records: [{ id: "fund_1", kind: "invoice", providerOrgId: "provider_1", amount: "12.5", state: "SETTLED" }] }), {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+
+      throw new Error(`unexpected url ${url}`);
+    }) as unknown as typeof fetch;
+
+    const data = await getOpsDashboardData({
+      authToken: "tok_123",
+      requireLive: true,
+    });
+
+    expect(data.summary.openDisputes).toBe(1);
+    expect(data.pendingReviews[0]?.title).toContain("Open disputes");
+    expect(data.riskFeed[0]?.detail).toContain("1 disputes");
   });
 });

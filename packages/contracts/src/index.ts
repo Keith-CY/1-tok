@@ -68,6 +68,15 @@ export interface CreditDecision {
   reason: string;
 }
 
+export interface Dispute {
+  id: string;
+  orderId: string;
+  milestoneId: string;
+  reason: string;
+  refundCents: number;
+  createdAt: string;
+}
+
 export interface ProviderProfile {
   id: string;
   name: string;

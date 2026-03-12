@@ -281,6 +281,48 @@ func TestBidRepositoryRoundTrip(t *testing.T) {
 	}
 }
 
+func TestDisputeRepositoryRoundTrip(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+
+	db, err := Open(dsn)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	if err := Migrate(db); err != nil {
+		t.Fatalf("migrate db: %v", err)
+	}
+
+	repo := NewDisputeRepository(db)
+	dispute := platform.Dispute{
+		ID:          "disp_persist",
+		OrderID:     "ord_1",
+		MilestoneID: "ms_1",
+		Reason:      "Persistent dispute",
+		RefundCents: 1700,
+		CreatedAt:   time.Date(2026, 3, 12, 12, 0, 0, 0, time.UTC),
+	}
+
+	if err := repo.Save(dispute); err != nil {
+		t.Fatalf("save dispute: %v", err)
+	}
+
+	disputes, err := repo.List()
+	if err != nil {
+		t.Fatalf("list disputes: %v", err)
+	}
+
+	if !slices.ContainsFunc(disputes, func(candidate platform.Dispute) bool {
+		return candidate.ID == dispute.ID && candidate.OrderID == dispute.OrderID && candidate.Reason == dispute.Reason
+	}) {
+		t.Fatalf("expected dispute %+v in %+v", dispute, disputes)
+	}
+}
+
 func TestSeedCatalogInsertsDefaultProvidersAndListings(t *testing.T) {
 	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
 	if dsn == "" {

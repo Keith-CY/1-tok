@@ -21,7 +21,7 @@ export default async function OpsPage() {
       asideTitle="Ops signal deck"
       asideItems={[
         { label: "Active orders", value: `${data.summary.activeOrders}`, tone: "warning" },
-        { label: "Funding records", value: `${data.summary.fundingRecords}`, tone: "danger" },
+        { label: "Open disputes", value: `${data.summary.openDisputes}`, tone: "danger" },
         { label: "Settled invoices", value: `${data.summary.settledInvoices}` },
       ]}
     >
@@ -32,9 +32,9 @@ export default async function OpsPage() {
           hint="Orders currently visible to the ops control plane."
         />
         <SummaryCard
-          kicker="Funding records"
-          value={`${data.summary.fundingRecords}`}
-          hint="Invoice and withdrawal records the settlement layer currently exposes."
+          kicker="Open disputes"
+          value={`${data.summary.openDisputes}`}
+          hint="Disputes currently waiting on reimbursement, recovery, or manual ops review."
         />
         <SummaryCard
           kicker="Settled invoices"
@@ -84,6 +84,23 @@ export default async function OpsPage() {
             <div key={item.id} className="timeline-item">
               <strong>{item.title}</strong>
               <p>{item.detail}</p>
+            </div>
+          ))}
+        </div>
+      </article>
+
+      <article className="timeline-card">
+        <span className="tag">Dispute queue</span>
+        <h3>Platform-first reimbursement only works if disputes stay visible.</h3>
+        <div className="timeline">
+          {data.disputes.map((dispute) => (
+            <div key={dispute.id} className="timeline-item">
+              <strong>
+                {dispute.orderId} · {dispute.milestoneId}
+              </strong>
+              <p>
+                {dispute.reason} · refund {dispute.refundCents}
+              </p>
             </div>
           ))}
         </div>

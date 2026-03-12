@@ -168,6 +168,36 @@ func (r *DisputeRepository) Save(dispute platform.Dispute) error {
 	return err
 }
 
+func (r *DisputeRepository) List() ([]platform.Dispute, error) {
+	rows, err := r.db.Query(`
+		SELECT id, order_id, milestone_id, reason, refund_cents, created_at
+		FROM disputes
+		ORDER BY created_at ASC, id ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	disputes := make([]platform.Dispute, 0)
+	for rows.Next() {
+		var dispute platform.Dispute
+		if err := rows.Scan(
+			&dispute.ID,
+			&dispute.OrderID,
+			&dispute.MilestoneID,
+			&dispute.Reason,
+			&dispute.RefundCents,
+			&dispute.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		disputes = append(disputes, dispute)
+	}
+
+	return disputes, rows.Err()
+}
+
 func nextID(db *sql.DB, sequenceName, prefix string) (string, error) {
 	return nextIDScanner(db, sequenceName, prefix)
 }

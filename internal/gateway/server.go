@@ -57,6 +57,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleListListings(w)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/rfqs":
 		s.handleListRFQs(w)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/disputes":
+		s.handleListDisputes(w)
 	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/bids"):
 		s.handleListRFQBids(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/orders":
@@ -114,6 +116,16 @@ func (s *Server) handleListRFQs(w http.ResponseWriter) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"rfqs": rfqs})
+}
+
+func (s *Server) handleListDisputes(w http.ResponseWriter) {
+	disputes, err := s.app.ListDisputes()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"disputes": disputes})
 }
 
 func (s *Server) handleListOrders(w http.ResponseWriter) {

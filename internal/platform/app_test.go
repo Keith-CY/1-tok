@@ -211,6 +211,57 @@ func TestAppAwardRFQCreatesOrderAndMarksWinningBid(t *testing.T) {
 	}
 }
 
+func TestAppOpenDisputePersistsAndListsDisputes(t *testing.T) {
+	app := NewAppWithMemory()
+	order, err := app.CreateOrder(CreateOrderInput{
+		BuyerOrgID:    "buyer_1",
+		ProviderOrgID: "provider_1",
+		Title:         "Agent operations",
+		FundingMode:   core.FundingModeCredit,
+		CreditLineID:  "credit_1",
+		Milestones: []CreateMilestoneInput{
+			{
+				ID:             "ms_1",
+				Title:          "Plan",
+				BasePriceCents: 1000,
+				BudgetCents:    1400,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create order: %v", err)
+	}
+
+	if _, _, err := app.SettleMilestone(order.ID, SettleMilestoneInput{
+		MilestoneID: "ms_1",
+		Summary:     "done",
+		Source:      "carrier",
+		OccurredAt:  time.Date(2026, 3, 12, 0, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("settle milestone: %v", err)
+	}
+
+	_, _, _, err = app.OpenDispute(order.ID, OpenDisputeInput{
+		MilestoneID: "ms_1",
+		Reason:      "carrier output was incomplete",
+		RefundCents: 800,
+	})
+	if err != nil {
+		t.Fatalf("open dispute: %v", err)
+	}
+
+	disputes, err := app.ListDisputes()
+	if err != nil {
+		t.Fatalf("list disputes: %v", err)
+	}
+	if len(disputes) != 1 {
+		t.Fatalf("expected one dispute, got %d", len(disputes))
+	}
+	if disputes[0].OrderID != order.ID || disputes[0].Reason != "carrier output was incomplete" {
+		t.Fatalf("unexpected dispute: %+v", disputes[0])
+	}
+}
+
 func TestAppSettleMilestoneAdvancesNextMilestone(t *testing.T) {
 	app := NewAppWithMemory()
 	order, err := app.CreateOrder(CreateOrderInput{

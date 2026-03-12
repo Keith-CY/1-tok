@@ -356,6 +356,66 @@ func TestAwardRFQCreatesOrderFromWinningBid(t *testing.T) {
 	}
 }
 
+func TestListDisputesReturnsPersistedCases(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	order, err := app.CreateOrder(platform.CreateOrderInput{
+		BuyerOrgID:    "buyer_1",
+		ProviderOrgID: "provider_1",
+		Title:         "Operate agent",
+		FundingMode:   "credit",
+		CreditLineID:  "credit_1",
+		Milestones: []platform.CreateMilestoneInput{
+			{
+				ID:             "ms_1",
+				Title:          "Plan",
+				BasePriceCents: 1200,
+				BudgetCents:    1800,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create order: %v", err)
+	}
+	if _, _, err := app.SettleMilestone(order.ID, platform.SettleMilestoneInput{
+		MilestoneID: "ms_1",
+		Summary:     "done",
+		Source:      "carrier",
+		OccurredAt:  time.Date(2026, 3, 12, 0, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("settle milestone: %v", err)
+	}
+	if _, _, _, err := app.OpenDispute(order.ID, platform.OpenDisputeInput{
+		MilestoneID: "ms_1",
+		Reason:      "carrier output was incomplete",
+		RefundCents: 800,
+	}); err != nil {
+		t.Fatalf("open dispute: %v", err)
+	}
+
+	server := NewServerWithApp(app)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/disputes", nil)
+	res := httptest.NewRecorder()
+
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", res.Code, res.Body.String())
+	}
+
+	var response struct {
+		Disputes []struct {
+			OrderID string `json:"orderId"`
+			Reason  string `json:"reason"`
+		} `json:"disputes"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.Disputes) != 1 || response.Disputes[0].Reason != "carrier output was incomplete" {
+		t.Fatalf("unexpected disputes: %+v", response.Disputes)
+	}
+}
+
 func TestCarrierMilestoneSettlementReturnsLedgerEntry(t *testing.T) {
 	server := NewServer()
 
