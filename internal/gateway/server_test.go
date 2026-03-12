@@ -1091,6 +1091,116 @@ func TestCreateDisputeRejectsForeignBuyerWhenIAMConfigured(t *testing.T) {
 	}
 }
 
+func TestCreateMessageRejectsForeignBuyerWhenIAMConfigured(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	order, err := app.CreateOrder(platform.CreateOrderInput{
+		BuyerOrgID:    "buyer_1",
+		ProviderOrgID: "provider_1",
+		Title:         "Protected order",
+		FundingMode:   "credit",
+		CreditLineID:  "credit_1",
+		Milestones: []platform.CreateMilestoneInput{
+			{ID: "ms_1", Title: "Plan", BasePriceCents: 1200, BudgetCents: 1800},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create order: %v", err)
+	}
+
+	server := NewServerWithOptions(Options{
+		App: app,
+		IAM: &stubIAMClient{
+			actor: iamclient.Actor{
+				UserID: "usr_buyer_2",
+				Memberships: []iamclient.ActorMembership{
+					{
+						OrganizationID:   "buyer_2",
+						OrganizationKind: "buyer",
+						Role:             "procurement",
+					},
+				},
+			},
+		},
+	})
+
+	body, _ := json.Marshal(map[string]any{
+		"orderId": order.ID,
+		"author":  "forged-author",
+		"body":    "Trying to write into someone else's order thread.",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer buyer-session-token")
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d body=%s", res.Code, res.Body.String())
+	}
+}
+
+func TestCreateMessageDerivesAuthorFromAuthenticatedActor(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	order, err := app.CreateOrder(platform.CreateOrderInput{
+		BuyerOrgID:    "buyer_1",
+		ProviderOrgID: "provider_1",
+		Title:         "Protected order",
+		FundingMode:   "credit",
+		CreditLineID:  "credit_1",
+		Milestones: []platform.CreateMilestoneInput{
+			{ID: "ms_1", Title: "Plan", BasePriceCents: 1200, BudgetCents: 1800},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create order: %v", err)
+	}
+
+	server := NewServerWithOptions(Options{
+		App: app,
+		IAM: &stubIAMClient{
+			actor: iamclient.Actor{
+				UserID: "usr_buyer_1",
+				Memberships: []iamclient.ActorMembership{
+					{
+						OrganizationID:   "buyer_1",
+						OrganizationKind: "buyer",
+						Role:             "procurement",
+					},
+				},
+			},
+		},
+	})
+
+	body, _ := json.Marshal(map[string]any{
+		"orderId": order.ID,
+		"author":  "forged-author",
+		"body":    "A legitimate buyer update.",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer buyer-session-token")
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d body=%s", res.Code, res.Body.String())
+	}
+
+	var response struct {
+		Message struct {
+			OrderID string `json:"orderId"`
+			Author  string `json:"author"`
+			Body    string `json:"body"`
+		} `json:"message"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Message.OrderID != order.ID || response.Message.Author != "usr_buyer_1" || response.Message.Body != "A legitimate buyer update." {
+		t.Fatalf("unexpected message response: %+v", response.Message)
+	}
+}
+
 func TestCarrierMilestoneSettlementReturnsLedgerEntry(t *testing.T) {
 	server := NewServer()
 

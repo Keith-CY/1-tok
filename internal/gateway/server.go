@@ -762,6 +762,24 @@ func (s *Server) handleCreateMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if s.auth != nil {
+		actor, err := s.authenticatedActor(r)
+		if err != nil {
+			writeAuthError(w, err)
+			return
+		}
+		order, err := s.app.GetOrder(payload.OrderID)
+		if err != nil {
+			writeGatewayError(w, err)
+			return
+		}
+		if err := authorizeOrderForActor(order, actor); err != nil {
+			writeAuthError(w, err)
+			return
+		}
+		payload.Author = actor.UserID
+	}
+
 	message, err := s.app.CreateMessage(payload.OrderID, payload.Author, payload.Body)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
