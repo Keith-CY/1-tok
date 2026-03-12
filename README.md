@@ -100,6 +100,19 @@ bun run release:full-persisted-local-smoke
 
 This script boots an isolated `postgres:16-alpine` container on `127.0.0.1:${POSTGRES_PORT:-15432}`, wires `iam`, `api-gateway`, and `settlement` to that database, and then runs the same full-stack smoke sequence, including withdrawal and carrier probe coverage, against persisted repositories instead of the in-memory defaults.
 
+### External dependency release smoke
+
+```bash
+export DEPENDENCY_FIBER_RPC_URL='https://fiber.example/rpc'
+export DEPENDENCY_FIBER_APP_ID='app_live'
+export DEPENDENCY_FIBER_HMAC_SECRET='replace-me'
+export DEPENDENCY_CARRIER_GATEWAY_URL='https://carrier.example'
+export DEPENDENCY_CARRIER_GATEWAY_API_TOKEN='replace-me'
+bun run release:external-deps-smoke
+```
+
+This script boots an isolated Postgres container plus local `iam`, `api-gateway`, `settlement`, `execution`, and standalone `web`, but points settlement and execution at externally supplied Fiber and Carrier endpoints. For local verification of the script shape you can set `USE_LOCAL_FIBER_MOCK=true` and `USE_LOCAL_CARRIER_MOCK=true`.
+
 ### Contracts tests
 
 ```bash
