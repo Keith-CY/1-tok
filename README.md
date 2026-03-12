@@ -73,7 +73,7 @@ This smoke exercises the web login shell plus buyer/provider/ops form flows over
 bun run release:portal-local-smoke
 ```
 
-This script builds the web app, starts local `iam`, `api-gateway`, and `web` processes on dedicated localhost ports, waits for readiness, and then runs the HTTP-level portal smoke against those real services.
+This script builds the web app, starts local `iam`, `api-gateway`, `execution`, and the built Next standalone server on dedicated localhost ports, wires the execution service token pair, waits for readiness, and then runs the HTTP-level portal smoke against those real services.
 
 ### Local services release smoke
 
@@ -89,7 +89,7 @@ This script starts local `mock-fiber`, `api-gateway`, `settlement`, and `executi
 bun run release:full-local-smoke
 ```
 
-This script starts local `mock-fiber`, `iam`, `api-gateway`, `settlement`, `execution`, and `web`, wires IAM plus service-token auth, and then runs both `release:smoke` and `release:portal-smoke` against the same stack.
+This script starts local `mock-fiber`, `iam`, `api-gateway`, `settlement`, `execution`, and the built Next standalone server, wires IAM plus service-token auth, and then runs both `release:smoke` and `release:portal-smoke` against the same stack.
 
 ### Contracts tests
 

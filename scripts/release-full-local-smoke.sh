@@ -98,14 +98,13 @@ EXECUTION_PID=$!
 
 bun run build:web >/dev/null
 
-(
-  cd apps/web
-  export NEXT_PUBLIC_API_BASE_URL="http://127.0.0.1:${API_GATEWAY_PORT}"
-  export NEXT_PUBLIC_SETTLEMENT_BASE_URL="http://127.0.0.1:${SETTLEMENT_PORT}"
-  export IAM_BASE_URL="http://127.0.0.1:${IAM_PORT}"
-  export ONE_TOK_ALLOW_INSECURE_SESSION_COOKIE="true"
-  bunx next start --hostname 127.0.0.1 --port "${WEB_PORT}"
-) >"$WEB_LOG" 2>&1 &
+PORT="${WEB_PORT}" \
+HOSTNAME="127.0.0.1" \
+NEXT_PUBLIC_API_BASE_URL="http://127.0.0.1:${API_GATEWAY_PORT}" \
+NEXT_PUBLIC_SETTLEMENT_BASE_URL="http://127.0.0.1:${SETTLEMENT_PORT}" \
+IAM_BASE_URL="http://127.0.0.1:${IAM_PORT}" \
+ONE_TOK_ALLOW_INSECURE_SESSION_COOKIE="true" \
+node ./apps/web/.next/standalone/apps/web/server.js >"$WEB_LOG" 2>&1 &
 WEB_PID=$!
 
 wait_for_url "http://127.0.0.1:${MOCK_FIBER_PORT}/healthz" "mock-fiber"
