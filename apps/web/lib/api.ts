@@ -1,7 +1,5 @@
 import {
   type FundingRecord,
-  formatMoney,
-  sampleBuyerSummary,
   type Listing,
   type Order,
   type ProviderProfile,
@@ -13,7 +11,12 @@ export interface CollectionRequestOptions {
 }
 
 export interface BuyerDashboardData {
-  summary: typeof sampleBuyerSummary;
+  summary: {
+    activeOrders: number;
+    availableListings: number;
+    pausedOrders: number;
+    buyerOrgId: string;
+  };
   recommendedListings: Listing[];
   activeOrders: Order[];
   inbox: Array<{ id: string; title: string; detail: string }>;
@@ -179,23 +182,40 @@ export async function getFundingRecords(options?: CollectionRequestOptions): Pro
   return readCollectionFromBase(baseUrl, "/v1/funding-records", "records", demoFundingRecords, options);
 }
 
-export async function getBuyerDashboardData(): Promise<BuyerDashboardData> {
-  const [recommendedListings, activeOrders] = await Promise.all([getListings(), getOrders()]);
+export async function getBuyerDashboardData(options: {
+  authToken: string;
+  buyerOrgId: string;
+  requireLive?: boolean;
+}): Promise<BuyerDashboardData> {
+  const [recommendedListings, orders] = await Promise.all([
+    getListings({ authToken: options.authToken, requireLive: options.requireLive }),
+    getOrders({ authToken: options.authToken, requireLive: options.requireLive }),
+  ]);
+  const activeOrders = orders.filter((order) => order.buyerOrgId === options.buyerOrgId);
+  const pausedOrders = activeOrders.filter(
+    (order) =>
+      order.status === "awaiting_budget" || order.milestones.some((milestone) => milestone.state === "paused"),
+  ).length;
 
   return {
-    summary: sampleBuyerSummary,
+    summary: {
+      activeOrders: activeOrders.length,
+      availableListings: recommendedListings.length,
+      pausedOrders,
+      buyerOrgId: options.buyerOrgId,
+    },
     recommendedListings,
     activeOrders,
     inbox: [
       {
         id: "msg_1",
-        title: "Carrier paused for top-up",
-        detail: "Order ord_18 crossed the milestone budget ceiling and is waiting for authorization.",
+        title: "Open order pressure",
+        detail: `${activeOrders.length} orders currently belong to ${options.buyerOrgId}.`,
       },
       {
         id: "msg_2",
-        title: "Credit refreshed overnight",
-        detail: `Your available credit is now ${formatMoney(sampleBuyerSummary.remainingCreditCents)}.`,
+        title: "Paused order watch",
+        detail: `${pausedOrders} orders need budget attention before settlement can continue.`,
       },
     ],
   };

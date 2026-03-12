@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, mock } from "bun:test";
 
-import { getFundingRecords, getListings, getOrders } from "./api";
+import { getBuyerDashboardData, getFundingRecords, getListings, getOrders } from "./api";
 
 const originalFetch = globalThis.fetch;
 
@@ -95,5 +95,53 @@ describe("api fallback", () => {
     const records = await getFundingRecords({ authToken: "tok_123", requireLive: true });
 
     expect(records).toHaveLength(0);
+  });
+
+  it("builds buyer dashboard data from live listings and buyer-scoped orders", async () => {
+    process.env.NEXT_PUBLIC_API_BASE_URL = "http://localhost:8080";
+    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.endsWith("/api/v1/listings")) {
+        return new Response(
+          JSON.stringify({
+            listings: [{ id: "listing_live", providerOrgId: "provider_1", title: "Live listing", category: "agent-ops", basePriceCents: 1200, tags: [] }],
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          },
+        );
+      }
+
+      if (url.endsWith("/api/v1/orders")) {
+        return new Response(
+          JSON.stringify({
+            orders: [
+              { id: "ord_live_1", buyerOrgId: "buyer_1", providerOrgId: "provider_1", fundingMode: "credit", platformWallet: "platform_main", status: "running", milestones: [] },
+              { id: "ord_live_2", buyerOrgId: "buyer_2", providerOrgId: "provider_1", fundingMode: "credit", platformWallet: "platform_main", status: "running", milestones: [] },
+            ],
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          },
+        );
+      }
+
+      throw new Error(`unexpected url ${url}`);
+    }) as unknown as typeof fetch;
+
+    const data = await getBuyerDashboardData({
+      authToken: "tok_123",
+      buyerOrgId: "buyer_1",
+      requireLive: true,
+    });
+
+    expect(data.summary.activeOrders).toBe(1);
+    expect(data.summary.availableListings).toBe(1);
+    expect(data.activeOrders).toHaveLength(1);
+    expect(data.activeOrders[0]?.id).toBe("ord_live_1");
+    expect(data.recommendedListings[0]?.id).toBe("listing_live");
   });
 });

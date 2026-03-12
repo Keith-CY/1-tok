@@ -3,11 +3,17 @@ import { formatMoney } from "@1tok/contracts";
 import { PortalShell } from "../../components/portal-shell";
 import { SummaryCard } from "../../components/summary-card";
 import { getBuyerDashboardData } from "../../lib/api";
+import { requirePortalViewer } from "../../lib/viewer";
 
 export const dynamic = "force-dynamic";
 
 export default async function BuyerPage() {
-  const data = await getBuyerDashboardData();
+  const viewer = await requirePortalViewer("buyer", "/buyer");
+  const data = await getBuyerDashboardData({
+    authToken: viewer.token,
+    buyerOrgId: viewer.membership.organization.id,
+    requireLive: true,
+  });
 
   return (
     <PortalShell
@@ -17,9 +23,9 @@ export default async function BuyerPage() {
       signal="Credit and prepaid capital share the same order frame"
       asideTitle="Buyer signal deck"
       asideItems={[
-        { label: "Remaining credit", value: formatMoney(data.summary.remainingCreditCents), tone: "mint" },
-        { label: "Prepaid pool", value: formatMoney(data.summary.prepaidBalanceCents) },
-        { label: "Open disputes", value: `${data.summary.openDisputes}`, tone: "warning" },
+        { label: "Buyer org", value: data.summary.buyerOrgId, tone: "mint" },
+        { label: "Available listings", value: `${data.summary.availableListings}` },
+        { label: "Paused orders", value: `${data.summary.pausedOrders}`, tone: "warning" },
       ]}
     >
       <div className="stat-grid">
@@ -29,19 +35,19 @@ export default async function BuyerPage() {
           hint="Orders currently executing under platform-controlled channels."
         />
         <SummaryCard
-          kicker="Remaining credit"
-          value={formatMoney(data.summary.remainingCreditCents)}
-          hint="Instant buying power assigned by the rules engine and ops overrides."
+          kicker="Available listings"
+          value={`${data.summary.availableListings}`}
+          hint="Listings currently visible in the marketplace catalog for this buyer session."
         />
         <SummaryCard
-          kicker="Prepaid balance"
-          value={formatMoney(data.summary.prepaidBalanceCents)}
-          hint="Funding already parked and ready for orders without platform credit."
+          kicker="Paused orders"
+          value={`${data.summary.pausedOrders}`}
+          hint="Orders currently waiting on more budget before Carrier can continue."
         />
         <SummaryCard
-          kicker="Disputes"
-          value={`${data.summary.openDisputes}`}
-          hint="Post-payout claims still within the operator review window."
+          kicker="Buyer org"
+          value={data.summary.buyerOrgId}
+          hint="The organization IAM derived from the current session."
         />
       </div>
 

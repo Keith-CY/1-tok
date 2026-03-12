@@ -137,7 +137,7 @@ bun --cwd apps/web dev
 
 The web app now exposes `/login`, `POST /auth/login`, and `POST /auth/logout`. The bearer token returned by IAM is stored in an `HttpOnly` cookie owned by the Next server.
 
-Provider and ops portal pages now require a matching IAM membership and redirect unauthenticated requests to `/login?next=...`. Their server-side fetches also forward the bearer token and stop falling back to demo settlement data.
+Buyer, provider, and ops portal pages now require a matching IAM membership and redirect unauthenticated requests to `/login?next=...`. Their server-side fetches also forward the bearer token, and the authenticated portal pages stop falling back to demo marketplace or settlement lists.
 
 ### Membership-aware gateway and settlement
 
