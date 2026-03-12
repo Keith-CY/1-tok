@@ -124,5 +124,21 @@ CREATE TABLE IF NOT EXISTS disputes (
   milestone_id TEXT NOT NULL,
   reason TEXT NOT NULL,
   refund_cents BIGINT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open',
+  resolution TEXT NOT NULL DEFAULT '',
+  resolved_by TEXT NOT NULL DEFAULT '',
+  resolved_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL
 );
+
+ALTER TABLE disputes
+  ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'open';
+
+ALTER TABLE disputes
+  ADD COLUMN IF NOT EXISTS resolution TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE disputes
+  ADD COLUMN IF NOT EXISTS resolved_by TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE disputes
+  ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ;

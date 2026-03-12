@@ -160,17 +160,37 @@ func (r *DisputeRepository) NextID() (string, error) {
 	return nextID(r.db, "dispute_seq", "disp")
 }
 
+func (r *DisputeRepository) Get(id string) (platform.Dispute, error) {
+	row := r.db.QueryRow(`
+		SELECT id, order_id, milestone_id, reason, refund_cents, status, resolution, resolved_by, resolved_at, created_at
+		FROM disputes
+		WHERE id = $1
+	`, id)
+	return scanDispute(row)
+}
+
 func (r *DisputeRepository) Save(dispute platform.Dispute) error {
 	_, err := r.db.Exec(`
-		INSERT INTO disputes (id, order_id, milestone_id, reason, refund_cents, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
-	`, dispute.ID, dispute.OrderID, dispute.MilestoneID, dispute.Reason, dispute.RefundCents, dispute.CreatedAt)
+		INSERT INTO disputes (
+			id, order_id, milestone_id, reason, refund_cents, status, resolution, resolved_by, resolved_at, created_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		ON CONFLICT (id) DO UPDATE SET
+			order_id = EXCLUDED.order_id,
+			milestone_id = EXCLUDED.milestone_id,
+			reason = EXCLUDED.reason,
+			refund_cents = EXCLUDED.refund_cents,
+			status = EXCLUDED.status,
+			resolution = EXCLUDED.resolution,
+			resolved_by = EXCLUDED.resolved_by,
+			resolved_at = EXCLUDED.resolved_at
+	`, dispute.ID, dispute.OrderID, dispute.MilestoneID, dispute.Reason, dispute.RefundCents, normalizeDisputeStatus(dispute.Status), dispute.Resolution, dispute.ResolvedBy, dispute.ResolvedAt, dispute.CreatedAt)
 	return err
 }
 
 func (r *DisputeRepository) List() ([]platform.Dispute, error) {
 	rows, err := r.db.Query(`
-		SELECT id, order_id, milestone_id, reason, refund_cents, created_at
+		SELECT id, order_id, milestone_id, reason, refund_cents, status, resolution, resolved_by, resolved_at, created_at
 		FROM disputes
 		ORDER BY created_at ASC, id ASC
 	`)
@@ -181,21 +201,48 @@ func (r *DisputeRepository) List() ([]platform.Dispute, error) {
 
 	disputes := make([]platform.Dispute, 0)
 	for rows.Next() {
-		var dispute platform.Dispute
-		if err := rows.Scan(
-			&dispute.ID,
-			&dispute.OrderID,
-			&dispute.MilestoneID,
-			&dispute.Reason,
-			&dispute.RefundCents,
-			&dispute.CreatedAt,
-		); err != nil {
+		dispute, err := scanDispute(rows)
+		if err != nil {
 			return nil, err
 		}
 		disputes = append(disputes, dispute)
 	}
 
 	return disputes, rows.Err()
+}
+
+func scanDispute(row rowScanner) (platform.Dispute, error) {
+	var dispute platform.Dispute
+	var status string
+	if err := row.Scan(
+		&dispute.ID,
+		&dispute.OrderID,
+		&dispute.MilestoneID,
+		&dispute.Reason,
+		&dispute.RefundCents,
+		&status,
+		&dispute.Resolution,
+		&dispute.ResolvedBy,
+		&dispute.ResolvedAt,
+		&dispute.CreatedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return platform.Dispute{}, errors.New("dispute not found")
+		}
+		return platform.Dispute{}, err
+	}
+	dispute.Status = core.DisputeStatus(status)
+	if dispute.Status == "" {
+		dispute.Status = core.DisputeStatusOpen
+	}
+	return dispute, nil
+}
+
+func normalizeDisputeStatus(status core.DisputeStatus) core.DisputeStatus {
+	if status == "" {
+		return core.DisputeStatusOpen
+	}
+	return status
 }
 
 func nextID(db *sql.DB, sequenceName, prefix string) (string, error) {

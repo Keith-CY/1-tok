@@ -79,6 +79,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleRecordUsage(w, r)
 	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/disputes"):
 		s.handleCreateDispute(w, r)
+	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/resolve"):
+		s.handleResolveDispute(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/credits/decision":
 		s.handleCreditDecision(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/messages":
@@ -459,6 +461,43 @@ func isProviderRole(role string) bool {
 	}
 }
 
+func isOpsRole(role string) bool {
+	switch role {
+	case "ops_reviewer", "risk_admin", "finance_admin", "super_admin":
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Server) resolveOpsUser(r *http.Request) (string, error) {
+	if s.auth == nil {
+		return "", nil
+	}
+
+	token, ok := bearerToken(r.Header.Get("Authorization"))
+	if !ok {
+		return "", iamclient.ErrUnauthorized
+	}
+
+	actor, err := s.auth.GetActor(r.Context(), token)
+	if err != nil {
+		return "", err
+	}
+
+	for _, membership := range actor.Memberships {
+		if membership.OrganizationKind != "ops" {
+			continue
+		}
+		if !isOpsRole(membership.Role) {
+			continue
+		}
+		return actor.UserID, nil
+	}
+
+	return "", errors.New("ops membership is required")
+}
+
 func (s *Server) handleSettleMilestone(w http.ResponseWriter, r *http.Request) {
 	orderID, milestoneID, err := orderMilestoneFromSettlePath(r.URL.Path)
 	if err != nil {
@@ -551,6 +590,43 @@ func (s *Server) handleCreateDispute(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{"order": order, "refundEntry": refund, "recoveryEntry": recovery})
 }
 
+func (s *Server) handleResolveDispute(w http.ResponseWriter, r *http.Request) {
+	disputeID, err := disputeIDFromResolvePath(r.URL.Path)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	var payload struct {
+		Resolution string `json:"resolution"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	if strings.TrimSpace(payload.Resolution) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "resolution is required"})
+		return
+	}
+
+	resolvedBy, err := s.resolveOpsUser(r)
+	if err != nil {
+		writeAuthError(w, err)
+		return
+	}
+
+	dispute, order, err := s.app.ResolveDispute(disputeID, platform.ResolveDisputeInput{
+		Resolution: payload.Resolution,
+		ResolvedBy: resolvedBy,
+	})
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"dispute": dispute, "order": order})
+}
+
 func (s *Server) handleCreditDecision(w http.ResponseWriter, r *http.Request) {
 	var history core.CreditHistory
 	if err := json.NewDecoder(r.Body).Decode(&history); err != nil {
@@ -629,6 +705,14 @@ func orderIDFromDisputePath(path string) (string, error) {
 	return parts[3], nil
 }
 
+func disputeIDFromResolvePath(path string) (string, error) {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) != 5 || parts[2] != "disputes" || parts[4] != "resolve" {
+		return "", errors.New("invalid dispute resolution path")
+	}
+	return parts[3], nil
+}
+
 func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -639,7 +723,7 @@ func writeGatewayError(w http.ResponseWriter, err error) {
 	switch err.Error() {
 	case "order not found":
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
-	case "rfq not found", "bid not found":
+	case "rfq not found", "bid not found", "dispute not found":
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 	default:
 		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})

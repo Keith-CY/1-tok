@@ -307,3 +307,68 @@ func TestAppSettleMilestoneAdvancesNextMilestone(t *testing.T) {
 		t.Fatalf("expected second milestone running, got %s", updated.Milestones[1].State)
 	}
 }
+
+func TestAppResolveDisputeMarksMilestoneResolved(t *testing.T) {
+	app := NewAppWithMemory()
+	order, err := app.CreateOrder(CreateOrderInput{
+		BuyerOrgID:    "buyer_1",
+		ProviderOrgID: "provider_1",
+		Title:         "Agent operations",
+		FundingMode:   core.FundingModeCredit,
+		CreditLineID:  "credit_1",
+		Milestones: []CreateMilestoneInput{
+			{
+				ID:             "ms_1",
+				Title:          "Plan",
+				BasePriceCents: 1000,
+				BudgetCents:    1400,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create order: %v", err)
+	}
+
+	if _, _, err := app.SettleMilestone(order.ID, SettleMilestoneInput{
+		MilestoneID: "ms_1",
+		Summary:     "done",
+		Source:      "carrier",
+		OccurredAt:  time.Date(2026, 3, 12, 0, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("settle milestone: %v", err)
+	}
+
+	if _, _, _, err := app.OpenDispute(order.ID, OpenDisputeInput{
+		MilestoneID: "ms_1",
+		Reason:      "carrier output was incomplete",
+		RefundCents: 800,
+	}); err != nil {
+		t.Fatalf("open dispute: %v", err)
+	}
+
+	disputes, err := app.ListDisputes()
+	if err != nil {
+		t.Fatalf("list disputes: %v", err)
+	}
+
+	resolvedDispute, updatedOrder, err := app.ResolveDispute(disputes[0].ID, ResolveDisputeInput{
+		Resolution: "Provider supplied corrected remediation evidence.",
+		ResolvedBy: "ops_reviewer_1",
+	})
+	if err != nil {
+		t.Fatalf("resolve dispute: %v", err)
+	}
+
+	if resolvedDispute.Status != core.DisputeStatusResolved {
+		t.Fatalf("expected resolved dispute status, got %s", resolvedDispute.Status)
+	}
+	if resolvedDispute.Resolution != "Provider supplied corrected remediation evidence." {
+		t.Fatalf("unexpected dispute resolution: %+v", resolvedDispute)
+	}
+	if resolvedDispute.ResolvedBy != "ops_reviewer_1" || resolvedDispute.ResolvedAt == nil {
+		t.Fatalf("expected resolver metadata, got %+v", resolvedDispute)
+	}
+	if updatedOrder.Milestones[0].DisputeStatus != core.DisputeStatusResolved {
+		t.Fatalf("expected milestone dispute status resolved, got %s", updatedOrder.Milestones[0].DisputeStatus)
+	}
+}

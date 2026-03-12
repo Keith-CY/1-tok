@@ -39,7 +39,7 @@ export interface Milestone {
   settledCents: number;
   summary?: string;
   state: MilestoneState;
-  disputeStatus: "none" | "open";
+  disputeStatus: "none" | "open" | "resolved";
   usageCharges: UsageCharge[];
 }
 
@@ -74,6 +74,10 @@ export interface Dispute {
   milestoneId: string;
   reason: string;
   refundCents: number;
+  status: "open" | "resolved";
+  resolution?: string;
+  resolvedBy?: string;
+  resolvedAt?: string;
   createdAt: string;
 }
 

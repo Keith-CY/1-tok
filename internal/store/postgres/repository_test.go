@@ -323,6 +323,61 @@ func TestDisputeRepositoryRoundTrip(t *testing.T) {
 	}
 }
 
+func TestDisputeRepositoryUpsertResolution(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+
+	db, err := Open(dsn)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	if err := Migrate(db); err != nil {
+		t.Fatalf("migrate db: %v", err)
+	}
+
+	repo := NewDisputeRepository(db)
+	dispute := platform.Dispute{
+		ID:          "disp_resolve",
+		OrderID:     "ord_2",
+		MilestoneID: "ms_2",
+		Reason:      "Needs review",
+		RefundCents: 900,
+		Status:      "open",
+		CreatedAt:   time.Date(2026, 3, 12, 12, 0, 0, 0, time.UTC),
+	}
+	if err := repo.Save(dispute); err != nil {
+		t.Fatalf("save dispute: %v", err)
+	}
+
+	resolvedAt := time.Date(2026, 3, 12, 13, 0, 0, 0, time.UTC)
+	dispute.Status = "resolved"
+	dispute.Resolution = "Approved reimbursement after ops review"
+	dispute.ResolvedBy = "usr_ops_1"
+	dispute.ResolvedAt = &resolvedAt
+	if err := repo.Save(dispute); err != nil {
+		t.Fatalf("save resolved dispute: %v", err)
+	}
+
+	disputes, err := repo.List()
+	if err != nil {
+		t.Fatalf("list disputes: %v", err)
+	}
+
+	if !slices.ContainsFunc(disputes, func(candidate platform.Dispute) bool {
+		return candidate.ID == dispute.ID &&
+			candidate.Status == "resolved" &&
+			candidate.Resolution == dispute.Resolution &&
+			candidate.ResolvedBy == dispute.ResolvedBy &&
+			candidate.ResolvedAt != nil
+	}) {
+		t.Fatalf("expected resolved dispute %+v in %+v", dispute, disputes)
+	}
+}
+
 func TestSeedCatalogInsertsDefaultProvidersAndListings(t *testing.T) {
 	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
 	if dsn == "" {

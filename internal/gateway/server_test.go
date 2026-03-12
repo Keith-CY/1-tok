@@ -416,6 +416,103 @@ func TestListDisputesReturnsPersistedCases(t *testing.T) {
 	}
 }
 
+func TestResolveDisputeRequiresOpsMembershipAndReturnsResolvedCase(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	order, err := app.CreateOrder(platform.CreateOrderInput{
+		BuyerOrgID:    "buyer_1",
+		ProviderOrgID: "provider_1",
+		Title:         "Operate agent",
+		FundingMode:   "credit",
+		CreditLineID:  "credit_1",
+		Milestones: []platform.CreateMilestoneInput{
+			{
+				ID:             "ms_1",
+				Title:          "Plan",
+				BasePriceCents: 1200,
+				BudgetCents:    1800,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create order: %v", err)
+	}
+	if _, _, err := app.SettleMilestone(order.ID, platform.SettleMilestoneInput{
+		MilestoneID: "ms_1",
+		Summary:     "done",
+		Source:      "carrier",
+		OccurredAt:  time.Date(2026, 3, 12, 0, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("settle milestone: %v", err)
+	}
+	if _, _, _, err := app.OpenDispute(order.ID, platform.OpenDisputeInput{
+		MilestoneID: "ms_1",
+		Reason:      "carrier output was incomplete",
+		RefundCents: 800,
+	}); err != nil {
+		t.Fatalf("open dispute: %v", err)
+	}
+	disputes, err := app.ListDisputes()
+	if err != nil {
+		t.Fatalf("list disputes: %v", err)
+	}
+
+	server := NewServerWithOptions(Options{
+		App: app,
+		IAM: &stubIAMClient{
+			actor: iamclient.Actor{
+				UserID: "usr_ops_1",
+				Memberships: []iamclient.ActorMembership{
+					{
+						OrganizationID:   "ops_1",
+						OrganizationKind: "ops",
+						Role:             "ops_reviewer",
+					},
+				},
+			},
+		},
+	})
+
+	body, _ := json.Marshal(map[string]any{
+		"resolution": "Approved reimbursement after provider remediation review.",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/disputes/"+disputes[0].ID+"/resolve", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer ops-session-token")
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", res.Code, res.Body.String())
+	}
+
+	var response struct {
+		Dispute struct {
+			ID         string `json:"id"`
+			Status     string `json:"status"`
+			ResolvedBy string `json:"resolvedBy"`
+			Resolution string `json:"resolution"`
+		} `json:"dispute"`
+		Order struct {
+			Milestones []struct {
+				DisputeStatus string `json:"disputeStatus"`
+			} `json:"milestones"`
+		} `json:"order"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Dispute.ID != disputes[0].ID || response.Dispute.Status != "resolved" {
+		t.Fatalf("unexpected dispute response: %+v", response.Dispute)
+	}
+	if response.Dispute.ResolvedBy != "usr_ops_1" || response.Dispute.Resolution == "" {
+		t.Fatalf("expected resolver metadata, got %+v", response.Dispute)
+	}
+	if response.Order.Milestones[0].DisputeStatus != "resolved" {
+		t.Fatalf("expected resolved milestone dispute status, got %+v", response.Order.Milestones)
+	}
+}
+
 func TestCarrierMilestoneSettlementReturnsLedgerEntry(t *testing.T) {
 	server := NewServer()
 

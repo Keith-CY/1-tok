@@ -18,6 +18,9 @@ export default async function OpsPage({
   const creditApproved = readSearchParam(searchParams, "creditApproved");
   const recommendedLimitCents = readSearchParam(searchParams, "recommendedLimitCents");
   const creditReason = readSearchParam(searchParams, "creditReason");
+  const resolvedDisputeId = readSearchParam(searchParams, "resolvedDisputeId");
+  const disputeStatus = readSearchParam(searchParams, "disputeStatus");
+  const error = readSearchParam(searchParams, "error");
 
   return (
     <PortalShell
@@ -103,6 +106,40 @@ export default async function OpsPage({
 
       <div className="feed-grid">
         <article className="feed-card">
+          <span className="tag">Dispute action result</span>
+          <h3>Ops actions should echo back into the queue immediately.</h3>
+          <div className="feed-list">
+            <div className="feed-item">
+              <strong>{resolvedDisputeId ? `Resolved ${resolvedDisputeId}` : "No dispute action yet"}</strong>
+              <p>
+                {resolvedDisputeId
+                  ? `Latest dispute action returned status ${disputeStatus || "resolved"}.`
+                  : error === "dispute-resolution-failed"
+                    ? "The dispute action failed. Retry from the queue below."
+                    : "Resolve an open dispute from the queue to write a live ops action into the system."}
+              </p>
+            </div>
+          </div>
+        </article>
+
+        <aside className="message-card">
+          <span className="tag">Action posture</span>
+          <h3>Open cases stay actionable, resolved cases stay legible.</h3>
+          <div className="chip-list">
+            <div className="chip">
+              Open queue
+              <span>{data.summary.openDisputes}</span>
+            </div>
+            <div className="chip">
+              Resolved visible
+              <span>{data.disputes.filter((dispute) => dispute.status === "resolved").length}</span>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <div className="feed-grid">
+        <article className="feed-card">
           <span className="tag">Pending reviews</span>
           <h3>Items that require a human decision, not another dashboard filter.</h3>
           <div className="feed-list">
@@ -149,11 +186,32 @@ export default async function OpsPage({
           {data.disputes.map((dispute) => (
             <div key={dispute.id} className="timeline-item">
               <strong>
-                {dispute.orderId} · {dispute.milestoneId}
+                {dispute.orderId} · {dispute.milestoneId} · {dispute.status}
               </strong>
               <p>
                 {dispute.reason} · refund {dispute.refundCents}
               </p>
+              {dispute.status === "open" ? (
+                <form className="auth-form market-form" action={`/ops/disputes/${dispute.id}/resolve`} method="post">
+                  <label className="auth-field">
+                    <span>Resolution note</span>
+                    <textarea
+                      name="resolution"
+                      rows={2}
+                      defaultValue="Approved reimbursement after ops evidence review."
+                      required
+                    />
+                  </label>
+                  <button type="submit" className="auth-submit">
+                    Resolve dispute
+                  </button>
+                </form>
+              ) : (
+                <p>
+                  {dispute.resolution || "Resolved by ops."}
+                  {dispute.resolvedBy ? ` · ${dispute.resolvedBy}` : ""}
+                </p>
+              )}
             </div>
           ))}
         </div>

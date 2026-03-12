@@ -35,8 +35,9 @@ const (
 type DisputeStatus string
 
 const (
-	DisputeStatusNone DisputeStatus = "none"
-	DisputeStatusOpen DisputeStatus = "open"
+	DisputeStatusNone     DisputeStatus = "none"
+	DisputeStatusOpen     DisputeStatus = "open"
+	DisputeStatusResolved DisputeStatus = "resolved"
 )
 
 type UsageChargeKind string
@@ -113,6 +114,10 @@ type OpenDisputeInput struct {
 	MilestoneID string
 	Reason      string
 	RefundCents int64
+}
+
+type ResolveDisputeInput struct {
+	MilestoneID string
 }
 
 func (o *Order) SettleMilestone(input SettleMilestoneInput) (LedgerEntry, error) {
@@ -212,6 +217,20 @@ func (o *Order) OpenDispute(input OpenDisputeInput) (LedgerEntry, LedgerEntry, e
 	}
 
 	return refund, recovery, nil
+}
+
+func (o *Order) ResolveDispute(input ResolveDisputeInput) error {
+	milestone, err := o.findMilestone(input.MilestoneID)
+	if err != nil {
+		return err
+	}
+
+	if milestone.DisputeStatus != DisputeStatusOpen {
+		return errors.New("only open disputes can be resolved")
+	}
+
+	milestone.DisputeStatus = DisputeStatusResolved
+	return nil
 }
 
 func (m Milestone) CurrentSpendCents() int64 {

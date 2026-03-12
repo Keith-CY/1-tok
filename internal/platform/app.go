@@ -59,12 +59,16 @@ type Message struct {
 }
 
 type Dispute struct {
-	ID          string    `json:"id"`
-	OrderID     string    `json:"orderId"`
-	MilestoneID string    `json:"milestoneId"`
-	Reason      string    `json:"reason"`
-	RefundCents int64     `json:"refundCents"`
-	CreatedAt   time.Time `json:"createdAt"`
+	ID          string             `json:"id"`
+	OrderID     string             `json:"orderId"`
+	MilestoneID string             `json:"milestoneId"`
+	Reason      string             `json:"reason"`
+	RefundCents int64              `json:"refundCents"`
+	Status      core.DisputeStatus `json:"status"`
+	Resolution  string             `json:"resolution,omitempty"`
+	ResolvedBy  string             `json:"resolvedBy,omitempty"`
+	ResolvedAt  *time.Time         `json:"resolvedAt,omitempty"`
+	CreatedAt   time.Time          `json:"createdAt"`
 }
 
 type CreateMilestoneInput struct {
@@ -95,6 +99,11 @@ type CreateRFQInput struct {
 type SettleMilestoneInput = core.SettleMilestoneInput
 type RecordUsageChargeInput = core.RecordUsageChargeInput
 type OpenDisputeInput = core.OpenDisputeInput
+
+type ResolveDisputeInput struct {
+	Resolution string
+	ResolvedBy string
+}
 
 type OrderRepository interface {
 	NextID() (string, error)
@@ -132,6 +141,7 @@ type MessageRepository interface {
 
 type DisputeRepository interface {
 	NextID() (string, error)
+	Get(id string) (Dispute, error)
 	Save(dispute Dispute) error
 	List() ([]Dispute, error)
 }
@@ -474,6 +484,7 @@ func (a *App) OpenDispute(orderID string, input OpenDisputeInput) (*core.Order, 
 		MilestoneID: input.MilestoneID,
 		Reason:      input.Reason,
 		RefundCents: input.RefundCents,
+		Status:      core.DisputeStatusOpen,
 		CreatedAt:   time.Now().UTC(),
 	}); err != nil {
 		return nil, core.LedgerEntry{}, core.LedgerEntry{}, err
@@ -498,6 +509,60 @@ func (a *App) OpenDispute(orderID string, input OpenDisputeInput) (*core.Order, 
 	}
 
 	return updated, refund, recovery, nil
+}
+
+func (a *App) ResolveDispute(disputeID string, input ResolveDisputeInput) (Dispute, *core.Order, error) {
+	dispute, err := a.disputes.Get(disputeID)
+	if err != nil {
+		return Dispute{}, nil, err
+	}
+
+	order, err := a.orders.Get(dispute.OrderID)
+	if err != nil {
+		return Dispute{}, nil, err
+	}
+
+	if err := order.ResolveDispute(core.ResolveDisputeInput{
+		MilestoneID: dispute.MilestoneID,
+	}); err != nil {
+		return Dispute{}, nil, err
+	}
+
+	resolvedAt := time.Now().UTC()
+	dispute.Status = core.DisputeStatusResolved
+	dispute.Resolution = input.Resolution
+	dispute.ResolvedBy = input.ResolvedBy
+	dispute.ResolvedAt = &resolvedAt
+
+	if err := a.disputes.Save(dispute); err != nil {
+		return Dispute{}, nil, err
+	}
+
+	if err := a.orders.Save(order); err != nil {
+		return Dispute{}, nil, err
+	}
+
+	if err := a.publish("market.dispute.resolved", map[string]any{
+		"disputeId":   dispute.ID,
+		"orderId":     dispute.OrderID,
+		"milestoneId": dispute.MilestoneID,
+		"resolvedBy":  dispute.ResolvedBy,
+		"resolution":  dispute.Resolution,
+	}); err != nil {
+		return Dispute{}, nil, err
+	}
+
+	resolvedDispute, err := a.disputes.Get(disputeID)
+	if err != nil {
+		return Dispute{}, nil, err
+	}
+
+	updated, err := a.orders.Get(dispute.OrderID)
+	if err != nil {
+		return Dispute{}, nil, err
+	}
+
+	return resolvedDispute, updated, nil
 }
 
 func (a *App) CreateMessage(orderID, author, body string) (Message, error) {
@@ -769,9 +834,26 @@ func (r *memoryDisputeRepository) NextID() (string, error) {
 	return fmt.Sprintf("disp_%d", r.seq), nil
 }
 
+func (r *memoryDisputeRepository) Get(id string) (Dispute, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, dispute := range r.data {
+		if dispute.ID == id {
+			return dispute, nil
+		}
+	}
+	return Dispute{}, errors.New("dispute not found")
+}
+
 func (r *memoryDisputeRepository) Save(dispute Dispute) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	for i, candidate := range r.data {
+		if candidate.ID == dispute.ID {
+			r.data[i] = dispute
+			return nil
+		}
+	}
 	r.data = append(r.data, dispute)
 	return nil
 }

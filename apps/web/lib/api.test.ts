@@ -300,7 +300,7 @@ describe("api fallback", () => {
       }
 
       if (url.endsWith("/api/v1/disputes")) {
-        return new Response(JSON.stringify({ disputes: [{ id: "disp_1", orderId: "ord_live_1", milestoneId: "ms_1", reason: "Output incomplete", refundCents: 900, createdAt: "2026-03-12T00:00:00Z" }] }), {
+        return new Response(JSON.stringify({ disputes: [{ id: "disp_1", orderId: "ord_live_1", milestoneId: "ms_1", reason: "Output incomplete", refundCents: 900, status: "open", createdAt: "2026-03-12T00:00:00Z" }] }), {
           headers: { "Content-Type": "application/json" },
           status: 200,
         });

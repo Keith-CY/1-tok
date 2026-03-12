@@ -202,7 +202,20 @@ const demoDisputes: Dispute[] = [
     milestoneId: "ms_1",
     reason: "Carrier summary did not match the actual remediation performed.",
     refundCents: 900,
+    status: "open",
     createdAt: "2026-03-12T00:00:00Z",
+  },
+  {
+    id: "disp_2",
+    orderId: "ord_18",
+    milestoneId: "ms_1",
+    reason: "Evidence pack was delivered after reimbursement.",
+    refundCents: 400,
+    status: "resolved",
+    resolution: "Ops accepted the provider evidence and closed the case.",
+    resolvedBy: "usr_ops_7",
+    resolvedAt: "2026-03-12T04:00:00Z",
+    createdAt: "2026-03-12T02:00:00Z",
   },
 ];
 
@@ -451,6 +464,7 @@ export async function getOpsDashboardData(options: { authToken: string; requireL
   const pendingWithdrawals = fundingRecords.filter(
     (record) => record.kind === "withdrawal" && record.state !== "SETTLED",
   ).length;
+  const openDisputes = disputes.filter((dispute) => dispute.status !== "resolved");
 
   return {
     summary: {
@@ -458,19 +472,19 @@ export async function getOpsDashboardData(options: { authToken: string; requireL
       fundingRecords: fundingRecords.length,
       settledInvoices,
       pendingWithdrawals,
-      openDisputes: disputes.length,
+      openDisputes: openDisputes.length,
     },
     pendingReviews: [
-      { id: "review_1", title: "Open disputes", detail: `${disputes.length} disputes currently need reimbursement or recovery review.` },
+      { id: "review_1", title: "Open disputes", detail: `${openDisputes.length} disputes currently need reimbursement or recovery review.` },
       { id: "review_2", title: "Pending withdrawals", detail: `${pendingWithdrawals} settlement withdrawals still need completion or review.` },
     ],
     treasurySignals: [
       { id: "sig_1", label: "Funding records", value: `${fundingRecords.length}`, tone: "warning" },
       { id: "sig_2", label: "Settled invoices", value: `${settledInvoices}`, tone: "mint" },
-      { id: "sig_3", label: "Open disputes", value: `${disputes.length}`, tone: "danger" },
+      { id: "sig_3", label: "Open disputes", value: `${openDisputes.length}`, tone: "danger" },
     ],
     riskFeed: [
-      { id: "risk_1", title: "Dispute pressure", detail: `${disputes.length} disputes are visible to ops in the current control plane.` },
+      { id: "risk_1", title: "Dispute pressure", detail: `${openDisputes.length} disputes are visible to ops in the current control plane.` },
       { id: "risk_2", title: "Catalog posture", detail: `${providers.length} providers remain available in the marketplace catalog.` },
     ],
     fundingRecords,
