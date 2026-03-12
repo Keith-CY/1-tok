@@ -11,6 +11,7 @@
     "build:web": "bun --cwd apps/web build",
     "dev:web": "bun --cwd apps/web dev",
     "lint:web": "bun --cwd apps/web lint",
+    "release:services-local-smoke": "./scripts/release-services-local-smoke.sh",
     "release:portal-local-smoke": "./scripts/release-portal-local-smoke.sh",
     "release:portal-smoke": "CGO_ENABLED=0 go run ./cmd/release-portal-smoke",
     "release:smoke": "CGO_ENABLED=0 go run ./cmd/release-smoke",
