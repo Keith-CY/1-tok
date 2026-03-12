@@ -17,6 +17,17 @@ services:
       - "4222:4222"
       - "8222:8222"
 
+  mock-fiber:
+    build:
+      context: .
+      dockerfile: Dockerfile.go-service
+      args:
+        SERVICE: mock-fiber
+    environment:
+      MOCK_FIBER_ADDR: ":8090"
+    ports:
+      - "8090:8090"
+
   api-gateway:
     build:
       context: .
@@ -28,6 +39,7 @@ services:
       DATABASE_URL: postgres://onetok:onetok@postgres:5432/onetok?sslmode=disable
       IAM_UPSTREAM: http://iam:8081
       NATS_URL: nats://nats:4222
+      API_GATEWAY_EXECUTION_TOKEN: ${ONE_TOK_SERVICE_TOKEN:-local-service-token}
     ports:
       - "8080:8080"
     depends_on:
@@ -73,13 +85,15 @@ services:
       API_GATEWAY_UPSTREAM: http://api-gateway:8080
       DATABASE_URL: postgres://onetok:onetok@postgres:5432/onetok?sslmode=disable
       IAM_UPSTREAM: http://iam:8081
-      FIBER_RPC_URL: ${FIBER_RPC_URL:-http://fiber-rpc:3000/rpc}
+      FIBER_RPC_URL: ${FIBER_RPC_URL:-http://mock-fiber:8090}
       FIBER_APP_ID: ${FIBER_APP_ID:-app_1}
       FIBER_HMAC_SECRET: ${FIBER_HMAC_SECRET:-replace-me}
+      SETTLEMENT_SERVICE_TOKEN: ${ONE_TOK_SERVICE_TOKEN:-local-service-token}
     ports:
       - "8083:8083"
     depends_on:
       - api-gateway
+      - mock-fiber
       - postgres
 
   risk:
@@ -105,6 +119,8 @@ services:
     environment:
       EXECUTION_ADDR: ":8085"
       API_GATEWAY_UPSTREAM: http://api-gateway:8080
+      EXECUTION_EVENT_TOKEN: ${ONE_TOK_EXECUTION_EVENT_TOKEN:-local-execution-event-token}
+      EXECUTION_GATEWAY_TOKEN: ${ONE_TOK_SERVICE_TOKEN:-local-service-token}
       CARRIER_GATEWAY_URL: ${CARRIER_GATEWAY_URL:-http://carrier-gateway:8787}
       CARRIER_GATEWAY_API_TOKEN: ${CARRIER_GATEWAY_API_TOKEN:-}
     ports:
@@ -132,12 +148,15 @@ services:
       dockerfile: apps/web/Dockerfile
     environment:
       NEXT_PUBLIC_API_BASE_URL: http://api-gateway:8080
+      NEXT_PUBLIC_SETTLEMENT_BASE_URL: http://settlement:8083
       IAM_BASE_URL: http://iam:8081
+      ONE_TOK_ALLOW_INSECURE_SESSION_COOKIE: "true"
     ports:
       - "3000:3000"
     depends_on:
       - api-gateway
       - iam
+      - settlement
 
 volumes:
   postgres-data:
