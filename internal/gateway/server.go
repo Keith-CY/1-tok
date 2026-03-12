@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -16,9 +15,9 @@ import (
 )
 
 type Server struct {
-	app            *platform.App
-	auth           iamclient.Client
-	executionToken string
+	app             *platform.App
+	auth            iamclient.Client
+	executionTokens serviceauth.TokenSet
 }
 
 func NewServer() *Server {
@@ -36,9 +35,10 @@ func NewServerWithApp(app *platform.App) *Server {
 }
 
 type Options struct {
-	App            *platform.App
-	IAM            iamclient.Client
-	ExecutionToken string
+	App             *platform.App
+	IAM             iamclient.Client
+	ExecutionToken  string
+	ExecutionTokens serviceauth.TokenSet
 }
 
 func NewServerWithOptions(options Options) *Server {
@@ -48,22 +48,26 @@ func NewServerWithOptions(options Options) *Server {
 	if options.IAM == nil {
 		options.IAM = iamclient.NewClientFromEnv()
 	}
-	if options.ExecutionToken == "" {
-		options.ExecutionToken = strings.TrimSpace(os.Getenv("API_GATEWAY_EXECUTION_TOKEN"))
+	if options.ExecutionTokens.Empty() {
+		if options.ExecutionToken != "" {
+			options.ExecutionTokens = serviceauth.NewTokenSet(options.ExecutionToken)
+		} else {
+			options.ExecutionTokens = serviceauth.FromEnv("API_GATEWAY_EXECUTION_TOKENS", "API_GATEWAY_EXECUTION_TOKEN")
+		}
 	}
 	if runtimeconfig.RequireExternalDependencies() {
 		if options.IAM == nil {
 			panic("IAM_UPSTREAM is required when ONE_TOK_REQUIRE_EXTERNALS=true")
 		}
-		if strings.TrimSpace(options.ExecutionToken) == "" {
-			panic("API_GATEWAY_EXECUTION_TOKEN is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+		if options.ExecutionTokens.Empty() {
+			panic("API_GATEWAY_EXECUTION_TOKEN or API_GATEWAY_EXECUTION_TOKENS is required when ONE_TOK_REQUIRE_EXTERNALS=true")
 		}
 	}
 
 	return &Server{
-		app:            options.App,
-		auth:           options.IAM,
-		executionToken: options.ExecutionToken,
+		app:             options.App,
+		auth:            options.IAM,
+		executionTokens: options.ExecutionTokens,
 	}
 }
 
@@ -888,10 +892,10 @@ func writeAuthError(w http.ResponseWriter, err error) {
 }
 
 func (s *Server) authorizeExecutionMutation(r *http.Request) error {
-	if strings.TrimSpace(s.executionToken) == "" {
+	if s.executionTokens.Empty() {
 		return nil
 	}
-	if serviceauth.MatchesRequest(r, s.executionToken) {
+	if s.executionTokens.MatchesRequest(r) {
 		return nil
 	}
 	return errors.New("invalid service token")

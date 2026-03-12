@@ -175,6 +175,43 @@ func TestCarrierEventsRejectMissingServiceTokenWhenConfigured(t *testing.T) {
 	}
 }
 
+func TestCarrierEventsAcceptRotatedServiceTokenFromEnv(t *testing.T) {
+	t.Setenv("EXECUTION_EVENT_TOKEN", "")
+	t.Setenv("EXECUTION_EVENT_TOKENS", "current-token,next-token")
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"order": map[string]any{
+				"id":     "ord_1",
+				"status": "running",
+			},
+			"ledgerEntry": map[string]any{
+				"kind":        "platform_exposure",
+				"amountCents": 1200,
+			},
+		})
+	}))
+	defer upstream.Close()
+
+	server := NewServerWithUpstream(upstream.URL)
+	body := map[string]any{
+		"orderId":     "ord_1",
+		"milestoneId": "ms_1",
+		"eventType":   "milestone_ready",
+		"summary":     "carrier completed milestone",
+	}
+	payload, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/events", bytes.NewReader(payload))
+	req.Header.Set("X-One-Tok-Service-Token", "next-token")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected rotated execution event token to be accepted, got %d body=%s", res.Code, res.Body.String())
+	}
+}
+
 func TestMilestoneReadyEventForwardsGatewayServiceTokenWhenConfigured(t *testing.T) {
 	t.Setenv("EXECUTION_EVENT_TOKEN", "exec-event-token")
 	t.Setenv("EXECUTION_GATEWAY_TOKEN", "gateway-shared-token")

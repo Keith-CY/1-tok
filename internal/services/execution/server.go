@@ -17,18 +17,19 @@ import (
 )
 
 type Server struct {
-	client       *http.Client
-	upstream     string
-	carrier      carrierclient.CodeAgentClient
-	inboundToken string
-	gatewayToken string
+	client        *http.Client
+	upstream      string
+	carrier       carrierclient.CodeAgentClient
+	inboundTokens serviceauth.TokenSet
+	gatewayToken  string
 }
 
 type Options struct {
-	APIUpstream  string
-	Carrier      carrierclient.CodeAgentClient
-	InboundToken string
-	GatewayToken string
+	APIUpstream   string
+	Carrier       carrierclient.CodeAgentClient
+	InboundToken  string
+	InboundTokens serviceauth.TokenSet
+	GatewayToken  string
 }
 
 type carrierEventPayload struct {
@@ -73,27 +74,31 @@ func NewServerWithOptions(options Options) *Server {
 		}
 		options.Carrier = carrierclient.NewClientFromEnv()
 	}
-	if options.InboundToken == "" {
-		options.InboundToken = strings.TrimSpace(os.Getenv("EXECUTION_EVENT_TOKEN"))
+	if options.InboundTokens.Empty() {
+		if options.InboundToken != "" {
+			options.InboundTokens = serviceauth.NewTokenSet(options.InboundToken)
+		} else {
+			options.InboundTokens = serviceauth.FromEnv("EXECUTION_EVENT_TOKENS", "EXECUTION_EVENT_TOKEN")
+		}
 	}
 	if options.GatewayToken == "" {
-		options.GatewayToken = strings.TrimSpace(os.Getenv("EXECUTION_GATEWAY_TOKEN"))
+		options.GatewayToken = serviceauth.FromEnv("EXECUTION_GATEWAY_TOKENS", "EXECUTION_GATEWAY_TOKEN").Primary()
 	}
 	if runtimeconfig.RequireExternalDependencies() {
-		if strings.TrimSpace(options.InboundToken) == "" {
-			panic("EXECUTION_EVENT_TOKEN is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+		if options.InboundTokens.Empty() {
+			panic("EXECUTION_EVENT_TOKEN or EXECUTION_EVENT_TOKENS is required when ONE_TOK_REQUIRE_EXTERNALS=true")
 		}
 		if strings.TrimSpace(options.GatewayToken) == "" {
-			panic("EXECUTION_GATEWAY_TOKEN is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+			panic("EXECUTION_GATEWAY_TOKEN or EXECUTION_GATEWAY_TOKENS is required when ONE_TOK_REQUIRE_EXTERNALS=true")
 		}
 	}
 
 	return &Server{
-		client:       &http.Client{Timeout: 5 * time.Second},
-		upstream:     options.APIUpstream,
-		carrier:      options.Carrier,
-		inboundToken: options.InboundToken,
-		gatewayToken: options.GatewayToken,
+		client:        &http.Client{Timeout: 5 * time.Second},
+		upstream:      options.APIUpstream,
+		carrier:       options.Carrier,
+		inboundTokens: options.InboundTokens,
+		gatewayToken:  options.GatewayToken,
 	}
 }
 
@@ -121,7 +126,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Method == http.MethodPost && r.URL.Path == "/v1/carrier/events" {
-		if !serviceauth.MatchesRequest(r, s.inboundToken) {
+		if !s.inboundTokens.MatchesRequest(r) {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 			return
 		}

@@ -11,6 +11,7 @@ import (
 
 	fiberclient "github.com/chenyu/1-tok/internal/integrations/fiber"
 	iamclient "github.com/chenyu/1-tok/internal/integrations/iam"
+	"github.com/chenyu/1-tok/internal/serviceauth"
 )
 
 type stubFiberClient struct {
@@ -211,6 +212,40 @@ func TestCreateInvoiceRejectsMissingServiceTokenWhenConfigured(t *testing.T) {
 
 	if res.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d body=%s", res.Code, res.Body.String())
+	}
+}
+
+func TestCreateInvoiceAcceptsRotatedServiceTokenFromEnv(t *testing.T) {
+	t.Setenv("SETTLEMENT_SERVICE_TOKEN", "")
+	t.Setenv("SETTLEMENT_SERVICE_TOKENS", "current-token,next-token")
+
+	stub := &stubFiberClient{
+		createResult: fiberclient.CreateInvoiceResult{Invoice: "inv_123"},
+	}
+	server := NewServerWithOptions(Options{
+		Upstream: "http://127.0.0.1:8080",
+		Fiber:    stub,
+		Funding:  NewMemoryFundingRecordRepository(),
+	})
+
+	body := map[string]any{
+		"orderId":       "ord_1",
+		"milestoneId":   "ms_1",
+		"buyerOrgId":    "buyer_1",
+		"providerOrgId": "provider_1",
+		"asset":         "CKB",
+		"amount":        "12.5",
+	}
+	payload, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/invoices", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(serviceauth.HeaderName, "next-token")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusCreated {
+		t.Fatalf("expected rotated settlement token to be accepted, got %d body=%s", res.Code, res.Body.String())
 	}
 }
 

@@ -17,19 +17,20 @@ import (
 )
 
 type Server struct {
-	inner        http.Handler
-	fiber        fiberclient.InvoiceClient
-	funding      FundingRecordRepository
-	auth         iamclient.Client
-	serviceToken string
+	inner         http.Handler
+	fiber         fiberclient.InvoiceClient
+	funding       FundingRecordRepository
+	auth          iamclient.Client
+	serviceTokens serviceauth.TokenSet
 }
 
 type Options struct {
-	Upstream     string
-	Fiber        fiberclient.InvoiceClient
-	Funding      FundingRecordRepository
-	Auth         iamclient.Client
-	ServiceToken string
+	Upstream      string
+	Fiber         fiberclient.InvoiceClient
+	Funding       FundingRecordRepository
+	Auth          iamclient.Client
+	ServiceToken  string
+	ServiceTokens serviceauth.TokenSet
 }
 
 func NewServer() *Server {
@@ -67,15 +68,19 @@ func NewServerWithOptions(options Options) *Server {
 	if options.Auth == nil {
 		options.Auth = iamclient.NewClientFromEnv()
 	}
-	if options.ServiceToken == "" {
-		options.ServiceToken = strings.TrimSpace(os.Getenv("SETTLEMENT_SERVICE_TOKEN"))
+	if options.ServiceTokens.Empty() {
+		if options.ServiceToken != "" {
+			options.ServiceTokens = serviceauth.NewTokenSet(options.ServiceToken)
+		} else {
+			options.ServiceTokens = serviceauth.FromEnv("SETTLEMENT_SERVICE_TOKENS", "SETTLEMENT_SERVICE_TOKEN")
+		}
 	}
 	if runtimeconfig.RequireExternalDependencies() {
 		if options.Auth == nil {
 			panic("IAM_UPSTREAM is required when ONE_TOK_REQUIRE_EXTERNALS=true")
 		}
-		if strings.TrimSpace(options.ServiceToken) == "" {
-			panic("SETTLEMENT_SERVICE_TOKEN is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+		if options.ServiceTokens.Empty() {
+			panic("SETTLEMENT_SERVICE_TOKEN or SETTLEMENT_SERVICE_TOKENS is required when ONE_TOK_REQUIRE_EXTERNALS=true")
 		}
 	}
 
@@ -83,10 +88,10 @@ func NewServerWithOptions(options Options) *Server {
 		inner: proxy.NewSingleHost(options.Upstream, func(req *http.Request) {
 			req.URL.Path = "/api/v1" + req.URL.Path[3:]
 		}),
-		fiber:        options.Fiber,
-		funding:      options.Funding,
-		auth:         options.Auth,
-		serviceToken: options.ServiceToken,
+		fiber:         options.Fiber,
+		funding:       options.Funding,
+		auth:          options.Auth,
+		serviceTokens: options.ServiceTokens,
 	}
 }
 
@@ -555,10 +560,10 @@ func writeAuthError(w http.ResponseWriter, err error) {
 }
 
 func (s *Server) authorizeInternalRoute(r *http.Request) error {
-	if strings.TrimSpace(s.serviceToken) == "" {
+	if s.serviceTokens.Empty() {
 		return nil
 	}
-	if serviceauth.MatchesRequest(r, s.serviceToken) {
+	if s.serviceTokens.MatchesRequest(r) {
 		return nil
 	}
 	return errors.New("invalid service token")

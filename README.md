@@ -129,6 +129,8 @@ Persisted release paths now also run a dedicated `cmd/bootstrap` job first and f
 
 The release harness now scopes internal secrets by edge: one token for `execution -> api-gateway`, and a separate token for settlement internal routes.
 
+Receivers can now accept comma-separated rotated service tokens through `API_GATEWAY_EXECUTION_TOKENS`, `EXECUTION_EVENT_TOKENS`, `EXECUTION_GATEWAY_TOKENS`, and `SETTLEMENT_SERVICE_TOKENS`, while senders continue to use the first token as the current outbound value.
+
 ### Contracts tests
 
 ```bash

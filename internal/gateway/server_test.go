@@ -12,6 +12,7 @@ import (
 
 	iamclient "github.com/chenyu/1-tok/internal/integrations/iam"
 	"github.com/chenyu/1-tok/internal/platform"
+	"github.com/chenyu/1-tok/internal/serviceauth"
 )
 
 type stubIAMClient struct {
@@ -1342,5 +1343,18 @@ func TestSettleMilestoneRejectsMissingExecutionServiceTokenWhenConfigured(t *tes
 
 	if res.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d body=%s", res.Code, res.Body.String())
+	}
+}
+
+func TestAuthorizeExecutionMutationAcceptsRotatedExecutionServiceToken(t *testing.T) {
+	t.Setenv("API_GATEWAY_EXECUTION_TOKEN", "")
+	t.Setenv("API_GATEWAY_EXECUTION_TOKENS", "current-token,next-token")
+
+	server := NewServerWithApp(platform.NewAppWithMemory())
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders/ord_1/milestones/ms_1/settle", nil)
+	req.Header.Set(serviceauth.HeaderName, "next-token")
+
+	if err := server.authorizeExecutionMutation(req); err != nil {
+		t.Fatalf("expected rotated token to authorize execution mutation: %v", err)
 	}
 }
