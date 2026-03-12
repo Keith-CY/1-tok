@@ -300,6 +300,77 @@ func TestClientListsSettledFeedFromJSONRPC(t *testing.T) {
 	}
 }
 
+func TestClientListsWithdrawalStatusesFromDashboardSummary(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		payload, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read request body: %v", err)
+		}
+
+		var rpc struct {
+			Method string `json:"method"`
+			Params struct {
+				UserID       string `json:"userId"`
+				IncludeAdmin bool   `json:"includeAdmin"`
+			} `json:"params"`
+		}
+		if err := json.Unmarshal(payload, &rpc); err != nil {
+			t.Fatalf("decode rpc payload: %v", err)
+		}
+		if rpc.Method != "dashboard.summary" {
+			t.Fatalf("expected method dashboard.summary, got %q", rpc.Method)
+		}
+		if rpc.Params.UserID != "provider_1" || !rpc.Params.IncludeAdmin {
+			t.Fatalf("unexpected params: %+v", rpc.Params)
+		}
+
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0",
+			"id":      "req_6",
+			"result": map[string]any{
+				"balance": "0",
+				"balances": map[string]any{
+					"available": "0",
+					"pending":   "0",
+					"locked":    "0",
+					"asset":     "CKB",
+				},
+				"stats": map[string]any{
+					"pendingCount":   0,
+					"completedCount": 0,
+					"failedCount":    0,
+				},
+				"tips":        []any{},
+				"generatedAt": "2026-03-12T00:00:00Z",
+				"admin": map[string]any{
+					"withdrawals": []map[string]any{
+						{
+							"id":         "wd_123",
+							"userId":     "provider_1",
+							"asset":      "USDI",
+							"amount":     "10",
+							"state":      "PROCESSING",
+							"retryCount": 0,
+							"createdAt":  "2026-03-12T00:00:00Z",
+							"updatedAt":  "2026-03-12T00:01:00Z",
+						},
+					},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL+"/rpc", "app_1", "secret_1")
+	result, err := client.ListWithdrawalStatuses(context.Background(), "provider_1")
+	if err != nil {
+		t.Fatalf("list withdrawal statuses: %v", err)
+	}
+	if len(result.Withdrawals) != 1 || result.Withdrawals[0].State != "PROCESSING" {
+		t.Fatalf("unexpected withdrawal status result: %+v", result)
+	}
+}
+
 func signPayloadForTest(secret string, payload []byte, ts, nonce string) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	_, _ = mac.Write([]byte(ts))

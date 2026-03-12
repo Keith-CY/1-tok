@@ -22,6 +22,8 @@ type stubFiberClient struct {
 	requestPayoutResult fiberclient.RequestPayoutResult
 	settledFeedInput    fiberclient.SettledFeedInput
 	settledFeedResult   fiberclient.SettledFeedResult
+	withdrawalsUserID   string
+	withdrawalsResult   fiberclient.WithdrawalStatusResult
 }
 
 func (s *stubFiberClient) CreateInvoice(_ context.Context, input fiberclient.CreateInvoiceInput) (fiberclient.CreateInvoiceResult, error) {
@@ -47,6 +49,11 @@ func (s *stubFiberClient) RequestPayout(_ context.Context, input fiberclient.Req
 func (s *stubFiberClient) ListSettledFeed(_ context.Context, input fiberclient.SettledFeedInput) (fiberclient.SettledFeedResult, error) {
 	s.settledFeedInput = input
 	return s.settledFeedResult, nil
+}
+
+func (s *stubFiberClient) ListWithdrawalStatuses(_ context.Context, userID string) (fiberclient.WithdrawalStatusResult, error) {
+	s.withdrawalsUserID = userID
+	return s.withdrawalsResult, nil
 }
 
 func TestCreateInvoiceUsesFiberClient(t *testing.T) {
@@ -405,5 +412,73 @@ func TestSettledFeedUpdatesFundingRecordState(t *testing.T) {
 	}
 	if len(listResponse.Records) != 1 || listResponse.Records[0].State != "SETTLED" {
 		t.Fatalf("expected settled funding record after feed sync, got %+v", listResponse.Records)
+	}
+}
+
+func TestWithdrawalStatusSyncUpdatesFundingRecordState(t *testing.T) {
+	stub := &stubFiberClient{
+		requestPayoutResult: fiberclient.RequestPayoutResult{
+			ID:    "wd_123",
+			State: "PENDING",
+		},
+		withdrawalsResult: fiberclient.WithdrawalStatusResult{
+			Withdrawals: []fiberclient.WithdrawalStatusItem{
+				{
+					ID:    "wd_123",
+					State: "PROCESSING",
+				},
+			},
+		},
+	}
+	funding := NewMemoryFundingRecordRepository()
+	server := NewServerWithOptions(Options{
+		Upstream: "http://127.0.0.1:8080",
+		Fiber:    stub,
+		Funding:  funding,
+	})
+
+	body := map[string]any{
+		"providerOrgId": "provider_1",
+		"asset":         "USDI",
+		"amount":        "10",
+		"destination": map[string]any{
+			"kind":           "PAYMENT_REQUEST",
+			"paymentRequest": "fiber:invoice:example",
+		},
+	}
+	payload, _ := json.Marshal(body)
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/withdrawals", bytes.NewReader(payload))
+	createRes := httptest.NewRecorder()
+	server.ServeHTTP(createRes, createReq)
+	if createRes.Code != http.StatusCreated {
+		t.Fatalf("expected 201 from withdrawal creation, got %d body=%s", createRes.Code, createRes.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/withdrawals/status?providerOrgId=provider_1", nil)
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", res.Code, res.Body.String())
+	}
+	if stub.withdrawalsUserID != "provider_1" {
+		t.Fatalf("expected provider_1 withdrawal sync, got %q", stub.withdrawalsUserID)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/funding-records", nil)
+	listRes := httptest.NewRecorder()
+	server.ServeHTTP(listRes, listReq)
+	if listRes.Code != http.StatusOK {
+		t.Fatalf("expected 200 from funding list, got %d body=%s", listRes.Code, listRes.Body.String())
+	}
+
+	var listResponse struct {
+		Records []FundingRecord `json:"records"`
+	}
+	if err := json.Unmarshal(listRes.Body.Bytes(), &listResponse); err != nil {
+		t.Fatalf("decode funding records: %v", err)
+	}
+	if len(listResponse.Records) != 1 || listResponse.Records[0].State != "PROCESSING" {
+		t.Fatalf("expected processing withdrawal record after status sync, got %+v", listResponse.Records)
 	}
 }

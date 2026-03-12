@@ -47,6 +47,7 @@ type FundingRecordRepository interface {
 	NextID() (string, error)
 	Save(record FundingRecord) error
 	UpdateInvoiceState(invoice, state string) error
+	UpdateExternalState(externalID, state string) error
 	List(filter FundingRecordFilter) ([]FundingRecord, error)
 }
 
@@ -81,6 +82,19 @@ func (r *memoryFundingRecordRepository) UpdateInvoiceState(invoice, state string
 	defer r.mu.Unlock()
 	for id, record := range r.data {
 		if record.Invoice == invoice {
+			record.State = state
+			record.UpdatedAt = time.Now().UTC()
+			r.data[id] = record
+		}
+	}
+	return nil
+}
+
+func (r *memoryFundingRecordRepository) UpdateExternalState(externalID, state string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for id, record := range r.data {
+		if record.ExternalID == externalID {
 			record.State = state
 			record.UpdatedAt = time.Now().UTC()
 			r.data[id] = record
@@ -160,6 +174,15 @@ func (r *postgresFundingRecordRepository) UpdateInvoiceState(invoice, state stri
 		SET state = $2, updated_at = NOW()
 		WHERE invoice = $1
 	`, invoice, state)
+	return err
+}
+
+func (r *postgresFundingRecordRepository) UpdateExternalState(externalID, state string) error {
+	_, err := r.db.Exec(`
+		UPDATE settlement_funding_records
+		SET state = $2, updated_at = NOW()
+		WHERE external_id = $1
+	`, externalID, state)
 	return err
 }
 

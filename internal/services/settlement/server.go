@@ -90,6 +90,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.Method == http.MethodGet && r.URL.Path == "/v1/withdrawals/status" {
+		s.handleWithdrawalStatuses(w, r)
+		return
+	}
+
 	if strings.HasPrefix(r.URL.Path, "/v1/orders/") {
 		s.inner.ServeHTTP(w, r)
 		return
@@ -302,6 +307,32 @@ func (s *Server) handleSettledFeed(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if err := s.funding.UpdateInvoiceState(item.Invoice, "SETTLED"); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (s *Server) handleWithdrawalStatuses(w http.ResponseWriter, r *http.Request) {
+	userID := strings.TrimSpace(r.URL.Query().Get("providerOrgId"))
+	if userID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing providerOrgId"})
+		return
+	}
+
+	result, err := s.fiber.ListWithdrawalStatuses(r.Context(), userID)
+	if err != nil {
+		writeFiberError(w, err)
+		return
+	}
+
+	for _, item := range result.Withdrawals {
+		if strings.TrimSpace(item.ID) == "" {
+			continue
+		}
+		if err := s.funding.UpdateExternalState(item.ID, item.State); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}

@@ -25,6 +25,7 @@ type InvoiceClient interface {
 	QuotePayout(ctx context.Context, input QuotePayoutInput) (QuotePayoutResult, error)
 	RequestPayout(ctx context.Context, input RequestPayoutInput) (RequestPayoutResult, error)
 	ListSettledFeed(ctx context.Context, input SettledFeedInput) (SettledFeedResult, error)
+	ListWithdrawalStatuses(ctx context.Context, userID string) (WithdrawalStatusResult, error)
 }
 
 type CreateInvoiceInput struct {
@@ -108,6 +109,18 @@ type SettledFeedResult struct {
 	NextCursor *SettledFeedCursor `json:"nextCursor,omitempty"`
 }
 
+type WithdrawalStatusItem struct {
+	ID     string `json:"id"`
+	UserID string `json:"userId"`
+	Asset  string `json:"asset"`
+	Amount string `json:"amount"`
+	State  string `json:"state"`
+}
+
+type WithdrawalStatusResult struct {
+	Withdrawals []WithdrawalStatusItem `json:"withdrawals"`
+}
+
 type Client struct {
 	endpoint   string
 	appID      string
@@ -176,6 +189,25 @@ func (c *Client) ListSettledFeed(ctx context.Context, input SettledFeedInput) (S
 		return SettledFeedResult{}, err
 	}
 	return result, nil
+}
+
+func (c *Client) ListWithdrawalStatuses(ctx context.Context, userID string) (WithdrawalStatusResult, error) {
+	var response struct {
+		Admin struct {
+			Withdrawals []WithdrawalStatusItem `json:"withdrawals"`
+		} `json:"admin"`
+	}
+	if err := c.call(ctx, "dashboard.summary", map[string]any{
+		"userId":       userID,
+		"includeAdmin": true,
+		"filters": map[string]string{
+			"withdrawalState": "ALL",
+			"settlementState": "ALL",
+		},
+	}, &response); err != nil {
+		return WithdrawalStatusResult{}, err
+	}
+	return WithdrawalStatusResult{Withdrawals: response.Admin.Withdrawals}, nil
 }
 
 func (c *Client) call(ctx context.Context, method string, params any, target any) error {
@@ -258,6 +290,10 @@ func (m missingClient) RequestPayout(context.Context, RequestPayoutInput) (Reque
 
 func (m missingClient) ListSettledFeed(context.Context, SettledFeedInput) (SettledFeedResult, error) {
 	return SettledFeedResult{}, m.err
+}
+
+func (m missingClient) ListWithdrawalStatuses(context.Context, string) (WithdrawalStatusResult, error) {
+	return WithdrawalStatusResult{}, m.err
 }
 
 func signPayload(secret string, payload []byte, ts, nonce string) string {
