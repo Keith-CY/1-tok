@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { createIAMSession, SESSION_COOKIE_NAME } from "../../../lib/session";
+import { createIAMSession, SESSION_COOKIE_NAME, shouldUseSecureSessionCookie } from "../../../lib/session";
 
 export async function POST(request: Request) {
   const form = await request.formData();
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
       value: result.session.token,
       httpOnly: true,
       sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
+      secure: shouldUseSecureSessionCookie(),
       path: "/",
     });
 
@@ -37,4 +37,3 @@ function sanitizeNextPath(value: string): string {
   }
   return value;
 }
-

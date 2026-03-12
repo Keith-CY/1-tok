@@ -138,7 +138,7 @@ func (s *MemoryStore) CreateSignup(input Signup) (ActorProfile, error) {
 	membership := Membership{
 		UserID:         user.ID,
 		OrganizationID: organization.ID,
-		Role:           "org_owner",
+		Role:           DefaultMembershipRoleForOrganizationKind(organization.Kind),
 		CreatedAt:      now,
 	}
 

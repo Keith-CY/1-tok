@@ -163,6 +163,10 @@ func RunPortalSmoke(ctx context.Context, cfg PortalConfig) (PortalSummary, error
 		return PortalSummary{}, errors.New("portal smoke: awarded rfq missing order id")
 	}
 
+	if err := client.settleOrderMilestone(ctx, apiBaseURL, rfq.OrderID); err != nil {
+		return PortalSummary{}, err
+	}
+
 	if err := client.createDispute(ctx, apiBaseURL, buyerToken, rfq.OrderID); err != nil {
 		return PortalSummary{}, err
 	}
@@ -330,6 +334,14 @@ func (c *smokeClient) createDispute(ctx context.Context, apiBaseURL, token, orde
 		"milestoneId": "ms_1",
 		"reason":      "Output incomplete",
 		"refundCents": 900,
+	}, nil)
+}
+
+func (c *smokeClient) settleOrderMilestone(ctx context.Context, apiBaseURL, orderID string) error {
+	return c.postJSONWithToken(ctx, fmt.Sprintf("%s/api/v1/orders/%s/milestones/ms_1/settle", apiBaseURL, orderID), "", map[string]any{
+		"milestoneId": "ms_1",
+		"summary":     "Portal smoke milestone settled before dispute.",
+		"source":      "portal_smoke",
 	}, nil)
 }
 

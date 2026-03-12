@@ -16,6 +16,13 @@ export function resolveIAMBaseURL(): string | null {
   return process.env.IAM_BASE_URL?.replace(/\/$/, "") ?? null;
 }
 
+export function shouldUseSecureSessionCookie(): boolean {
+  if (process.env.NODE_ENV !== "production") {
+    return false;
+  }
+  return process.env.ONE_TOK_ALLOW_INSECURE_SESSION_COOKIE !== "true";
+}
+
 export async function createIAMSession(email: string, password: string): Promise<IAMSessionResponse> {
   const baseUrl = resolveIAMBaseURL();
   if (!baseUrl) {
@@ -73,4 +80,3 @@ export function parseCookieValue(cookieHeader: string | null, name: string): str
 
   return null;
 }
-

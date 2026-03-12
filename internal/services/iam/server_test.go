@@ -175,3 +175,64 @@ func TestLogoutRevokesSession(t *testing.T) {
 		t.Fatalf("expected 401 after logout, got %d body=%s", meRes.Code, meRes.Body.String())
 	}
 }
+
+func TestSignupAssignsOpsReviewerMembership(t *testing.T) {
+	server := NewServerWithOptions(Options{})
+
+	signupBody := map[string]any{
+		"email":            "ops@example.com",
+		"password":         "correct horse battery staple",
+		"name":             "Ops User",
+		"organizationName": "Treasury Ops",
+		"organizationKind": "ops",
+	}
+	signupPayload, _ := json.Marshal(signupBody)
+
+	signupReq := httptest.NewRequest(http.MethodPost, "/v1/signup", bytes.NewReader(signupPayload))
+	signupReq.Header.Set("Content-Type", "application/json")
+	signupRes := httptest.NewRecorder()
+	server.ServeHTTP(signupRes, signupReq)
+
+	if signupRes.Code != http.StatusCreated {
+		t.Fatalf("expected 201 from signup, got %d body=%s", signupRes.Code, signupRes.Body.String())
+	}
+
+	var signupResponse struct {
+		Membership struct {
+			Role string `json:"role"`
+		} `json:"membership"`
+		Session struct {
+			Token string `json:"token"`
+		} `json:"session"`
+	}
+	if err := json.Unmarshal(signupRes.Body.Bytes(), &signupResponse); err != nil {
+		t.Fatalf("decode signup response: %v", err)
+	}
+	if signupResponse.Membership.Role != "ops_reviewer" {
+		t.Fatalf("expected ops_reviewer membership, got %+v", signupResponse.Membership)
+	}
+
+	meReq := httptest.NewRequest(http.MethodGet, "/v1/me", nil)
+	meReq.Header.Set("Authorization", "Bearer "+signupResponse.Session.Token)
+	meRes := httptest.NewRecorder()
+	server.ServeHTTP(meRes, meReq)
+
+	if meRes.Code != http.StatusOK {
+		t.Fatalf("expected 200 from me, got %d body=%s", meRes.Code, meRes.Body.String())
+	}
+
+	var meResponse struct {
+		Memberships []struct {
+			Role         string `json:"role"`
+			Organization struct {
+				Kind string `json:"kind"`
+			} `json:"organization"`
+		} `json:"memberships"`
+	}
+	if err := json.Unmarshal(meRes.Body.Bytes(), &meResponse); err != nil {
+		t.Fatalf("decode me response: %v", err)
+	}
+	if len(meResponse.Memberships) != 1 || meResponse.Memberships[0].Organization.Kind != "ops" || meResponse.Memberships[0].Role != "ops_reviewer" {
+		t.Fatalf("unexpected memberships: %+v", meResponse.Memberships)
+	}
+}

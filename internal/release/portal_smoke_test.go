@@ -24,6 +24,7 @@ func TestRunPortalSmokeExercisesPortalForms(t *testing.T) {
 	var bidID string
 	var orderID string
 	var disputeID string
+	var settledOrderID string
 
 	iam := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -197,7 +198,18 @@ func TestRunPortalSmokeExercisesPortalForms(t *testing.T) {
 					},
 				},
 			})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/orders/ord_web_1/milestones/ms_1/settle":
+			settledOrderID = "ord_web_1"
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"order": map[string]any{"id": orderID, "status": "completed"},
+				"ledgerEntry": map[string]any{
+					"kind": "platform_exposure",
+				},
+			})
 		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/orders/ord_web_1/disputes":
+			if settledOrderID != orderID {
+				t.Fatalf("dispute opened before settlement: settled=%q order=%q", settledOrderID, orderID)
+			}
 			disputeID = "disp_web_1"
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"order":         map[string]any{"id": orderID},

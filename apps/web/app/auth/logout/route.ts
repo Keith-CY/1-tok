@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { parseCookieValue, revokeIAMSession, SESSION_COOKIE_NAME } from "../../../lib/session";
+import { parseCookieValue, revokeIAMSession, SESSION_COOKIE_NAME, shouldUseSecureSessionCookie } from "../../../lib/session";
 
 export async function POST(request: Request) {
   const token = parseCookieValue(request.headers.get("cookie"), SESSION_COOKIE_NAME);
@@ -14,10 +14,9 @@ export async function POST(request: Request) {
     value: "",
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: shouldUseSecureSessionCookie(),
     path: "/",
     maxAge: 0,
   });
   return response;
 }
-

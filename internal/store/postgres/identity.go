@@ -60,7 +60,7 @@ func (s *IdentityStore) CreateSignup(input identity.Signup) (identity.ActorProfi
 	if _, err := tx.Exec(`
 		INSERT INTO memberships (user_id, organization_id, role, created_at)
 		VALUES ($1, $2, $3, NOW())
-	`, userID, orgID, "org_owner"); err != nil {
+	`, userID, orgID, identity.DefaultMembershipRoleForOrganizationKind(input.OrganizationKind)); err != nil {
 		return identity.ActorProfile{}, err
 	}
 
@@ -82,7 +82,7 @@ func (s *IdentityStore) CreateSignup(input identity.Signup) (identity.ActorProfi
 					Name: strings.TrimSpace(input.OrganizationName),
 					Kind: strings.TrimSpace(input.OrganizationKind),
 				},
-				Role: "org_owner",
+				Role: identity.DefaultMembershipRoleForOrganizationKind(input.OrganizationKind),
 			},
 		},
 	}, nil
