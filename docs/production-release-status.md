@@ -1,6 +1,6 @@
 # Production Release Status
 
-Last updated: `2026-03-12`
+Last updated: `2026-03-13`
 
 ## Summary
 
@@ -19,6 +19,9 @@ Repo-local release work already in place:
 - CI-safe reference coverage for a Dockerized `fnn` runtime overlay plus local `fiber-adapter`
 - a dedicated `release:compose-fnn-smoke` path for validating raw FNN container startup alongside the stack
 - a Docker-only `release:compose-e2e` path that runs both raw-`fnn` adapter smoke and the existing full business smoke suite from an `e2e-runner` container inside the compose network
+- production Sentry initialization for all long-lived Go services plus the Next web runtime
+- Redis-backed rate limiting on IAM and API gateway critical write routes
+- a Docker-only abuse smoke that proves 429 behavior and mock-Sentry event delivery inside the compose network
 - a `release:compose-fnn-dual-node-smoke` path that now includes first-cut CKB faucet/top-up preflight before running the dual-node adapter-backed payment smoke
 - one successful local live verification of `release:compose-fnn-dual-node-smoke` against fresh Dockerized `fnn` / `fnn2` nodes plus testnet faucet/RPC on `2026-03-13`
 - persisted release evidence artifacts plus aggregated `release-manifest.json`
@@ -43,6 +46,12 @@ There is also an important protocol boundary to keep in mind:
 - but the full paid-settlement marketplace smoke still talks to `mock-fiber` for commit-safe business coverage
 
 So the current honest release posture is: validate Dockerized `fnn` plus adapter translation under CI, and keep full paid-settlement marketplace smoke on `mock-fiber` until the dual-node funded FNN path is deterministic enough to replace it in routine release rehearsal.
+
+The repo is now also materially closer to "production-ready" from an operational perspective:
+
+- failures in long-lived services can now be shipped to Sentry with shared `service`, `release`, and `environment` tags
+- the critical public write paths now have Redis-backed throttling instead of being fully unprotected
+- Docker CI now has a built-in abuse proof path, not just happy-path business smoke
 
 ## Latest Live Dual-Node Result
 
@@ -112,8 +121,10 @@ These are still worth doing, but they are not the current hard blocker for a rel
 
 - move internal service credentials from env secrets to a managed machine-identity or secret-manager flow
 - add periodic artifact upload or archival to external storage
-- add alerting around `settlement-reconciler` failures
+- configure real Sentry project alerts and notification routing for production
+- add backup and restore rehearsal for Postgres and persistent FNN data
 - run the same external rehearsal from the intended deployment platform, not only from a developer workstation
 - persist and archive artifacts from the successful dual-node live smoke so it can serve as reusable release evidence
 - replace `mock-fiber` in business smoke with a dual-node, funded adapter-backed FNN path once paid settlement is deterministic enough for CI or release rehearsal
 - upstream the Carrier contract described in [carrier-pr-support.md](/Users/ChenYu/Documents/Github/1-tok/docs/carrier-pr-support.md)
+- track the remaining launch items in [production-launch-checklist.md](/Users/ChenYu/Documents/Github/1-tok/docs/production-launch-checklist.md)

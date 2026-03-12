@@ -16,6 +16,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/chenyu/1-tok/internal/identity"
+	"github.com/chenyu/1-tok/internal/observability"
+	"github.com/chenyu/1-tok/internal/ratelimit"
 	"github.com/chenyu/1-tok/internal/runtimeconfig"
 	"github.com/chenyu/1-tok/internal/store/postgres"
 )
@@ -26,12 +28,14 @@ type Server struct {
 	store      identity.Store
 	now        func() time.Time
 	sessionTTL time.Duration
+	rateLimiter ratelimit.Limiter
 }
 
 type Options struct {
 	Store      identity.Store
 	SessionTTL time.Duration
 	Now        func() time.Time
+	RateLimiter ratelimit.Limiter
 }
 
 func NewServer() *Server {
@@ -43,6 +47,13 @@ func NewServer() *Server {
 func NewServerWithOptions(options Options) *Server {
 	if options.Store == nil {
 		options.Store = loadStoreFromEnv()
+	}
+	if options.RateLimiter == nil {
+		limiter, err := ratelimit.NewServiceFromEnv()
+		if err != nil {
+			panic(err)
+		}
+		options.RateLimiter = limiter
 	}
 	if options.SessionTTL <= 0 {
 		options.SessionTTL = defaultSessionTTL
@@ -57,6 +68,7 @@ func NewServerWithOptions(options Options) *Server {
 		store:      options.Store,
 		now:        options.Now,
 		sessionTTL: options.SessionTTL,
+		rateLimiter: options.RateLimiter,
 	}
 }
 
@@ -114,6 +126,20 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	}
 	if !validSignupPayload(payload.Email, payload.Password, payload.Name, payload.OrganizationName, payload.OrganizationKind) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required fields"})
+		return
+	}
+	r = observability.WithRequestTags(r, observability.RequestTags{
+		Route:   "/v1/signup",
+		Subject: ratelimit.SubjectHash(payload.Email),
+	})
+	if blocked := s.applyRateLimit(w, r, ratelimit.PolicyIAMSignupIP, ratelimit.Meta{
+		IP: ratelimit.ClientIP(r),
+	}); blocked {
+		return
+	}
+	if blocked := s.applyRateLimit(w, r, ratelimit.PolicyIAMSignupDailyIP, ratelimit.Meta{
+		IP: ratelimit.ClientIP(r),
+	}); blocked {
 		return
 	}
 
@@ -187,6 +213,21 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.TrimSpace(payload.Email) == "" || strings.TrimSpace(payload.Password) == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required fields"})
+		return
+	}
+	subjectHash := ratelimit.SubjectHash(payload.Email)
+	r = observability.WithRequestTags(r, observability.RequestTags{
+		Route:   "/v1/sessions",
+		Subject: subjectHash,
+	})
+	if blocked := s.applyRateLimit(w, r, ratelimit.PolicyIAMLoginIP, ratelimit.Meta{
+		IP: ratelimit.ClientIP(r),
+	}); blocked {
+		return
+	}
+	if blocked := s.applyRateLimit(w, r, ratelimit.PolicyIAMLoginSubject, ratelimit.Meta{
+		SubjectHash: subjectHash,
+	}); blocked {
 		return
 	}
 
@@ -276,6 +317,24 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	token, ok := bearerToken(r.Header.Get("Authorization"))
 	if !ok {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "missing bearer token"})
+		return
+	}
+	actor, err := s.store.GetAuthenticatedActorBySessionDigest(tokenDigest(token))
+	if errors.Is(err, identity.ErrNotFound) {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid session"})
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	r = observability.WithRequestTags(r, observability.RequestTags{
+		Route:  "/v1/logout",
+		UserID: actor.User.ID,
+	})
+	if blocked := s.applyRateLimit(w, r, ratelimit.PolicyIAMLogoutUser, ratelimit.Meta{
+		UserID: actor.User.ID,
+	}); blocked {
 		return
 	}
 
@@ -388,4 +447,23 @@ func randomToken() (string, error) {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(buf), nil
+}
+
+func (s *Server) applyRateLimit(w http.ResponseWriter, r *http.Request, policy ratelimit.Policy, meta ratelimit.Meta) bool {
+	if s.rateLimiter == nil {
+		return false
+	}
+	decision, err := s.rateLimiter.Allow(r.Context(), policy, meta)
+	if err != nil {
+		observability.CaptureError(r.Context(), err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "rate limiter unavailable"})
+		return true
+	}
+	if decision.Allowed {
+		return false
+	}
+	ratelimit.WriteHeaders(w, s.now(), decision)
+	observability.CaptureMessage(r.Context(), "rate limit exceeded")
+	writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "rate limit exceeded"})
+	return true
 }

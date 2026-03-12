@@ -6,6 +6,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/chenyu/1-tok/internal/identity"
+	"github.com/chenyu/1-tok/internal/ratelimit"
 )
 
 func TestSignupLoginAndMeRoundTrip(t *testing.T) {
@@ -249,4 +253,83 @@ func TestNewServerRequiresPersistentStoreWhenConfigured(t *testing.T) {
 	}()
 
 	_ = NewServer()
+}
+
+func TestNewServerRequiresRedisWhenRateLimitIsEnforced(t *testing.T) {
+	t.Setenv("RATE_LIMIT_ENFORCE", "true")
+	t.Setenv("REDIS_URL", "")
+
+	defer func() {
+		if recovered := recover(); recovered == nil {
+			t.Fatalf("expected NewServer to panic when rate limiting is enforced without redis")
+		}
+	}()
+
+	_ = NewServer()
+}
+
+func TestCreateSessionIsRateLimited(t *testing.T) {
+	now := time.Date(2026, 3, 13, 10, 0, 0, 0, time.UTC)
+	server := NewServerWithOptions(Options{
+		Store: identity.NewMemoryStore(),
+		RateLimiter: ratelimit.NewServiceWithOptions(ratelimit.Options{
+			Enforce: true,
+			Now: func() time.Time {
+				return now
+			},
+			Store: ratelimit.NewMemoryStore(func() time.Time {
+				return now
+			}),
+			Policies: map[ratelimit.Policy]ratelimit.PolicyConfig{
+				ratelimit.PolicyIAMLoginIP: {
+					Limit:  1,
+					Window: time.Minute,
+					Scope:  []ratelimit.ScopePart{ratelimit.ScopeIP},
+				},
+				ratelimit.PolicyIAMLoginSubject: {
+					Limit:  1,
+					Window: time.Minute,
+					Scope:  []ratelimit.ScopePart{ratelimit.ScopeSubject},
+				},
+			},
+		}),
+	})
+
+	signupPayload, _ := json.Marshal(map[string]any{
+		"email":            "owner@example.com",
+		"password":         "correct horse battery staple",
+		"name":             "Owner One",
+		"organizationName": "Atlas Buyer",
+		"organizationKind": "buyer",
+	})
+	signupReq := httptest.NewRequest(http.MethodPost, "/v1/signup", bytes.NewReader(signupPayload))
+	signupReq.Header.Set("Content-Type", "application/json")
+	signupRes := httptest.NewRecorder()
+	server.ServeHTTP(signupRes, signupReq)
+	if signupRes.Code != http.StatusCreated {
+		t.Fatalf("expected signup 201, got %d body=%s", signupRes.Code, signupRes.Body.String())
+	}
+
+	loginPayload, _ := json.Marshal(map[string]any{
+		"email":    "owner@example.com",
+		"password": "correct horse battery staple",
+	})
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest(http.MethodPost, "/v1/sessions", bytes.NewReader(loginPayload))
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = "203.0.113.10:1234"
+		res := httptest.NewRecorder()
+		server.ServeHTTP(res, req)
+		if i == 0 && res.Code != http.StatusCreated {
+			t.Fatalf("expected first login 201, got %d body=%s", res.Code, res.Body.String())
+		}
+		if i == 1 {
+			if res.Code != http.StatusTooManyRequests {
+				t.Fatalf("expected second login 429, got %d body=%s", res.Code, res.Body.String())
+			}
+			if res.Header().Get("Retry-After") == "" {
+				t.Fatalf("expected Retry-After header")
+			}
+		}
+	}
 }

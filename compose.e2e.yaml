@@ -1,5 +1,32 @@
 services:
+  mock-sentry:
+    build:
+      context: .
+      dockerfile: Dockerfile.go-service
+      args:
+        SERVICE: mock-sentry
+    environment:
+      MOCK_SENTRY_ADDR: ":8092"
+    ports:
+      - "${MOCK_SENTRY_PUBLISHED_PORT:-28092}:8092"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8092/healthz >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  bootstrap:
+    environment:
+      SENTRY_DSN: http://public@mock-sentry:8092/1
+      SENTRY_ENVIRONMENT: compose-e2e
+      SENTRY_RELEASE: compose-e2e
+
   fiber-adapter:
+    environment:
+      SENTRY_DSN: http://public@mock-sentry:8092/1
+      SENTRY_ENVIRONMENT: compose-e2e
+      SENTRY_RELEASE: compose-e2e
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8091/healthz >/dev/null"]
       interval: 5s
@@ -24,6 +51,10 @@ services:
       start_period: 5s
 
   iam:
+    environment:
+      SENTRY_DSN: http://public@mock-sentry:8092/1
+      SENTRY_ENVIRONMENT: compose-e2e
+      SENTRY_RELEASE: compose-e2e
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8081/healthz >/dev/null"]
       interval: 5s
@@ -32,6 +63,10 @@ services:
       start_period: 5s
 
   api-gateway:
+    environment:
+      SENTRY_DSN: http://public@mock-sentry:8092/1
+      SENTRY_ENVIRONMENT: compose-e2e
+      SENTRY_RELEASE: compose-e2e
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/healthz >/dev/null"]
       interval: 5s
@@ -40,6 +75,10 @@ services:
       start_period: 5s
 
   marketplace:
+    environment:
+      SENTRY_DSN: http://public@mock-sentry:8092/1
+      SENTRY_ENVIRONMENT: compose-e2e
+      SENTRY_RELEASE: compose-e2e
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8082/healthz >/dev/null"]
       interval: 5s
@@ -48,6 +87,10 @@ services:
       start_period: 5s
 
   settlement:
+    environment:
+      SENTRY_DSN: http://public@mock-sentry:8092/1
+      SENTRY_ENVIRONMENT: compose-e2e
+      SENTRY_RELEASE: compose-e2e
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8083/healthz >/dev/null"]
       interval: 5s
@@ -56,6 +99,10 @@ services:
       start_period: 5s
 
   execution:
+    environment:
+      SENTRY_DSN: http://public@mock-sentry:8092/1
+      SENTRY_ENVIRONMENT: compose-e2e
+      SENTRY_RELEASE: compose-e2e
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8085/healthz >/dev/null"]
       interval: 5s
@@ -64,6 +111,11 @@ services:
       start_period: 5s
 
   web:
+    environment:
+      NEXT_PUBLIC_SENTRY_DSN: http://public@mock-sentry:8092/1
+      SENTRY_DSN: http://public@mock-sentry:8092/1
+      SENTRY_ENVIRONMENT: compose-e2e
+      SENTRY_RELEASE: compose-e2e
     healthcheck:
       test:
         [
@@ -74,6 +126,24 @@ services:
       timeout: 10s
       retries: 20
       start_period: 10s
+
+  settlement-reconciler:
+    environment:
+      SENTRY_DSN: http://public@mock-sentry:8092/1
+      SENTRY_ENVIRONMENT: compose-e2e
+      SENTRY_RELEASE: compose-e2e
+
+  risk:
+    environment:
+      SENTRY_DSN: http://public@mock-sentry:8092/1
+      SENTRY_ENVIRONMENT: compose-e2e
+      SENTRY_RELEASE: compose-e2e
+
+  notification:
+    environment:
+      SENTRY_DSN: http://public@mock-sentry:8092/1
+      SENTRY_ENVIRONMENT: compose-e2e
+      SENTRY_RELEASE: compose-e2e
 
   e2e-runner:
     build:
@@ -100,6 +170,8 @@ services:
       RELEASE_PORTAL_SMOKE_IAM_BASE_URL: http://iam:8081
       RELEASE_PORTAL_SMOKE_EXECUTION_BASE_URL: http://execution:8085
       RELEASE_PORTAL_SMOKE_EXECUTION_EVENT_TOKEN: ${ONE_TOK_EXECUTION_EVENT_TOKEN:-local-execution-event-token}
+      RELEASE_ABUSE_IAM_BASE_URL: http://iam:8081
+      RELEASE_ABUSE_SENTRY_BASE_URL: http://mock-sentry:8092
     depends_on:
       fnn:
         condition: service_healthy
@@ -123,9 +195,11 @@ services:
         condition: service_healthy
       web:
         condition: service_healthy
+      mock-sentry:
+        condition: service_healthy
       settlement-reconciler:
         condition: service_started
     command:
       - /bin/sh
       - -lc
-      - /usr/local/bin/release-fnn-adapter-smoke && /usr/local/bin/release-smoke && /usr/local/bin/release-portal-smoke
+      - /usr/local/bin/release-fnn-adapter-smoke && /usr/local/bin/release-smoke && /usr/local/bin/release-portal-smoke && /usr/local/bin/release-abuse-smoke

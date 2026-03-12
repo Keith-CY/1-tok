@@ -17,6 +17,7 @@ This repository is structured so Coolify can manage each Go service as an indepe
 - `fiber-adapter` (optional bridge service if you want local `tip.*` / `withdrawal.*` translation onto raw `fnn`)
 - `fnn2` (optional second raw FNN node if you want to rehearse channel bootstrap and real payment routing)
 - `postgres`
+- `redis`
 - `nats`
 - `web`
 
@@ -46,6 +47,7 @@ This repository is structured so Coolify can manage each Go service as an indepe
 - Enable JetStream for `nats`.
 - Run `bootstrap` as a one-shot job before `iam`, `api-gateway`, `settlement`, and `settlement-reconciler`.
 - Run `settlement-reconciler` as a long-lived worker on the same internal network as `postgres` and `settlement`.
+- Keep `redis` on the same internal network as `iam` and `api-gateway`; the current production rate limiting depends on it.
 - If you also want raw Fiber node infra under Coolify, add the optional `fnn` service using [compose.fnn.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.fnn.yaml) as the reference shape.
 - If you want to rehearse real raw-FNN payment routing, add both `fnn` and `fnn2` from [compose.fnn.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.fnn.yaml), then run the dual-node smoke once those nodes are funded.
 - If you want a bridge between existing `tip.*` / `withdrawal.*` calls and raw `fnn`, add the optional `fiber-adapter` service from the same [compose.fnn.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.fnn.yaml) overlay.
@@ -60,9 +62,18 @@ This repository is structured so Coolify can manage each Go service as an indepe
 - `RISK_ADDR=:8084`
 - `EXECUTION_ADDR=:8085`
 - `NOTIFICATION_ADDR=:8086`
+- `REDIS_URL=redis://...`
+- `RATE_LIMIT_ENFORCE=true`
+- `RATE_LIMIT_TRUST_PROXY=true`
+- `RATE_LIMIT_TRUSTED_HOPS=1`
 - `ONE_TOK_REQUIRE_PERSISTENCE=true`
 - `ONE_TOK_REQUIRE_BOOTSTRAP=true`
 - `ONE_TOK_REQUIRE_EXTERNALS=true`
+- `SENTRY_DSN`
+- `NEXT_PUBLIC_SENTRY_DSN`
+- `SENTRY_ENVIRONMENT`
+- `SENTRY_RELEASE`
+- `SENTRY_TRACES_SAMPLE_RATE`
 - `API_GATEWAY_EXECUTION_TOKEN` or `API_GATEWAY_EXECUTION_TOKENS`
 - `EXECUTION_EVENT_TOKEN` or `EXECUTION_EVENT_TOKENS`
 - `EXECUTION_GATEWAY_TOKEN` or `EXECUTION_GATEWAY_TOKENS`
@@ -93,6 +104,8 @@ Optional `fiber-adapter` service env:
 ## Next steps
 
 - Provide real preproduction or production `Fiber` and `Carrier` endpoints and credentials.
+- Configure real Sentry alert rules and notification routing for the production project.
 - Run `bun run release:external-deps-smoke` from the target deployment environment.
 - Archive the resulting `release-manifest.json` as the deployment evidence package.
+- Complete the remaining `P0` items in [production-launch-checklist.md](/Users/ChenYu/Documents/Github/1-tok/docs/production-launch-checklist.md).
 - Upstream the desired Carrier support described in [carrier-pr-support.md](/Users/ChenYu/Documents/Github/1-tok/docs/carrier-pr-support.md).

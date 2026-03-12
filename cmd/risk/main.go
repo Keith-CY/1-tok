@@ -4,14 +4,22 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
+	"github.com/chenyu/1-tok/internal/observability"
 	"github.com/chenyu/1-tok/internal/services/risk"
 )
 
 func main() {
 	addr := envOrDefault("RISK_ADDR", ":8084")
+	shutdown, err := observability.InitFromEnv("risk")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer shutdown(2 * time.Second)
+
 	log.Printf("risk listening on %s", addr)
-	log.Fatal(http.ListenAndServe(addr, risk.NewServer()))
+	log.Fatal(http.ListenAndServe(addr, observability.WrapHTTP("risk", risk.NewServer())))
 }
 
 func envOrDefault(key, fallback string) string {

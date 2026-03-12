@@ -12,6 +12,7 @@ import (
 
 	iamclient "github.com/chenyu/1-tok/internal/integrations/iam"
 	"github.com/chenyu/1-tok/internal/platform"
+	"github.com/chenyu/1-tok/internal/ratelimit"
 	"github.com/chenyu/1-tok/internal/serviceauth"
 )
 
@@ -154,6 +155,19 @@ func TestNewServerRequiresExternalDependenciesWhenConfigured(t *testing.T) {
 	_ = NewServer()
 }
 
+func TestNewServerRequiresRedisWhenRateLimitIsEnforced(t *testing.T) {
+	t.Setenv("RATE_LIMIT_ENFORCE", "true")
+	t.Setenv("REDIS_URL", "")
+
+	defer func() {
+		if recovered := recover(); recovered == nil {
+			t.Fatalf("expected NewServer to panic when rate limiting is enforced without redis")
+		}
+	}()
+
+	_ = NewServer()
+}
+
 func TestCreateRFQDerivesBuyerOrgFromAuthenticatedMembership(t *testing.T) {
 	server := NewServerWithOptions(Options{
 		App: platform.NewAppWithMemory(),
@@ -207,6 +221,75 @@ func TestCreateRFQDerivesBuyerOrgFromAuthenticatedMembership(t *testing.T) {
 
 	if response.RFQ.Status != "open" {
 		t.Fatalf("expected open rfq, got %s", response.RFQ.Status)
+	}
+}
+
+func TestCreateRFQIsRateLimited(t *testing.T) {
+	now := time.Date(2026, 3, 13, 10, 0, 0, 0, time.UTC)
+	server := NewServerWithOptions(Options{
+		App: platform.NewAppWithMemory(),
+		IAM: &stubIAMClient{
+			actor: iamclient.Actor{
+				UserID: "usr_1",
+				Memberships: []iamclient.ActorMembership{
+					{
+						OrganizationID:   "buyer_auth_1",
+						OrganizationKind: "buyer",
+						Role:             "procurement",
+					},
+				},
+			},
+		},
+		RateLimiter: ratelimit.NewServiceWithOptions(ratelimit.Options{
+			Enforce: true,
+			Now: func() time.Time {
+				return now
+			},
+			Store: ratelimit.NewMemoryStore(func() time.Time {
+				return now
+			}),
+			Policies: map[ratelimit.Policy]ratelimit.PolicyConfig{
+				ratelimit.PolicyGatewayCreateRFQ: {
+					Limit:  1,
+					Window: time.Minute,
+					Scope: []ratelimit.ScopePart{
+						ratelimit.ScopeOrg,
+						ratelimit.ScopeUser,
+						ratelimit.ScopeIP,
+					},
+				},
+			},
+		}),
+	})
+
+	body, _ := json.Marshal(map[string]any{
+		"title":              "Need carrier-backed triage",
+		"category":           "agent-ops",
+		"scope":              "Investigate failures and propose a fix plan.",
+		"budgetCents":        8000,
+		"responseDeadlineAt": "2026-03-15T12:00:00Z",
+	})
+
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer buyer-session-token")
+		req.RemoteAddr = "203.0.113.10:4321"
+		res := httptest.NewRecorder()
+
+		server.ServeHTTP(res, req)
+
+		if i == 0 && res.Code != http.StatusCreated {
+			t.Fatalf("expected first rfq 201, got %d body=%s", res.Code, res.Body.String())
+		}
+		if i == 1 {
+			if res.Code != http.StatusTooManyRequests {
+				t.Fatalf("expected second rfq 429, got %d body=%s", res.Code, res.Body.String())
+			}
+			if res.Header().Get("X-RateLimit-Limit") != "1" {
+				t.Fatalf("expected rate limit header, got %q", res.Header().Get("X-RateLimit-Limit"))
+			}
+		}
 	}
 }
 

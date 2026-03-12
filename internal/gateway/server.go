@@ -9,7 +9,9 @@ import (
 
 	"github.com/chenyu/1-tok/internal/core"
 	iamclient "github.com/chenyu/1-tok/internal/integrations/iam"
+	"github.com/chenyu/1-tok/internal/observability"
 	"github.com/chenyu/1-tok/internal/platform"
+	"github.com/chenyu/1-tok/internal/ratelimit"
 	"github.com/chenyu/1-tok/internal/runtimeconfig"
 	"github.com/chenyu/1-tok/internal/serviceauth"
 )
@@ -18,6 +20,7 @@ type Server struct {
 	app             *platform.App
 	auth            iamclient.Client
 	executionTokens serviceauth.TokenSet
+	rateLimiter     ratelimit.Limiter
 }
 
 func NewServer() *Server {
@@ -39,6 +42,7 @@ type Options struct {
 	IAM             iamclient.Client
 	ExecutionToken  string
 	ExecutionTokens serviceauth.TokenSet
+	RateLimiter     ratelimit.Limiter
 }
 
 func NewServerWithOptions(options Options) *Server {
@@ -47,6 +51,13 @@ func NewServerWithOptions(options Options) *Server {
 	}
 	if options.IAM == nil {
 		options.IAM = iamclient.NewClientFromEnv()
+	}
+	if options.RateLimiter == nil {
+		limiter, err := ratelimit.NewServiceFromEnv()
+		if err != nil {
+			panic(err)
+		}
+		options.RateLimiter = limiter
 	}
 	if options.ExecutionTokens.Empty() {
 		if options.ExecutionToken != "" {
@@ -68,6 +79,7 @@ func NewServerWithOptions(options Options) *Server {
 		app:             options.App,
 		auth:            options.IAM,
 		executionTokens: options.ExecutionTokens,
+		rateLimiter:     options.RateLimiter,
 	}
 }
 
@@ -253,6 +265,19 @@ func (s *Server) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 		writeAuthError(w, err)
 		return
 	}
+	actorUserID := s.actorUserID(r)
+	r = observability.WithRequestTags(r, observability.RequestTags{
+		Route:  "/api/v1/orders",
+		OrgID:  buyerOrgID,
+		UserID: actorUserID,
+	})
+	if blocked := s.applyRateLimit(w, r, ratelimit.PolicyGatewayCreateOrder, ratelimit.Meta{
+		IP:    ratelimit.ClientIP(r),
+		OrgID: buyerOrgID,
+		UserID: actorUserID,
+	}); blocked {
+		return
+	}
 
 	if buyerOrgID == "" || payload.ProviderOrgID == "" || len(payload.Milestones) == 0 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required fields"})
@@ -302,6 +327,19 @@ func (s *Server) handleCreateRFQ(w http.ResponseWriter, r *http.Request) {
 	buyerOrgID, err := s.resolveBuyerOrg(r, payload.BuyerOrgID)
 	if err != nil {
 		writeAuthError(w, err)
+		return
+	}
+	actorUserID := s.actorUserID(r)
+	r = observability.WithRequestTags(r, observability.RequestTags{
+		Route:  "/api/v1/rfqs",
+		OrgID:  buyerOrgID,
+		UserID: actorUserID,
+	})
+	if blocked := s.applyRateLimit(w, r, ratelimit.PolicyGatewayCreateRFQ, ratelimit.Meta{
+		IP:    ratelimit.ClientIP(r),
+		OrgID: buyerOrgID,
+		UserID: actorUserID,
+	}); blocked {
 		return
 	}
 
@@ -391,6 +429,20 @@ func (s *Server) handleCreateBid(w http.ResponseWriter, r *http.Request) {
 		writeAuthError(w, err)
 		return
 	}
+	actorUserID := s.actorUserID(r)
+	r = observability.WithRequestTags(r, observability.RequestTags{
+		Route:  "/api/v1/rfqs/:id/bids",
+		OrgID:  providerOrgID,
+		UserID: actorUserID,
+		RFQID:  rfqID,
+	})
+	if blocked := s.applyRateLimit(w, r, ratelimit.PolicyGatewayCreateBid, ratelimit.Meta{
+		IP:    ratelimit.ClientIP(r),
+		OrgID: providerOrgID,
+		UserID: actorUserID,
+	}); blocked {
+		return
+	}
 
 	input := platform.CreateBidInput{
 		ProviderOrgID: providerOrgID,
@@ -446,6 +498,20 @@ func (s *Server) handleAwardRFQ(w http.ResponseWriter, r *http.Request) {
 	}
 	if buyerOrgID != rfq.BuyerOrgID {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "buyer org mismatch"})
+		return
+	}
+	actorUserID := s.actorUserID(r)
+	r = observability.WithRequestTags(r, observability.RequestTags{
+		Route:  "/api/v1/rfqs/:id/award",
+		OrgID:  buyerOrgID,
+		UserID: actorUserID,
+		RFQID:  rfqID,
+	})
+	if blocked := s.applyRateLimit(w, r, ratelimit.PolicyGatewayAwardRFQ, ratelimit.Meta{
+		IP:    ratelimit.ClientIP(r),
+		OrgID: buyerOrgID,
+		UserID: actorUserID,
+	}); blocked {
 		return
 	}
 
@@ -700,6 +766,19 @@ func (s *Server) handleCreateDispute(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": "buyer org mismatch"})
 			return
 		}
+		actorUserID := s.actorUserID(r)
+		r = observability.WithRequestTags(r, observability.RequestTags{
+			Route:   "/api/v1/orders/:id/disputes",
+			OrgID:   order.BuyerOrgID,
+			UserID:  actorUserID,
+			OrderID: orderID,
+		})
+		if blocked := s.applyRateLimit(w, r, ratelimit.PolicyGatewayCreateDisp, ratelimit.Meta{
+			OrgID: order.BuyerOrgID,
+			UserID: actorUserID,
+		}); blocked {
+			return
+		}
 	}
 
 	order, refund, recovery, err := s.app.OpenDispute(orderID, platform.OpenDisputeInput{
@@ -739,6 +818,16 @@ func (s *Server) handleResolveDispute(w http.ResponseWriter, r *http.Request) {
 		writeAuthError(w, err)
 		return
 	}
+	r = observability.WithRequestTags(r, observability.RequestTags{
+		Route:  "/api/v1/disputes/:id/resolve",
+		UserID: resolvedBy,
+	})
+	if blocked := s.applyRateLimit(w, r, ratelimit.PolicyGatewayResolveDisp, ratelimit.Meta{
+		OrgID: "ops",
+		UserID: resolvedBy,
+	}); blocked {
+		return
+	}
 
 	dispute, order, err := s.app.ResolveDispute(disputeID, platform.ResolveDisputeInput{
 		Resolution: payload.Resolution,
@@ -755,6 +844,17 @@ func (s *Server) handleResolveDispute(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCreditDecision(w http.ResponseWriter, r *http.Request) {
 	if _, err := s.resolveOpsUser(r); err != nil {
 		writeAuthError(w, err)
+		return
+	}
+	actorUserID := s.actorUserID(r)
+	r = observability.WithRequestTags(r, observability.RequestTags{
+		Route:  "/api/v1/credits/decision",
+		UserID: actorUserID,
+	})
+	if blocked := s.applyRateLimit(w, r, ratelimit.PolicyGatewayCreditDec, ratelimit.Meta{
+		OrgID: "ops",
+		UserID: actorUserID,
+	}); blocked {
 		return
 	}
 
@@ -794,6 +894,25 @@ func (s *Server) handleCreateMessage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		payload.Author = actor.UserID
+		orgID := order.BuyerOrgID
+		for _, membership := range actor.Memberships {
+			if membership.OrganizationID == order.ProviderOrgID {
+				orgID = order.ProviderOrgID
+				break
+			}
+		}
+		r = observability.WithRequestTags(r, observability.RequestTags{
+			Route:   "/api/v1/messages",
+			OrgID:   orgID,
+			UserID:  actor.UserID,
+			OrderID: payload.OrderID,
+		})
+		if blocked := s.applyRateLimit(w, r, ratelimit.PolicyGatewayCreateMsg, ratelimit.Meta{
+			OrgID: orgID,
+			UserID: actor.UserID,
+		}); blocked {
+			return
+		}
 	}
 
 	message, err := s.app.CreateMessage(payload.OrderID, payload.Author, payload.Body)
@@ -889,6 +1008,36 @@ func writeAuthError(w http.ResponseWriter, err error) {
 	default:
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 	}
+}
+
+func (s *Server) actorUserID(r *http.Request) string {
+	if s.auth == nil {
+		return ""
+	}
+	actor, err := s.authenticatedActor(r)
+	if err != nil {
+		return ""
+	}
+	return actor.UserID
+}
+
+func (s *Server) applyRateLimit(w http.ResponseWriter, r *http.Request, policy ratelimit.Policy, meta ratelimit.Meta) bool {
+	if s.rateLimiter == nil {
+		return false
+	}
+	decision, err := s.rateLimiter.Allow(r.Context(), policy, meta)
+	if err != nil {
+		observability.CaptureError(r.Context(), err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "rate limiter unavailable"})
+		return true
+	}
+	if decision.Allowed {
+		return false
+	}
+	ratelimit.WriteHeaders(w, time.Now().UTC(), decision)
+	observability.CaptureMessage(r.Context(), "rate limit exceeded")
+	writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "rate limit exceeded"})
+	return true
 }
 
 func (s *Server) authorizeExecutionMutation(r *http.Request) error {

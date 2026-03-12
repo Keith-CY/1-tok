@@ -56,6 +56,11 @@ grep -q "^  e2e-runner:$" "${COMPOSE_E2E_FILE}" || {
   exit 1
 }
 
+grep -q "^  mock-sentry:$" "${COMPOSE_E2E_FILE}" || {
+  echo "compose.e2e.yaml missing mock-sentry service" >&2
+  exit 1
+}
+
 grep -q "dockerfile: deploy/fnn/Dockerfile" "${COMPOSE_FNN_FILE}" || {
   echo "compose.fnn.yaml missing deploy/fnn/Dockerfile reference" >&2
   exit 1
@@ -111,6 +116,11 @@ grep -q "go build -o /out/release-portal-smoke ./cmd/release-portal-smoke" "${E2
   exit 1
 }
 
+grep -q "go build -o /out/release-abuse-smoke ./cmd/release-abuse-smoke" "${E2E_DOCKERFILE}" || {
+  echo "deploy/e2e/Dockerfile missing release-abuse-smoke build" >&2
+  exit 1
+}
+
 grep -q "go build -o /out/release-fnn-adapter-smoke ./cmd/release-fnn-adapter-smoke" "${E2E_DOCKERFILE}" || {
   echo "deploy/e2e/Dockerfile missing release-fnn-adapter-smoke build" >&2
   exit 1
@@ -153,6 +163,11 @@ grep -q "get_cells" "${DUAL_NODE_SCRIPT}" || {
 
 grep -q '"release:compose-e2e"' "${PACKAGE_JSON}" || {
   echo "package.json missing release:compose-e2e script" >&2
+  exit 1
+}
+
+grep -q '"release:abuse-smoke"' "${PACKAGE_JSON}" || {
+  echo "package.json missing release:abuse-smoke script" >&2
   exit 1
 }
 

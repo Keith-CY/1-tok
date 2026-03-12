@@ -11,6 +11,8 @@
 - shared TypeScript contracts for the web portal
 - local container topology for Go services plus Postgres and NATS
 - Postgres-backed repositories for orders, providers, listings, messages, and disputes when `DATABASE_URL` is set
+- production Sentry instrumentation for long-lived Go services and the Next web runtime
+- Redis-backed protection for critical IAM and marketplace write routes
 
 ## Layout
 
@@ -30,7 +32,7 @@ Go service builds now target Go `1.25`.
 GitHub Actions now runs two lanes on every `push` and `pull_request`:
 
 - `Unit And Coverage`: Go unit tests plus Bun tests for `apps/web` and `packages/contracts`, with a merged coverage summary artifact and job summary
-- `Integration Smoke`: a Docker-only end-to-end path that boots `postgres`, `nats`, `fnn`, `fiber-adapter`, `mock-fiber`, `mock-carrier`, `iam`, `api-gateway`, `marketplace`, `settlement`, `settlement-reconciler`, `execution`, `web`, and a dedicated `e2e-runner`
+- `Integration Smoke`: a Docker-only end-to-end path that boots `postgres`, `redis`, `nats`, `fnn`, `fiber-adapter`, `mock-fiber`, `mock-carrier`, `mock-sentry`, `iam`, `api-gateway`, `marketplace`, `settlement`, `settlement-reconciler`, `execution`, `web`, and a dedicated `e2e-runner`
 - `Docker FNN reference test`: static contract checks for the `fnn` overlay, `e2e-runner`, and release scripts that support that path
 
 For pull requests opened from the same repository, the `Report` job upserts a sticky PR comment from `github-actions[bot]` with the latest unit/integration status and coverage table. Each new push to the PR updates that same comment in place.
@@ -57,10 +59,12 @@ By default it uses:
 
 You can override those with env vars if you need a different FNN build or password.
 
-This path is fully Dockerized: the services boot inside Docker, and the smoke itself runs from the `e2e-runner` container over the Docker network. The runner now executes two settlement checks:
+This path is fully Dockerized: the services boot inside Docker, and the smoke itself runs from the `e2e-runner` container over the Docker network. The runner now executes four checks:
 
 - `release-fnn-adapter-smoke`: verifies that the local `fiber-adapter` can translate `tip.create`, `tip.status`, and `withdrawal.quote` to raw `fnn`
 - the existing marketplace/settlement/portal smoke flow, which still uses `mock-fiber` for commit-safe full business coverage
+- `release-abuse-smoke`: verifies IAM login throttling through Redis-backed limits and checks that a rate-limit event reaches `mock-sentry`
+- the stack itself now boots with production-style Sentry env wiring and rate-limit enforcement on `iam` and `api-gateway`
 
 That split is deliberate. The repo now has a real raw-`fnn` adapter path under CI, but the full paid-settlement business flow still stays on `mock-fiber` until a dual-node, funded FNN environment is available.
 
@@ -93,6 +97,16 @@ The smoke command defaults to the smallest cross-service path: create an order, 
 export RELEASE_SMOKE_INCLUDE_WITHDRAWAL=true
 export RELEASE_SMOKE_INCLUDE_CARRIER_PROBE=true
 ```
+
+### Abuse smoke
+
+```bash
+export RELEASE_ABUSE_IAM_BASE_URL='http://127.0.0.1:8081'
+export RELEASE_ABUSE_SENTRY_BASE_URL='http://127.0.0.1:8092'
+bun run release:abuse-smoke
+```
+
+This smoke signs up a buyer, floods the IAM login path until the Redis-backed limiter returns `429`, and then confirms that at least one rate-limit event has reached the configured Sentry-compatible endpoint.
 
 ### Portal release smoke
 
@@ -164,7 +178,7 @@ This script now preflights the external Fiber and Carrier endpoints before start
 bun run release:compose-smoke
 ```
 
-This script builds and boots the compose stack with `postgres`, `mock-fiber`, `mock-carrier`, `bootstrap`, `iam`, `api-gateway`, `settlement`, `settlement-reconciler`, `execution`, and `web`, then runs both release smoke commands against the published localhost ports before tearing the stack down.
+This script builds and boots the compose stack with `postgres`, `redis`, `mock-fiber`, `mock-carrier`, `bootstrap`, `iam`, `api-gateway`, `settlement`, `settlement-reconciler`, `execution`, and `web`, then runs both release smoke commands against the published localhost ports before tearing the stack down.
 
 ### Compose Docker-only end-to-end
 
@@ -172,11 +186,12 @@ This script builds and boots the compose stack with `postgres`, `mock-fiber`, `m
 bun run release:compose-e2e
 ```
 
-This is the main Docker-only end-to-end path. It layers [compose.fnn.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.fnn.yaml) and [compose.e2e.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.e2e.yaml) on top of [compose.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.yaml), boots the full stack including `marketplace`, `fnn`, `fiber-adapter`, `mock-carrier`, and `mock-fiber`, and then runs three checks from the `e2e-runner` container inside the Docker network:
+This is the main Docker-only end-to-end path. It layers [compose.fnn.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.fnn.yaml) and [compose.e2e.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.e2e.yaml) on top of [compose.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.yaml), boots the full stack including `marketplace`, `redis`, `mock-sentry`, `fnn`, `fiber-adapter`, `mock-carrier`, and `mock-fiber`, and then runs four checks from the `e2e-runner` container inside the Docker network:
 
 - raw `fnn` adapter smoke via `release-fnn-adapter-smoke`
 - backend settlement smoke via `release-smoke`
 - portal workflow smoke via `release-portal-smoke`
+- abuse and Sentry smoke via `release-abuse-smoke`
 
 ### Compose + FNN release smoke
 
