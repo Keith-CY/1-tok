@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	fiberclient "github.com/chenyu/1-tok/internal/integrations/fiber"
+	iamclient "github.com/chenyu/1-tok/internal/integrations/iam"
 )
 
 type stubFiberClient struct {
@@ -24,6 +26,16 @@ type stubFiberClient struct {
 	settledFeedResult   fiberclient.SettledFeedResult
 	withdrawalsUserID   string
 	withdrawalsResult   fiberclient.WithdrawalStatusResult
+}
+
+type stubIAMClient struct {
+	token string
+	actor iamclient.Actor
+}
+
+func (s *stubIAMClient) GetActor(_ context.Context, bearerToken string) (iamclient.Actor, error) {
+	s.token = bearerToken
+	return s.actor, nil
 }
 
 func (s *stubFiberClient) CreateInvoice(_ context.Context, input fiberclient.CreateInvoiceInput) (fiberclient.CreateInvoiceResult, error) {
@@ -480,5 +492,73 @@ func TestWithdrawalStatusSyncUpdatesFundingRecordState(t *testing.T) {
 	}
 	if len(listResponse.Records) != 1 || listResponse.Records[0].State != "PROCESSING" {
 		t.Fatalf("expected processing withdrawal record after status sync, got %+v", listResponse.Records)
+	}
+}
+
+func TestFundingRecordsAreScopedToAuthenticatedProvider(t *testing.T) {
+	funding := NewMemoryFundingRecordRepository()
+	now := time.Now().UTC()
+	if err := funding.Save(FundingRecord{
+		ID:            "fund_1",
+		Kind:          FundingRecordKindInvoice,
+		OrderID:       "ord_1",
+		ProviderOrgID: "provider_auth_1",
+		Asset:         "CKB",
+		Amount:        "10",
+		State:         "SETTLED",
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}); err != nil {
+		t.Fatalf("seed fund_1: %v", err)
+	}
+	if err := funding.Save(FundingRecord{
+		ID:            "fund_2",
+		Kind:          FundingRecordKindInvoice,
+		OrderID:       "ord_2",
+		ProviderOrgID: "provider_other",
+		Asset:         "CKB",
+		Amount:        "12",
+		State:         "SETTLED",
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}); err != nil {
+		t.Fatalf("seed fund_2: %v", err)
+	}
+
+	server := NewServerWithOptions(Options{
+		Upstream: "http://127.0.0.1:8080",
+		Fiber:    &stubFiberClient{},
+		Funding:  funding,
+		Auth: &stubIAMClient{
+			actor: iamclient.Actor{
+				UserID: "usr_1",
+				Memberships: []iamclient.ActorMembership{
+					{
+						OrganizationID:   "provider_auth_1",
+						OrganizationKind: "provider",
+						Role:             "finance_viewer",
+					},
+				},
+			},
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/funding-records", nil)
+	req.Header.Set("Authorization", "Bearer provider-token")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", res.Code, res.Body.String())
+	}
+
+	var response struct {
+		Records []FundingRecord `json:"records"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.Records) != 1 || response.Records[0].ProviderOrgID != "provider_auth_1" {
+		t.Fatalf("expected scoped funding records, got %+v", response.Records)
 	}
 }

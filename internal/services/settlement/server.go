@@ -10,6 +10,7 @@ import (
 	"time"
 
 	fiberclient "github.com/chenyu/1-tok/internal/integrations/fiber"
+	iamclient "github.com/chenyu/1-tok/internal/integrations/iam"
 	"github.com/chenyu/1-tok/internal/services/proxy"
 )
 
@@ -17,18 +18,21 @@ type Server struct {
 	inner   http.Handler
 	fiber   fiberclient.InvoiceClient
 	funding FundingRecordRepository
+	auth    iamclient.Client
 }
 
 type Options struct {
 	Upstream string
 	Fiber    fiberclient.InvoiceClient
 	Funding  FundingRecordRepository
+	Auth     iamclient.Client
 }
 
 func NewServer() *Server {
 	return NewServerWithOptions(Options{
 		Upstream: upstream(),
 		Fiber:    fiberclient.NewClientFromEnv(),
+		Auth:     iamclient.NewClientFromEnv(),
 	})
 }
 
@@ -49,6 +53,7 @@ func NewServerWithOptions(options Options) *Server {
 		}),
 		fiber:   options.Fiber,
 		funding: options.Funding,
+		auth:    options.Auth,
 	}
 }
 
@@ -265,11 +270,17 @@ func (s *Server) handleRequestWithdrawal(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) handleListFundingRecords(w http.ResponseWriter, r *http.Request) {
-	records, err := s.funding.List(FundingRecordFilter{
+	filter := FundingRecordFilter{
 		Kind:          FundingRecordKind(r.URL.Query().Get("kind")),
 		OrderID:       r.URL.Query().Get("orderId"),
 		ProviderOrgID: r.URL.Query().Get("providerOrgId"),
-	})
+	}
+	if err := s.scopeFundingFilter(r, &filter); err != nil {
+		writeAuthError(w, err)
+		return
+	}
+
+	records, err := s.funding.List(filter)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
@@ -367,6 +378,63 @@ func parseWithdrawalRequest(r *http.Request) (withdrawalRequest, error) {
 	return payload, nil
 }
 
+func (s *Server) scopeFundingFilter(r *http.Request, filter *FundingRecordFilter) error {
+	if s.auth == nil {
+		return nil
+	}
+
+	token, ok := bearerToken(r.Header.Get("Authorization"))
+	if !ok {
+		return iamclient.ErrUnauthorized
+	}
+
+	actor, err := s.auth.GetActor(r.Context(), token)
+	if err != nil {
+		return err
+	}
+
+	for _, membership := range actor.Memberships {
+		if membership.OrganizationKind == "ops" && isOpsRole(membership.Role) {
+			return nil
+		}
+		if membership.OrganizationKind == "provider" && isProviderFinanceRole(membership.Role) {
+			if filter.ProviderOrgID != "" && filter.ProviderOrgID != membership.OrganizationID {
+				return errors.New("provider org mismatch")
+			}
+			filter.ProviderOrgID = membership.OrganizationID
+			return nil
+		}
+	}
+
+	return errors.New("provider or ops membership is required")
+}
+
+func bearerToken(header string) (string, bool) {
+	if !strings.HasPrefix(header, "Bearer ") {
+		return "", false
+	}
+	token := strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
+	return token, token != ""
+}
+
+func isProviderFinanceRole(role string) bool {
+	switch role {
+	case "org_owner", "sales", "delivery_operator", "finance_viewer":
+		return true
+	default:
+		return false
+	}
+}
+
+func isOpsRole(role string) bool {
+	switch role {
+	case "ops_reviewer", "risk_admin", "finance_admin", "super_admin":
+		return true
+	default:
+		return false
+	}
+}
+
 func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -379,6 +447,17 @@ func writeFiberError(w http.ResponseWriter, err error) {
 		return
 	}
 	writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+}
+
+func writeAuthError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, iamclient.ErrUnauthorized):
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	case strings.Contains(err.Error(), "mismatch"), strings.Contains(err.Error(), "required"):
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+	default:
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+	}
 }
 
 func upstream() string {

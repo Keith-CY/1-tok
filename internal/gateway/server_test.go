@@ -2,11 +2,25 @@ package gateway
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	iamclient "github.com/chenyu/1-tok/internal/integrations/iam"
+	"github.com/chenyu/1-tok/internal/platform"
 )
+
+type stubIAMClient struct {
+	token string
+	actor iamclient.Actor
+}
+
+func (s *stubIAMClient) GetActor(_ context.Context, bearerToken string) (iamclient.Actor, error) {
+	s.token = bearerToken
+	return s.actor, nil
+}
 
 func TestCreateOrderReturnsCreditFundingAndMilestones(t *testing.T) {
 	server := NewServer()
@@ -63,6 +77,63 @@ func TestCreateOrderReturnsCreditFundingAndMilestones(t *testing.T) {
 
 	if response.Order.Status != "running" {
 		t.Fatalf("expected running order, got %s", response.Order.Status)
+	}
+}
+
+func TestCreateOrderDerivesBuyerOrgFromAuthenticatedMembership(t *testing.T) {
+	server := NewServerWithOptions(Options{
+		App: platform.NewAppWithMemory(),
+		IAM: &stubIAMClient{
+			actor: iamclient.Actor{
+				UserID: "usr_1",
+				Memberships: []iamclient.ActorMembership{
+					{
+						OrganizationID:   "buyer_auth_1",
+						OrganizationKind: "buyer",
+						Role:             "procurement",
+					},
+				},
+			},
+		},
+	})
+
+	payload := map[string]any{
+		"providerOrgId": "provider_1",
+		"title":         "Operate agent",
+		"fundingMode":   "credit",
+		"creditLineId":  "credit_1",
+		"milestones": []map[string]any{
+			{
+				"id":             "ms_1",
+				"title":          "Plan",
+				"basePriceCents": 1200,
+				"budgetCents":    1800,
+			},
+		},
+	}
+	body, _ := json.Marshal(payload)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer buyer-session-token")
+	res := httptest.NewRecorder()
+
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d body=%s", res.Code, res.Body.String())
+	}
+
+	var response struct {
+		Order struct {
+			BuyerOrgID string `json:"buyerOrgId"`
+		} `json:"order"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Order.BuyerOrgID != "buyer_auth_1" {
+		t.Fatalf("expected authenticated buyer org, got %+v", response)
 	}
 }
 

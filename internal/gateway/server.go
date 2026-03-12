@@ -8,19 +8,43 @@ import (
 	"time"
 
 	"github.com/chenyu/1-tok/internal/core"
+	iamclient "github.com/chenyu/1-tok/internal/integrations/iam"
 	"github.com/chenyu/1-tok/internal/platform"
 )
 
 type Server struct {
-	app *platform.App
+	app  *platform.App
+	auth iamclient.Client
 }
 
 func NewServer() *Server {
-	return NewServerWithApp(platform.NewAppWithMemory())
+	return NewServerWithOptions(Options{
+		App: platform.NewAppWithMemory(),
+		IAM: iamclient.NewClientFromEnv(),
+	})
 }
 
 func NewServerWithApp(app *platform.App) *Server {
-	return &Server{app: app}
+	return NewServerWithOptions(Options{
+		App: app,
+		IAM: iamclient.NewClientFromEnv(),
+	})
+}
+
+type Options struct {
+	App *platform.App
+	IAM iamclient.Client
+}
+
+func NewServerWithOptions(options Options) *Server {
+	if options.App == nil {
+		options.App = platform.NewAppWithMemory()
+	}
+
+	return &Server{
+		app:  options.App,
+		auth: options.IAM,
+	}
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -121,13 +145,19 @@ func (s *Server) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if payload.BuyerOrgID == "" || payload.ProviderOrgID == "" || len(payload.Milestones) == 0 {
+	buyerOrgID, err := s.resolveBuyerOrg(r, payload.BuyerOrgID)
+	if err != nil {
+		writeAuthError(w, err)
+		return
+	}
+
+	if buyerOrgID == "" || payload.ProviderOrgID == "" || len(payload.Milestones) == 0 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required fields"})
 		return
 	}
 
 	input := platform.CreateOrderInput{
-		BuyerOrgID:    payload.BuyerOrgID,
+		BuyerOrgID:    buyerOrgID,
 		ProviderOrgID: payload.ProviderOrgID,
 		Title:         payload.Title,
 		FundingMode:   core.FundingMode(payload.FundingMode),
@@ -150,6 +180,54 @@ func (s *Server) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]any{"order": order})
+}
+
+func (s *Server) resolveBuyerOrg(r *http.Request, requestedBuyerOrgID string) (string, error) {
+	if s.auth == nil {
+		return requestedBuyerOrgID, nil
+	}
+
+	token, ok := bearerToken(r.Header.Get("Authorization"))
+	if !ok {
+		return "", iamclient.ErrUnauthorized
+	}
+
+	actor, err := s.auth.GetActor(r.Context(), token)
+	if err != nil {
+		return "", err
+	}
+
+	for _, membership := range actor.Memberships {
+		if membership.OrganizationKind != "buyer" {
+			continue
+		}
+		if !isBuyerRole(membership.Role) {
+			continue
+		}
+		if requestedBuyerOrgID != "" && requestedBuyerOrgID != membership.OrganizationID {
+			return "", errors.New("buyer org mismatch")
+		}
+		return membership.OrganizationID, nil
+	}
+
+	return "", errors.New("buyer membership is required")
+}
+
+func bearerToken(header string) (string, bool) {
+	if !strings.HasPrefix(header, "Bearer ") {
+		return "", false
+	}
+	token := strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
+	return token, token != ""
+}
+
+func isBuyerRole(role string) bool {
+	switch role {
+	case "org_owner", "procurement", "operator":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Server) handleSettleMilestone(w http.ResponseWriter, r *http.Request) {
@@ -318,5 +396,16 @@ func writeGatewayError(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 	default:
 		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+	}
+}
+
+func writeAuthError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, iamclient.ErrUnauthorized):
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	case strings.Contains(err.Error(), "mismatch"), strings.Contains(err.Error(), "required"):
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+	default:
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 	}
 }

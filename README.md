@@ -126,9 +126,17 @@ HTTP routes added by `iam`:
 - `GET /v1/me`
 - `GET /v1/roles`
 
+### Membership-aware gateway and settlement
+
+When `IAM_UPSTREAM` is configured for `api-gateway` and `settlement`, the platform starts binding selected routes to authenticated memberships instead of trusting caller-supplied org IDs:
+
+- `POST /api/v1/orders` derives `buyerOrgId` from the authenticated buyer membership
+- `GET /v1/funding-records` scopes provider visibility to the authenticated provider membership, with ops memberships retaining global access
+
 ## Current scope
 
 - Provider and listing catalogs are durably backed by Postgres and seeded on bootstrap.
 - Settlement and execution now speak to real Fiber and Carrier interfaces, and settlement keeps local funding records when `DATABASE_URL` or `SETTLEMENT_DATABASE_URL` is configured.
-- IAM now supports persisted `signup`, `session`, and `me` flows when `DATABASE_URL` or `IAM_DATABASE_URL` is configured, but gateway/web enforcement is still not wired.
+- IAM now supports persisted `signup`, `session`, and `me` flows when `DATABASE_URL` or `IAM_DATABASE_URL` is configured, but full gateway/web enforcement is still not wired.
+- Gateway order creation and settlement funding-record reads can now honor authenticated memberships when `IAM_UPSTREAM` is configured, but the rest of the platform still has unauthenticated paths.
 - RFQ/bidding flows, dispute backoffice, and ledger-grade reconciliation are still skeletal and are not yet release-complete.
