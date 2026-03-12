@@ -57,6 +57,7 @@ services:
       IAM_UPSTREAM: http://iam:8081
       NATS_URL: nats://nats:4222
       API_GATEWAY_EXECUTION_TOKEN: ${ONE_TOK_SERVICE_TOKEN:-local-service-token}
+      ONE_TOK_REQUIRE_EXTERNALS: "true"
       ONE_TOK_REQUIRE_PERSISTENCE: "true"
     ports:
       - "${API_GATEWAY_PUBLISHED_PORT:-8080}:8080"
@@ -111,6 +112,7 @@ services:
       FIBER_APP_ID: ${FIBER_APP_ID:-app_1}
       FIBER_HMAC_SECRET: ${FIBER_HMAC_SECRET:-replace-me}
       SETTLEMENT_SERVICE_TOKEN: ${ONE_TOK_SERVICE_TOKEN:-local-service-token}
+      ONE_TOK_REQUIRE_EXTERNALS: "true"
       ONE_TOK_REQUIRE_PERSISTENCE: "true"
     ports:
       - "${SETTLEMENT_PUBLISHED_PORT:-8083}:8083"
@@ -149,6 +151,7 @@ services:
       EXECUTION_GATEWAY_TOKEN: ${ONE_TOK_SERVICE_TOKEN:-local-service-token}
       CARRIER_GATEWAY_URL: ${CARRIER_GATEWAY_URL:-http://mock-carrier:8787}
       CARRIER_GATEWAY_API_TOKEN: ${CARRIER_GATEWAY_API_TOKEN:-test-gateway-token}
+      ONE_TOK_REQUIRE_EXTERNALS: "true"
     ports:
       - "${EXECUTION_PUBLISHED_PORT:-8085}:8085"
     depends_on:

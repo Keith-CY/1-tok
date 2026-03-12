@@ -85,6 +85,21 @@ func TestMilestoneReadyEventSettlesThroughGateway(t *testing.T) {
 	}
 }
 
+func TestNewServerRequiresExternalDependenciesWhenConfigured(t *testing.T) {
+	t.Setenv("ONE_TOK_REQUIRE_EXTERNALS", "true")
+	t.Setenv("CARRIER_GATEWAY_URL", "")
+	t.Setenv("EXECUTION_EVENT_TOKEN", "")
+	t.Setenv("EXECUTION_GATEWAY_TOKEN", "")
+
+	defer func() {
+		if recovered := recover(); recovered == nil {
+			t.Fatalf("expected NewServer to panic when external dependencies are required and config is missing")
+		}
+	}()
+
+	_ = NewServer()
+}
+
 func TestUsageReportedCanPauseOrderViaGateway(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{

@@ -11,6 +11,7 @@ import (
 	"github.com/chenyu/1-tok/internal/core"
 	iamclient "github.com/chenyu/1-tok/internal/integrations/iam"
 	"github.com/chenyu/1-tok/internal/platform"
+	"github.com/chenyu/1-tok/internal/runtimeconfig"
 	"github.com/chenyu/1-tok/internal/serviceauth"
 )
 
@@ -44,8 +45,19 @@ func NewServerWithOptions(options Options) *Server {
 	if options.App == nil {
 		options.App = platform.NewAppWithMemory()
 	}
+	if options.IAM == nil {
+		options.IAM = iamclient.NewClientFromEnv()
+	}
 	if options.ExecutionToken == "" {
 		options.ExecutionToken = strings.TrimSpace(os.Getenv("API_GATEWAY_EXECUTION_TOKEN"))
+	}
+	if runtimeconfig.RequireExternalDependencies() {
+		if options.IAM == nil {
+			panic("IAM_UPSTREAM is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+		}
+		if strings.TrimSpace(options.ExecutionToken) == "" {
+			panic("API_GATEWAY_EXECUTION_TOKEN is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+		}
 	}
 
 	return &Server{

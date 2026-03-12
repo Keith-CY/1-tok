@@ -12,6 +12,7 @@ import (
 
 	"github.com/chenyu/1-tok/internal/core"
 	carrierclient "github.com/chenyu/1-tok/internal/integrations/carrier"
+	"github.com/chenyu/1-tok/internal/runtimeconfig"
 	"github.com/chenyu/1-tok/internal/serviceauth"
 )
 
@@ -56,9 +57,20 @@ func NewServerWithUpstream(upstream string) *Server {
 
 func NewServerWithOptions(options Options) *Server {
 	if options.APIUpstream == "" {
+		if runtimeconfig.RequireExternalDependencies() && strings.TrimSpace(os.Getenv("API_GATEWAY_UPSTREAM")) == "" {
+			panic("API_GATEWAY_UPSTREAM is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+		}
 		options.APIUpstream = upstream()
 	}
 	if options.Carrier == nil {
+		if runtimeconfig.RequireExternalDependencies() {
+			if strings.TrimSpace(os.Getenv("CARRIER_GATEWAY_URL")) == "" {
+				panic("CARRIER_GATEWAY_URL is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+			}
+			if strings.TrimSpace(os.Getenv("CARRIER_GATEWAY_API_TOKEN")) == "" {
+				panic("CARRIER_GATEWAY_API_TOKEN is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+			}
+		}
 		options.Carrier = carrierclient.NewClientFromEnv()
 	}
 	if options.InboundToken == "" {
@@ -66,6 +78,14 @@ func NewServerWithOptions(options Options) *Server {
 	}
 	if options.GatewayToken == "" {
 		options.GatewayToken = strings.TrimSpace(os.Getenv("EXECUTION_GATEWAY_TOKEN"))
+	}
+	if runtimeconfig.RequireExternalDependencies() {
+		if strings.TrimSpace(options.InboundToken) == "" {
+			panic("EXECUTION_EVENT_TOKEN is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+		}
+		if strings.TrimSpace(options.GatewayToken) == "" {
+			panic("EXECUTION_GATEWAY_TOKEN is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+		}
 	}
 
 	return &Server{

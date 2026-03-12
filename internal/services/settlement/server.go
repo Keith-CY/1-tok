@@ -11,6 +11,7 @@ import (
 
 	fiberclient "github.com/chenyu/1-tok/internal/integrations/fiber"
 	iamclient "github.com/chenyu/1-tok/internal/integrations/iam"
+	"github.com/chenyu/1-tok/internal/runtimeconfig"
 	"github.com/chenyu/1-tok/internal/serviceauth"
 	"github.com/chenyu/1-tok/internal/services/proxy"
 )
@@ -41,16 +42,41 @@ func NewServer() *Server {
 
 func NewServerWithOptions(options Options) *Server {
 	if options.Upstream == "" {
+		if runtimeconfig.RequireExternalDependencies() && strings.TrimSpace(os.Getenv("API_GATEWAY_UPSTREAM")) == "" {
+			panic("API_GATEWAY_UPSTREAM is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+		}
 		options.Upstream = upstream()
 	}
 	if options.Fiber == nil {
+		if runtimeconfig.RequireExternalDependencies() {
+			if strings.TrimSpace(os.Getenv("FIBER_RPC_URL")) == "" {
+				panic("FIBER_RPC_URL is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+			}
+			if strings.TrimSpace(os.Getenv("FIBER_APP_ID")) == "" {
+				panic("FIBER_APP_ID is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+			}
+			if strings.TrimSpace(os.Getenv("FIBER_HMAC_SECRET")) == "" {
+				panic("FIBER_HMAC_SECRET is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+			}
+		}
 		options.Fiber = fiberclient.NewClientFromEnv()
 	}
 	if options.Funding == nil {
 		options.Funding = loadFundingRecordRepository()
 	}
+	if options.Auth == nil {
+		options.Auth = iamclient.NewClientFromEnv()
+	}
 	if options.ServiceToken == "" {
 		options.ServiceToken = strings.TrimSpace(os.Getenv("SETTLEMENT_SERVICE_TOKEN"))
+	}
+	if runtimeconfig.RequireExternalDependencies() {
+		if options.Auth == nil {
+			panic("IAM_UPSTREAM is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+		}
+		if strings.TrimSpace(options.ServiceToken) == "" {
+			panic("SETTLEMENT_SERVICE_TOKEN is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+		}
 	}
 
 	return &Server{

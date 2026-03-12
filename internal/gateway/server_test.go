@@ -139,6 +139,20 @@ func TestCreateOrderDerivesBuyerOrgFromAuthenticatedMembership(t *testing.T) {
 	}
 }
 
+func TestNewServerRequiresExternalDependenciesWhenConfigured(t *testing.T) {
+	t.Setenv("ONE_TOK_REQUIRE_EXTERNALS", "true")
+	t.Setenv("IAM_UPSTREAM", "")
+	t.Setenv("API_GATEWAY_EXECUTION_TOKEN", "")
+
+	defer func() {
+		if recovered := recover(); recovered == nil {
+			t.Fatalf("expected NewServer to panic when external dependencies are required and config is missing")
+		}
+	}()
+
+	_ = NewServer()
+}
+
 func TestCreateRFQDerivesBuyerOrgFromAuthenticatedMembership(t *testing.T) {
 	server := NewServerWithOptions(Options{
 		App: platform.NewAppWithMemory(),

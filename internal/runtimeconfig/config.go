@@ -7,7 +7,15 @@ import (
 )
 
 func RequirePersistence() bool {
-	value := strings.TrimSpace(os.Getenv("ONE_TOK_REQUIRE_PERSISTENCE"))
+	return envBool("ONE_TOK_REQUIRE_PERSISTENCE")
+}
+
+func RequireExternalDependencies() bool {
+	return envBool("ONE_TOK_REQUIRE_EXTERNALS")
+}
+
+func envBool(key string) bool {
+	value := strings.TrimSpace(os.Getenv(key))
 	if value == "" {
 		return false
 	}

@@ -162,6 +162,26 @@ func TestNewServerRequiresPersistentFundingStoreWhenConfigured(t *testing.T) {
 	})
 }
 
+func TestNewServerRequiresExternalDependenciesWhenConfigured(t *testing.T) {
+	t.Setenv("ONE_TOK_REQUIRE_EXTERNALS", "true")
+	t.Setenv("IAM_UPSTREAM", "")
+	t.Setenv("SETTLEMENT_SERVICE_TOKEN", "")
+	t.Setenv("FIBER_RPC_URL", "")
+	t.Setenv("FIBER_APP_ID", "")
+	t.Setenv("FIBER_HMAC_SECRET", "")
+
+	defer func() {
+		if recovered := recover(); recovered == nil {
+			t.Fatalf("expected NewServerWithOptions to panic when external dependencies are required and config is missing")
+		}
+	}()
+
+	_ = NewServerWithOptions(Options{
+		Upstream: "http://upstream.internal",
+		Funding:  NewMemoryFundingRecordRepository(),
+	})
+}
+
 func TestCreateInvoiceRejectsMissingServiceTokenWhenConfigured(t *testing.T) {
 	t.Setenv("SETTLEMENT_SERVICE_TOKEN", "settlement-shared-token")
 

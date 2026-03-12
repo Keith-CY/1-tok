@@ -123,6 +123,8 @@ This script builds and boots the compose stack with `postgres`, `mock-fiber`, `m
 
 Persisted release paths now force `ONE_TOK_REQUIRE_PERSISTENCE=true`, so `iam`, `api-gateway`, and `settlement` fail fast instead of silently falling back to in-memory stores when database configuration is missing or broken.
 
+Full-stack release paths also force `ONE_TOK_REQUIRE_EXTERNALS=true`, so `api-gateway`, `execution`, and `settlement` refuse to start if `IAM`, `Carrier`, `Fiber`, or internal service-token wiring is missing.
+
 ### Contracts tests
 
 ```bash
