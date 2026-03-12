@@ -1,6 +1,11 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 
-export function SiteHeader() {
+import { SESSION_COOKIE_NAME } from "../lib/session";
+
+export async function SiteHeader() {
+  const hasSession = cookies().has(SESSION_COOKIE_NAME);
+
   return (
     <header className="masthead">
       <div className="brand">
@@ -16,8 +21,15 @@ export function SiteHeader() {
         <Link href="/buyer">Buyer</Link>
         <Link href="/provider">Provider</Link>
         <Link href="/ops">Ops</Link>
+        <Link href="/login">{hasSession ? "Switch session" : "Login"}</Link>
+        {hasSession ? (
+          <form action="/auth/logout" method="post">
+            <button type="submit" className="nav-button">
+              Logout
+            </button>
+          </form>
+        ) : null}
       </nav>
     </header>
   );
 }
-

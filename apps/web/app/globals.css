@@ -139,10 +139,21 @@ main {
   transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
 }
 
-.nav-links a:hover {
+.nav-links a:hover,
+.nav-button:hover {
   transform: translateY(-1px);
   border-color: var(--line-strong);
   background: rgba(255, 255, 255, 0.04);
+}
+
+.nav-button {
+  padding: 0.72rem 1rem;
+  border: 1px solid var(--line);
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
 }
 
 .hero {
@@ -257,6 +268,68 @@ main {
 .signal-stack {
   display: grid;
   gap: 0.9rem;
+}
+
+.auth-shell {
+  min-height: 70vh;
+  display: grid;
+  place-items: center;
+}
+
+.auth-panel {
+  width: min(100%, 38rem);
+  padding: clamp(1.5rem, 3vw, 2.4rem);
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015)),
+    var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.auth-form {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.auth-field {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.auth-field span {
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.auth-field input {
+  width: 100%;
+  padding: 0.95rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.auth-submit {
+  padding: 0.95rem 1.1rem;
+  border: 1px solid rgba(143, 246, 211, 0.36);
+  border-radius: 999px;
+  color: #08110e;
+  background: linear-gradient(135deg, var(--mint), #d6fff2);
+  cursor: pointer;
+}
+
+.auth-error {
+  margin-top: 1rem;
+  padding: 0.95rem 1rem;
+  border: 1px solid rgba(255, 124, 124, 0.28);
+  border-radius: 18px;
+  color: #ffd6d6;
+  background: rgba(255, 124, 124, 0.09);
 }
 
 .signal-row {
@@ -498,4 +571,3 @@ main {
     font-size: clamp(2.6rem, 18vw, 4rem);
   }
 }
-

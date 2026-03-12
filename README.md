@@ -127,6 +127,16 @@ HTTP routes added by `iam`:
 - `GET /v1/me`
 - `GET /v1/roles`
 
+### Web login shell
+
+```bash
+export NEXT_PUBLIC_API_BASE_URL='http://127.0.0.1:8080'
+export IAM_BASE_URL='http://127.0.0.1:8081'
+bun --cwd apps/web dev
+```
+
+The web app now exposes `/login`, `POST /auth/login`, and `POST /auth/logout`. The bearer token returned by IAM is stored in an `HttpOnly` cookie owned by the Next server.
+
 ### Membership-aware gateway and settlement
 
 When `IAM_UPSTREAM` is configured for `api-gateway` and `settlement`, the platform starts binding selected routes to authenticated memberships instead of trusting caller-supplied org IDs:
