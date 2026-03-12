@@ -111,7 +111,7 @@ export DEPENDENCY_CARRIER_GATEWAY_API_TOKEN='replace-me'
 bun run release:external-deps-smoke
 ```
 
-This script now preflights the external Fiber and Carrier endpoints before starting the local stack, then boots an isolated Postgres container plus local `iam`, `api-gateway`, `settlement`, `execution`, and standalone `web`. If the external dependencies expose a nonstandard health route, set `DEPENDENCY_FIBER_HEALTHCHECK_URL` and `DEPENDENCY_CARRIER_HEALTHCHECK_URL`. Set `RELEASE_ARTIFACT_DIR` if you want to persist the generated `external-preflight.json`, `release-smoke.json`, and `release-portal-smoke.json` artifacts in a specific location. For local verification of the script shape you can set `USE_LOCAL_FIBER_MOCK=true` and `USE_LOCAL_CARRIER_MOCK=true`.
+This script now preflights the external Fiber and Carrier endpoints before starting the local stack, then boots an isolated Postgres container plus local `iam`, `api-gateway`, `settlement`, `execution`, and standalone `web`. If the external dependencies expose a nonstandard health route, set `DEPENDENCY_FIBER_HEALTHCHECK_URL` and `DEPENDENCY_CARRIER_HEALTHCHECK_URL`. Set `RELEASE_ARTIFACT_DIR` if you want to persist the generated `external-preflight.json`, `release-smoke.json`, `release-portal-smoke.json`, and aggregated `release-manifest.json` artifacts in a specific location. For local verification of the script shape you can set `USE_LOCAL_FIBER_MOCK=true` and `USE_LOCAL_CARRIER_MOCK=true`.
 
 ### Compose release smoke
 

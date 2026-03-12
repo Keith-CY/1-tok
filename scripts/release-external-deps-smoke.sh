@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOG_DIR="$(mktemp -d /tmp/1tok-external-deps-smoke.XXXXXX)"
 ARTIFACT_DIR="${RELEASE_ARTIFACT_DIR:-$(mktemp -d /tmp/1tok-external-deps-artifacts.XXXXXX)}"
+RELEASE_GIT_SHA="${RELEASE_GIT_SHA:-$(git -C "$ROOT_DIR" rev-parse HEAD)}"
 
 POSTGRES_PORT="${POSTGRES_PORT:-15432}"
 POSTGRES_CONTAINER="1tok-external-smoke-postgres-${POSTGRES_PORT}"
@@ -255,3 +256,10 @@ RELEASE_PORTAL_SMOKE_EXECUTION_BASE_URL="http://127.0.0.1:${EXECUTION_PORT}" \
 RELEASE_PORTAL_SMOKE_EXECUTION_EVENT_TOKEN="${EXECUTION_EVENT_TOKEN}" \
 RELEASE_PORTAL_SMOKE_OUTPUT_PATH="$ARTIFACT_DIR/release-portal-smoke.json" \
 bun run release:portal-smoke
+
+RELEASE_ARTIFACT_DIR="$ARTIFACT_DIR" \
+RELEASE_GIT_SHA="$RELEASE_GIT_SHA" \
+DEPENDENCY_FIBER_RPC_URL="${DEPENDENCY_FIBER_RPC_URL}" \
+DEPENDENCY_CARRIER_GATEWAY_URL="${DEPENDENCY_CARRIER_GATEWAY_URL}" \
+RELEASE_MANIFEST_OUTPUT_PATH="$ARTIFACT_DIR/release-manifest.json" \
+CGO_ENABLED=0 go run ./cmd/release-manifest >/dev/null
