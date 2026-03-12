@@ -128,3 +128,50 @@ func TestSignupLoginAndMeRoundTrip(t *testing.T) {
 		t.Fatalf("expected a fresh session token, got %+v", loginResponse.Session)
 	}
 }
+
+func TestLogoutRevokesSession(t *testing.T) {
+	server := NewServerWithOptions(Options{})
+
+	signupBody := map[string]any{
+		"email":            "logout@example.com",
+		"password":         "correct horse battery staple",
+		"name":             "Logout User",
+		"organizationName": "Logout Buyer",
+		"organizationKind": "buyer",
+	}
+	signupPayload, _ := json.Marshal(signupBody)
+	signupReq := httptest.NewRequest(http.MethodPost, "/v1/signup", bytes.NewReader(signupPayload))
+	signupReq.Header.Set("Content-Type", "application/json")
+	signupRes := httptest.NewRecorder()
+	server.ServeHTTP(signupRes, signupReq)
+	if signupRes.Code != http.StatusCreated {
+		t.Fatalf("expected 201 from signup, got %d body=%s", signupRes.Code, signupRes.Body.String())
+	}
+
+	var signupResponse struct {
+		Session struct {
+			Token string `json:"token"`
+		} `json:"session"`
+	}
+	if err := json.Unmarshal(signupRes.Body.Bytes(), &signupResponse); err != nil {
+		t.Fatalf("decode signup response: %v", err)
+	}
+
+	logoutReq := httptest.NewRequest(http.MethodPost, "/v1/logout", nil)
+	logoutReq.Header.Set("Authorization", "Bearer "+signupResponse.Session.Token)
+	logoutRes := httptest.NewRecorder()
+	server.ServeHTTP(logoutRes, logoutReq)
+
+	if logoutRes.Code != http.StatusOK {
+		t.Fatalf("expected 200 from logout, got %d body=%s", logoutRes.Code, logoutRes.Body.String())
+	}
+
+	meReq := httptest.NewRequest(http.MethodGet, "/v1/me", nil)
+	meReq.Header.Set("Authorization", "Bearer "+signupResponse.Session.Token)
+	meRes := httptest.NewRecorder()
+	server.ServeHTTP(meRes, meReq)
+
+	if meRes.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 after logout, got %d body=%s", meRes.Code, meRes.Body.String())
+	}
+}

@@ -562,3 +562,67 @@ func TestFundingRecordsAreScopedToAuthenticatedProvider(t *testing.T) {
 		t.Fatalf("expected scoped funding records, got %+v", response.Records)
 	}
 }
+
+func TestWithdrawalsUseAuthenticatedProviderMembership(t *testing.T) {
+	stub := &stubFiberClient{
+		requestPayoutResult: fiberclient.RequestPayoutResult{
+			ID:    "wd_auth",
+			State: "PENDING",
+		},
+		withdrawalsResult: fiberclient.WithdrawalStatusResult{
+			Withdrawals: []fiberclient.WithdrawalStatusItem{
+				{ID: "wd_auth", State: "PROCESSING"},
+			},
+		},
+	}
+	server := NewServerWithOptions(Options{
+		Upstream: "http://127.0.0.1:8080",
+		Fiber:    stub,
+		Funding:  NewMemoryFundingRecordRepository(),
+		Auth: &stubIAMClient{
+			actor: iamclient.Actor{
+				UserID: "usr_1",
+				Memberships: []iamclient.ActorMembership{
+					{
+						OrganizationID:   "provider_auth_1",
+						OrganizationKind: "provider",
+						Role:             "finance_viewer",
+					},
+				},
+			},
+		},
+	})
+
+	body := map[string]any{
+		"asset":  "USDI",
+		"amount": "10",
+		"destination": map[string]any{
+			"kind":           "PAYMENT_REQUEST",
+			"paymentRequest": "fiber:invoice:example",
+		},
+	}
+	payload, _ := json.Marshal(body)
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/withdrawals", bytes.NewReader(payload))
+	createReq.Header.Set("Authorization", "Bearer provider-token")
+	createRes := httptest.NewRecorder()
+	server.ServeHTTP(createRes, createReq)
+
+	if createRes.Code != http.StatusCreated {
+		t.Fatalf("expected 201 from withdrawal creation, got %d body=%s", createRes.Code, createRes.Body.String())
+	}
+	if stub.requestPayoutInput.UserID != "provider_auth_1" {
+		t.Fatalf("expected authenticated provider org, got %+v", stub.requestPayoutInput)
+	}
+
+	statusReq := httptest.NewRequest(http.MethodGet, "/v1/withdrawals/status", nil)
+	statusReq.Header.Set("Authorization", "Bearer provider-token")
+	statusRes := httptest.NewRecorder()
+	server.ServeHTTP(statusRes, statusReq)
+
+	if statusRes.Code != http.StatusOK {
+		t.Fatalf("expected 200 from status sync, got %d body=%s", statusRes.Code, statusRes.Body.String())
+	}
+	if stub.withdrawalsUserID != "provider_auth_1" {
+		t.Fatalf("expected authenticated provider for status sync, got %q", stub.withdrawalsUserID)
+	}
+}

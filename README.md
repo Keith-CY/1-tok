@@ -123,6 +123,7 @@ HTTP routes added by `iam`:
 
 - `POST /v1/signup`
 - `POST /v1/sessions`
+- `POST /v1/logout`
 - `GET /v1/me`
 - `GET /v1/roles`
 
@@ -132,6 +133,7 @@ When `IAM_UPSTREAM` is configured for `api-gateway` and `settlement`, the platfo
 
 - `POST /api/v1/orders` derives `buyerOrgId` from the authenticated buyer membership
 - `GET /v1/funding-records` scopes provider visibility to the authenticated provider membership, with ops memberships retaining global access
+- `POST /v1/withdrawals`, `POST /v1/withdrawals/quote`, and `GET /v1/withdrawals/status` can derive `providerOrgId` from the authenticated provider membership
 
 ## Current scope
 

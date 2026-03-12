@@ -111,8 +111,8 @@ func (s *IdentityStore) CreateSession(input identity.NewSession) (identity.Sessi
 	}
 
 	_, err = s.db.Exec(`
-		INSERT INTO iam_sessions (id, user_id, token_digest, expires_at, created_at)
-		VALUES ($1, $2, $3, $4, NOW())
+		INSERT INTO iam_sessions (id, user_id, token_digest, expires_at, created_at, revoked_at)
+		VALUES ($1, $2, $3, $4, NOW(), NULL)
 	`, sessionID, input.UserID, input.TokenDigest, input.ExpiresAt)
 	if err != nil {
 		return identity.Session{}, err
@@ -129,7 +129,7 @@ func (s *IdentityStore) CreateSession(input identity.NewSession) (identity.Sessi
 func (s *IdentityStore) GetAuthenticatedActorBySessionDigest(tokenDigest string) (identity.AuthenticatedActor, error) {
 	var actor identity.AuthenticatedActor
 	err := s.db.QueryRow(`
-		SELECT s.id, s.user_id, s.token_digest, s.expires_at, s.created_at,
+		SELECT s.id, s.user_id, s.token_digest, s.expires_at, s.created_at, s.revoked_at,
 		       u.id, u.email, u.name, u.password_hash, u.created_at
 		FROM iam_sessions s
 		JOIN users u ON u.id = s.user_id
@@ -140,6 +140,7 @@ func (s *IdentityStore) GetAuthenticatedActorBySessionDigest(tokenDigest string)
 		&actor.Session.TokenDigest,
 		&actor.Session.ExpiresAt,
 		&actor.Session.CreatedAt,
+		&actor.Session.RevokedAt,
 		&actor.User.ID,
 		&actor.User.Email,
 		&actor.User.Name,
@@ -184,4 +185,23 @@ func (s *IdentityStore) GetAuthenticatedActorBySessionDigest(tokenDigest string)
 	}
 
 	return actor, nil
+}
+
+func (s *IdentityStore) RevokeSession(tokenDigest string) error {
+	result, err := s.db.Exec(`
+		UPDATE iam_sessions
+		SET revoked_at = NOW()
+		WHERE token_digest = $1 AND revoked_at IS NULL
+	`, tokenDigest)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return identity.ErrNotFound
+	}
+	return nil
 }

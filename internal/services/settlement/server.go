@@ -202,6 +202,11 @@ func (s *Server) handleQuoteWithdrawal(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
+	input.ProviderOrgID, err = s.resolveProviderOrg(r, input.ProviderOrgID)
+	if err != nil {
+		writeAuthError(w, err)
+		return
+	}
 
 	result, err := s.fiber.QuotePayout(r.Context(), fiberclient.QuotePayoutInput{
 		UserID:      input.ProviderOrgID,
@@ -221,6 +226,11 @@ func (s *Server) handleRequestWithdrawal(w http.ResponseWriter, r *http.Request)
 	input, err := parseWithdrawalRequest(r)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	input.ProviderOrgID, err = s.resolveProviderOrg(r, input.ProviderOrgID)
+	if err != nil {
+		writeAuthError(w, err)
 		return
 	}
 
@@ -327,7 +337,11 @@ func (s *Server) handleSettledFeed(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleWithdrawalStatuses(w http.ResponseWriter, r *http.Request) {
-	userID := strings.TrimSpace(r.URL.Query().Get("providerOrgId"))
+	userID, err := s.resolveProviderOrg(r, strings.TrimSpace(r.URL.Query().Get("providerOrgId")))
+	if err != nil {
+		writeAuthError(w, err)
+		return
+	}
 	if userID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing providerOrgId"})
 		return
@@ -372,7 +386,7 @@ func parseWithdrawalRequest(r *http.Request) (withdrawalRequest, error) {
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		return withdrawalRequest{}, errors.New("invalid json")
 	}
-	if payload.ProviderOrgID == "" || payload.Asset == "" || payload.Amount == "" || payload.Destination.Kind == "" {
+	if payload.Asset == "" || payload.Amount == "" || payload.Destination.Kind == "" {
 		return withdrawalRequest{}, errors.New("missing required fields")
 	}
 	return payload, nil
@@ -433,6 +447,36 @@ func isOpsRole(role string) bool {
 	default:
 		return false
 	}
+}
+
+func (s *Server) resolveProviderOrg(r *http.Request, requestedProviderOrgID string) (string, error) {
+	if s.auth == nil {
+		return requestedProviderOrgID, nil
+	}
+
+	token, ok := bearerToken(r.Header.Get("Authorization"))
+	if !ok {
+		return "", iamclient.ErrUnauthorized
+	}
+
+	actor, err := s.auth.GetActor(r.Context(), token)
+	if err != nil {
+		return "", err
+	}
+
+	for _, membership := range actor.Memberships {
+		if membership.OrganizationKind == "ops" && isOpsRole(membership.Role) {
+			return requestedProviderOrgID, nil
+		}
+		if membership.OrganizationKind == "provider" && isProviderFinanceRole(membership.Role) {
+			if requestedProviderOrgID != "" && requestedProviderOrgID != membership.OrganizationID {
+				return "", errors.New("provider org mismatch")
+			}
+			return membership.OrganizationID, nil
+		}
+	}
+
+	return "", errors.New("provider or ops membership is required")
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {

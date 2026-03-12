@@ -36,11 +36,12 @@ type Membership struct {
 }
 
 type Session struct {
-	ID          string    `json:"id"`
-	UserID      string    `json:"userId"`
-	TokenDigest string    `json:"-"`
-	ExpiresAt   time.Time `json:"expiresAt"`
-	CreatedAt   time.Time `json:"createdAt"`
+	ID          string     `json:"id"`
+	UserID      string     `json:"userId"`
+	TokenDigest string     `json:"-"`
+	ExpiresAt   time.Time  `json:"expiresAt"`
+	CreatedAt   time.Time  `json:"createdAt"`
+	RevokedAt   *time.Time `json:"revokedAt,omitempty"`
 }
 
 type ActorMembership struct {
@@ -77,6 +78,7 @@ type Store interface {
 	FindUserByEmail(email string) (User, error)
 	CreateSession(NewSession) (Session, error)
 	GetAuthenticatedActorBySessionDigest(tokenDigest string) (AuthenticatedActor, error)
+	RevokeSession(tokenDigest string) error
 }
 
 type MemoryStore struct {
@@ -225,4 +227,19 @@ func (s *MemoryStore) GetAuthenticatedActorBySessionDigest(tokenDigest string) (
 		},
 		Session: session,
 	}, nil
+}
+
+func (s *MemoryStore) RevokeSession(tokenDigest string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	session, ok := s.sessionsByDigest[tokenDigest]
+	if !ok {
+		return ErrNotFound
+	}
+
+	now := time.Now().UTC()
+	session.RevokedAt = &now
+	s.sessionsByDigest[tokenDigest] = session
+	return nil
 }

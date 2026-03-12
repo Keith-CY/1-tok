@@ -274,3 +274,49 @@ func TestIdentityStoreRoundTrip(t *testing.T) {
 		t.Fatalf("unexpected memberships: %+v", authenticated.Memberships)
 	}
 }
+
+func TestMigrateAddsRevokedAtToLegacyIAMSessions(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+
+	db, err := Open(dsn)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS iam_sessions (
+			id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL,
+			token_digest TEXT NOT NULL UNIQUE,
+			expires_at TIMESTAMPTZ NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)
+	`); err != nil {
+		t.Fatalf("create legacy iam_sessions: %v", err)
+	}
+	if _, err := db.Exec(`ALTER TABLE iam_sessions DROP COLUMN IF EXISTS revoked_at`); err != nil {
+		t.Fatalf("drop revoked_at: %v", err)
+	}
+
+	if err := Migrate(db); err != nil {
+		t.Fatalf("migrate db: %v", err)
+	}
+
+	var exists bool
+	if err := db.QueryRow(`
+		SELECT EXISTS (
+			SELECT 1
+			FROM information_schema.columns
+			WHERE table_name = 'iam_sessions' AND column_name = 'revoked_at'
+		)
+	`).Scan(&exists); err != nil {
+		t.Fatalf("query columns: %v", err)
+	}
+	if !exists {
+		t.Fatalf("expected revoked_at column to exist after migrate")
+	}
+}

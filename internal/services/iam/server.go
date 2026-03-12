@@ -85,6 +85,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.Method == http.MethodPost && r.URL.Path == "/v1/logout" {
+		s.handleLogout(w, r)
+		return
+	}
+
 	if r.Method == http.MethodGet && r.URL.Path == "/v1/me" {
 		s.handleMe(w, r)
 		return
@@ -234,6 +239,10 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	if actor.Session.RevokedAt != nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "session revoked"})
+		return
+	}
 	if actor.Session.ExpiresAt.Before(s.now()) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "session expired"})
 		return
@@ -259,6 +268,24 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		},
 		"memberships": memberships,
 	})
+}
+
+func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	token, ok := bearerToken(r.Header.Get("Authorization"))
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "missing bearer token"})
+		return
+	}
+
+	if err := s.store.RevokeSession(tokenDigest(token)); errors.Is(err, identity.ErrNotFound) {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid session"})
+		return
+	} else if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"revoked": true})
 }
 
 func (s *Server) issueSession(userID string) (identity.Session, string, error) {
