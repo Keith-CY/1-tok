@@ -190,6 +190,18 @@ func (s *Server) handleGetOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if s.auth != nil {
+		actor, err := s.authenticatedActor(r)
+		if err != nil {
+			writeAuthError(w, err)
+			return
+		}
+		if err := authorizeOrderForActor(order, actor); err != nil {
+			writeAuthError(w, err)
+			return
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{"order": order})
 }
 
@@ -845,6 +857,28 @@ func filterOrdersForActor(orders []*core.Order, actor iamclient.Actor) ([]*core.
 	}
 
 	return filtered, nil
+}
+
+func authorizeOrderForActor(order *core.Order, actor iamclient.Actor) error {
+	if order == nil {
+		return errors.New("order is required")
+	}
+	if len(actor.Memberships) == 0 {
+		return errors.New("membership is required")
+	}
+
+	for _, membership := range actor.Memberships {
+		switch {
+		case membership.OrganizationKind == "ops" && isOpsRole(membership.Role):
+			return nil
+		case membership.OrganizationKind == "buyer" && isBuyerRole(membership.Role) && membership.OrganizationID == order.BuyerOrgID:
+			return nil
+		case membership.OrganizationKind == "provider" && isProviderRole(membership.Role) && membership.OrganizationID == order.ProviderOrgID:
+			return nil
+		}
+	}
+
+	return errors.New("membership is required")
 }
 
 func filterRFQsForActor(rfqs []platform.RFQ, actor iamclient.Actor) ([]platform.RFQ, error) {

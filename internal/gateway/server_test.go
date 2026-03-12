@@ -993,6 +993,48 @@ func TestListRFQBidsScopesProviderMembershipWhenIAMConfigured(t *testing.T) {
 	}
 }
 
+func TestGetOrderRejectsForeignBuyerWhenIAMConfigured(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	order, err := app.CreateOrder(platform.CreateOrderInput{
+		BuyerOrgID:    "buyer_1",
+		ProviderOrgID: "provider_1",
+		Title:         "Protected order",
+		FundingMode:   "credit",
+		CreditLineID:  "credit_1",
+		Milestones: []platform.CreateMilestoneInput{
+			{ID: "ms_1", Title: "Plan", BasePriceCents: 1200, BudgetCents: 1800},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create order: %v", err)
+	}
+
+	server := NewServerWithOptions(Options{
+		App: app,
+		IAM: &stubIAMClient{
+			actor: iamclient.Actor{
+				UserID: "usr_buyer_2",
+				Memberships: []iamclient.ActorMembership{
+					{
+						OrganizationID:   "buyer_2",
+						OrganizationKind: "buyer",
+						Role:             "procurement",
+					},
+				},
+			},
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/orders/"+order.ID, nil)
+	req.Header.Set("Authorization", "Bearer buyer-session-token")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d body=%s", res.Code, res.Body.String())
+	}
+}
+
 func TestCarrierMilestoneSettlementReturnsLedgerEntry(t *testing.T) {
 	server := NewServer()
 
