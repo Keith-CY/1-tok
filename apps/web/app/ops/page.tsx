@@ -5,12 +5,19 @@ import { requirePortalViewer } from "../../lib/viewer";
 
 export const dynamic = "force-dynamic";
 
-export default async function OpsPage() {
+export default async function OpsPage({
+  searchParams,
+}: {
+  searchParams?: Record<string, string | string[] | undefined>;
+}) {
   const viewer = await requirePortalViewer("ops", "/ops");
   const data = await getOpsDashboardData({
     authToken: viewer.token,
     requireLive: true,
   });
+  const creditApproved = readSearchParam(searchParams, "creditApproved");
+  const recommendedLimitCents = readSearchParam(searchParams, "recommendedLimitCents");
+  const creditReason = readSearchParam(searchParams, "creditReason");
 
   return (
     <PortalShell
@@ -46,6 +53,52 @@ export default async function OpsPage() {
           value={`${data.summary.pendingWithdrawals}`}
           hint="Withdrawal records still moving through the settlement queue."
         />
+      </div>
+
+      <div className="feed-grid">
+        <article className="feed-card">
+          <span className="tag">Credit review</span>
+          <h3>Ops should be able to re-price buyer trust without leaving the control plane.</h3>
+          <form className="auth-form market-form" action="/ops/credits/decision" method="post">
+            <div className="market-form__grid">
+              <label className="auth-field">
+                <span>Completed orders</span>
+                <input name="completedOrders" type="number" min="0" step="1" defaultValue="12" required />
+              </label>
+              <label className="auth-field">
+                <span>Successful payments</span>
+                <input name="successfulPayments" type="number" min="0" step="1" defaultValue="11" required />
+              </label>
+              <label className="auth-field">
+                <span>Failed payments</span>
+                <input name="failedPayments" type="number" min="0" step="1" defaultValue="1" required />
+              </label>
+              <label className="auth-field">
+                <span>Disputed orders</span>
+                <input name="disputedOrders" type="number" min="0" step="1" defaultValue={data.summary.openDisputes} required />
+              </label>
+            </div>
+            <label className="auth-field">
+              <span>Lifetime spend cents</span>
+              <input name="lifetimeSpendCents" type="number" min="0" step="1" defaultValue="480000" required />
+            </label>
+            <button type="submit" className="auth-submit">
+              Run credit decision
+            </button>
+          </form>
+        </article>
+
+        <aside className="message-card">
+          <span className="tag">Decision result</span>
+          <h3>Show the last recommendation with the exact reason returned by policy.</h3>
+          <div className="message-list">
+            <div className="message-item">
+              <strong>{creditApproved === "true" ? "Approved" : creditApproved === "false" ? "Rejected" : "No decision yet"}</strong>
+              <p>Recommended limit {recommendedLimitCents || "0"} cents</p>
+              <p>{creditReason || "Submit buyer history to generate a live recommendation."}</p>
+            </div>
+          </div>
+        </aside>
       </div>
 
       <div className="feed-grid">
@@ -126,4 +179,12 @@ export default async function OpsPage() {
       </article>
     </PortalShell>
   );
+}
+
+function readSearchParam(
+  searchParams: Record<string, string | string[] | undefined> | undefined,
+  key: string,
+): string {
+  const value = searchParams?.[key];
+  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
 }

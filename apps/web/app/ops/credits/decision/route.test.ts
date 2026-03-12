@@ -1,0 +1,77 @@
+import { afterEach, describe, expect, it, mock } from "bun:test";
+
+import { POST } from "./route";
+
+const originalFetch = globalThis.fetch;
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  delete process.env.IAM_BASE_URL;
+  delete process.env.NEXT_PUBLIC_API_BASE_URL;
+});
+
+describe("ops credit decision route", () => {
+  it("runs a credit decision using the authenticated ops membership", async () => {
+    process.env.IAM_BASE_URL = "http://iam.internal";
+    process.env.NEXT_PUBLIC_API_BASE_URL = "http://api.internal";
+
+    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "http://iam.internal/v1/me") {
+        return new Response(
+          JSON.stringify({
+            user: { id: "usr_1", email: "ops@example.com", name: "Ops User" },
+            memberships: [{ role: "ops_reviewer", organization: { id: "ops_1", name: "Ops Org", kind: "ops" } }],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      expect(url).toBe("http://api.internal/api/v1/credits/decision");
+      expect(init?.method).toBe("POST");
+      expect((init?.headers as Record<string, string>)?.Authorization).toBe("Bearer tok_123");
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        completedOrders: 12,
+        successfulPayments: 11,
+        failedPayments: 1,
+        disputedOrders: 1,
+        lifetimeSpendCents: 480000,
+      });
+
+      return new Response(
+        JSON.stringify({
+          decision: {
+            approved: true,
+            recommendedLimitCents: 885000,
+            reason: "Stable spend history",
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+
+    const form = new FormData();
+    form.set("completedOrders", "12");
+    form.set("successfulPayments", "11");
+    form.set("failedPayments", "1");
+    form.set("disputedOrders", "1");
+    form.set("lifetimeSpendCents", "480000");
+
+    const response = await POST(
+      new Request("http://localhost/ops/credits/decision", {
+        method: "POST",
+        headers: {
+          cookie: "one_tok_session=tok_123",
+        },
+        body: form,
+      }),
+    );
+
+    expect(response.status).toBe(303);
+    const location = new URL(response.headers.get("location") ?? "");
+    expect(location.pathname).toBe("/ops");
+    expect(location.searchParams.get("creditApproved")).toBe("true");
+    expect(location.searchParams.get("recommendedLimitCents")).toBe("885000");
+    expect(location.searchParams.get("creditReason")).toBe("Stable spend history");
+  });
+});
