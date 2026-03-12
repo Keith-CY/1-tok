@@ -32,6 +32,14 @@ type smokeClient struct {
 	httpClient *http.Client
 }
 
+type statusError struct {
+	StatusCode int
+}
+
+func (e statusError) Error() string {
+	return fmt.Sprintf("unexpected status %d", e.StatusCode)
+}
+
 func RunSmoke(ctx context.Context, cfg Config) (Summary, error) {
 	client := &smokeClient{httpClient: &http.Client{Timeout: 10 * time.Second}}
 
@@ -45,9 +53,14 @@ func RunSmoke(ctx context.Context, cfg Config) (Summary, error) {
 		return Summary{}, fmt.Errorf("execution health: %w", err)
 	}
 
-	orderID, err := client.createOrder(ctx, cfg.APIBaseURL)
+	orderID, err := client.createMarketplaceOrder(ctx, cfg.APIBaseURL)
 	if err != nil {
-		return Summary{}, err
+		if isStatusCode(err, http.StatusNotFound) {
+			orderID, err = client.createOrder(ctx, cfg.APIBaseURL)
+		}
+		if err != nil {
+			return Summary{}, err
+		}
 	}
 	if err := client.settleViaExecution(ctx, cfg.ExecutionBaseURL, orderID); err != nil {
 		return Summary{}, err
@@ -154,6 +167,89 @@ func (c *smokeClient) createOrder(ctx context.Context, baseURL string) (string, 
 	}
 	if response.Order.ID == "" {
 		return "", errors.New("create order: missing order id")
+	}
+	return response.Order.ID, nil
+}
+
+func (c *smokeClient) createMarketplaceOrder(ctx context.Context, baseURL string) (string, error) {
+	rfqID, err := c.createRFQ(ctx, baseURL)
+	if err != nil {
+		return "", err
+	}
+	bidID, err := c.createBid(ctx, baseURL, rfqID)
+	if err != nil {
+		return "", err
+	}
+	return c.awardRFQ(ctx, baseURL, rfqID, bidID)
+}
+
+func (c *smokeClient) createRFQ(ctx context.Context, baseURL string) (string, error) {
+	var response struct {
+		RFQ struct {
+			ID string `json:"id"`
+		} `json:"rfq"`
+	}
+	err := c.postJSON(ctx, strings.TrimRight(baseURL, "/")+"/api/v1/rfqs", map[string]any{
+		"buyerOrgId":         "buyer_1",
+		"title":              "release smoke rfq",
+		"category":           "agent-ops",
+		"scope":              "Need a carrier-ready operator to run a one-step smoke order.",
+		"budgetCents":        1800,
+		"responseDeadlineAt": "2026-03-15T12:00:00Z",
+	}, &response)
+	if err != nil {
+		return "", fmt.Errorf("create rfq: %w", err)
+	}
+	if response.RFQ.ID == "" {
+		return "", errors.New("create rfq: missing rfq id")
+	}
+	return response.RFQ.ID, nil
+}
+
+func (c *smokeClient) createBid(ctx context.Context, baseURL, rfqID string) (string, error) {
+	var response struct {
+		Bid struct {
+			ID string `json:"id"`
+		} `json:"bid"`
+	}
+	err := c.postJSON(ctx, strings.TrimRight(baseURL, "/")+"/api/v1/rfqs/"+rfqID+"/bids", map[string]any{
+		"providerOrgId": "provider_1",
+		"message":       "release smoke provider bid",
+		"quoteCents":    1200,
+		"milestones": []map[string]any{
+			{
+				"id":             "ms_1",
+				"title":          "smoke milestone",
+				"basePriceCents": 1200,
+				"budgetCents":    1800,
+			},
+		},
+	}, &response)
+	if err != nil {
+		return "", fmt.Errorf("create bid: %w", err)
+	}
+	if response.Bid.ID == "" {
+		return "", errors.New("create bid: missing bid id")
+	}
+	return response.Bid.ID, nil
+}
+
+func (c *smokeClient) awardRFQ(ctx context.Context, baseURL, rfqID, bidID string) (string, error) {
+	var response struct {
+		Order struct {
+			ID string `json:"id"`
+		} `json:"order"`
+	}
+	err := c.postJSON(ctx, strings.TrimRight(baseURL, "/")+"/api/v1/rfqs/"+rfqID+"/award", map[string]any{
+		"bidId":        bidID,
+		"fundingMode":  "credit",
+		"creditLineId": "credit_1",
+	}, &response)
+	if err != nil {
+		return "", fmt.Errorf("award rfq: %w", err)
+	}
+	if response.Order.ID == "" {
+		return "", errors.New("award rfq: missing order id")
 	}
 	return response.Order.ID, nil
 }
@@ -329,12 +425,17 @@ func (c *smokeClient) postJSON(ctx context.Context, url string, payload any, tar
 	}
 	defer res.Body.Close()
 	if res.StatusCode >= http.StatusBadRequest {
-		return fmt.Errorf("unexpected status %d", res.StatusCode)
+		return statusError{StatusCode: res.StatusCode}
 	}
 	if target == nil {
 		return nil
 	}
 	return json.NewDecoder(res.Body).Decode(target)
+}
+
+func isStatusCode(err error, statusCode int) bool {
+	var target statusError
+	return errors.As(err, &target) && target.StatusCode == statusCode
 }
 
 func envOrDefault(key, fallback string) string {

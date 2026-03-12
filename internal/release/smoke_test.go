@@ -17,6 +17,8 @@ func TestRunSmokeDefaultsToMinimalCrossServiceFlow(t *testing.T) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/healthz":
 			_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
+		case r.Method == http.MethodPost && (r.URL.Path == "/api/v1/rfqs" || strings.HasPrefix(r.URL.Path, "/api/v1/rfqs/")):
+			http.NotFound(w, r)
 		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/orders":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"order": map[string]any{
@@ -101,6 +103,8 @@ func TestRunSmokeExercisesMarketplaceFlow(t *testing.T) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/healthz":
 			_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
+		case r.Method == http.MethodPost && (r.URL.Path == "/api/v1/rfqs" || strings.HasPrefix(r.URL.Path, "/api/v1/rfqs/")):
+			http.NotFound(w, r)
 		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/orders":
 			var body struct {
 				BuyerOrgID    string `json:"buyerOrgId"`
@@ -229,5 +233,99 @@ func TestRunSmokeExercisesMarketplaceFlow(t *testing.T) {
 	}
 	if summary.CodeAgentPolicy != "allow" {
 		t.Fatalf("expected allow policy, got %+v", summary)
+	}
+}
+
+func TestRunSmokePrefersRFQAwardFlowWhenMarketplaceRoutesExist(t *testing.T) {
+	var requestLog []string
+
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestLog = append(requestLog, r.Method+" "+r.URL.Path)
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/healthz":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/rfqs":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"rfq": map[string]any{
+					"id": "rfq_smoke",
+				},
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/rfqs/rfq_smoke/bids":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"bid": map[string]any{
+					"id": "bid_smoke",
+				},
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/rfqs/rfq_smoke/award":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"rfq": map[string]any{
+					"id":     "rfq_smoke",
+					"status": "awarded",
+				},
+				"order": map[string]any{
+					"id": "ord_from_rfq",
+				},
+			})
+		default:
+			t.Fatalf("unexpected api request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer api.Close()
+
+	settlement := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/healthz":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/invoices":
+			_ = json.NewEncoder(w).Encode(map[string]any{"invoice": "inv_rfq"})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/settled-feed":
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{"invoice": "inv_rfq"}}})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/funding-records":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"records": []map[string]any{
+					{"id": "fund_invoice_rfq", "kind": "invoice", "state": "SETTLED"},
+				},
+			})
+		default:
+			t.Fatalf("unexpected settlement request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer settlement.Close()
+
+	execution := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/healthz":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/carrier/events":
+			_ = json.NewEncoder(w).Encode(map[string]any{"accepted": true, "continueAllowed": true})
+		default:
+			t.Fatalf("unexpected execution request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer execution.Close()
+
+	summary, err := RunSmoke(context.Background(), Config{
+		APIBaseURL:        api.URL,
+		SettlementBaseURL: settlement.URL,
+		ExecutionBaseURL:  execution.URL,
+	})
+	if err != nil {
+		t.Fatalf("run smoke: %v", err)
+	}
+
+	if summary.OrderID != "ord_from_rfq" || summary.Invoice != "inv_rfq" {
+		t.Fatalf("unexpected rfq summary: %+v", summary)
+	}
+
+	expectedPrefix := []string{
+		"GET /healthz",
+		"POST /api/v1/rfqs",
+		"POST /api/v1/rfqs/rfq_smoke/bids",
+		"POST /api/v1/rfqs/rfq_smoke/award",
+	}
+	for index, expected := range expectedPrefix {
+		if requestLog[index] != expected {
+			t.Fatalf("expected request %d to be %q, got %q", index, expected, requestLog[index])
+		}
 	}
 }
