@@ -7,6 +7,7 @@
 - service entrypoints for `iam`, `marketplace`, `settlement`, `risk`, `execution`, and `notification`
 - Fiber JSON-RPC integration for invoice creation, invoice status, withdrawal quote, and withdrawal request
 - Carrier gateway integration for remote codeagent health, version, and run control-plane calls
+- Local `mock-carrier` support for release smoke and compose-based rehearsal
 - shared TypeScript contracts for the web portal
 - local container topology for Go services plus Postgres and NATS
 - Postgres-backed repositories for orders, providers, listings, messages, and disputes when `DATABASE_URL` is set
@@ -81,7 +82,7 @@ This script builds the web app, starts local `iam`, `api-gateway`, `execution`, 
 bun run release:services-local-smoke
 ```
 
-This script starts local `mock-fiber`, `api-gateway`, `settlement`, and `execution` processes on dedicated localhost ports, wires the required service tokens, and then runs the cross-service `release:smoke` flow with invoice settlement plus provider withdrawal against those real HTTP services.
+This script starts local `mock-fiber`, `mock-carrier`, `api-gateway`, `settlement`, and `execution` processes on dedicated localhost ports, wires the required service tokens, and then runs the cross-service `release:smoke` flow with invoice settlement, provider withdrawal, and carrier codeagent probe against those real HTTP services.
 
 ### Full local release smoke
 
@@ -89,7 +90,7 @@ This script starts local `mock-fiber`, `api-gateway`, `settlement`, and `executi
 bun run release:full-local-smoke
 ```
 
-This script starts local `mock-fiber`, `iam`, `api-gateway`, `settlement`, `execution`, and the built Next standalone server, wires IAM plus service-token auth, and then runs both `release:smoke` with withdrawal coverage and `release:portal-smoke` against the same stack.
+This script starts local `mock-fiber`, `mock-carrier`, `iam`, `api-gateway`, `settlement`, `execution`, and the built Next standalone server, wires IAM plus service-token auth, and then runs both `release:smoke` with withdrawal and carrier-probe coverage and `release:portal-smoke` against the same stack.
 
 ### Full persisted local release smoke
 
@@ -97,7 +98,7 @@ This script starts local `mock-fiber`, `iam`, `api-gateway`, `settlement`, `exec
 bun run release:full-persisted-local-smoke
 ```
 
-This script boots an isolated `postgres:16-alpine` container on `127.0.0.1:${POSTGRES_PORT:-15432}`, wires `iam`, `api-gateway`, and `settlement` to that database, and then runs the same full-stack smoke sequence against persisted repositories instead of the in-memory defaults.
+This script boots an isolated `postgres:16-alpine` container on `127.0.0.1:${POSTGRES_PORT:-15432}`, wires `iam`, `api-gateway`, and `settlement` to that database, and then runs the same full-stack smoke sequence, including withdrawal and carrier probe coverage, against persisted repositories instead of the in-memory defaults.
 
 ### Contracts tests
 

@@ -28,6 +28,18 @@ services:
     ports:
       - "8090:8090"
 
+  mock-carrier:
+    build:
+      context: .
+      dockerfile: Dockerfile.go-service
+      args:
+        SERVICE: mock-carrier
+    environment:
+      MOCK_CARRIER_ADDR: ":8787"
+      MOCK_CARRIER_API_TOKEN: ${CARRIER_GATEWAY_API_TOKEN:-test-gateway-token}
+    ports:
+      - "8787:8787"
+
   api-gateway:
     build:
       context: .
@@ -121,12 +133,13 @@ services:
       API_GATEWAY_UPSTREAM: http://api-gateway:8080
       EXECUTION_EVENT_TOKEN: ${ONE_TOK_EXECUTION_EVENT_TOKEN:-local-execution-event-token}
       EXECUTION_GATEWAY_TOKEN: ${ONE_TOK_SERVICE_TOKEN:-local-service-token}
-      CARRIER_GATEWAY_URL: ${CARRIER_GATEWAY_URL:-http://carrier-gateway:8787}
-      CARRIER_GATEWAY_API_TOKEN: ${CARRIER_GATEWAY_API_TOKEN:-}
+      CARRIER_GATEWAY_URL: ${CARRIER_GATEWAY_URL:-http://mock-carrier:8787}
+      CARRIER_GATEWAY_API_TOKEN: ${CARRIER_GATEWAY_API_TOKEN:-test-gateway-token}
     ports:
       - "8085:8085"
     depends_on:
       - api-gateway
+      - mock-carrier
 
   notification:
     build:
