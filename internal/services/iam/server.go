@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/chenyu/1-tok/internal/identity"
+	"github.com/chenyu/1-tok/internal/runtimeconfig"
 	"github.com/chenyu/1-tok/internal/store/postgres"
 )
 
@@ -308,24 +310,35 @@ func (s *Server) issueSession(userID string) (identity.Session, string, error) {
 }
 
 func loadStoreFromEnv() identity.Store {
+	store, err := loadConfiguredStoreFromEnv()
+	if err != nil {
+		if runtimeconfig.RequirePersistence() {
+			panic(err)
+		}
+		return identity.NewMemoryStore()
+	}
+	return store
+}
+
+func loadConfiguredStoreFromEnv() (identity.Store, error) {
 	dsn := strings.TrimSpace(os.Getenv("IAM_DATABASE_URL"))
 	if dsn == "" {
 		dsn = strings.TrimSpace(os.Getenv("DATABASE_URL"))
 	}
 	if dsn == "" {
-		return identity.NewMemoryStore()
+		return nil, errors.New("IAM_DATABASE_URL or DATABASE_URL is required")
 	}
 
 	db, err := postgres.Open(dsn)
 	if err != nil {
-		return identity.NewMemoryStore()
+		return nil, fmt.Errorf("open iam store: %w", err)
 	}
 	if err := postgres.Migrate(db); err != nil {
 		_ = db.Close()
-		return identity.NewMemoryStore()
+		return nil, fmt.Errorf("migrate iam store: %w", err)
 	}
 
-	return postgres.NewIdentityStore(db)
+	return postgres.NewIdentityStore(db), nil
 }
 
 func validSignupPayload(email, password, name, organizationName, organizationKind string) bool {

@@ -57,6 +57,7 @@ services:
       IAM_UPSTREAM: http://iam:8081
       NATS_URL: nats://nats:4222
       API_GATEWAY_EXECUTION_TOKEN: ${ONE_TOK_SERVICE_TOKEN:-local-service-token}
+      ONE_TOK_REQUIRE_PERSISTENCE: "true"
     ports:
       - "${API_GATEWAY_PUBLISHED_PORT:-8080}:8080"
     depends_on:
@@ -74,6 +75,7 @@ services:
     environment:
       IAM_ADDR: ":8081"
       DATABASE_URL: postgres://onetok:onetok@postgres:5432/onetok?sslmode=disable
+      ONE_TOK_REQUIRE_PERSISTENCE: "true"
     ports:
       - "${IAM_PUBLISHED_PORT:-8081}:8081"
     depends_on:
@@ -109,6 +111,7 @@ services:
       FIBER_APP_ID: ${FIBER_APP_ID:-app_1}
       FIBER_HMAC_SECRET: ${FIBER_HMAC_SECRET:-replace-me}
       SETTLEMENT_SERVICE_TOKEN: ${ONE_TOK_SERVICE_TOKEN:-local-service-token}
+      ONE_TOK_REQUIRE_PERSISTENCE: "true"
     ports:
       - "${SETTLEMENT_PUBLISHED_PORT:-8083}:8083"
     depends_on:

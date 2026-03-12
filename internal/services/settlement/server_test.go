@@ -145,6 +145,23 @@ func TestCreateInvoiceUsesFiberClient(t *testing.T) {
 	}
 }
 
+func TestNewServerRequiresPersistentFundingStoreWhenConfigured(t *testing.T) {
+	t.Setenv("ONE_TOK_REQUIRE_PERSISTENCE", "true")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("SETTLEMENT_DATABASE_URL", "")
+
+	defer func() {
+		if recovered := recover(); recovered == nil {
+			t.Fatalf("expected NewServerWithOptions to panic when persistence is required and no database is configured")
+		}
+	}()
+
+	_ = NewServerWithOptions(Options{
+		Upstream: "http://upstream.internal",
+		Fiber:    &stubFiberClient{},
+	})
+}
+
 func TestCreateInvoiceRejectsMissingServiceTokenWhenConfigured(t *testing.T) {
 	t.Setenv("SETTLEMENT_SERVICE_TOKEN", "settlement-shared-token")
 

@@ -121,6 +121,8 @@ bun run release:compose-smoke
 
 This script builds and boots the compose stack with `postgres`, `mock-fiber`, `mock-carrier`, `iam`, `api-gateway`, `settlement`, `execution`, and `web`, then runs both release smoke commands against the published localhost ports before tearing the stack down.
 
+Persisted release paths now force `ONE_TOK_REQUIRE_PERSISTENCE=true`, so `iam`, `api-gateway`, and `settlement` fail fast instead of silently falling back to in-memory stores when database configuration is missing or broken.
+
 ### Contracts tests
 
 ```bash

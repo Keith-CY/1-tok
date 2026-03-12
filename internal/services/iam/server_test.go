@@ -236,3 +236,17 @@ func TestSignupAssignsOpsReviewerMembership(t *testing.T) {
 		t.Fatalf("unexpected memberships: %+v", meResponse.Memberships)
 	}
 }
+
+func TestNewServerRequiresPersistentStoreWhenConfigured(t *testing.T) {
+	t.Setenv("ONE_TOK_REQUIRE_PERSISTENCE", "true")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("IAM_DATABASE_URL", "")
+
+	defer func() {
+		if recovered := recover(); recovered == nil {
+			t.Fatalf("expected NewServer to panic when persistence is required and no database is configured")
+		}
+	}()
+
+	_ = NewServer()
+}

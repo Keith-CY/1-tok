@@ -3,6 +3,7 @@ package settlement
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chenyu/1-tok/internal/runtimeconfig"
 	postgresstore "github.com/chenyu/1-tok/internal/store/postgres"
 )
 
@@ -238,27 +240,38 @@ func (r *postgresFundingRecordRepository) List(filter FundingRecordFilter) ([]Fu
 }
 
 func loadFundingRecordRepository() FundingRecordRepository {
+	repository, err := loadConfiguredFundingRecordRepository()
+	if err != nil {
+		if runtimeconfig.RequirePersistence() {
+			panic(err)
+		}
+		log.Printf("settlement funding store: falling back to memory: %v", err)
+		return NewMemoryFundingRecordRepository()
+	}
+
+	return repository
+}
+
+func loadConfiguredFundingRecordRepository() (FundingRecordRepository, error) {
 	dsn := strings.TrimSpace(os.Getenv("SETTLEMENT_DATABASE_URL"))
 	if dsn == "" {
 		dsn = strings.TrimSpace(os.Getenv("DATABASE_URL"))
 	}
 	if dsn == "" {
-		return NewMemoryFundingRecordRepository()
+		return nil, errors.New("SETTLEMENT_DATABASE_URL or DATABASE_URL is required")
 	}
 
 	db, err := postgresstore.Open(dsn)
 	if err != nil {
-		log.Printf("settlement funding store: falling back to memory after open error: %v", err)
-		return NewMemoryFundingRecordRepository()
+		return nil, fmt.Errorf("open settlement funding store: %w", err)
 	}
 
 	if err := migrateFundingRecordStore(db); err != nil {
-		log.Printf("settlement funding store: falling back to memory after migrate error: %v", err)
 		_ = db.Close()
-		return NewMemoryFundingRecordRepository()
+		return nil, fmt.Errorf("migrate settlement funding store: %w", err)
 	}
 
-	return newPostgresFundingRecordRepository(db)
+	return newPostgresFundingRecordRepository(db), nil
 }
 
 func migrateFundingRecordStore(db *sql.DB) error {

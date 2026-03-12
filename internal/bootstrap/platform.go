@@ -2,10 +2,12 @@ package bootstrap
 
 import (
 	"database/sql"
+	"errors"
 	"os"
 
 	natsevents "github.com/chenyu/1-tok/internal/events/nats"
 	"github.com/chenyu/1-tok/internal/platform"
+	"github.com/chenyu/1-tok/internal/runtimeconfig"
 	postgresstore "github.com/chenyu/1-tok/internal/store/postgres"
 )
 
@@ -17,6 +19,10 @@ func LoadPlatformApp() (*platform.App, func() error, error) {
 
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
+		if runtimeconfig.RequirePersistence() {
+			_ = publisherCleanup()
+			return nil, nil, errors.New("DATABASE_URL is required when ONE_TOK_REQUIRE_PERSISTENCE=true")
+		}
 		app := platform.NewAppWithMemory()
 		app.SetPublisher(publisher)
 		return app, publisherCleanup, nil
