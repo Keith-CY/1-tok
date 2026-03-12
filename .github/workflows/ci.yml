@@ -1,0 +1,171 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: Unit And Coverage
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.1.8"
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install Dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run Unit Coverage
+        id: unit_coverage
+        run: bun run test:coverage
+
+      - name: Upload Coverage Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: .artifacts/coverage
+          if-no-files-found: error
+
+      - name: Publish Coverage Summary
+        if: always()
+        run: |
+          if [[ -f .artifacts/coverage/summary.md ]]; then
+            cat .artifacts/coverage/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## Coverage" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Coverage summary was not generated." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  integration:
+    name: Integration Smoke
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.1.8"
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install Dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Validate Compose
+        run: docker compose config
+
+      - name: Run Integration Smoke
+        run: bun run test:integration
+
+  report:
+    name: Report
+    runs-on: ubuntu-latest
+    needs:
+      - unit
+      - integration
+    if: always()
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Download Coverage Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-report
+          path: .artifacts/coverage
+        continue-on-error: true
+
+      - name: Build Report Body
+        id: report_body
+        env:
+          UNIT_RESULT: ${{ needs.unit.result }}
+          INTEGRATION_RESULT: ${{ needs.integration.result }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          marker = "<!-- 1-tok-ci-report -->"
+          coverage_path = Path(".artifacts/coverage/summary.md")
+          coverage = coverage_path.read_text(encoding="utf-8").strip() if coverage_path.exists() else "## Coverage\n\nCoverage summary artifact was not available."
+          run_url = f"https://github.com/{os.environ['REPOSITORY']}/actions/runs/{os.environ['RUN_ID']}/attempts/{os.environ['RUN_ATTEMPT']}"
+          body = "\n".join([
+              marker,
+              "## CI Report",
+              "",
+              f"- Unit and coverage: `{os.environ['UNIT_RESULT']}`",
+              f"- Integration smoke: `{os.environ['INTEGRATION_RESULT']}`",
+              f"- Run: {run_url}",
+              "",
+              coverage,
+          ]) + "\n"
+          Path("ci-report.md").write_text(body, encoding="utf-8")
+          PY
+
+      - name: Publish Job Summary
+        run: cat ci-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upsert PR Comment
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("node:fs");
+            const body = fs.readFileSync("ci-report.md", "utf8");
+            const marker = "<!-- 1-tok-ci-report -->";
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+            const existing = comments.find((comment) =>
+              comment.user?.login === "github-actions[bot]" &&
+              comment.body?.includes(marker),
+            );
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+              core.info(`Updated CI report comment ${existing.id}`);
+            } else {
+              const created = await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body,
+              });
+              core.info(`Created CI report comment ${created.data.id}`);
+            }

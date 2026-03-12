@@ -20,8 +20,10 @@
     "release:portal-local-smoke": "./scripts/release-portal-local-smoke.sh",
     "release:portal-smoke": "CGO_ENABLED=0 go run ./cmd/release-portal-smoke",
     "release:smoke": "CGO_ENABLED=0 go run ./cmd/release-smoke",
+    "test:coverage": "./scripts/ci/run-unit-coverage.sh",
     "test:web": "bun --cwd apps/web test",
     "test:go": "CGO_ENABLED=0 go test ./...",
-    "test:contracts": "bun --cwd packages/contracts test"
+    "test:contracts": "bun --cwd packages/contracts test",
+    "test:integration": "bun run release:full-persisted-local-smoke"
   }
 }

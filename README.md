@@ -25,6 +25,22 @@
 
 Go service builds now target Go `1.25`.
 
+## CI
+
+GitHub Actions now runs two lanes on every `push` and `pull_request`:
+
+- `Unit And Coverage`: Go unit tests plus Bun tests for `apps/web` and `packages/contracts`, with a merged coverage summary artifact and job summary
+- `Integration Smoke`: `docker compose config` plus `bun run release:full-persisted-local-smoke`
+
+For pull requests opened from the same repository, the `Report` job upserts a sticky PR comment from `github-actions[bot]` with the latest unit/integration status and coverage table. Each new push to the PR updates that same comment in place.
+
+Local entrypoints match the workflow:
+
+```bash
+bun run test:coverage
+bun run test:integration
+```
+
 ### Go tests
 
 ```bash
