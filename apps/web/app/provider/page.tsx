@@ -24,7 +24,7 @@ export default async function ProviderPage() {
       asideTitle="Provider signal deck"
       asideItems={[
         { label: "Provider", value: data.summary.providerName, tone: "mint" },
-        { label: "Settled invoices", value: `${data.summary.settledInvoices}`, tone: "warning" },
+        { label: "Submitted bids", value: `${data.summary.submittedBids}`, tone: "warning" },
         { label: "Tier", value: data.summary.reputationTier.toUpperCase() },
       ]}
     >
@@ -35,9 +35,14 @@ export default async function ProviderPage() {
           hint="Orders where Carrier callbacks are still responsible for keeping budget and settlement in sync."
         />
         <SummaryCard
-          kicker="Settled invoices"
-          value={`${data.summary.settledInvoices}`}
-          hint="Invoice funding records already marked settled for this provider."
+          kicker="Open RFQs"
+          value={`${data.summary.openRFQs}`}
+          hint="Visible RFQs still open for provider responses across the marketplace."
+        />
+        <SummaryCard
+          kicker="Submitted bids"
+          value={`${data.summary.submittedBids}`}
+          hint="Bids this provider currently has in play or already won."
         />
         <SummaryCard
           kicker="Withdrawals in flight"
@@ -66,17 +71,35 @@ export default async function ProviderPage() {
         </article>
 
         <aside className="message-card">
-          <span className="tag">Capabilities</span>
-          <h3>What this provider can credibly sell.</h3>
-          <div className="chip-list">
-            {data.capabilities.map((capability) => (
-              <div key={capability} className="chip">
-                {capability}
+          <span className="tag">Market queue</span>
+          <h3>Bid posture should sit next to payout posture.</h3>
+          <div className="message-list">
+            {data.marketQueue.map((item) => (
+              <div key={item.id} className="message-item">
+                <strong>{item.title}</strong>
+                <p>
+                  {item.providerBidStatus} · quote {formatMoney(item.quoteCents)} · budget {formatMoney(item.budgetCents)}
+                </p>
+                <p>
+                  buyer {item.buyerOrgId} · deadline {item.responseDeadlineAt.slice(0, 10)}
+                </p>
               </div>
             ))}
           </div>
         </aside>
       </div>
+
+      <article className="feed-card">
+        <span className="tag">Capabilities</span>
+        <h3>What this provider can credibly sell.</h3>
+        <div className="chip-list">
+          {data.capabilities.map((capability) => (
+            <div key={capability} className="chip">
+              {capability}
+            </div>
+          ))}
+        </div>
+      </article>
 
       <article className="timeline-card">
         <span className="tag">Live order trace</span>

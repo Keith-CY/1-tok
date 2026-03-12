@@ -1,8 +1,10 @@
 import {
+  type Bid,
   type FundingRecord,
   type Listing,
   type Order,
   type ProviderProfile,
+  type RFQ,
 } from "@1tok/contracts";
 
 export interface CollectionRequestOptions {
@@ -14,17 +16,21 @@ export interface BuyerDashboardData {
   summary: {
     activeOrders: number;
     availableListings: number;
+    openRFQs: number;
     pausedOrders: number;
     buyerOrgId: string;
   };
   recommendedListings: Listing[];
   activeOrders: Order[];
+  rfqBook: Array<{ id: string; title: string; status: string; budgetCents: number; bidCount: number; responseDeadlineAt: string }>;
   inbox: Array<{ id: string; title: string; detail: string }>;
 }
 
 export interface ProviderDashboardData {
   summary: {
     activeOrders: number;
+    openRFQs: number;
+    submittedBids: number;
     settledInvoices: number;
     inFlightWithdrawals: number;
     reputationTier: string;
@@ -32,6 +38,15 @@ export interface ProviderDashboardData {
   };
   pipeline: Array<{ id: string; label: string; detail: string }>;
   activeOrders: Order[];
+  marketQueue: Array<{
+    id: string;
+    title: string;
+    buyerOrgId: string;
+    budgetCents: number;
+    responseDeadlineAt: string;
+    providerBidStatus: string;
+    quoteCents: number;
+  }>;
   capabilities: string[];
 }
 
@@ -161,6 +176,64 @@ const demoFundingRecords: FundingRecord[] = [
   },
 ];
 
+const demoRFQs: RFQ[] = [
+  {
+    id: "rfq_1",
+    buyerOrgId: "buyer_1",
+    title: "Agent runtime triage",
+    category: "agent-ops",
+    scope: "Investigate runtime failures, stabilize the worker, and document fallout.",
+    budgetCents: 5400,
+    status: "open",
+    responseDeadlineAt: "2026-03-15T12:00:00Z",
+    createdAt: "2026-03-12T00:00:00Z",
+    updatedAt: "2026-03-12T00:00:00Z",
+  },
+  {
+    id: "rfq_2",
+    buyerOrgId: "buyer_7",
+    title: "Prompt intervention sprint",
+    category: "agent-runtime",
+    scope: "Tune prompts and guardrails before a customer launch.",
+    budgetCents: 6200,
+    status: "awarded",
+    awardedBidId: "bid_2",
+    awardedProviderOrgId: "provider_2",
+    orderId: "ord_18",
+    responseDeadlineAt: "2026-03-16T12:00:00Z",
+    createdAt: "2026-03-12T00:00:00Z",
+    updatedAt: "2026-03-12T00:00:00Z",
+  },
+];
+
+const demoBids: Bid[] = [
+  {
+    id: "bid_1",
+    rfqId: "rfq_1",
+    providerOrgId: "provider_1",
+    message: "Atlas Ops can take live triage within the hour.",
+    quoteCents: 4800,
+    status: "open",
+    milestones: [
+      { id: "ms_1", title: "Triage", basePriceCents: 1800, budgetCents: 2200 },
+      { id: "ms_2", title: "Stabilize", basePriceCents: 3000, budgetCents: 3600 },
+    ],
+    createdAt: "2026-03-12T00:00:00Z",
+    updatedAt: "2026-03-12T00:00:00Z",
+  },
+  {
+    id: "bid_2",
+    rfqId: "rfq_2",
+    providerOrgId: "provider_2",
+    message: "Kite Relay can own the prompt rehearsal path.",
+    quoteCents: 5900,
+    status: "awarded",
+    milestones: [{ id: "ms_1", title: "Prompt rehearsal", basePriceCents: 5900, budgetCents: 6200 }],
+    createdAt: "2026-03-12T00:00:00Z",
+    updatedAt: "2026-03-12T00:00:00Z",
+  },
+];
+
 export async function getProviders(options?: CollectionRequestOptions): Promise<ProviderProfile[]> {
   return readCollection("/api/v1/providers", "providers", demoProviders, options);
 }
@@ -171,6 +244,14 @@ export async function getListings(options?: CollectionRequestOptions): Promise<L
 
 export async function getOrders(options?: CollectionRequestOptions): Promise<Order[]> {
   return readCollection("/api/v1/orders", "orders", demoOrders, options);
+}
+
+export async function getRFQs(options?: CollectionRequestOptions): Promise<RFQ[]> {
+  return readCollection("/api/v1/rfqs", "rfqs", demoRFQs, options);
+}
+
+export async function getRFQBids(rfqId: string, options?: CollectionRequestOptions): Promise<Bid[]> {
+  return readCollection(`/api/v1/rfqs/${rfqId}/bids`, "bids", demoBids.filter((bid) => bid.rfqId === rfqId), options);
 }
 
 export async function getFundingRecords(options?: CollectionRequestOptions): Promise<FundingRecord[]> {
@@ -187,25 +268,45 @@ export async function getBuyerDashboardData(options: {
   buyerOrgId: string;
   requireLive?: boolean;
 }): Promise<BuyerDashboardData> {
-  const [recommendedListings, orders] = await Promise.all([
+  const [recommendedListings, orders, rfqs] = await Promise.all([
     getListings({ authToken: options.authToken, requireLive: options.requireLive }),
     getOrders({ authToken: options.authToken, requireLive: options.requireLive }),
+    getRFQs({ authToken: options.authToken, requireLive: options.requireLive }),
   ]);
   const activeOrders = orders.filter((order) => order.buyerOrgId === options.buyerOrgId);
+  const buyerRFQs = rfqs.filter((rfq) => rfq.buyerOrgId === options.buyerOrgId);
   const pausedOrders = activeOrders.filter(
     (order) =>
       order.status === "awaiting_budget" || order.milestones.some((milestone) => milestone.state === "paused"),
   ).length;
+  const rfqBook = await Promise.all(
+    buyerRFQs.map(async (rfq) => {
+      const bids = await getRFQBids(rfq.id, {
+        authToken: options.authToken,
+        requireLive: options.requireLive,
+      });
+      return {
+        id: rfq.id,
+        title: rfq.title,
+        status: rfq.status,
+        budgetCents: rfq.budgetCents,
+        bidCount: bids.length,
+        responseDeadlineAt: rfq.responseDeadlineAt,
+      };
+    }),
+  );
 
   return {
     summary: {
       activeOrders: activeOrders.length,
       availableListings: recommendedListings.length,
+      openRFQs: buyerRFQs.filter((rfq) => rfq.status === "open").length,
       pausedOrders,
       buyerOrgId: options.buyerOrgId,
     },
     recommendedListings,
     activeOrders,
+    rfqBook,
     inbox: [
       {
         id: "msg_1",
@@ -214,8 +315,8 @@ export async function getBuyerDashboardData(options: {
       },
       {
         id: "msg_2",
-        title: "Paused order watch",
-        detail: `${pausedOrders} orders need budget attention before settlement can continue.`,
+        title: "RFQ watch",
+        detail: `${rfqBook.length} RFQs are active for this buyer session, with ${rfqBook.reduce((sum, rfq) => sum + rfq.bidCount, 0)} bids in play.`,
       },
     ],
   };
@@ -226,10 +327,11 @@ export async function getProviderDashboardData(options: {
   providerOrgId: string;
   requireLive?: boolean;
 }): Promise<ProviderDashboardData> {
-  const [providers, orders, fundingRecords] = await Promise.all([
+  const [providers, orders, fundingRecords, rfqs] = await Promise.all([
     getProviders({ authToken: options.authToken, requireLive: options.requireLive }),
     getOrders({ authToken: options.authToken, requireLive: options.requireLive }),
     getFundingRecords({ authToken: options.authToken, requireLive: options.requireLive }),
+    getRFQs({ authToken: options.authToken, requireLive: options.requireLive }),
   ]);
   const provider = providers.find((candidate) => candidate.id === options.providerOrgId) ?? {
     id: options.providerOrgId,
@@ -243,10 +345,34 @@ export async function getProviderDashboardData(options: {
   const inFlightWithdrawals = providerFunding.filter(
     (record) => record.kind === "withdrawal" && record.state !== "SETTLED",
   ).length;
+  const rfqBidGroups = await Promise.all(
+    rfqs.map(async (rfq) => ({
+      rfq,
+      bids: await getRFQBids(rfq.id, {
+        authToken: options.authToken,
+        requireLive: options.requireLive,
+      }),
+    })),
+  );
+  const marketQueue = rfqBidGroups.flatMap(({ rfq, bids }) =>
+    bids
+      .filter((bid) => bid.providerOrgId === options.providerOrgId)
+      .map((bid) => ({
+        id: `${rfq.id}:${bid.id}`,
+        title: rfq.title,
+        buyerOrgId: rfq.buyerOrgId,
+        budgetCents: rfq.budgetCents,
+        responseDeadlineAt: rfq.responseDeadlineAt,
+        providerBidStatus: bid.status,
+        quoteCents: bid.quoteCents,
+      })),
+  );
 
   return {
     summary: {
       activeOrders: activeOrders.length,
+      openRFQs: rfqs.filter((rfq) => rfq.status === "open").length,
+      submittedBids: marketQueue.length,
       settledInvoices,
       inFlightWithdrawals,
       reputationTier: provider.reputationTier,
@@ -254,10 +380,11 @@ export async function getProviderDashboardData(options: {
     },
     pipeline: [
       { id: "pipe_1", label: "Active orders", detail: `${activeOrders.length} orders currently tied to ${provider.name}.` },
-      { id: "pipe_2", label: "Settled invoices", detail: `${settledInvoices} invoice funding records have already settled.` },
+      { id: "pipe_2", label: "Submitted bids", detail: `${marketQueue.length} RFQ responses currently belong to ${provider.name}.` },
       { id: "pipe_3", label: "Withdrawal queue", detail: `${inFlightWithdrawals} provider withdrawals are still in flight.` },
     ],
     activeOrders,
+    marketQueue,
     capabilities: provider.capabilities,
   };
 }

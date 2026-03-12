@@ -24,7 +24,7 @@ export default async function BuyerPage() {
       asideTitle="Buyer signal deck"
       asideItems={[
         { label: "Buyer org", value: data.summary.buyerOrgId, tone: "mint" },
-        { label: "Available listings", value: `${data.summary.availableListings}` },
+        { label: "Open RFQs", value: `${data.summary.openRFQs}` },
         { label: "Paused orders", value: `${data.summary.pausedOrders}`, tone: "warning" },
       ]}
     >
@@ -35,9 +35,9 @@ export default async function BuyerPage() {
           hint="Orders currently executing under platform-controlled channels."
         />
         <SummaryCard
-          kicker="Available listings"
-          value={`${data.summary.availableListings}`}
-          hint="Listings currently visible in the marketplace catalog for this buyer session."
+          kicker="Open RFQs"
+          value={`${data.summary.openRFQs}`}
+          hint="Buyer-authored requests still collecting bids or awaiting award."
         />
         <SummaryCard
           kicker="Paused orders"
@@ -45,9 +45,9 @@ export default async function BuyerPage() {
           hint="Orders currently waiting on more budget before Carrier can continue."
         />
         <SummaryCard
-          kicker="Buyer org"
-          value={data.summary.buyerOrgId}
-          hint="The organization IAM derived from the current session."
+          kicker="Available listings"
+          value={`${data.summary.availableListings}`}
+          hint="Listings currently visible in the marketplace catalog for this buyer session."
         />
       </div>
 
@@ -75,18 +75,34 @@ export default async function BuyerPage() {
         </article>
 
         <aside className="message-card">
-          <span className="tag">Inbox</span>
-          <h3>Messages that change buyer decisions.</h3>
+          <span className="tag">RFQ book</span>
+          <h3>Every open request should show bid pressure, not just status.</h3>
           <div className="message-list">
-            {data.inbox.map((message) => (
-              <div key={message.id} className="message-item">
-                <strong>{message.title}</strong>
-                <p>{message.detail}</p>
+            {data.rfqBook.map((rfq) => (
+              <div key={rfq.id} className="message-item">
+                <strong>{rfq.title}</strong>
+                <p>
+                  {rfq.status} · {rfq.bidCount} bids · budget {formatMoney(rfq.budgetCents)}
+                </p>
+                <p>Response deadline {rfq.responseDeadlineAt.slice(0, 10)}</p>
               </div>
             ))}
           </div>
         </aside>
       </div>
+
+      <article className="feed-card">
+        <span className="tag">Inbox</span>
+        <h3>Messages that change buyer decisions.</h3>
+        <div className="feed-list">
+          {data.inbox.map((message) => (
+            <div key={message.id} className="feed-item">
+              <strong>{message.title}</strong>
+              <p>{message.detail}</p>
+            </div>
+          ))}
+        </div>
+      </article>
 
       <article className="timeline-card">
         <span className="tag">Active order frame</span>

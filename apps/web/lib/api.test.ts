@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, mock } from "bun:test";
 
-import { getBuyerDashboardData, getFundingRecords, getListings, getOrders } from "./api";
+import { getBuyerDashboardData, getFundingRecords, getListings, getOrders, getProviderDashboardData } from "./api";
 
 const originalFetch = globalThis.fetch;
 
@@ -129,6 +129,35 @@ describe("api fallback", () => {
         );
       }
 
+      if (url.endsWith("/api/v1/rfqs")) {
+        return new Response(
+          JSON.stringify({
+            rfqs: [
+              { id: "rfq_live_1", buyerOrgId: "buyer_1", title: "Live RFQ", category: "agent-ops", scope: "Investigate", budgetCents: 1200, status: "open", responseDeadlineAt: "2026-03-15T12:00:00Z", createdAt: "2026-03-12T00:00:00Z", updatedAt: "2026-03-12T00:00:00Z" },
+            ],
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          },
+        );
+      }
+
+      if (url.endsWith("/api/v1/rfqs/rfq_live_1/bids")) {
+        return new Response(
+          JSON.stringify({
+            bids: [
+              { id: "bid_live_1", rfqId: "rfq_live_1", providerOrgId: "provider_1", message: "Bid 1", quoteCents: 900, status: "open", milestones: [], createdAt: "2026-03-12T00:00:00Z", updatedAt: "2026-03-12T00:00:00Z" },
+              { id: "bid_live_2", rfqId: "rfq_live_1", providerOrgId: "provider_2", message: "Bid 2", quoteCents: 1100, status: "open", milestones: [], createdAt: "2026-03-12T00:00:00Z", updatedAt: "2026-03-12T00:00:00Z" },
+            ],
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          },
+        );
+      }
+
       throw new Error(`unexpected url ${url}`);
     }) as unknown as typeof fetch;
 
@@ -140,8 +169,110 @@ describe("api fallback", () => {
 
     expect(data.summary.activeOrders).toBe(1);
     expect(data.summary.availableListings).toBe(1);
+    expect(data.summary.openRFQs).toBe(1);
     expect(data.activeOrders).toHaveLength(1);
     expect(data.activeOrders[0]?.id).toBe("ord_live_1");
     expect(data.recommendedListings[0]?.id).toBe("listing_live");
+    expect(data.rfqBook[0]?.bidCount).toBe(2);
+    expect(data.rfqBook[0]?.id).toBe("rfq_live_1");
+  });
+
+  it("builds provider dashboard data from live rfqs and provider bids", async () => {
+    process.env.NEXT_PUBLIC_API_BASE_URL = "http://localhost:8080";
+    process.env.NEXT_PUBLIC_SETTLEMENT_BASE_URL = "http://localhost:8083";
+    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.endsWith("/api/v1/providers")) {
+        return new Response(
+          JSON.stringify({
+            providers: [{ id: "provider_1", name: "Atlas Ops", capabilities: ["carrier"], reputationTier: "gold" }],
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          },
+        );
+      }
+
+      if (url.endsWith("/api/v1/orders")) {
+        return new Response(
+          JSON.stringify({
+            orders: [
+              { id: "ord_live_1", buyerOrgId: "buyer_1", providerOrgId: "provider_1", fundingMode: "credit", platformWallet: "platform_main", status: "running", milestones: [] },
+            ],
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          },
+        );
+      }
+
+      if (url.endsWith("/v1/funding-records")) {
+        return new Response(
+          JSON.stringify({
+            records: [{ id: "fund_1", kind: "invoice", providerOrgId: "provider_1", amount: "12.5", state: "SETTLED" }],
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          },
+        );
+      }
+
+      if (url.endsWith("/api/v1/rfqs")) {
+        return new Response(
+          JSON.stringify({
+            rfqs: [
+              { id: "rfq_live_1", buyerOrgId: "buyer_1", title: "Live RFQ", category: "agent-ops", scope: "Investigate", budgetCents: 2200, status: "open", responseDeadlineAt: "2026-03-15T12:00:00Z", createdAt: "2026-03-12T00:00:00Z", updatedAt: "2026-03-12T00:00:00Z" },
+              { id: "rfq_live_2", buyerOrgId: "buyer_2", title: "Won RFQ", category: "agent-ops", scope: "Deliver", budgetCents: 3200, status: "awarded", responseDeadlineAt: "2026-03-16T12:00:00Z", createdAt: "2026-03-12T00:00:00Z", updatedAt: "2026-03-12T00:00:00Z", awardedBidId: "bid_live_2", awardedProviderOrgId: "provider_1" },
+            ],
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          },
+        );
+      }
+
+      if (url.endsWith("/api/v1/rfqs/rfq_live_1/bids")) {
+        return new Response(
+          JSON.stringify({
+            bids: [{ id: "bid_live_1", rfqId: "rfq_live_1", providerOrgId: "provider_1", message: "Open bid", quoteCents: 1800, status: "open", milestones: [], createdAt: "2026-03-12T00:00:00Z", updatedAt: "2026-03-12T00:00:00Z" }],
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          },
+        );
+      }
+
+      if (url.endsWith("/api/v1/rfqs/rfq_live_2/bids")) {
+        return new Response(
+          JSON.stringify({
+            bids: [{ id: "bid_live_2", rfqId: "rfq_live_2", providerOrgId: "provider_1", message: "Awarded bid", quoteCents: 2800, status: "awarded", milestones: [], createdAt: "2026-03-12T00:00:00Z", updatedAt: "2026-03-12T00:00:00Z" }],
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          },
+        );
+      }
+
+      throw new Error(`unexpected url ${url}`);
+    }) as unknown as typeof fetch;
+
+    const data = await getProviderDashboardData({
+      authToken: "tok_123",
+      providerOrgId: "provider_1",
+      requireLive: true,
+    });
+
+    expect(data.summary.activeOrders).toBe(1);
+    expect(data.summary.submittedBids).toBe(2);
+    expect(data.summary.openRFQs).toBe(1);
+    expect(data.marketQueue).toHaveLength(2);
+    expect(data.marketQueue[0]?.providerBidStatus).toBe("open");
   });
 });
