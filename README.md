@@ -119,7 +119,7 @@ This script now preflights the external Fiber and Carrier endpoints before start
 bun run release:compose-smoke
 ```
 
-This script builds and boots the compose stack with `postgres`, `mock-fiber`, `mock-carrier`, `iam`, `api-gateway`, `settlement`, `execution`, and `web`, then runs both release smoke commands against the published localhost ports before tearing the stack down.
+This script builds and boots the compose stack with `postgres`, `mock-fiber`, `mock-carrier`, `bootstrap`, `iam`, `api-gateway`, `settlement`, `settlement-reconciler`, `execution`, and `web`, then runs both release smoke commands against the published localhost ports before tearing the stack down.
 
 Persisted release paths now force `ONE_TOK_REQUIRE_PERSISTENCE=true`, so `iam`, `api-gateway`, and `settlement` fail fast instead of silently falling back to in-memory stores when database configuration is missing or broken.
 
@@ -132,6 +132,33 @@ The release harness now scopes internal secrets by edge: one token for `executio
 Receivers can now accept comma-separated rotated service tokens through `API_GATEWAY_EXECUTION_TOKENS`, `EXECUTION_EVENT_TOKENS`, `EXECUTION_GATEWAY_TOKENS`, and `SETTLEMENT_SERVICE_TOKENS`, while senders continue to use the first token as the current outbound value.
 
 Compose now also includes a dedicated `settlement-reconciler` worker, which polls unsettled invoices and nonterminal withdrawals directly from Postgres/Fiber instead of relying on manual sync requests.
+
+## Production Release Status
+
+As of `2026-03-12`, the repo-local productionization work is largely complete. The main remaining release blocker is not missing application code inside this repository; it is the absence of real external `Fiber` and `Carrier` preproduction or production credentials in the current environment.
+
+The fastest path to final signoff is:
+
+```bash
+export DEPENDENCY_FIBER_RPC_URL='https://fiber.example/rpc'
+export DEPENDENCY_FIBER_APP_ID='app_live'
+export DEPENDENCY_FIBER_HMAC_SECRET='replace-me'
+export DEPENDENCY_CARRIER_GATEWAY_URL='https://carrier.example'
+export DEPENDENCY_CARRIER_GATEWAY_API_TOKEN='replace-me'
+export RELEASE_ARTIFACT_DIR="$PWD/.release-artifacts/$(date +%Y%m%d-%H%M%S)"
+bun run release:external-deps-smoke
+```
+
+That command now produces:
+
+- `external-preflight.json`
+- `release-smoke.json`
+- `release-portal-smoke.json`
+- `release-manifest.json`
+
+The aggregated manifest is the handoff artifact to review before claiming a real production release.
+
+For a more detailed release handoff and blocker summary, see [docs/production-release-status.md](/Users/ChenYu/Documents/Github/1-tok/docs/production-release-status.md).
 
 ### Contracts tests
 
@@ -187,8 +214,24 @@ HTTP routes added by `settlement`:
 - `POST /v1/withdrawals/quote`
 - `POST /v1/withdrawals`
 - `GET /v1/funding-records`
+- `GET /v1/settled-feed`
+- `GET /v1/withdrawals/status`
 
 When `SETTLEMENT_SERVICE_TOKEN` is set, invoice creation, invoice status refresh, and settled-feed sync require the `X-One-Tok-Service-Token` header.
+
+### Settlement reconciler
+
+```bash
+export DATABASE_URL='postgres://onetok:onetok@127.0.0.1:5432/onetok?sslmode=disable'
+export FIBER_RPC_URL='http://127.0.0.1:3000/rpc'
+export FIBER_APP_ID='app_1'
+export FIBER_HMAC_SECRET='replace-me'
+export ONE_TOK_REQUIRE_PERSISTENCE='true'
+export ONE_TOK_REQUIRE_BOOTSTRAP='true'
+CGO_ENABLED=0 go run ./cmd/settlement-reconciler
+```
+
+Set `SETTLEMENT_RECONCILER_ONCE=true` for a one-shot reconciliation run, or `SETTLEMENT_RECONCILER_INTERVAL=30s` to control the polling interval for the long-running worker.
 
 ### Execution service with Carrier
 
@@ -208,7 +251,7 @@ HTTP routes added by `execution`:
 - `GET /v1/carrier/codeagent/version`
 - `POST /v1/carrier/codeagent/run`
 
-When `EXECUTION_EVENT_TOKEN` and `API_GATEWAY_EXECUTION_TOKEN` are set to the same value, carrier event ingestion and gateway settlement/usage mutations become service-token protected instead of public.
+`execution` uses `EXECUTION_EVENT_TOKEN` or `EXECUTION_EVENT_TOKENS` for inbound carrier event authorization, and forwards the primary token from `EXECUTION_GATEWAY_TOKEN` or `EXECUTION_GATEWAY_TOKENS` to `api-gateway`. Receivers can accept comma-separated rotated token sets; senders use the first token as the active outbound credential.
 
 ### IAM service with persisted sessions
 
@@ -248,9 +291,10 @@ When `IAM_UPSTREAM` is configured for `api-gateway` and `settlement`, the platfo
 ## Current scope
 
 - Provider and listing catalogs are durably backed by Postgres and seeded on bootstrap.
-- Settlement and execution now speak to real Fiber and Carrier interfaces, and settlement keeps local funding records when `DATABASE_URL` or `SETTLEMENT_DATABASE_URL` is configured.
-- IAM now supports persisted `signup`, `session`, and `me` flows when `DATABASE_URL` or `IAM_DATABASE_URL` is configured, but full gateway/web enforcement is still not wired.
-- Gateway order creation and settlement funding-record reads can now honor authenticated memberships when `IAM_UPSTREAM` is configured, but the rest of the platform still has unauthenticated paths.
-- Execution event ingestion and gateway settlement/usage mutations can now be bound to a shared service token, and the local full-stack smoke covers that protected path end to end. Real external Carrier/Fiber release rehearsals still need more work.
-- RFQ publishing, bidding, award, credit review, and dispute resolution now have live web entry points, and ops-only dispute/credit routes are membership-gated when `IAM_UPSTREAM` is configured.
-- Ledger-grade reconciliation, broad read-path authorization, and an end-to-end release rehearsal against real external Carrier/Fiber dependencies still need more work before a production release claim would be accurate.
+- A dedicated `bootstrap` job initializes schema and seed data, and persisted services can now refuse startup unless the database was bootstrapped first.
+- Settlement and execution speak to real Fiber and Carrier interfaces, and settlement keeps durable funding records plus a dedicated reconciliation worker when `DATABASE_URL` or `SETTLEMENT_DATABASE_URL` is configured.
+- IAM supports persisted `signup`, `session`, `logout`, and `me` flows, and the web portals now use real session-backed buyer, provider, and ops entry points.
+- Marketplace RFQ publishing, bidding, award, credit review, dispute resolution, and portal submission flows are wired end to end in the local release harnesses.
+- Internal service-token boundaries are enforced and can accept rotated comma-separated token sets for `api-gateway`, `execution`, and `settlement`.
+- Local release verification now covers service-only, portal-only, full local, full persisted local, compose, and external-dependency rehearsals, with persisted evidence artifacts and an aggregated `release-manifest.json`.
+- The primary remaining blocker to a real production release claim is a successful run of `bun run release:external-deps-smoke` against real external `Fiber` and `Carrier` environments using live credentials and endpoints.
