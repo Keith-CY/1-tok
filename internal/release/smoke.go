@@ -17,6 +17,7 @@ import (
 type Config struct {
 	APIBaseURL          string
 	SettlementBaseURL   string
+	SettlementServiceToken string
 	ExecutionBaseURL    string
 	ExecutionEventToken string
 	IncludeWithdrawal   bool
@@ -69,11 +70,11 @@ func RunSmoke(ctx context.Context, cfg Config) (Summary, error) {
 		return Summary{}, err
 	}
 
-	invoice, err := client.createInvoice(ctx, cfg.SettlementBaseURL, orderID)
+	invoice, err := client.createInvoice(ctx, cfg.SettlementBaseURL, cfg.SettlementServiceToken, orderID)
 	if err != nil {
 		return Summary{}, err
 	}
-	if err := client.syncSettledFeed(ctx, cfg.SettlementBaseURL); err != nil {
+	if err := client.syncSettledFeed(ctx, cfg.SettlementBaseURL, cfg.SettlementServiceToken); err != nil {
 		return Summary{}, err
 	}
 
@@ -120,12 +121,13 @@ func RunSmoke(ctx context.Context, cfg Config) (Summary, error) {
 
 func ConfigFromEnv() Config {
 	return Config{
-		APIBaseURL:          envOrDefault("RELEASE_SMOKE_API_BASE_URL", "http://127.0.0.1:8080"),
-		SettlementBaseURL:   envOrDefault("RELEASE_SMOKE_SETTLEMENT_BASE_URL", "http://127.0.0.1:8083"),
-		ExecutionBaseURL:    envOrDefault("RELEASE_SMOKE_EXECUTION_BASE_URL", "http://127.0.0.1:8085"),
-		ExecutionEventToken: envOrDefault("RELEASE_SMOKE_EXECUTION_EVENT_TOKEN", ""),
-		IncludeWithdrawal:   envBool("RELEASE_SMOKE_INCLUDE_WITHDRAWAL"),
-		IncludeCarrierProbe: envBool("RELEASE_SMOKE_INCLUDE_CARRIER_PROBE"),
+		APIBaseURL:             envOrDefault("RELEASE_SMOKE_API_BASE_URL", "http://127.0.0.1:8080"),
+		SettlementBaseURL:      envOrDefault("RELEASE_SMOKE_SETTLEMENT_BASE_URL", "http://127.0.0.1:8083"),
+		SettlementServiceToken: envOrDefault("RELEASE_SMOKE_SETTLEMENT_SERVICE_TOKEN", ""),
+		ExecutionBaseURL:       envOrDefault("RELEASE_SMOKE_EXECUTION_BASE_URL", "http://127.0.0.1:8085"),
+		ExecutionEventToken:    envOrDefault("RELEASE_SMOKE_EXECUTION_EVENT_TOKEN", ""),
+		IncludeWithdrawal:      envBool("RELEASE_SMOKE_INCLUDE_WITHDRAWAL"),
+		IncludeCarrierProbe:    envBool("RELEASE_SMOKE_INCLUDE_CARRIER_PROBE"),
 	}
 }
 
@@ -269,11 +271,13 @@ func (c *smokeClient) settleViaExecution(ctx context.Context, baseURL, token, or
 	}, nil)
 }
 
-func (c *smokeClient) createInvoice(ctx context.Context, baseURL, orderID string) (string, error) {
+func (c *smokeClient) createInvoice(ctx context.Context, baseURL, token, orderID string) (string, error) {
 	var response struct {
 		Invoice string `json:"invoice"`
 	}
-	err := c.postJSON(ctx, strings.TrimRight(baseURL, "/")+"/v1/invoices", map[string]any{
+	err := c.postJSONWithHeaders(ctx, strings.TrimRight(baseURL, "/")+"/v1/invoices", map[string]string{
+		serviceauth.HeaderName: strings.TrimSpace(token),
+	}, map[string]any{
 		"orderId":       orderID,
 		"milestoneId":   "ms_1",
 		"buyerOrgId":    "buyer_1",
@@ -290,10 +294,13 @@ func (c *smokeClient) createInvoice(ctx context.Context, baseURL, orderID string
 	return response.Invoice, nil
 }
 
-func (c *smokeClient) syncSettledFeed(ctx context.Context, baseURL string) error {
+func (c *smokeClient) syncSettledFeed(ctx context.Context, baseURL, token string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(baseURL, "/")+"/v1/settled-feed", nil)
 	if err != nil {
 		return err
+	}
+	if strings.TrimSpace(token) != "" {
+		req.Header.Set(serviceauth.HeaderName, strings.TrimSpace(token))
 	}
 	res, err := c.httpClient.Do(req)
 	if err != nil {

@@ -35,6 +35,7 @@ CGO_ENABLED=0 go test ./...
 ```bash
 export RELEASE_SMOKE_API_BASE_URL='http://127.0.0.1:8080'
 export RELEASE_SMOKE_SETTLEMENT_BASE_URL='http://127.0.0.1:8083'
+export RELEASE_SMOKE_SETTLEMENT_SERVICE_TOKEN='replace-me'
 export RELEASE_SMOKE_EXECUTION_BASE_URL='http://127.0.0.1:8085'
 export RELEASE_SMOKE_EXECUTION_EVENT_TOKEN='replace-me'
 bun run release:smoke
@@ -110,6 +111,7 @@ CGO_ENABLED=0 go test ./internal/store/postgres
 ### Settlement service with Fiber
 
 ```bash
+export SETTLEMENT_SERVICE_TOKEN='replace-me'
 export FIBER_RPC_URL='http://127.0.0.1:3000/rpc'
 export FIBER_APP_ID='app_1'
 export FIBER_HMAC_SECRET='replace-me'
@@ -123,6 +125,8 @@ HTTP routes added by `settlement`:
 - `POST /v1/withdrawals/quote`
 - `POST /v1/withdrawals`
 - `GET /v1/funding-records`
+
+When `SETTLEMENT_SERVICE_TOKEN` is set, invoice creation, invoice status refresh, and settled-feed sync require the `X-One-Tok-Service-Token` header.
 
 ### Execution service with Carrier
 

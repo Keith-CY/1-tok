@@ -145,6 +145,38 @@ func TestCreateInvoiceUsesFiberClient(t *testing.T) {
 	}
 }
 
+func TestCreateInvoiceRejectsMissingServiceTokenWhenConfigured(t *testing.T) {
+	t.Setenv("SETTLEMENT_SERVICE_TOKEN", "settlement-shared-token")
+
+	stub := &stubFiberClient{
+		createResult: fiberclient.CreateInvoiceResult{Invoice: "inv_123"},
+	}
+	server := NewServerWithOptions(Options{
+		Upstream: "http://127.0.0.1:8080",
+		Fiber:    stub,
+		Funding:  NewMemoryFundingRecordRepository(),
+	})
+
+	body := map[string]any{
+		"orderId":       "ord_1",
+		"milestoneId":   "ms_1",
+		"buyerOrgId":    "buyer_1",
+		"providerOrgId": "provider_1",
+		"asset":         "CKB",
+		"amount":        "12.5",
+	}
+	payload, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/invoices", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d body=%s", res.Code, res.Body.String())
+	}
+}
+
 func TestGetInvoiceStatusUsesFiberClient(t *testing.T) {
 	stub := &stubFiberClient{
 		createResult: fiberclient.CreateInvoiceResult{Invoice: "inv_123"},
@@ -424,6 +456,29 @@ func TestSettledFeedUpdatesFundingRecordState(t *testing.T) {
 	}
 	if len(listResponse.Records) != 1 || listResponse.Records[0].State != "SETTLED" {
 		t.Fatalf("expected settled funding record after feed sync, got %+v", listResponse.Records)
+	}
+}
+
+func TestSettledFeedRejectsMissingServiceTokenWhenConfigured(t *testing.T) {
+	t.Setenv("SETTLEMENT_SERVICE_TOKEN", "settlement-shared-token")
+
+	stub := &stubFiberClient{
+		settledFeedResult: fiberclient.SettledFeedResult{
+			Items: []fiberclient.SettledFeedItem{{Invoice: "inv_123", SettledAt: "2026-03-12T00:00:00Z"}},
+		},
+	}
+	server := NewServerWithOptions(Options{
+		Upstream: "http://127.0.0.1:8080",
+		Fiber:    stub,
+		Funding:  NewMemoryFundingRecordRepository(),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/settled-feed?limit=20", nil)
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d body=%s", res.Code, res.Body.String())
 	}
 }
 

@@ -388,3 +388,66 @@ func TestRunSmokeSendsExecutionEventTokenWhenConfigured(t *testing.T) {
 		t.Fatalf("run smoke: %v", err)
 	}
 }
+
+func TestRunSmokeSendsSettlementServiceTokenWhenConfigured(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/healthz":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
+		case r.Method == http.MethodPost && (r.URL.Path == "/api/v1/rfqs" || strings.HasPrefix(r.URL.Path, "/api/v1/rfqs/")):
+			http.NotFound(w, r)
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/orders":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"order": map[string]any{"id": "ord_settlement_secure"},
+			})
+		default:
+			t.Fatalf("unexpected api request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer api.Close()
+
+	var invoiceToken string
+	var settledFeedToken string
+	settlement := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/healthz":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/invoices":
+			invoiceToken = r.Header.Get("X-One-Tok-Service-Token")
+			_ = json.NewEncoder(w).Encode(map[string]any{"invoice": "inv_settlement_secure"})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/settled-feed":
+			settledFeedToken = r.Header.Get("X-One-Tok-Service-Token")
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{"invoice": "inv_settlement_secure"}}})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/funding-records":
+			_ = json.NewEncoder(w).Encode(map[string]any{"records": []map[string]any{{"id": "fund_settlement_secure"}}})
+		default:
+			t.Fatalf("unexpected settlement request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer settlement.Close()
+
+	execution := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/healthz":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/carrier/events":
+			_ = json.NewEncoder(w).Encode(map[string]any{"accepted": true, "continueAllowed": true})
+		default:
+			t.Fatalf("unexpected execution request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer execution.Close()
+
+	_, err := RunSmoke(context.Background(), Config{
+		APIBaseURL:             api.URL,
+		SettlementBaseURL:      settlement.URL,
+		SettlementServiceToken: "settlement-service-token",
+		ExecutionBaseURL:       execution.URL,
+	})
+	if err != nil {
+		t.Fatalf("run smoke: %v", err)
+	}
+	if invoiceToken != "settlement-service-token" || settledFeedToken != "settlement-service-token" {
+		t.Fatalf("expected settlement service token on invoice and settled feed, got invoice=%q settledFeed=%q", invoiceToken, settledFeedToken)
+	}
+}

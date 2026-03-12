@@ -11,21 +11,24 @@ import (
 
 	fiberclient "github.com/chenyu/1-tok/internal/integrations/fiber"
 	iamclient "github.com/chenyu/1-tok/internal/integrations/iam"
+	"github.com/chenyu/1-tok/internal/serviceauth"
 	"github.com/chenyu/1-tok/internal/services/proxy"
 )
 
 type Server struct {
-	inner   http.Handler
-	fiber   fiberclient.InvoiceClient
-	funding FundingRecordRepository
-	auth    iamclient.Client
+	inner        http.Handler
+	fiber        fiberclient.InvoiceClient
+	funding      FundingRecordRepository
+	auth         iamclient.Client
+	serviceToken string
 }
 
 type Options struct {
-	Upstream string
-	Fiber    fiberclient.InvoiceClient
-	Funding  FundingRecordRepository
-	Auth     iamclient.Client
+	Upstream     string
+	Fiber        fiberclient.InvoiceClient
+	Funding      FundingRecordRepository
+	Auth         iamclient.Client
+	ServiceToken string
 }
 
 func NewServer() *Server {
@@ -46,14 +49,18 @@ func NewServerWithOptions(options Options) *Server {
 	if options.Funding == nil {
 		options.Funding = loadFundingRecordRepository()
 	}
+	if options.ServiceToken == "" {
+		options.ServiceToken = strings.TrimSpace(os.Getenv("SETTLEMENT_SERVICE_TOKEN"))
+	}
 
 	return &Server{
 		inner: proxy.NewSingleHost(options.Upstream, func(req *http.Request) {
 			req.URL.Path = "/api/v1" + req.URL.Path[3:]
 		}),
-		fiber:   options.Fiber,
-		funding: options.Funding,
-		auth:    options.Auth,
+		fiber:        options.Fiber,
+		funding:      options.Funding,
+		auth:         options.Auth,
+		serviceToken: options.ServiceToken,
 	}
 }
 
@@ -109,6 +116,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateInvoice(w http.ResponseWriter, r *http.Request) {
+	if err := s.authorizeInternalRoute(r); err != nil {
+		writeAuthError(w, err)
+		return
+	}
+
 	var payload struct {
 		OrderID       string `json:"orderId"`
 		MilestoneID   string `json:"milestoneId"`
@@ -174,6 +186,11 @@ func (s *Server) handleCreateInvoice(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetInvoiceStatus(w http.ResponseWriter, r *http.Request) {
+	if err := s.authorizeInternalRoute(r); err != nil {
+		writeAuthError(w, err)
+		return
+	}
+
 	invoice, err := invoiceFromPath(r.URL.Path)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -299,6 +316,11 @@ func (s *Server) handleListFundingRecords(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) handleSettledFeed(w http.ResponseWriter, r *http.Request) {
+	if err := s.authorizeInternalRoute(r); err != nil {
+		writeAuthError(w, err)
+		return
+	}
+
 	input := fiberclient.SettledFeedInput{}
 	if limit := strings.TrimSpace(r.URL.Query().Get("limit")); limit != "" {
 		parsed, err := strconv.Atoi(limit)
@@ -497,11 +519,23 @@ func writeAuthError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, iamclient.ErrUnauthorized):
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	case err != nil && err.Error() == "invalid service token":
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 	case strings.Contains(err.Error(), "mismatch"), strings.Contains(err.Error(), "required"):
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
 	default:
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 	}
+}
+
+func (s *Server) authorizeInternalRoute(r *http.Request) error {
+	if strings.TrimSpace(s.serviceToken) == "" {
+		return nil
+	}
+	if serviceauth.MatchesRequest(r, s.serviceToken) {
+		return nil
+	}
+	return errors.New("invalid service token")
 }
 
 func upstream() string {
