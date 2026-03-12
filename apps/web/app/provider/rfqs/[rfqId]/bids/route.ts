@@ -9,14 +9,19 @@ export async function POST(request: Request, context: { params: { rfqId: string 
   const form = await request.formData();
   const message = String(form.get("message") ?? "").trim();
   const quoteCents = Number.parseInt(String(form.get("quoteCents") ?? "0"), 10);
-  const milestoneTitle = String(form.get("milestoneTitle") ?? "").trim();
-  const milestoneBasePriceCents = Number.parseInt(String(form.get("milestoneBasePriceCents") ?? "0"), 10);
-  const milestoneBudgetCents = Number.parseInt(String(form.get("milestoneBudgetCents") ?? "0"), 10);
+  const milestoneTitle = String(form.get("milestoneTitle") ?? "Execution").trim() || "Execution";
+  const rawMilestoneBasePriceCents = Number.parseInt(String(form.get("milestoneBasePriceCents") ?? ""), 10);
+  const rawMilestoneBudgetCents = Number.parseInt(String(form.get("milestoneBudgetCents") ?? ""), 10);
+  const milestoneBasePriceCents =
+    Number.isFinite(rawMilestoneBasePriceCents) && rawMilestoneBasePriceCents > 0 ? rawMilestoneBasePriceCents : quoteCents;
+  const milestoneBudgetCents =
+    Number.isFinite(rawMilestoneBudgetCents) && rawMilestoneBudgetCents > 0
+      ? rawMilestoneBudgetCents
+      : Math.max(quoteCents, milestoneBasePriceCents);
 
   if (
     !context.params.rfqId ||
     !message ||
-    !milestoneTitle ||
     !Number.isFinite(quoteCents) ||
     quoteCents <= 0 ||
     !Number.isFinite(milestoneBasePriceCents) ||

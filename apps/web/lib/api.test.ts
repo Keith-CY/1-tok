@@ -175,6 +175,7 @@ describe("api fallback", () => {
     expect(data.recommendedListings[0]?.id).toBe("listing_live");
     expect(data.rfqBook[0]?.bidCount).toBe(2);
     expect(data.rfqBook[0]?.id).toBe("rfq_live_1");
+    expect(data.rfqBook[0]?.bids[0]?.id).toBe("bid_live_1");
   });
 
   it("builds provider dashboard data from live rfqs and provider bids", async () => {
@@ -274,5 +275,7 @@ describe("api fallback", () => {
     expect(data.summary.openRFQs).toBe(1);
     expect(data.marketQueue).toHaveLength(2);
     expect(data.marketQueue[0]?.providerBidStatus).toBe("open");
+    expect(data.marketOpportunities).toHaveLength(1);
+    expect(data.marketOpportunities[0]?.id).toBe("rfq_live_1");
   });
 });

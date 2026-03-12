@@ -51,6 +51,38 @@ export default async function BuyerPage() {
         />
       </div>
 
+      <article className="feed-card">
+        <span className="tag">Open an RFQ</span>
+        <h3>Buyers should be able to turn intent into a priced market request immediately.</h3>
+        <form className="auth-form market-form" action="/buyer/rfqs" method="post">
+          <div className="market-form__grid">
+            <label className="auth-field">
+              <span>Title</span>
+              <input name="title" type="text" placeholder="Need live carrier triage" required />
+            </label>
+            <label className="auth-field">
+              <span>Category</span>
+              <input name="category" type="text" defaultValue="agent-ops" required />
+            </label>
+            <label className="auth-field">
+              <span>Budget cents</span>
+              <input name="budgetCents" type="number" min="1" step="1" placeholder="4200" required />
+            </label>
+            <label className="auth-field">
+              <span>Response deadline</span>
+              <input name="responseDeadlineAt" type="datetime-local" required />
+            </label>
+          </div>
+          <label className="auth-field">
+            <span>Scope</span>
+            <textarea name="scope" rows={3} placeholder="Investigate the failure, stabilize the runtime, and summarize next steps." required />
+          </label>
+          <button type="submit" className="auth-submit">
+            Publish RFQ
+          </button>
+        </form>
+      </article>
+
       <div className="feed-grid">
         <article className="feed-card">
           <span className="tag">Recommended listings</span>
@@ -85,6 +117,24 @@ export default async function BuyerPage() {
                   {rfq.status} · {rfq.bidCount} bids · budget {formatMoney(rfq.budgetCents)}
                 </p>
                 <p>Response deadline {rfq.responseDeadlineAt.slice(0, 10)}</p>
+                <div className="message-list">
+                  {rfq.bids.map((bid) => (
+                    <form key={bid.id} className="inline-form" action={`/buyer/rfqs/${rfq.id}/award`} method="post">
+                      <input type="hidden" name="bidId" value={bid.id} />
+                      <input type="hidden" name="fundingMode" value="credit" />
+                      <input type="hidden" name="creditLineId" value="credit_1" />
+                      <div>
+                        <strong>{bid.providerOrgId}</strong>
+                        <p>
+                          {bid.status} · quote {formatMoney(bid.quoteCents)}
+                        </p>
+                      </div>
+                      <button type="submit" className="action-button">
+                        Award
+                      </button>
+                    </form>
+                  ))}
+                </div>
               </div>
             ))}
           </div>

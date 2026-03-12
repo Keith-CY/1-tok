@@ -22,7 +22,15 @@ export interface BuyerDashboardData {
   };
   recommendedListings: Listing[];
   activeOrders: Order[];
-  rfqBook: Array<{ id: string; title: string; status: string; budgetCents: number; bidCount: number; responseDeadlineAt: string }>;
+  rfqBook: Array<{
+    id: string;
+    title: string;
+    status: string;
+    budgetCents: number;
+    bidCount: number;
+    responseDeadlineAt: string;
+    bids: Array<{ id: string; providerOrgId: string; quoteCents: number; status: string }>;
+  }>;
   inbox: Array<{ id: string; title: string; detail: string }>;
 }
 
@@ -46,6 +54,14 @@ export interface ProviderDashboardData {
     responseDeadlineAt: string;
     providerBidStatus: string;
     quoteCents: number;
+  }>;
+  marketOpportunities: Array<{
+    id: string;
+    title: string;
+    buyerOrgId: string;
+    budgetCents: number;
+    responseDeadlineAt: string;
+    hasProviderBid: boolean;
   }>;
   capabilities: string[];
 }
@@ -292,6 +308,12 @@ export async function getBuyerDashboardData(options: {
         budgetCents: rfq.budgetCents,
         bidCount: bids.length,
         responseDeadlineAt: rfq.responseDeadlineAt,
+        bids: bids.map((bid) => ({
+          id: bid.id,
+          providerOrgId: bid.providerOrgId,
+          quoteCents: bid.quoteCents,
+          status: bid.status,
+        })),
       };
     }),
   );
@@ -367,6 +389,16 @@ export async function getProviderDashboardData(options: {
         quoteCents: bid.quoteCents,
       })),
   );
+  const marketOpportunities = rfqBidGroups
+    .filter(({ rfq }) => rfq.status === "open")
+    .map(({ rfq, bids }) => ({
+      id: rfq.id,
+      title: rfq.title,
+      buyerOrgId: rfq.buyerOrgId,
+      budgetCents: rfq.budgetCents,
+      responseDeadlineAt: rfq.responseDeadlineAt,
+      hasProviderBid: bids.some((bid) => bid.providerOrgId === options.providerOrgId),
+    }));
 
   return {
     summary: {
@@ -385,6 +417,7 @@ export async function getProviderDashboardData(options: {
     ],
     activeOrders,
     marketQueue,
+    marketOpportunities,
     capabilities: provider.capabilities,
   };
 }

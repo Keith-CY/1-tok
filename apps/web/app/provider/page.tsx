@@ -71,23 +71,62 @@ export default async function ProviderPage() {
         </article>
 
         <aside className="message-card">
-          <span className="tag">Market queue</span>
-          <h3>Bid posture should sit next to payout posture.</h3>
+          <span className="tag">Open RFQs</span>
+          <h3>Providers need a direct lane from opportunity to submitted bid.</h3>
           <div className="message-list">
-            {data.marketQueue.map((item) => (
+            {data.marketOpportunities.map((item) => (
               <div key={item.id} className="message-item">
                 <strong>{item.title}</strong>
                 <p>
-                  {item.providerBidStatus} · quote {formatMoney(item.quoteCents)} · budget {formatMoney(item.budgetCents)}
+                  budget {formatMoney(item.budgetCents)} · buyer {item.buyerOrgId} · deadline {item.responseDeadlineAt.slice(0, 10)}
                 </p>
-                <p>
-                  buyer {item.buyerOrgId} · deadline {item.responseDeadlineAt.slice(0, 10)}
-                </p>
+                {item.hasProviderBid ? (
+                  <p>Bid already submitted from this provider session.</p>
+                ) : (
+                  <form className="auth-form market-form" action={`/provider/rfqs/${item.id}/bids`} method="post">
+                    <label className="auth-field">
+                      <span>Message</span>
+                      <textarea name="message" rows={2} placeholder="Carrier-ready response, availability, and outcome." required />
+                    </label>
+                    <div className="market-form__grid">
+                      <label className="auth-field">
+                        <span>Quote cents</span>
+                        <input name="quoteCents" type="number" min="1" step="1" placeholder="3900" required />
+                      </label>
+                      <label className="auth-field">
+                        <span>Milestone title</span>
+                        <input name="milestoneTitle" type="text" defaultValue="Execution" />
+                      </label>
+                    </div>
+                    <input type="hidden" name="milestoneBudgetCents" value={item.budgetCents} />
+                    <button type="submit" className="action-button">
+                      Submit bid
+                    </button>
+                  </form>
+                )}
               </div>
             ))}
           </div>
         </aside>
       </div>
+
+      <article className="feed-card">
+        <span className="tag">Submitted bids</span>
+        <h3>Bid posture should sit next to payout posture.</h3>
+        <div className="feed-list">
+          {data.marketQueue.map((item) => (
+            <div key={item.id} className="feed-item">
+              <strong>{item.title}</strong>
+              <p>
+                {item.providerBidStatus} · quote {formatMoney(item.quoteCents)} · budget {formatMoney(item.budgetCents)}
+              </p>
+              <p>
+                buyer {item.buyerOrgId} · deadline {item.responseDeadlineAt.slice(0, 10)}
+              </p>
+            </div>
+          ))}
+        </div>
+      </article>
 
       <article className="feed-card">
         <span className="tag">Capabilities</span>
