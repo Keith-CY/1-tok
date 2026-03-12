@@ -56,7 +56,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/listings":
 		s.handleListListings(w)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/rfqs":
-		s.handleListRFQs(w)
+		s.handleListRFQs(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/disputes":
 		s.handleListDisputes(w, r)
 	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/bids"):
@@ -110,11 +110,25 @@ func (s *Server) handleListListings(w http.ResponseWriter) {
 	writeJSON(w, http.StatusOK, map[string]any{"listings": listings})
 }
 
-func (s *Server) handleListRFQs(w http.ResponseWriter) {
+func (s *Server) handleListRFQs(w http.ResponseWriter, r *http.Request) {
 	rfqs, err := s.app.ListRFQs()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
+	}
+
+	if s.auth != nil {
+		actor, err := s.authenticatedActor(r)
+		if err != nil {
+			writeAuthError(w, err)
+			return
+		}
+
+		rfqs, err = filterRFQsForActor(rfqs, actor)
+		if err != nil {
+			writeAuthError(w, err)
+			return
+		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"rfqs": rfqs})
@@ -288,6 +302,26 @@ func (s *Server) handleListRFQBids(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeGatewayError(w, err)
 		return
+	}
+
+	if s.auth != nil {
+		actor, err := s.authenticatedActor(r)
+		if err != nil {
+			writeAuthError(w, err)
+			return
+		}
+
+		rfq, err := s.app.GetRFQ(rfqID)
+		if err != nil {
+			writeGatewayError(w, err)
+			return
+		}
+
+		bids, err = filterBidsForActor(rfq, bids, actor)
+		if err != nil {
+			writeAuthError(w, err)
+			return
+		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"bids": bids})
@@ -808,6 +842,81 @@ func filterOrdersForActor(orders []*core.Order, actor iamclient.Actor) ([]*core.
 
 	if len(filtered) == 0 && len(buyerOrgIDs) == 0 && len(providerOrgIDs) == 0 {
 		return nil, errors.New("membership is required")
+	}
+
+	return filtered, nil
+}
+
+func filterRFQsForActor(rfqs []platform.RFQ, actor iamclient.Actor) ([]platform.RFQ, error) {
+	if len(actor.Memberships) == 0 {
+		return nil, errors.New("membership is required")
+	}
+
+	buyerOrgIDs := make(map[string]struct{})
+	providerOrgIDs := make(map[string]struct{})
+
+	for _, membership := range actor.Memberships {
+		switch {
+		case membership.OrganizationKind == "ops" && isOpsRole(membership.Role):
+			return rfqs, nil
+		case membership.OrganizationKind == "buyer" && isBuyerRole(membership.Role):
+			buyerOrgIDs[membership.OrganizationID] = struct{}{}
+		case membership.OrganizationKind == "provider" && isProviderRole(membership.Role):
+			providerOrgIDs[membership.OrganizationID] = struct{}{}
+		}
+	}
+
+	filtered := make([]platform.RFQ, 0, len(rfqs))
+	for _, rfq := range rfqs {
+		if _, ok := buyerOrgIDs[rfq.BuyerOrgID]; ok {
+			filtered = append(filtered, rfq)
+			continue
+		}
+		if len(providerOrgIDs) == 0 {
+			continue
+		}
+		if rfq.Status == platform.RFQStatusOpen {
+			filtered = append(filtered, rfq)
+			continue
+		}
+		if _, ok := providerOrgIDs[rfq.AwardedProviderOrgID]; ok {
+			filtered = append(filtered, rfq)
+		}
+	}
+
+	if len(filtered) == 0 && len(buyerOrgIDs) == 0 && len(providerOrgIDs) == 0 {
+		return nil, errors.New("membership is required")
+	}
+
+	return filtered, nil
+}
+
+func filterBidsForActor(rfq platform.RFQ, bids []platform.Bid, actor iamclient.Actor) ([]platform.Bid, error) {
+	if len(actor.Memberships) == 0 {
+		return nil, errors.New("membership is required")
+	}
+
+	providerOrgIDs := make(map[string]struct{})
+	for _, membership := range actor.Memberships {
+		switch {
+		case membership.OrganizationKind == "ops" && isOpsRole(membership.Role):
+			return bids, nil
+		case membership.OrganizationKind == "buyer" && isBuyerRole(membership.Role) && membership.OrganizationID == rfq.BuyerOrgID:
+			return bids, nil
+		case membership.OrganizationKind == "provider" && isProviderRole(membership.Role):
+			providerOrgIDs[membership.OrganizationID] = struct{}{}
+		}
+	}
+
+	if len(providerOrgIDs) == 0 {
+		return nil, errors.New("membership is required")
+	}
+
+	filtered := make([]platform.Bid, 0, len(bids))
+	for _, bid := range bids {
+		if _, ok := providerOrgIDs[bid.ProviderOrgID]; ok {
+			filtered = append(filtered, bid)
+		}
 	}
 
 	return filtered, nil

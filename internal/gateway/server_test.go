@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 	"time"
 
@@ -739,6 +740,256 @@ func TestListOrdersScopesProviderMembershipWhenIAMConfigured(t *testing.T) {
 	}
 	if len(response.Orders) != 1 || response.Orders[0].ProviderOrgID != "provider_1" {
 		t.Fatalf("expected only provider_1 orders, got %+v", response.Orders)
+	}
+}
+
+func TestListRFQsScopesBuyerMembershipWhenIAMConfigured(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	if _, err := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID:         "buyer_1",
+		Title:              "Buyer one rfq",
+		Category:           "agent-ops",
+		Scope:              "Scope one",
+		BudgetCents:        4200,
+		ResponseDeadlineAt: time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("create rfq 1: %v", err)
+	}
+	if _, err := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID:         "buyer_2",
+		Title:              "Buyer two rfq",
+		Category:           "agent-ops",
+		Scope:              "Scope two",
+		BudgetCents:        5200,
+		ResponseDeadlineAt: time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("create rfq 2: %v", err)
+	}
+
+	server := NewServerWithOptions(Options{
+		App: app,
+		IAM: &stubIAMClient{
+			actor: iamclient.Actor{
+				UserID: "usr_buyer_1",
+				Memberships: []iamclient.ActorMembership{
+					{
+						OrganizationID:   "buyer_1",
+						OrganizationKind: "buyer",
+						Role:             "procurement",
+					},
+				},
+			},
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/rfqs", nil)
+	req.Header.Set("Authorization", "Bearer buyer-session-token")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", res.Code, res.Body.String())
+	}
+
+	var response struct {
+		RFQs []struct {
+			BuyerOrgID string `json:"buyerOrgId"`
+		} `json:"rfqs"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.RFQs) != 1 || response.RFQs[0].BuyerOrgID != "buyer_1" {
+		t.Fatalf("expected only buyer_1 rfqs, got %+v", response.RFQs)
+	}
+}
+
+func TestListRFQsShowsOpenAndAwardedProviderRFQsWhenIAMConfigured(t *testing.T) {
+	app := platform.NewAppWithMemory()
+
+	openRFQ, err := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID:         "buyer_1",
+		Title:              "Open rfq",
+		Category:           "agent-ops",
+		Scope:              "Open scope",
+		BudgetCents:        4200,
+		ResponseDeadlineAt: time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("create open rfq: %v", err)
+	}
+
+	awardedProviderOneRFQ, err := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID:         "buyer_2",
+		Title:              "Awarded to provider one",
+		Category:           "agent-ops",
+		Scope:              "Award scope one",
+		BudgetCents:        5200,
+		ResponseDeadlineAt: time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("create awarded rfq 1: %v", err)
+	}
+	providerOneBid, err := app.CreateBid(awardedProviderOneRFQ.ID, platform.CreateBidInput{
+		ProviderOrgID: "provider_1",
+		Message:       "Provider one bid",
+		QuoteCents:    4800,
+		Milestones: []platform.BidMilestoneInput{
+			{ID: "ms_1", Title: "Execute", BasePriceCents: 4800, BudgetCents: 5200},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create provider one bid: %v", err)
+	}
+	if _, _, err := app.AwardRFQ(awardedProviderOneRFQ.ID, platform.AwardRFQInput{
+		BidID:        providerOneBid.ID,
+		FundingMode:  "credit",
+		CreditLineID: "credit_1",
+	}); err != nil {
+		t.Fatalf("award provider one rfq: %v", err)
+	}
+
+	awardedProviderTwoRFQ, err := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID:         "buyer_3",
+		Title:              "Awarded to provider two",
+		Category:           "agent-ops",
+		Scope:              "Award scope two",
+		BudgetCents:        6200,
+		ResponseDeadlineAt: time.Date(2026, 3, 17, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("create awarded rfq 2: %v", err)
+	}
+	providerTwoBid, err := app.CreateBid(awardedProviderTwoRFQ.ID, platform.CreateBidInput{
+		ProviderOrgID: "provider_2",
+		Message:       "Provider two bid",
+		QuoteCents:    5800,
+		Milestones: []platform.BidMilestoneInput{
+			{ID: "ms_1", Title: "Execute", BasePriceCents: 5800, BudgetCents: 6200},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create provider two bid: %v", err)
+	}
+	if _, _, err := app.AwardRFQ(awardedProviderTwoRFQ.ID, platform.AwardRFQInput{
+		BidID:        providerTwoBid.ID,
+		FundingMode:  "credit",
+		CreditLineID: "credit_2",
+	}); err != nil {
+		t.Fatalf("award provider two rfq: %v", err)
+	}
+
+	server := NewServerWithOptions(Options{
+		App: app,
+		IAM: &stubIAMClient{
+			actor: iamclient.Actor{
+				UserID: "usr_provider_1",
+				Memberships: []iamclient.ActorMembership{
+					{
+						OrganizationID:   "provider_1",
+						OrganizationKind: "provider",
+						Role:             "sales",
+					},
+				},
+			},
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/rfqs", nil)
+	req.Header.Set("Authorization", "Bearer provider-session-token")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", res.Code, res.Body.String())
+	}
+
+	var response struct {
+		RFQs []struct {
+			ID string `json:"id"`
+		} `json:"rfqs"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.RFQs) != 2 {
+		t.Fatalf("expected 2 rfqs for provider scope, got %+v", response.RFQs)
+	}
+	ids := []string{response.RFQs[0].ID, response.RFQs[1].ID}
+	if !slices.Contains(ids, openRFQ.ID) || !slices.Contains(ids, awardedProviderOneRFQ.ID) || slices.Contains(ids, awardedProviderTwoRFQ.ID) {
+		t.Fatalf("unexpected provider rfq scope: %+v", ids)
+	}
+}
+
+func TestListRFQBidsScopesProviderMembershipWhenIAMConfigured(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, err := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID:         "buyer_1",
+		Title:              "Shared rfq",
+		Category:           "agent-ops",
+		Scope:              "Shared scope",
+		BudgetCents:        4200,
+		ResponseDeadlineAt: time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("create rfq: %v", err)
+	}
+	if _, err := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "provider_1",
+		Message:       "Provider one bid",
+		QuoteCents:    3900,
+		Milestones: []platform.BidMilestoneInput{
+			{ID: "ms_1", Title: "Execute", BasePriceCents: 3900, BudgetCents: 4200},
+		},
+	}); err != nil {
+		t.Fatalf("create provider one bid: %v", err)
+	}
+	if _, err := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "provider_2",
+		Message:       "Provider two bid",
+		QuoteCents:    4000,
+		Milestones: []platform.BidMilestoneInput{
+			{ID: "ms_1", Title: "Execute", BasePriceCents: 4000, BudgetCents: 4200},
+		},
+	}); err != nil {
+		t.Fatalf("create provider two bid: %v", err)
+	}
+
+	server := NewServerWithOptions(Options{
+		App: app,
+		IAM: &stubIAMClient{
+			actor: iamclient.Actor{
+				UserID: "usr_provider_1",
+				Memberships: []iamclient.ActorMembership{
+					{
+						OrganizationID:   "provider_1",
+						OrganizationKind: "provider",
+						Role:             "sales",
+					},
+				},
+			},
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/rfqs/"+rfq.ID+"/bids", nil)
+	req.Header.Set("Authorization", "Bearer provider-session-token")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", res.Code, res.Body.String())
+	}
+
+	var response struct {
+		Bids []struct {
+			ProviderOrgID string `json:"providerOrgId"`
+		} `json:"bids"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.Bids) != 1 || response.Bids[0].ProviderOrgID != "provider_1" {
+		t.Fatalf("expected only provider_1 bids, got %+v", response.Bids)
 	}
 }
 
