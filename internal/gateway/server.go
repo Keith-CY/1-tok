@@ -4,17 +4,20 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/chenyu/1-tok/internal/core"
 	iamclient "github.com/chenyu/1-tok/internal/integrations/iam"
 	"github.com/chenyu/1-tok/internal/platform"
+	"github.com/chenyu/1-tok/internal/serviceauth"
 )
 
 type Server struct {
-	app  *platform.App
-	auth iamclient.Client
+	app            *platform.App
+	auth           iamclient.Client
+	executionToken string
 }
 
 func NewServer() *Server {
@@ -32,18 +35,23 @@ func NewServerWithApp(app *platform.App) *Server {
 }
 
 type Options struct {
-	App *platform.App
-	IAM iamclient.Client
+	App            *platform.App
+	IAM            iamclient.Client
+	ExecutionToken string
 }
 
 func NewServerWithOptions(options Options) *Server {
 	if options.App == nil {
 		options.App = platform.NewAppWithMemory()
 	}
+	if options.ExecutionToken == "" {
+		options.ExecutionToken = strings.TrimSpace(os.Getenv("API_GATEWAY_EXECUTION_TOKEN"))
+	}
 
 	return &Server{
-		app:  options.App,
-		auth: options.IAM,
+		app:            options.App,
+		auth:           options.IAM,
+		executionToken: options.ExecutionToken,
 	}
 }
 
@@ -572,6 +580,11 @@ func (s *Server) authenticatedActor(r *http.Request) (iamclient.Actor, error) {
 }
 
 func (s *Server) handleSettleMilestone(w http.ResponseWriter, r *http.Request) {
+	if err := s.authorizeExecutionMutation(r); err != nil {
+		writeAuthError(w, err)
+		return
+	}
+
 	orderID, milestoneID, err := orderMilestoneFromSettlePath(r.URL.Path)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -603,6 +616,11 @@ func (s *Server) handleSettleMilestone(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRecordUsage(w http.ResponseWriter, r *http.Request) {
+	if err := s.authorizeExecutionMutation(r); err != nil {
+		writeAuthError(w, err)
+		return
+	}
+
 	orderID, milestoneID, err := orderMilestoneFromUsagePath(r.URL.Path)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -830,11 +848,23 @@ func writeAuthError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, iamclient.ErrUnauthorized):
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	case err != nil && err.Error() == "invalid service token":
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 	case strings.Contains(err.Error(), "mismatch"), strings.Contains(err.Error(), "required"):
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
 	default:
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 	}
+}
+
+func (s *Server) authorizeExecutionMutation(r *http.Request) error {
+	if strings.TrimSpace(s.executionToken) == "" {
+		return nil
+	}
+	if serviceauth.MatchesRequest(r, s.executionToken) {
+		return nil
+	}
+	return errors.New("invalid service token")
 }
 
 func filterOrdersForActor(orders []*core.Order, actor iamclient.Actor) ([]*core.Order, error) {

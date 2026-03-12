@@ -36,6 +36,7 @@ CGO_ENABLED=0 go test ./...
 export RELEASE_SMOKE_API_BASE_URL='http://127.0.0.1:8080'
 export RELEASE_SMOKE_SETTLEMENT_BASE_URL='http://127.0.0.1:8083'
 export RELEASE_SMOKE_EXECUTION_BASE_URL='http://127.0.0.1:8085'
+export RELEASE_SMOKE_EXECUTION_EVENT_TOKEN='replace-me'
 bun run release:smoke
 ```
 
@@ -80,6 +81,7 @@ bun run test:contracts
 ### API gateway
 
 ```bash
+export API_GATEWAY_EXECUTION_TOKEN='replace-me'
 CGO_ENABLED=0 go run ./cmd/api-gateway
 ```
 
@@ -88,6 +90,7 @@ To enable persistence locally:
 ```bash
 export DATABASE_URL='postgres://onetok:onetok@127.0.0.1:5432/onetok?sslmode=disable'
 export NATS_URL='nats://127.0.0.1:4222'
+export API_GATEWAY_EXECUTION_TOKEN='replace-me'
 CGO_ENABLED=0 go run ./cmd/api-gateway
 ```
 
@@ -125,6 +128,8 @@ HTTP routes added by `settlement`:
 
 ```bash
 export API_GATEWAY_UPSTREAM='http://127.0.0.1:8080'
+export EXECUTION_EVENT_TOKEN='replace-me'
+export EXECUTION_GATEWAY_TOKEN='replace-me'
 export CARRIER_GATEWAY_URL='http://127.0.0.1:8787'
 export CARRIER_GATEWAY_API_TOKEN='test-gateway-token'
 CGO_ENABLED=0 go run ./cmd/execution
@@ -136,6 +141,8 @@ HTTP routes added by `execution`:
 - `GET /v1/carrier/codeagent/health`
 - `GET /v1/carrier/codeagent/version`
 - `POST /v1/carrier/codeagent/run`
+
+When `EXECUTION_EVENT_TOKEN` and `API_GATEWAY_EXECUTION_TOKEN` are set to the same value, carrier event ingestion and gateway settlement/usage mutations become service-token protected instead of public.
 
 ### IAM service with persisted sessions
 
@@ -178,5 +185,6 @@ When `IAM_UPSTREAM` is configured for `api-gateway` and `settlement`, the platfo
 - Settlement and execution now speak to real Fiber and Carrier interfaces, and settlement keeps local funding records when `DATABASE_URL` or `SETTLEMENT_DATABASE_URL` is configured.
 - IAM now supports persisted `signup`, `session`, and `me` flows when `DATABASE_URL` or `IAM_DATABASE_URL` is configured, but full gateway/web enforcement is still not wired.
 - Gateway order creation and settlement funding-record reads can now honor authenticated memberships when `IAM_UPSTREAM` is configured, but the rest of the platform still has unauthenticated paths.
+- Execution event ingestion and gateway settlement/usage mutations can now be bound to a shared service token, but broader service-to-service auth and live end-to-end execution smoke still need more work.
 - RFQ publishing, bidding, award, credit review, and dispute resolution now have live web entry points, and ops-only dispute/credit routes are membership-gated when `IAM_UPSTREAM` is configured.
 - Ledger-grade reconciliation, broad read-path authorization, and an end-to-end live smoke spanning web + gateway + execution + settlement still need more work before a production release claim would be accurate.

@@ -134,6 +134,74 @@ func TestUsageReportedCanPauseOrderViaGateway(t *testing.T) {
 	}
 }
 
+func TestCarrierEventsRejectMissingServiceTokenWhenConfigured(t *testing.T) {
+	t.Setenv("EXECUTION_EVENT_TOKEN", "exec-event-token")
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("unexpected upstream request %s %s", r.Method, r.URL.Path)
+	}))
+	defer upstream.Close()
+
+	server := NewServerWithUpstream(upstream.URL)
+	body := map[string]any{
+		"orderId":     "ord_1",
+		"milestoneId": "ms_1",
+		"eventType":   "milestone_ready",
+		"summary":     "carrier completed milestone",
+	}
+	payload, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/events", bytes.NewReader(payload))
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d body=%s", res.Code, res.Body.String())
+	}
+}
+
+func TestMilestoneReadyEventForwardsGatewayServiceTokenWhenConfigured(t *testing.T) {
+	t.Setenv("EXECUTION_EVENT_TOKEN", "exec-event-token")
+	t.Setenv("EXECUTION_GATEWAY_TOKEN", "gateway-shared-token")
+
+	var receivedServiceToken string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedServiceToken = r.Header.Get("X-One-Tok-Service-Token")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"order": map[string]any{
+				"id":     "ord_1",
+				"status": "running",
+			},
+			"ledgerEntry": map[string]any{
+				"kind":        "platform_exposure",
+				"amountCents": 1200,
+			},
+		})
+	}))
+	defer upstream.Close()
+
+	server := NewServerWithUpstream(upstream.URL)
+	body := map[string]any{
+		"orderId":     "ord_1",
+		"milestoneId": "ms_1",
+		"eventType":   "milestone_ready",
+		"summary":     "carrier completed milestone",
+	}
+	payload, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/events", bytes.NewReader(payload))
+	req.Header.Set("X-One-Tok-Service-Token", "exec-event-token")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", res.Code, res.Body.String())
+	}
+	if receivedServiceToken != "gateway-shared-token" {
+		t.Fatalf("expected forwarded gateway token, got %q", receivedServiceToken)
+	}
+}
+
 func TestCodeAgentHealthRouteUsesCarrierClient(t *testing.T) {
 	stub := &stubCarrierClient{
 		healthResult: carrierclient.CodeAgentHealthResult{

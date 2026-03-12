@@ -7,21 +7,27 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/chenyu/1-tok/internal/core"
 	carrierclient "github.com/chenyu/1-tok/internal/integrations/carrier"
+	"github.com/chenyu/1-tok/internal/serviceauth"
 )
 
 type Server struct {
-	client   *http.Client
-	upstream string
-	carrier  carrierclient.CodeAgentClient
+	client       *http.Client
+	upstream     string
+	carrier      carrierclient.CodeAgentClient
+	inboundToken string
+	gatewayToken string
 }
 
 type Options struct {
-	APIUpstream string
-	Carrier     carrierclient.CodeAgentClient
+	APIUpstream  string
+	Carrier      carrierclient.CodeAgentClient
+	InboundToken string
+	GatewayToken string
 }
 
 type carrierEventPayload struct {
@@ -55,11 +61,19 @@ func NewServerWithOptions(options Options) *Server {
 	if options.Carrier == nil {
 		options.Carrier = carrierclient.NewClientFromEnv()
 	}
+	if options.InboundToken == "" {
+		options.InboundToken = strings.TrimSpace(os.Getenv("EXECUTION_EVENT_TOKEN"))
+	}
+	if options.GatewayToken == "" {
+		options.GatewayToken = strings.TrimSpace(os.Getenv("EXECUTION_GATEWAY_TOKEN"))
+	}
 
 	return &Server{
-		client:   &http.Client{Timeout: 5 * time.Second},
-		upstream: options.APIUpstream,
-		carrier:  options.Carrier,
+		client:       &http.Client{Timeout: 5 * time.Second},
+		upstream:     options.APIUpstream,
+		carrier:      options.Carrier,
+		inboundToken: options.InboundToken,
+		gatewayToken: options.GatewayToken,
 	}
 }
 
@@ -87,6 +101,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Method == http.MethodPost && r.URL.Path == "/v1/carrier/events" {
+		if !serviceauth.MatchesRequest(r, s.inboundToken) {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+			return
+		}
+
 		var payload carrierEventPayload
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
@@ -256,6 +275,9 @@ func (s *Server) postJSON(path string, payload any, target any) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	if strings.TrimSpace(s.gatewayToken) != "" {
+		req.Header.Set(serviceauth.HeaderName, strings.TrimSpace(s.gatewayToken))
+	}
 
 	res, err := s.client.Do(req)
 	if err != nil {

@@ -1164,3 +1164,59 @@ func TestCarrierMilestoneSettlementReturnsLedgerEntry(t *testing.T) {
 		t.Fatalf("expected 1200 cents, got %d", response.LedgerEntry.AmountCents)
 	}
 }
+
+func TestSettleMilestoneRejectsMissingExecutionServiceTokenWhenConfigured(t *testing.T) {
+	t.Setenv("API_GATEWAY_EXECUTION_TOKEN", "exec-shared-token")
+
+	server := NewServerWithApp(platform.NewAppWithMemory())
+
+	create := map[string]any{
+		"buyerOrgId":    "buyer_1",
+		"providerOrgId": "provider_1",
+		"title":         "Operate agent",
+		"fundingMode":   "credit",
+		"creditLineId":  "credit_1",
+		"milestones": []map[string]any{
+			{
+				"id":             "ms_1",
+				"title":          "Plan",
+				"basePriceCents": 1200,
+				"budgetCents":    1800,
+			},
+		},
+	}
+
+	body, _ := json.Marshal(create)
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/orders", bytes.NewReader(body))
+	createReq.Header.Set("Content-Type", "application/json")
+	createRes := httptest.NewRecorder()
+	server.ServeHTTP(createRes, createReq)
+
+	var created struct {
+		Order struct {
+			ID string `json:"id"`
+		} `json:"order"`
+	}
+	if err := json.Unmarshal(createRes.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+
+	settleBody, _ := json.Marshal(map[string]any{
+		"milestoneId": "ms_1",
+		"summary":     "carrier finished work",
+		"source":      "carrier",
+	})
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/orders/"+created.Order.ID+"/milestones/ms_1/settle",
+		bytes.NewReader(settleBody),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d body=%s", res.Code, res.Body.String())
+	}
+}

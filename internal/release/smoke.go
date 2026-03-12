@@ -10,12 +10,15 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/chenyu/1-tok/internal/serviceauth"
 )
 
 type Config struct {
 	APIBaseURL          string
 	SettlementBaseURL   string
 	ExecutionBaseURL    string
+	ExecutionEventToken string
 	IncludeWithdrawal   bool
 	IncludeCarrierProbe bool
 }
@@ -62,7 +65,7 @@ func RunSmoke(ctx context.Context, cfg Config) (Summary, error) {
 			return Summary{}, err
 		}
 	}
-	if err := client.settleViaExecution(ctx, cfg.ExecutionBaseURL, orderID); err != nil {
+	if err := client.settleViaExecution(ctx, cfg.ExecutionBaseURL, cfg.ExecutionEventToken, orderID); err != nil {
 		return Summary{}, err
 	}
 
@@ -120,6 +123,7 @@ func ConfigFromEnv() Config {
 		APIBaseURL:          envOrDefault("RELEASE_SMOKE_API_BASE_URL", "http://127.0.0.1:8080"),
 		SettlementBaseURL:   envOrDefault("RELEASE_SMOKE_SETTLEMENT_BASE_URL", "http://127.0.0.1:8083"),
 		ExecutionBaseURL:    envOrDefault("RELEASE_SMOKE_EXECUTION_BASE_URL", "http://127.0.0.1:8085"),
+		ExecutionEventToken: envOrDefault("RELEASE_SMOKE_EXECUTION_EVENT_TOKEN", ""),
 		IncludeWithdrawal:   envBool("RELEASE_SMOKE_INCLUDE_WITHDRAWAL"),
 		IncludeCarrierProbe: envBool("RELEASE_SMOKE_INCLUDE_CARRIER_PROBE"),
 	}
@@ -254,8 +258,10 @@ func (c *smokeClient) awardRFQ(ctx context.Context, baseURL, rfqID, bidID string
 	return response.Order.ID, nil
 }
 
-func (c *smokeClient) settleViaExecution(ctx context.Context, baseURL, orderID string) error {
-	return c.postJSON(ctx, strings.TrimRight(baseURL, "/")+"/v1/carrier/events", map[string]any{
+func (c *smokeClient) settleViaExecution(ctx context.Context, baseURL, token, orderID string) error {
+	return c.postJSONWithHeaders(ctx, strings.TrimRight(baseURL, "/")+"/v1/carrier/events", map[string]string{
+		serviceauth.HeaderName: strings.TrimSpace(token),
+	}, map[string]any{
 		"orderId":     orderID,
 		"milestoneId": "ms_1",
 		"eventType":   "milestone_ready",
@@ -408,6 +414,10 @@ func (c *smokeClient) countFundingRecords(ctx context.Context, baseURL string, f
 }
 
 func (c *smokeClient) postJSON(ctx context.Context, url string, payload any, target any) error {
+	return c.postJSONWithHeaders(ctx, url, nil, payload, target)
+}
+
+func (c *smokeClient) postJSONWithHeaders(ctx context.Context, url string, headers map[string]string, payload any, target any) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -418,6 +428,12 @@ func (c *smokeClient) postJSON(ctx context.Context, url string, payload any, tar
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	for key, value := range headers {
+		if strings.TrimSpace(value) == "" {
+			continue
+		}
+		req.Header.Set(key, value)
+	}
 
 	res, err := c.httpClient.Do(req)
 	if err != nil {

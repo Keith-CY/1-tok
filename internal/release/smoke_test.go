@@ -329,3 +329,62 @@ func TestRunSmokePrefersRFQAwardFlowWhenMarketplaceRoutesExist(t *testing.T) {
 		}
 	}
 }
+
+func TestRunSmokeSendsExecutionEventTokenWhenConfigured(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/healthz":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
+		case r.Method == http.MethodPost && (r.URL.Path == "/api/v1/rfqs" || strings.HasPrefix(r.URL.Path, "/api/v1/rfqs/")):
+			http.NotFound(w, r)
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/orders":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"order": map[string]any{"id": "ord_secure"},
+			})
+		default:
+			t.Fatalf("unexpected api request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer api.Close()
+
+	settlement := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/healthz":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/invoices":
+			_ = json.NewEncoder(w).Encode(map[string]any{"invoice": "inv_secure"})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/settled-feed":
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{"invoice": "inv_secure"}}})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/funding-records":
+			_ = json.NewEncoder(w).Encode(map[string]any{"records": []map[string]any{{"id": "fund_secure"}}})
+		default:
+			t.Fatalf("unexpected settlement request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer settlement.Close()
+
+	execution := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/healthz":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/carrier/events":
+			if got := r.Header.Get("X-One-Tok-Service-Token"); got != "exec-event-token" {
+				t.Fatalf("expected execution event token, got %q", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"accepted": true, "continueAllowed": true})
+		default:
+			t.Fatalf("unexpected execution request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer execution.Close()
+
+	_, err := RunSmoke(context.Background(), Config{
+		APIBaseURL:          api.URL,
+		SettlementBaseURL:   settlement.URL,
+		ExecutionBaseURL:    execution.URL,
+		ExecutionEventToken: "exec-event-token",
+	})
+	if err != nil {
+		t.Fatalf("run smoke: %v", err)
+	}
+}
