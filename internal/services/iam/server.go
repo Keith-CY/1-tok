@@ -333,9 +333,16 @@ func loadConfiguredStoreFromEnv() (identity.Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open iam store: %w", err)
 	}
-	if err := postgres.Migrate(db); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("migrate iam store: %w", err)
+	if runtimeconfig.RequireBootstrappedDatabase() {
+		if err := postgres.VerifyCoreSchema(db); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("verify iam store: %w", err)
+		}
+	} else {
+		if err := postgres.Migrate(db); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("migrate iam store: %w", err)
+		}
 	}
 
 	return postgres.NewIdentityStore(db), nil

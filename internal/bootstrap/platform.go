@@ -34,16 +34,24 @@ func LoadPlatformApp() (*platform.App, func() error, error) {
 		return nil, nil, err
 	}
 
-	if err := postgresstore.Migrate(db); err != nil {
-		_ = db.Close()
-		_ = publisherCleanup()
-		return nil, nil, err
-	}
+	if runtimeconfig.RequireBootstrappedDatabase() {
+		if err := postgresstore.VerifyCoreSchema(db); err != nil {
+			_ = db.Close()
+			_ = publisherCleanup()
+			return nil, nil, err
+		}
+	} else {
+		if err := postgresstore.Migrate(db); err != nil {
+			_ = db.Close()
+			_ = publisherCleanup()
+			return nil, nil, err
+		}
 
-	if err := postgresstore.SeedCatalog(db); err != nil {
-		_ = db.Close()
-		_ = publisherCleanup()
-		return nil, nil, err
+		if err := postgresstore.SeedCatalog(db); err != nil {
+			_ = db.Close()
+			_ = publisherCleanup()
+			return nil, nil, err
+		}
 	}
 
 	app := platform.NewAppWithStorage(

@@ -56,6 +56,30 @@ func Migrate(db *sql.DB) error {
 	return err
 }
 
+func VerifyCoreSchema(db *sql.DB) error {
+	return verifyRelations(db, []string{
+		"order_seq",
+		"rfq_seq",
+		"bid_seq",
+		"message_seq",
+		"dispute_seq",
+		"user_seq",
+		"organization_seq",
+		"iam_session_seq",
+		"users",
+		"organizations",
+		"memberships",
+		"iam_sessions",
+		"providers",
+		"listings",
+		"orders",
+		"rfqs",
+		"bids",
+		"messages",
+		"disputes",
+	})
+}
+
 func SeedCatalog(db *sql.DB) error {
 	providers := NewProviderRepository(db)
 	for _, provider := range platform.DefaultProviderProfiles() {
@@ -71,6 +95,19 @@ func SeedCatalog(db *sql.DB) error {
 		}
 	}
 
+	return nil
+}
+
+func verifyRelations(db *sql.DB, relations []string) error {
+	for _, relation := range relations {
+		var existing sql.NullString
+		if err := db.QueryRow(`SELECT to_regclass($1)`, relation).Scan(&existing); err != nil {
+			return err
+		}
+		if !existing.Valid {
+			return fmt.Errorf("missing bootstrapped relation %q", relation)
+		}
+	}
 	return nil
 }
 

@@ -107,7 +107,7 @@ API_GATEWAY_PUBLISHED_PORT="${API_GATEWAY_PUBLISHED_PORT}" \
 SETTLEMENT_PUBLISHED_PORT="${SETTLEMENT_PUBLISHED_PORT}" \
 EXECUTION_PUBLISHED_PORT="${EXECUTION_PUBLISHED_PORT}" \
 WEB_PUBLISHED_PORT="${WEB_PUBLISHED_PORT}" \
-docker compose up -d --build postgres mock-fiber mock-carrier iam api-gateway settlement execution web
+docker compose up -d --build postgres mock-fiber mock-carrier bootstrap iam api-gateway settlement execution web
 
 wait_for_url "http://127.0.0.1:${IAM_PUBLISHED_PORT}/healthz" "iam"
 wait_for_url "http://127.0.0.1:${API_GATEWAY_PUBLISHED_PORT}/healthz" "api-gateway"

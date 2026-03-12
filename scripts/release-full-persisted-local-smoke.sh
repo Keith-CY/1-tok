@@ -23,6 +23,7 @@ EXECUTION_EVENT_TOKEN="${EXECUTION_EVENT_TOKEN:-local-execution-event-token}"
 MOCK_CARRIER_API_TOKEN="${MOCK_CARRIER_API_TOKEN:-test-gateway-token}"
 
 POSTGRES_LOG="$LOG_DIR/postgres.log"
+BOOTSTRAP_LOG="$LOG_DIR/bootstrap.log"
 MOCK_FIBER_LOG="$LOG_DIR/mock-fiber.log"
 MOCK_CARRIER_LOG="$LOG_DIR/mock-carrier.log"
 IAM_LOG="$LOG_DIR/iam.log"
@@ -48,7 +49,7 @@ cleanup() {
 
   if [[ $code -ne 0 ]]; then
     echo "full persisted local smoke failed; logs are in $LOG_DIR" >&2
-    for file in "$POSTGRES_LOG" "$MOCK_FIBER_LOG" "$MOCK_CARRIER_LOG" "$IAM_LOG" "$API_LOG" "$SETTLEMENT_LOG" "$EXECUTION_LOG" "$WEB_LOG"; do
+    for file in "$POSTGRES_LOG" "$BOOTSTRAP_LOG" "$MOCK_FIBER_LOG" "$MOCK_CARRIER_LOG" "$IAM_LOG" "$API_LOG" "$SETTLEMENT_LOG" "$EXECUTION_LOG" "$WEB_LOG"; do
       if [[ -f "$file" ]]; then
         echo "===== $(basename "$file") =====" >&2
         tail -n 200 "$file" >&2 || true
@@ -108,6 +109,9 @@ docker run --rm -d \
 
 wait_for_postgres
 
+DATABASE_URL="${POSTGRES_DSN}" \
+CGO_ENABLED=0 go run ./cmd/bootstrap >"$BOOTSTRAP_LOG" 2>&1
+
 MOCK_FIBER_ADDR="127.0.0.1:${MOCK_FIBER_PORT}" \
 CGO_ENABLED=0 go run ./cmd/mock-fiber >"$MOCK_FIBER_LOG" 2>&1 &
 MOCK_FIBER_PID=$!
@@ -120,6 +124,7 @@ MOCK_CARRIER_PID=$!
 IAM_ADDR="127.0.0.1:${IAM_PORT}" \
 IAM_DATABASE_URL="${POSTGRES_DSN}" \
 ONE_TOK_REQUIRE_PERSISTENCE="true" \
+ONE_TOK_REQUIRE_BOOTSTRAP="true" \
 CGO_ENABLED=0 go run ./cmd/iam >"$IAM_LOG" 2>&1 &
 IAM_PID=$!
 
@@ -131,6 +136,7 @@ IAM_UPSTREAM="http://127.0.0.1:${IAM_PORT}" \
 API_GATEWAY_EXECUTION_TOKEN="${EXECUTION_GATEWAY_SHARED_TOKEN}" \
 ONE_TOK_REQUIRE_EXTERNALS="true" \
 ONE_TOK_REQUIRE_PERSISTENCE="true" \
+ONE_TOK_REQUIRE_BOOTSTRAP="true" \
 CGO_ENABLED=0 go run ./cmd/api-gateway >"$API_LOG" 2>&1 &
 API_PID=$!
 
@@ -145,6 +151,7 @@ FIBER_HMAC_SECRET="secret_local" \
 SETTLEMENT_SERVICE_TOKEN="${SETTLEMENT_INTERNAL_TOKEN}" \
 ONE_TOK_REQUIRE_EXTERNALS="true" \
 ONE_TOK_REQUIRE_PERSISTENCE="true" \
+ONE_TOK_REQUIRE_BOOTSTRAP="true" \
 CGO_ENABLED=0 go run ./cmd/settlement >"$SETTLEMENT_LOG" 2>&1 &
 SETTLEMENT_PID=$!
 

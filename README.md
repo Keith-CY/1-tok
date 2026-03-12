@@ -125,6 +125,8 @@ Persisted release paths now force `ONE_TOK_REQUIRE_PERSISTENCE=true`, so `iam`, 
 
 Full-stack release paths also force `ONE_TOK_REQUIRE_EXTERNALS=true`, so `api-gateway`, `execution`, and `settlement` refuse to start if `IAM`, `Carrier`, `Fiber`, or internal service-token wiring is missing.
 
+Persisted release paths now also run a dedicated `cmd/bootstrap` job first and force `ONE_TOK_REQUIRE_BOOTSTRAP=true`, so the database schema plus default catalog must be initialized before `iam`, `api-gateway`, or `settlement` start.
+
 The release harness now scopes internal secrets by edge: one token for `execution -> api-gateway`, and a separate token for settlement internal routes.
 
 ### Contracts tests
@@ -146,6 +148,8 @@ To enable persistence locally:
 export DATABASE_URL='postgres://onetok:onetok@127.0.0.1:5432/onetok?sslmode=disable'
 export NATS_URL='nats://127.0.0.1:4222'
 export API_GATEWAY_EXECUTION_TOKEN='replace-me'
+CGO_ENABLED=0 go run ./cmd/bootstrap
+export ONE_TOK_REQUIRE_BOOTSTRAP='true'
 CGO_ENABLED=0 go run ./cmd/api-gateway
 ```
 

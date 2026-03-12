@@ -45,6 +45,18 @@ services:
     ports:
       - "${MOCK_CARRIER_PUBLISHED_PORT:-8787}:8787"
 
+  bootstrap:
+    build:
+      context: .
+      dockerfile: Dockerfile.go-service
+      args:
+        SERVICE: bootstrap
+    environment:
+      DATABASE_URL: postgres://onetok:onetok@postgres:5432/onetok?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api-gateway:
     build:
       context: .
@@ -59,9 +71,12 @@ services:
       API_GATEWAY_EXECUTION_TOKEN: ${ONE_TOK_EXECUTION_GATEWAY_TOKEN:-local-execution-gateway-token}
       ONE_TOK_REQUIRE_EXTERNALS: "true"
       ONE_TOK_REQUIRE_PERSISTENCE: "true"
+      ONE_TOK_REQUIRE_BOOTSTRAP: "true"
     ports:
       - "${API_GATEWAY_PUBLISHED_PORT:-8080}:8080"
     depends_on:
+      bootstrap:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       nats:
@@ -77,9 +92,12 @@ services:
       IAM_ADDR: ":8081"
       DATABASE_URL: postgres://onetok:onetok@postgres:5432/onetok?sslmode=disable
       ONE_TOK_REQUIRE_PERSISTENCE: "true"
+      ONE_TOK_REQUIRE_BOOTSTRAP: "true"
     ports:
       - "${IAM_PUBLISHED_PORT:-8081}:8081"
     depends_on:
+      bootstrap:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
 
@@ -114,9 +132,12 @@ services:
       SETTLEMENT_SERVICE_TOKEN: ${ONE_TOK_SETTLEMENT_SERVICE_TOKEN:-local-settlement-service-token}
       ONE_TOK_REQUIRE_EXTERNALS: "true"
       ONE_TOK_REQUIRE_PERSISTENCE: "true"
+      ONE_TOK_REQUIRE_BOOTSTRAP: "true"
     ports:
       - "${SETTLEMENT_PUBLISHED_PORT:-8083}:8083"
     depends_on:
+      bootstrap:
+        condition: service_completed_successfully
       api-gateway:
         condition: service_started
       mock-fiber:

@@ -266,15 +266,22 @@ func loadConfiguredFundingRecordRepository() (FundingRecordRepository, error) {
 		return nil, fmt.Errorf("open settlement funding store: %w", err)
 	}
 
-	if err := migrateFundingRecordStore(db); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("migrate settlement funding store: %w", err)
+	if runtimeconfig.RequireBootstrappedDatabase() {
+		if err := VerifyFundingRecordStore(db); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("verify settlement funding store: %w", err)
+		}
+	} else {
+		if err := MigrateFundingRecordStore(db); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("migrate settlement funding store: %w", err)
+		}
 	}
 
 	return newPostgresFundingRecordRepository(db), nil
 }
 
-func migrateFundingRecordStore(db *sql.DB) error {
+func MigrateFundingRecordStore(db *sql.DB) error {
 	_, err := db.Exec(`
 		CREATE SEQUENCE IF NOT EXISTS settlement_funding_record_seq START 1;
 		CREATE TABLE IF NOT EXISTS settlement_funding_records (
@@ -299,6 +306,19 @@ func migrateFundingRecordStore(db *sql.DB) error {
 			ON settlement_funding_records (external_id) WHERE external_id IS NOT NULL;
 	`)
 	return err
+}
+
+func VerifyFundingRecordStore(db *sql.DB) error {
+	for _, relation := range []string{"settlement_funding_record_seq", "settlement_funding_records"} {
+		var existing sql.NullString
+		if err := db.QueryRow(`SELECT to_regclass($1)`, relation).Scan(&existing); err != nil {
+			return err
+		}
+		if !existing.Valid {
+			return fmt.Errorf("missing bootstrapped relation %q", relation)
+		}
+	}
+	return nil
 }
 
 func nullIfEmpty(value string) any {
