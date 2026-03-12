@@ -650,6 +650,24 @@ func (s *Server) handleCreateDispute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if s.auth != nil {
+		order, err := s.app.GetOrder(orderID)
+		if err != nil {
+			writeGatewayError(w, err)
+			return
+		}
+
+		buyerOrgID, err := s.resolveBuyerOrg(r, order.BuyerOrgID)
+		if err != nil {
+			writeAuthError(w, err)
+			return
+		}
+		if buyerOrgID != order.BuyerOrgID {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "buyer org mismatch"})
+			return
+		}
+	}
+
 	order, refund, recovery, err := s.app.OpenDispute(orderID, platform.OpenDisputeInput{
 		MilestoneID: payload.MilestoneID,
 		Reason:      payload.Reason,

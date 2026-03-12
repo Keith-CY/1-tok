@@ -1035,6 +1035,62 @@ func TestGetOrderRejectsForeignBuyerWhenIAMConfigured(t *testing.T) {
 	}
 }
 
+func TestCreateDisputeRejectsForeignBuyerWhenIAMConfigured(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	order, err := app.CreateOrder(platform.CreateOrderInput{
+		BuyerOrgID:    "buyer_1",
+		ProviderOrgID: "provider_1",
+		Title:         "Protected order",
+		FundingMode:   "credit",
+		CreditLineID:  "credit_1",
+		Milestones: []platform.CreateMilestoneInput{
+			{ID: "ms_1", Title: "Plan", BasePriceCents: 1200, BudgetCents: 1800},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create order: %v", err)
+	}
+	if _, _, err := app.SettleMilestone(order.ID, platform.SettleMilestoneInput{
+		MilestoneID: "ms_1",
+		Summary:     "done",
+		Source:      "carrier",
+		OccurredAt:  time.Date(2026, 3, 12, 0, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("settle milestone: %v", err)
+	}
+
+	server := NewServerWithOptions(Options{
+		App: app,
+		IAM: &stubIAMClient{
+			actor: iamclient.Actor{
+				UserID: "usr_buyer_2",
+				Memberships: []iamclient.ActorMembership{
+					{
+						OrganizationID:   "buyer_2",
+						OrganizationKind: "buyer",
+						Role:             "procurement",
+					},
+				},
+			},
+		},
+	})
+
+	body, _ := json.Marshal(map[string]any{
+		"milestoneId": "ms_1",
+		"reason":      "Not my order but trying anyway",
+		"refundCents": 500,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders/"+order.ID+"/disputes", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer buyer-session-token")
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d body=%s", res.Code, res.Body.String())
+	}
+}
+
 func TestCarrierMilestoneSettlementReturnsLedgerEntry(t *testing.T) {
 	server := NewServer()
 
