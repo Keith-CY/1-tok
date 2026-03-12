@@ -81,7 +81,7 @@ This script builds the web app, starts local `iam`, `api-gateway`, `execution`, 
 bun run release:services-local-smoke
 ```
 
-This script starts local `mock-fiber`, `api-gateway`, `settlement`, and `execution` processes on dedicated localhost ports, wires the required service tokens, and then runs the minimal cross-service `release:smoke` flow against those real HTTP services.
+This script starts local `mock-fiber`, `api-gateway`, `settlement`, and `execution` processes on dedicated localhost ports, wires the required service tokens, and then runs the cross-service `release:smoke` flow with invoice settlement plus provider withdrawal against those real HTTP services.
 
 ### Full local release smoke
 
@@ -89,7 +89,7 @@ This script starts local `mock-fiber`, `api-gateway`, `settlement`, and `executi
 bun run release:full-local-smoke
 ```
 
-This script starts local `mock-fiber`, `iam`, `api-gateway`, `settlement`, `execution`, and the built Next standalone server, wires IAM plus service-token auth, and then runs both `release:smoke` and `release:portal-smoke` against the same stack.
+This script starts local `mock-fiber`, `iam`, `api-gateway`, `settlement`, `execution`, and the built Next standalone server, wires IAM plus service-token auth, and then runs both `release:smoke` with withdrawal coverage and `release:portal-smoke` against the same stack.
 
 ### Contracts tests
 

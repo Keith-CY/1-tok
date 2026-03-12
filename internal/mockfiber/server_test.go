@@ -41,3 +41,54 @@ func TestServerCreatesInvoiceAndReturnsSettledFeedItem(t *testing.T) {
 		t.Fatalf("unexpected settled item: %+v", item)
 	}
 }
+
+func TestServerQuotesAndTracksWithdrawals(t *testing.T) {
+	server := httptest.NewServer(NewServer())
+	defer server.Close()
+
+	client := fiberclient.NewClient(server.URL, "app_local", "secret_local")
+
+	quote, err := client.QuotePayout(context.Background(), fiberclient.QuotePayoutInput{
+		UserID: "provider_1",
+		Asset:  "USDI",
+		Amount: "10",
+		Destination: fiberclient.WithdrawalDestination{
+			Kind:           "PAYMENT_REQUEST",
+			PaymentRequest: "fiber:invoice:example",
+		},
+	})
+	if err != nil {
+		t.Fatalf("quote payout: %v", err)
+	}
+	if !quote.DestinationValid || quote.Asset != "USDI" || quote.Amount != "10" {
+		t.Fatalf("unexpected quote result: %+v", quote)
+	}
+
+	withdrawal, err := client.RequestPayout(context.Background(), fiberclient.RequestPayoutInput{
+		UserID: "provider_1",
+		Asset:  "USDI",
+		Amount: "10",
+		Destination: fiberclient.WithdrawalDestination{
+			Kind:           "PAYMENT_REQUEST",
+			PaymentRequest: "fiber:invoice:example",
+		},
+	})
+	if err != nil {
+		t.Fatalf("request payout: %v", err)
+	}
+	if withdrawal.ID == "" || withdrawal.State != "PENDING" {
+		t.Fatalf("unexpected withdrawal result: %+v", withdrawal)
+	}
+
+	statuses, err := client.ListWithdrawalStatuses(context.Background(), "provider_1")
+	if err != nil {
+		t.Fatalf("list withdrawal statuses: %v", err)
+	}
+	if len(statuses.Withdrawals) != 1 {
+		t.Fatalf("expected one withdrawal, got %+v", statuses.Withdrawals)
+	}
+	item := statuses.Withdrawals[0]
+	if item.ID != withdrawal.ID || item.UserID != "provider_1" || item.State != "PROCESSING" {
+		t.Fatalf("unexpected withdrawal status: %+v", item)
+	}
+}

@@ -567,7 +567,32 @@ func TestRunSmokeUsesIAMSessionsForMarketplaceAndFundingReads(t *testing.T) {
 			if got := r.Header.Get("Authorization"); got != "Bearer "+identities["provider"].Token {
 				t.Fatalf("expected provider auth on funding records, got %q", got)
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"records": []map[string]any{{"id": "fund_secure"}}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"records": []map[string]any{
+				{"id": "fund_secure_invoice"},
+				{"id": "fund_secure_withdrawal"},
+			}})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/withdrawals":
+			if got := r.Header.Get("Authorization"); got != "Bearer "+identities["provider"].Token {
+				t.Fatalf("expected provider auth on withdrawal request, got %q", got)
+			}
+			var payload struct {
+				ProviderOrgID string `json:"providerOrgId"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode withdrawal payload: %v", err)
+			}
+			if payload.ProviderOrgID != "" {
+				t.Fatalf("expected providerOrgId to be omitted under IAM withdrawal, got %+v", payload)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "wd_secure", "state": "PENDING"})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/withdrawals/status":
+			if got := r.Header.Get("Authorization"); got != "Bearer "+identities["provider"].Token {
+				t.Fatalf("expected provider auth on withdrawal status, got %q", got)
+			}
+			if got := r.URL.Query().Get("providerOrgId"); got != "" {
+				t.Fatalf("expected providerOrgId query to be omitted under IAM withdrawal status, got %q", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"withdrawals": []map[string]any{{"id": "wd_secure", "state": "PROCESSING"}}})
 		default:
 			t.Fatalf("unexpected settlement request %s %s", r.Method, r.URL.Path)
 		}
@@ -591,6 +616,7 @@ func TestRunSmokeUsesIAMSessionsForMarketplaceAndFundingReads(t *testing.T) {
 		SettlementBaseURL: settlement.URL,
 		ExecutionBaseURL:  execution.URL,
 		IAMBaseURL:        iam.URL,
+		IncludeWithdrawal: true,
 	})
 	if err != nil {
 		t.Fatalf("run smoke: %v", err)
