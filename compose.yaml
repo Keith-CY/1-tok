@@ -56,7 +56,7 @@ services:
       DATABASE_URL: postgres://onetok:onetok@postgres:5432/onetok?sslmode=disable
       IAM_UPSTREAM: http://iam:8081
       NATS_URL: nats://nats:4222
-      API_GATEWAY_EXECUTION_TOKEN: ${ONE_TOK_SERVICE_TOKEN:-local-service-token}
+      API_GATEWAY_EXECUTION_TOKEN: ${ONE_TOK_EXECUTION_GATEWAY_TOKEN:-local-execution-gateway-token}
       ONE_TOK_REQUIRE_EXTERNALS: "true"
       ONE_TOK_REQUIRE_PERSISTENCE: "true"
     ports:
@@ -111,7 +111,7 @@ services:
       FIBER_RPC_URL: ${FIBER_RPC_URL:-http://mock-fiber:8090}
       FIBER_APP_ID: ${FIBER_APP_ID:-app_1}
       FIBER_HMAC_SECRET: ${FIBER_HMAC_SECRET:-replace-me}
-      SETTLEMENT_SERVICE_TOKEN: ${ONE_TOK_SERVICE_TOKEN:-local-service-token}
+      SETTLEMENT_SERVICE_TOKEN: ${ONE_TOK_SETTLEMENT_SERVICE_TOKEN:-local-settlement-service-token}
       ONE_TOK_REQUIRE_EXTERNALS: "true"
       ONE_TOK_REQUIRE_PERSISTENCE: "true"
     ports:
@@ -148,7 +148,7 @@ services:
       EXECUTION_ADDR: ":8085"
       API_GATEWAY_UPSTREAM: http://api-gateway:8080
       EXECUTION_EVENT_TOKEN: ${ONE_TOK_EXECUTION_EVENT_TOKEN:-local-execution-event-token}
-      EXECUTION_GATEWAY_TOKEN: ${ONE_TOK_SERVICE_TOKEN:-local-service-token}
+      EXECUTION_GATEWAY_TOKEN: ${ONE_TOK_EXECUTION_GATEWAY_TOKEN:-local-execution-gateway-token}
       CARRIER_GATEWAY_URL: ${CARRIER_GATEWAY_URL:-http://mock-carrier:8787}
       CARRIER_GATEWAY_API_TOKEN: ${CARRIER_GATEWAY_API_TOKEN:-test-gateway-token}
       ONE_TOK_REQUIRE_EXTERNALS: "true"

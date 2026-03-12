@@ -125,6 +125,8 @@ Persisted release paths now force `ONE_TOK_REQUIRE_PERSISTENCE=true`, so `iam`, 
 
 Full-stack release paths also force `ONE_TOK_REQUIRE_EXTERNALS=true`, so `api-gateway`, `execution`, and `settlement` refuse to start if `IAM`, `Carrier`, `Fiber`, or internal service-token wiring is missing.
 
+The release harness now scopes internal secrets by edge: one token for `execution -> api-gateway`, and a separate token for settlement internal routes.
+
 ### Contracts tests
 
 ```bash
