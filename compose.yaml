@@ -67,6 +67,7 @@ services:
     environment:
       SETTLEMENT_ADDR: ":8083"
       API_GATEWAY_UPSTREAM: http://api-gateway:8080
+      DATABASE_URL: postgres://onetok:onetok@postgres:5432/onetok?sslmode=disable
       FIBER_RPC_URL: ${FIBER_RPC_URL:-http://fiber-rpc:3000/rpc}
       FIBER_APP_ID: ${FIBER_APP_ID:-app_1}
       FIBER_HMAC_SECRET: ${FIBER_HMAC_SECRET:-replace-me}
@@ -74,6 +75,7 @@ services:
       - "8083:8083"
     depends_on:
       - api-gateway
+      - postgres
 
   risk:
     build:

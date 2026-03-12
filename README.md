@@ -78,6 +78,7 @@ HTTP routes added by `settlement`:
 - `GET /v1/invoices/:invoice`
 - `POST /v1/withdrawals/quote`
 - `POST /v1/withdrawals`
+- `GET /v1/funding-records`
 
 ### Execution service with Carrier
 
@@ -98,5 +99,5 @@ HTTP routes added by `execution`:
 ## Current scope
 
 - Provider and listing catalogs are durably backed by Postgres and seeded on bootstrap.
-- Settlement and execution now speak to real Fiber and Carrier interfaces, but they still depend on externally managed `fiber-link` and `carrier` services.
+- Settlement and execution now speak to real Fiber and Carrier interfaces, and settlement keeps local funding records when `DATABASE_URL` or `SETTLEMENT_DATABASE_URL` is configured.
 - IAM, RFQ/bidding flows, dispute backoffice, and ledger-grade reconciliation are still skeletal and are not yet release-complete.
