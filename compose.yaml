@@ -145,6 +145,28 @@ services:
       postgres:
         condition: service_healthy
 
+  settlement-reconciler:
+    build:
+      context: .
+      dockerfile: Dockerfile.go-service
+      args:
+        SERVICE: settlement-reconciler
+    environment:
+      DATABASE_URL: postgres://onetok:onetok@postgres:5432/onetok?sslmode=disable
+      FIBER_RPC_URL: ${FIBER_RPC_URL:-http://mock-fiber:8090}
+      FIBER_APP_ID: ${FIBER_APP_ID:-app_1}
+      FIBER_HMAC_SECRET: ${FIBER_HMAC_SECRET:-replace-me}
+      ONE_TOK_REQUIRE_PERSISTENCE: "true"
+      ONE_TOK_REQUIRE_BOOTSTRAP: "true"
+      SETTLEMENT_RECONCILER_INTERVAL: ${SETTLEMENT_RECONCILER_INTERVAL:-30s}
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+      mock-fiber:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+
   risk:
     build:
       context: .

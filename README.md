@@ -131,6 +131,8 @@ The release harness now scopes internal secrets by edge: one token for `executio
 
 Receivers can now accept comma-separated rotated service tokens through `API_GATEWAY_EXECUTION_TOKENS`, `EXECUTION_EVENT_TOKENS`, `EXECUTION_GATEWAY_TOKENS`, and `SETTLEMENT_SERVICE_TOKENS`, while senders continue to use the first token as the current outbound value.
 
+Compose now also includes a dedicated `settlement-reconciler` worker, which polls unsettled invoices and nonterminal withdrawals directly from Postgres/Fiber instead of relying on manual sync requests.
+
 ### Contracts tests
 
 ```bash
