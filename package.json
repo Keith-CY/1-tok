@@ -11,6 +11,7 @@
     "build:web": "bun --cwd apps/web build",
     "dev:web": "bun --cwd apps/web dev",
     "lint:web": "bun --cwd apps/web lint",
+    "release:portal-smoke": "CGO_ENABLED=0 go run ./cmd/release-portal-smoke",
     "release:smoke": "CGO_ENABLED=0 go run ./cmd/release-smoke",
     "test:web": "bun --cwd apps/web test",
     "test:go": "CGO_ENABLED=0 go test ./...",

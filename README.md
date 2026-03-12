@@ -46,6 +46,23 @@ export RELEASE_SMOKE_INCLUDE_WITHDRAWAL=true
 export RELEASE_SMOKE_INCLUDE_CARRIER_PROBE=true
 ```
 
+### Portal release smoke
+
+```bash
+export RELEASE_PORTAL_SMOKE_WEB_BASE_URL='http://127.0.0.1:3000'
+export RELEASE_PORTAL_SMOKE_API_BASE_URL='http://127.0.0.1:8080'
+export RELEASE_PORTAL_SMOKE_IAM_BASE_URL='http://127.0.0.1:8081'
+bun run release:portal-smoke
+```
+
+This smoke exercises the web login shell plus buyer/provider/ops form flows over real HTTP cookies:
+
+- buyer login and RFQ publish
+- provider login and bid submit
+- buyer award of the submitted bid
+- ops credit review
+- ops dispute resolution after an API-seeded dispute
+
 ### Contracts tests
 
 ```bash
@@ -153,4 +170,5 @@ When `IAM_UPSTREAM` is configured for `api-gateway` and `settlement`, the platfo
 - Settlement and execution now speak to real Fiber and Carrier interfaces, and settlement keeps local funding records when `DATABASE_URL` or `SETTLEMENT_DATABASE_URL` is configured.
 - IAM now supports persisted `signup`, `session`, and `me` flows when `DATABASE_URL` or `IAM_DATABASE_URL` is configured, but full gateway/web enforcement is still not wired.
 - Gateway order creation and settlement funding-record reads can now honor authenticated memberships when `IAM_UPSTREAM` is configured, but the rest of the platform still has unauthenticated paths.
-- RFQ/bidding flows, dispute backoffice, and ledger-grade reconciliation are still skeletal and are not yet release-complete.
+- RFQ publishing, bidding, award, credit review, and dispute resolution now have live web entry points, and ops-only dispute/credit routes are membership-gated when `IAM_UPSTREAM` is configured.
+- Ledger-grade reconciliation, broad read-path authorization, and an end-to-end live smoke spanning web + gateway + execution + settlement still need more work before a production release claim would be accurate.
