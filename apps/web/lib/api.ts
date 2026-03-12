@@ -2,12 +2,15 @@ import {
   type FundingRecord,
   formatMoney,
   sampleBuyerSummary,
-  sampleOpsSummary,
-  sampleProviderSummary,
   type Listing,
   type Order,
   type ProviderProfile,
 } from "@1tok/contracts";
+
+export interface CollectionRequestOptions {
+  authToken?: string;
+  requireLive?: boolean;
+}
 
 export interface BuyerDashboardData {
   summary: typeof sampleBuyerSummary;
@@ -17,14 +20,25 @@ export interface BuyerDashboardData {
 }
 
 export interface ProviderDashboardData {
-  summary: typeof sampleProviderSummary;
+  summary: {
+    activeOrders: number;
+    settledInvoices: number;
+    inFlightWithdrawals: number;
+    reputationTier: string;
+    providerName: string;
+  };
   pipeline: Array<{ id: string; label: string; detail: string }>;
   activeOrders: Order[];
   capabilities: string[];
 }
 
 export interface OpsDashboardData {
-  summary: typeof sampleOpsSummary;
+  summary: {
+    activeOrders: number;
+    fundingRecords: number;
+    settledInvoices: number;
+    pendingWithdrawals: number;
+  };
   pendingReviews: Array<{ id: string; title: string; detail: string }>;
   treasurySignals: Array<{ id: string; label: string; value: string; tone: "mint" | "warning" | "danger" }>;
   riskFeed: Array<{ id: string; title: string; detail: string }>;
@@ -144,25 +158,25 @@ const demoFundingRecords: FundingRecord[] = [
   },
 ];
 
-export async function getProviders(): Promise<ProviderProfile[]> {
-  return readCollection("/api/v1/providers", "providers", demoProviders);
+export async function getProviders(options?: CollectionRequestOptions): Promise<ProviderProfile[]> {
+  return readCollection("/api/v1/providers", "providers", demoProviders, options);
 }
 
-export async function getListings(): Promise<Listing[]> {
-  return readCollection("/api/v1/listings", "listings", demoListings);
+export async function getListings(options?: CollectionRequestOptions): Promise<Listing[]> {
+  return readCollection("/api/v1/listings", "listings", demoListings, options);
 }
 
-export async function getOrders(): Promise<Order[]> {
-  return readCollection("/api/v1/orders", "orders", demoOrders);
+export async function getOrders(options?: CollectionRequestOptions): Promise<Order[]> {
+  return readCollection("/api/v1/orders", "orders", demoOrders, options);
 }
 
-export async function getFundingRecords(): Promise<FundingRecord[]> {
+export async function getFundingRecords(options?: CollectionRequestOptions): Promise<FundingRecord[]> {
   const baseUrl = resolveBaseUrl("settlement");
   if (!baseUrl) {
-    return demoFundingRecords;
+    return options?.requireLive ? [] : demoFundingRecords;
   }
 
-  return readCollectionFromBase(baseUrl, "/v1/funding-records", "records", demoFundingRecords);
+  return readCollectionFromBase(baseUrl, "/v1/funding-records", "records", demoFundingRecords, options);
 }
 
 export async function getBuyerDashboardData(): Promise<BuyerDashboardData> {
@@ -187,70 +201,118 @@ export async function getBuyerDashboardData(): Promise<BuyerDashboardData> {
   };
 }
 
-export async function getProviderDashboardData(): Promise<ProviderDashboardData> {
-  const [providers, activeOrders] = await Promise.all([getProviders(), getOrders()]);
-  const provider = providers[0] ?? demoProviders[0];
+export async function getProviderDashboardData(options: {
+  authToken: string;
+  providerOrgId: string;
+  requireLive?: boolean;
+}): Promise<ProviderDashboardData> {
+  const [providers, orders, fundingRecords] = await Promise.all([
+    getProviders({ authToken: options.authToken, requireLive: options.requireLive }),
+    getOrders({ authToken: options.authToken, requireLive: options.requireLive }),
+    getFundingRecords({ authToken: options.authToken, requireLive: options.requireLive }),
+  ]);
+  const provider = providers.find((candidate) => candidate.id === options.providerOrgId) ?? {
+    id: options.providerOrgId,
+    name: options.providerOrgId,
+    capabilities: [],
+    reputationTier: "unknown",
+  };
+  const activeOrders = orders.filter((order) => order.providerOrgId === options.providerOrgId);
+  const providerFunding = fundingRecords.filter((record) => record.providerOrgId === options.providerOrgId);
+  const settledInvoices = providerFunding.filter((record) => record.kind === "invoice" && record.state === "SETTLED").length;
+  const inFlightWithdrawals = providerFunding.filter(
+    (record) => record.kind === "withdrawal" && record.state !== "SETTLED",
+  ).length;
 
   return {
-    summary: sampleProviderSummary,
+    summary: {
+      activeOrders: activeOrders.length,
+      settledInvoices,
+      inFlightWithdrawals,
+      reputationTier: provider.reputationTier,
+      providerName: provider.name,
+    },
     pipeline: [
-      { id: "pipe_1", label: "RFQs live", detail: "4 open requests, 2 waiting on buyer confirmation." },
-      { id: "pipe_2", label: "Probation watch", detail: "1 new provider is inside the first 20-order window." },
-      { id: "pipe_3", label: "Payout hook health", detail: "All Carrier hook callbacks are under 220ms p95." },
+      { id: "pipe_1", label: "Active orders", detail: `${activeOrders.length} orders currently tied to ${provider.name}.` },
+      { id: "pipe_2", label: "Settled invoices", detail: `${settledInvoices} invoice funding records have already settled.` },
+      { id: "pipe_3", label: "Withdrawal queue", detail: `${inFlightWithdrawals} provider withdrawals are still in flight.` },
     ],
     activeOrders,
     capabilities: provider.capabilities,
   };
 }
 
-export async function getOpsDashboardData(): Promise<OpsDashboardData> {
-  const fundingRecords = await getFundingRecords();
+export async function getOpsDashboardData(options: { authToken: string; requireLive?: boolean }): Promise<OpsDashboardData> {
+  const [providers, orders, fundingRecords] = await Promise.all([
+    getProviders({ authToken: options.authToken, requireLive: options.requireLive }),
+    getOrders({ authToken: options.authToken, requireLive: options.requireLive }),
+    getFundingRecords({ authToken: options.authToken, requireLive: options.requireLive }),
+  ]);
+  const settledInvoices = fundingRecords.filter((record) => record.kind === "invoice" && record.state === "SETTLED").length;
+  const pendingWithdrawals = fundingRecords.filter(
+    (record) => record.kind === "withdrawal" && record.state !== "SETTLED",
+  ).length;
 
   return {
-    summary: sampleOpsSummary,
+    summary: {
+      activeOrders: orders.length,
+      fundingRecords: fundingRecords.length,
+      settledInvoices,
+      pendingWithdrawals,
+    },
     pendingReviews: [
-      { id: "review_1", title: "Atlas Ops limit uplift", detail: "Rule engine suggested +$2,400 credit after 22 clean settlements." },
-      { id: "review_2", title: "Kite Relay provider verification", detail: "Carrier heartbeat is stable, but payout signature window needs confirmation." },
+      { id: "review_1", title: "Provider coverage", detail: `${providers.length} provider profiles are currently published in the catalog.` },
+      { id: "review_2", title: "Pending withdrawals", detail: `${pendingWithdrawals} settlement withdrawals still need completion or review.` },
     ],
     treasurySignals: [
-      { id: "sig_1", label: "Outstanding exposure", value: formatMoney(sampleOpsSummary.outstandingExposureCents), tone: "warning" },
-      { id: "sig_2", label: "Channel health", value: `${sampleOpsSummary.activeChannels} active`, tone: "mint" },
-      { id: "sig_3", label: "Open disputes", value: `${sampleOpsSummary.openDisputes}`, tone: "danger" },
+      { id: "sig_1", label: "Funding records", value: `${fundingRecords.length}`, tone: "warning" },
+      { id: "sig_2", label: "Settled invoices", value: `${settledInvoices}`, tone: "mint" },
+      { id: "sig_3", label: "Pending withdrawals", value: `${pendingWithdrawals}`, tone: "danger" },
     ],
     riskFeed: [
-      { id: "risk_1", title: "Delayed buyer settlement", detail: "buyer_7 is 38 minutes past the expected credit reconciliation checkpoint." },
-      { id: "risk_2", title: "Budget wall hit", detail: "3 orders paused this morning because token + API usage exceeded milestone ceilings." },
+      { id: "risk_1", title: "Order volume", detail: `${orders.length} orders are visible to ops in the current control plane.` },
+      { id: "risk_2", title: "Catalog posture", detail: `${providers.length} providers remain available in the marketplace catalog.` },
     ],
     fundingRecords,
   };
 }
 
-async function readCollection<T>(path: string, key: string, fallback: T[]): Promise<T[]> {
+async function readCollection<T>(path: string, key: string, fallback: T[], options?: CollectionRequestOptions): Promise<T[]> {
   const baseUrl = resolveBaseUrl("api");
   if (!baseUrl) {
-    return fallback;
+    return options?.requireLive ? [] : fallback;
   }
 
-  return readCollectionFromBase(baseUrl, path, key, fallback);
+  return readCollectionFromBase(baseUrl, path, key, fallback, options);
 }
 
-async function readCollectionFromBase<T>(baseUrl: string, path: string, key: string, fallback: T[]): Promise<T[]> {
+async function readCollectionFromBase<T>(
+  baseUrl: string,
+  path: string,
+  key: string,
+  fallback: T[],
+  options?: CollectionRequestOptions,
+): Promise<T[]> {
+  const empty: T[] = [];
   try {
     const response = await fetch(`${baseUrl}${path}`, {
-      headers: { Accept: "application/json" },
+      headers: {
+        Accept: "application/json",
+        ...(options?.authToken ? { Authorization: `Bearer ${options.authToken}` } : {}),
+      },
       cache: "no-store",
     });
 
     if (!response.ok) {
-      return fallback;
+      return options?.requireLive ? empty : fallback;
     }
 
     const payload = (await response.json()) as Record<string, unknown>;
     const value = payload[key];
 
-    return Array.isArray(value) ? (value as T[]) : fallback;
+    return Array.isArray(value) ? (value as T[]) : options?.requireLive ? empty : fallback;
   } catch {
-    return fallback;
+    return options?.requireLive ? empty : fallback;
   }
 }
 

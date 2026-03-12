@@ -1,13 +1,16 @@
-import { formatMoney } from "@1tok/contracts";
-
 import { PortalShell } from "../../components/portal-shell";
 import { SummaryCard } from "../../components/summary-card";
 import { getOpsDashboardData } from "../../lib/api";
+import { requirePortalViewer } from "../../lib/viewer";
 
 export const dynamic = "force-dynamic";
 
 export default async function OpsPage() {
-  const data = await getOpsDashboardData();
+  const viewer = await requirePortalViewer("ops", "/ops");
+  const data = await getOpsDashboardData({
+    authToken: viewer.token,
+    requireLive: true,
+  });
 
   return (
     <PortalShell
@@ -17,31 +20,31 @@ export default async function OpsPage() {
       signal="Platform-first reimbursement, provider recovery second"
       asideTitle="Ops signal deck"
       asideItems={[
-        { label: "Exposure", value: formatMoney(data.summary.outstandingExposureCents), tone: "warning" },
-        { label: "Open disputes", value: `${data.summary.openDisputes}`, tone: "danger" },
-        { label: "Provider reviews", value: `${data.summary.pendingProviderReviews}` },
+        { label: "Active orders", value: `${data.summary.activeOrders}`, tone: "warning" },
+        { label: "Funding records", value: `${data.summary.fundingRecords}`, tone: "danger" },
+        { label: "Settled invoices", value: `${data.summary.settledInvoices}` },
       ]}
     >
       <div className="stat-grid">
         <SummaryCard
-          kicker="Exposure"
-          value={formatMoney(data.summary.outstandingExposureCents)}
-          hint="Capital already advanced by the platform across active credit-funded orders."
+          kicker="Active orders"
+          value={`${data.summary.activeOrders}`}
+          hint="Orders currently visible to the ops control plane."
         />
         <SummaryCard
-          kicker="Open disputes"
-          value={`${data.summary.openDisputes}`}
-          hint="Cases where buyer reimbursement may convert into provider recovery or write-down."
+          kicker="Funding records"
+          value={`${data.summary.fundingRecords}`}
+          hint="Invoice and withdrawal records the settlement layer currently exposes."
         />
         <SummaryCard
-          kicker="Pending reviews"
-          value={`${data.summary.pendingProviderReviews}`}
-          hint="Provider onboarding, capability checks, or credit line overrides waiting on operators."
+          kicker="Settled invoices"
+          value={`${data.summary.settledInvoices}`}
+          hint="Funding records already marked settled by the settlement service."
         />
         <SummaryCard
-          kicker="Fiber channels"
-          value={`${data.summary.activeChannels}`}
-          hint="Live platform-controlled channels currently carrying active market volume."
+          kicker="Pending withdrawals"
+          value={`${data.summary.pendingWithdrawals}`}
+          hint="Withdrawal records still moving through the settlement queue."
         />
       </div>
 

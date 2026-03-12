@@ -3,11 +3,17 @@ import { formatMoney } from "@1tok/contracts";
 import { PortalShell } from "../../components/portal-shell";
 import { SummaryCard } from "../../components/summary-card";
 import { getProviderDashboardData } from "../../lib/api";
+import { requirePortalViewer } from "../../lib/viewer";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProviderPage() {
-  const data = await getProviderDashboardData();
+  const viewer = await requirePortalViewer("provider", "/provider");
+  const data = await getProviderDashboardData({
+    authToken: viewer.token,
+    providerOrgId: viewer.membership.organization.id,
+    requireLive: true,
+  });
 
   return (
     <PortalShell
@@ -17,8 +23,8 @@ export default async function ProviderPage() {
       signal="Immediate payout only when proof and policy agree"
       asideTitle="Provider signal deck"
       asideItems={[
-        { label: "Available payout", value: formatMoney(data.summary.availablePayoutCents), tone: "mint" },
-        { label: "Held payout", value: formatMoney(data.summary.heldPayoutCents), tone: "warning" },
+        { label: "Provider", value: data.summary.providerName, tone: "mint" },
+        { label: "Settled invoices", value: `${data.summary.settledInvoices}`, tone: "warning" },
         { label: "Tier", value: data.summary.reputationTier.toUpperCase() },
       ]}
     >
@@ -29,14 +35,14 @@ export default async function ProviderPage() {
           hint="Orders where Carrier callbacks are still responsible for keeping budget and settlement in sync."
         />
         <SummaryCard
-          kicker="Available payout"
-          value={formatMoney(data.summary.availablePayoutCents)}
-          hint="Funds already released by the platform and ready to clear."
+          kicker="Settled invoices"
+          value={`${data.summary.settledInvoices}`}
+          hint="Invoice funding records already marked settled for this provider."
         />
         <SummaryCard
-          kicker="Held payout"
-          value={formatMoney(data.summary.heldPayoutCents)}
-          hint="Value still inside dispute windows or pending risk review."
+          kicker="Withdrawals in flight"
+          value={`${data.summary.inFlightWithdrawals}`}
+          hint="Withdrawal records that still need dashboard sync or final settlement."
         />
         <SummaryCard
           kicker="Reputation"
