@@ -111,7 +111,7 @@ export DEPENDENCY_CARRIER_GATEWAY_API_TOKEN='replace-me'
 bun run release:external-deps-smoke
 ```
 
-This script boots an isolated Postgres container plus local `iam`, `api-gateway`, `settlement`, `execution`, and standalone `web`, but points settlement and execution at externally supplied Fiber and Carrier endpoints. For local verification of the script shape you can set `USE_LOCAL_FIBER_MOCK=true` and `USE_LOCAL_CARRIER_MOCK=true`.
+This script now preflights the external Fiber and Carrier endpoints before starting the local stack, then boots an isolated Postgres container plus local `iam`, `api-gateway`, `settlement`, `execution`, and standalone `web`. If the external dependencies expose a nonstandard health route, set `DEPENDENCY_FIBER_HEALTHCHECK_URL` and `DEPENDENCY_CARRIER_HEALTHCHECK_URL`. For local verification of the script shape you can set `USE_LOCAL_FIBER_MOCK=true` and `USE_LOCAL_CARRIER_MOCK=true`.
 
 ### Compose release smoke
 
