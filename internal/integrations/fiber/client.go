@@ -24,6 +24,7 @@ type InvoiceClient interface {
 	GetInvoiceStatus(ctx context.Context, invoice string) (InvoiceStatusResult, error)
 	QuotePayout(ctx context.Context, input QuotePayoutInput) (QuotePayoutResult, error)
 	RequestPayout(ctx context.Context, input RequestPayoutInput) (RequestPayoutResult, error)
+	ListSettledFeed(ctx context.Context, input SettledFeedInput) (SettledFeedResult, error)
 }
 
 type CreateInvoiceInput struct {
@@ -78,6 +79,33 @@ type RequestPayoutInput struct {
 type RequestPayoutResult struct {
 	ID    string `json:"id"`
 	State string `json:"state"`
+}
+
+type SettledFeedCursor struct {
+	SettledAt string `json:"settledAt"`
+	ID        string `json:"id"`
+}
+
+type SettledFeedInput struct {
+	Limit int                `json:"limit,omitempty"`
+	After *SettledFeedCursor `json:"after,omitempty"`
+}
+
+type SettledFeedItem struct {
+	TipIntentID string `json:"tipIntentId"`
+	PostID      string `json:"postId"`
+	Invoice     string `json:"invoice"`
+	Amount      string `json:"amount"`
+	Asset       string `json:"asset"`
+	FromUserID  string `json:"fromUserId"`
+	ToUserID    string `json:"toUserId"`
+	Message     string `json:"message,omitempty"`
+	SettledAt   string `json:"settledAt"`
+}
+
+type SettledFeedResult struct {
+	Items      []SettledFeedItem  `json:"items"`
+	NextCursor *SettledFeedCursor `json:"nextCursor,omitempty"`
 }
 
 type Client struct {
@@ -138,6 +166,14 @@ func (c *Client) RequestPayout(ctx context.Context, input RequestPayoutInput) (R
 	var result RequestPayoutResult
 	if err := c.call(ctx, "withdrawal.request", input, &result); err != nil {
 		return RequestPayoutResult{}, err
+	}
+	return result, nil
+}
+
+func (c *Client) ListSettledFeed(ctx context.Context, input SettledFeedInput) (SettledFeedResult, error) {
+	var result SettledFeedResult
+	if err := c.call(ctx, "tip.settled_feed", input, &result); err != nil {
+		return SettledFeedResult{}, err
 	}
 	return result, nil
 }
@@ -218,6 +254,10 @@ func (m missingClient) QuotePayout(context.Context, QuotePayoutInput) (QuotePayo
 
 func (m missingClient) RequestPayout(context.Context, RequestPayoutInput) (RequestPayoutResult, error) {
 	return RequestPayoutResult{}, m.err
+}
+
+func (m missingClient) ListSettledFeed(context.Context, SettledFeedInput) (SettledFeedResult, error) {
+	return SettledFeedResult{}, m.err
 }
 
 func signPayload(secret string, payload []byte, ts, nonce string) string {

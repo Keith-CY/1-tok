@@ -246,6 +246,60 @@ func TestClientRequestsPayoutFromJSONRPC(t *testing.T) {
 	}
 }
 
+func TestClientListsSettledFeedFromJSONRPC(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		payload, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read request body: %v", err)
+		}
+
+		var rpc struct {
+			Method string `json:"method"`
+			Params struct {
+				Limit int `json:"limit"`
+			} `json:"params"`
+		}
+		if err := json.Unmarshal(payload, &rpc); err != nil {
+			t.Fatalf("decode rpc payload: %v", err)
+		}
+		if rpc.Method != "tip.settled_feed" {
+			t.Fatalf("expected method tip.settled_feed, got %q", rpc.Method)
+		}
+		if rpc.Params.Limit != 20 {
+			t.Fatalf("expected limit 20, got %+v", rpc.Params)
+		}
+
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0",
+			"id":      "req_5",
+			"result": map[string]any{
+				"items": []map[string]any{
+					{
+						"tipIntentId": "tip_1",
+						"postId":      "ord_1:ms_1",
+						"invoice":     "inv_123",
+						"amount":      "12.5",
+						"asset":       "CKB",
+						"fromUserId":  "buyer_1",
+						"toUserId":    "provider_1",
+						"settledAt":   "2026-03-12T00:00:00Z",
+					},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL+"/rpc", "app_1", "secret_1")
+	result, err := client.ListSettledFeed(context.Background(), SettledFeedInput{Limit: 20})
+	if err != nil {
+		t.Fatalf("list settled feed: %v", err)
+	}
+	if len(result.Items) != 1 || result.Items[0].Invoice != "inv_123" {
+		t.Fatalf("unexpected settled feed result: %+v", result)
+	}
+}
+
 func signPayloadForTest(secret string, payload []byte, ts, nonce string) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	_, _ = mac.Write([]byte(ts))

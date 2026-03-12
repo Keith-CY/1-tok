@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -81,6 +82,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodGet && r.URL.Path == "/v1/funding-records" {
 		s.handleListFundingRecords(w, r)
+		return
+	}
+
+	if r.Method == http.MethodGet && r.URL.Path == "/v1/settled-feed" {
+		s.handleSettledFeed(w, r)
 		return
 	}
 
@@ -264,6 +270,44 @@ func (s *Server) handleListFundingRecords(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"records": records})
+}
+
+func (s *Server) handleSettledFeed(w http.ResponseWriter, r *http.Request) {
+	input := fiberclient.SettledFeedInput{}
+	if limit := strings.TrimSpace(r.URL.Query().Get("limit")); limit != "" {
+		parsed, err := strconv.Atoi(limit)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid limit"})
+			return
+		}
+		input.Limit = parsed
+	}
+	afterSettledAt := strings.TrimSpace(r.URL.Query().Get("afterSettledAt"))
+	afterID := strings.TrimSpace(r.URL.Query().Get("afterId"))
+	if afterSettledAt != "" || afterID != "" {
+		input.After = &fiberclient.SettledFeedCursor{
+			SettledAt: afterSettledAt,
+			ID:        afterID,
+		}
+	}
+
+	result, err := s.fiber.ListSettledFeed(r.Context(), input)
+	if err != nil {
+		writeFiberError(w, err)
+		return
+	}
+
+	for _, item := range result.Items {
+		if strings.TrimSpace(item.Invoice) == "" {
+			continue
+		}
+		if err := s.funding.UpdateInvoiceState(item.Invoice, "SETTLED"); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusOK, result)
 }
 
 func invoiceFromPath(path string) (string, error) {
