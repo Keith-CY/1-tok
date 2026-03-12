@@ -1,5 +1,4 @@
-import { NextResponse } from "next/server";
-
+import { redirectToPath } from "../../../lib/redirect";
 import { parseCookieValue, revokeIAMSession, SESSION_COOKIE_NAME, shouldUseSecureSessionCookie } from "../../../lib/session";
 
 export async function POST(request: Request) {
@@ -8,8 +7,8 @@ export async function POST(request: Request) {
     await revokeIAMSession(token);
   }
 
-  const response = NextResponse.redirect(new URL("/login", request.url), 303);
-  response.cookies.set({
+	const response = redirectToPath("/login");
+	response.cookies.set({
     name: SESSION_COOKIE_NAME,
     value: "",
     httpOnly: true,
@@ -17,6 +16,6 @@ export async function POST(request: Request) {
     secure: shouldUseSecureSessionCookie(),
     path: "/",
     maxAge: 0,
-  });
-  return response;
+	});
+	return response;
 }

@@ -44,14 +44,14 @@ describe("auth login route", () => {
     form.set("next", "/provider");
 
     const response = await POST(
-      new Request("http://localhost/auth/login", {
+      new Request("http://web-7f9c6d4f8c-abcde:3000/auth/login", {
         method: "POST",
         body: form,
       }),
     );
 
     expect(response.status).toBe(303);
-    expect(new URL(response.headers.get("location") ?? "").pathname).toBe("/provider");
+    expect(response.headers.get("location")).toBe("/provider");
 
     const cookie = response.headers.get("set-cookie");
     expect(cookie).toContain("one_tok_session=tok_123");

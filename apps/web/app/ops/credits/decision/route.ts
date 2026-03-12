@@ -1,12 +1,11 @@
-import { NextResponse } from "next/server";
-
+import { redirectToPath } from "../../../../lib/redirect";
 import { postGatewayJSON, readRequestPortalViewer } from "../../../../lib/marketplace-actions";
 
 export async function POST(request: Request) {
-  const viewer = await readRequestPortalViewer(request, "ops");
-  if (!viewer) {
-    return NextResponse.redirect(new URL("/login?next=%2Fops", request.url), 303);
-  }
+	const viewer = await readRequestPortalViewer(request, "ops");
+	if (!viewer) {
+		return redirectToPath("/login?next=%2Fops");
+	}
 
   const form = await request.formData();
   const payload = {
@@ -27,14 +26,14 @@ export async function POST(request: Request) {
       };
     };
 
-    const nextURL = new URL("/ops", request.url);
-    nextURL.searchParams.set("creditApproved", String(Boolean(result.decision?.approved)));
-    nextURL.searchParams.set("recommendedLimitCents", String(result.decision?.recommendedLimitCents ?? 0));
-    nextURL.searchParams.set("creditReason", result.decision?.reason ?? "Decision unavailable");
-    return NextResponse.redirect(nextURL, 303);
-  } catch {
-    return NextResponse.redirect(new URL("/ops?error=credit-decision-failed", request.url), 303);
-  }
+		const nextURL = new URL("/ops", "http://portal.internal");
+		nextURL.searchParams.set("creditApproved", String(Boolean(result.decision?.approved)));
+		nextURL.searchParams.set("recommendedLimitCents", String(result.decision?.recommendedLimitCents ?? 0));
+		nextURL.searchParams.set("creditReason", result.decision?.reason ?? "Decision unavailable");
+		return redirectToPath(`${nextURL.pathname}${nextURL.search}${nextURL.hash}`);
+	} catch {
+		return redirectToPath("/ops?error=credit-decision-failed");
+	}
 }
 
 function parseCount(value: FormDataEntryValue | null): number {

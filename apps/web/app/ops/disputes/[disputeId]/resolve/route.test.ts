@@ -58,7 +58,7 @@ describe("ops dispute resolution route", () => {
     form.set("resolution", "Approved reimbursement after evidence review.");
 
     const response = await POST(
-      new Request("http://localhost/ops/disputes/disp_1/resolve", {
+      new Request("http://web-7f9c6d4f8c-abcde:3000/ops/disputes/disp_1/resolve", {
         method: "POST",
         headers: {
           cookie: "one_tok_session=tok_123",
@@ -69,7 +69,9 @@ describe("ops dispute resolution route", () => {
     );
 
     expect(response.status).toBe(303);
-    const location = new URL(response.headers.get("location") ?? "");
+    const locationHeader = response.headers.get("location") ?? "";
+    expect(locationHeader.startsWith("/ops?")).toBe(true);
+    const location = new URL(locationHeader, "http://localhost");
     expect(location.pathname).toBe("/ops");
     expect(location.searchParams.get("resolvedDisputeId")).toBe("disp_1");
     expect(location.searchParams.get("disputeStatus")).toBe("resolved");

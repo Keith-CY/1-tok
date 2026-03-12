@@ -54,7 +54,7 @@ describe("buyer rfq route", () => {
     form.set("responseDeadlineAt", "2026-03-15T12:00");
 
     const response = await POST(
-      new Request("http://localhost/buyer/rfqs", {
+      new Request("http://web-7f9c6d4f8c-abcde:3000/buyer/rfqs", {
         method: "POST",
         headers: {
           cookie: "one_tok_session=tok_123",
@@ -64,6 +64,6 @@ describe("buyer rfq route", () => {
     );
 
     expect(response.status).toBe(303);
-    expect(new URL(response.headers.get("location") ?? "").pathname).toBe("/buyer");
+    expect(response.headers.get("location")).toBe("/buyer");
   });
 });

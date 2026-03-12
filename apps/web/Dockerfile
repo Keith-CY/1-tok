@@ -10,7 +10,6 @@ FROM oven/bun:1.1.8 AS builder
 
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 COPY . .
 RUN bun --cwd apps/web build
 
@@ -26,4 +25,4 @@ COPY --from=builder /app/apps/web/public ./apps/web/public
 
 EXPOSE 3000
 
-CMD ["bun", "server.js"]
+CMD ["bun", "apps/web/server.js"]

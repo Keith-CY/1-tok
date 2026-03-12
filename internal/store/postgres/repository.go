@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"context"
 	"database/sql"
 	_ "embed"
 	"encoding/json"
@@ -16,6 +17,8 @@ import (
 
 //go:embed schema.sql
 var schema string
+
+const schemaMigrationLockKey int64 = 10241001
 
 func Open(dsn string) (*sql.DB, error) {
 	db, err := sql.Open("pgx", dsn)
@@ -36,7 +39,20 @@ func Open(dsn string) (*sql.DB, error) {
 }
 
 func Migrate(db *sql.DB) error {
-	_, err := db.Exec(schema)
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	if _, err := conn.ExecContext(context.Background(), `SELECT pg_advisory_lock($1)`, schemaMigrationLockKey); err != nil {
+		return err
+	}
+	defer func() {
+		_, _ = conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock($1)`, schemaMigrationLockKey)
+	}()
+
+	_, err = conn.ExecContext(context.Background(), schema)
 	return err
 }
 

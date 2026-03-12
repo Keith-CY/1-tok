@@ -58,7 +58,7 @@ describe("ops credit decision route", () => {
     form.set("lifetimeSpendCents", "480000");
 
     const response = await POST(
-      new Request("http://localhost/ops/credits/decision", {
+      new Request("http://web-7f9c6d4f8c-abcde:3000/ops/credits/decision", {
         method: "POST",
         headers: {
           cookie: "one_tok_session=tok_123",
@@ -68,7 +68,9 @@ describe("ops credit decision route", () => {
     );
 
     expect(response.status).toBe(303);
-    const location = new URL(response.headers.get("location") ?? "");
+    const locationHeader = response.headers.get("location") ?? "";
+    expect(locationHeader.startsWith("/ops?")).toBe(true);
+    const location = new URL(locationHeader, "http://localhost");
     expect(location.pathname).toBe("/ops");
     expect(location.searchParams.get("creditApproved")).toBe("true");
     expect(location.searchParams.get("recommendedLimitCents")).toBe("885000");

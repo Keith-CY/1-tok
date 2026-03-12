@@ -48,7 +48,7 @@ describe("buyer award route", () => {
     form.set("creditLineId", "credit_1");
 
     const response = await POST(
-      new Request("http://localhost/buyer/rfqs/rfq_1/award", {
+      new Request("http://web-7f9c6d4f8c-abcde:3000/buyer/rfqs/rfq_1/award", {
         method: "POST",
         headers: {
           cookie: "one_tok_session=tok_123",
@@ -59,6 +59,6 @@ describe("buyer award route", () => {
     );
 
     expect(response.status).toBe(303);
-    expect(new URL(response.headers.get("location") ?? "").pathname).toBe("/buyer");
+    expect(response.headers.get("location")).toBe("/buyer");
   });
 });

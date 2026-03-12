@@ -1,21 +1,20 @@
-import { NextResponse } from "next/server";
-
+import { redirectToPath } from "../../../../../lib/redirect";
 import { postGatewayJSON, readRequestPortalViewer } from "../../../../../lib/marketplace-actions";
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ disputeId: string }> },
 ) {
-  const viewer = await readRequestPortalViewer(request, "ops");
-  if (!viewer) {
-    return NextResponse.redirect(new URL("/login?next=%2Fops", request.url), 303);
-  }
+	const viewer = await readRequestPortalViewer(request, "ops");
+	if (!viewer) {
+		return redirectToPath("/login?next=%2Fops");
+	}
 
-  const form = await request.formData();
-  const resolution = String(form.get("resolution") ?? "").trim();
-  if (!resolution) {
-    return NextResponse.redirect(new URL("/ops?error=missing-dispute-resolution", request.url), 303);
-  }
+	const form = await request.formData();
+	const resolution = String(form.get("resolution") ?? "").trim();
+	if (!resolution) {
+		return redirectToPath("/ops?error=missing-dispute-resolution");
+	}
 
   const { disputeId } = await params;
 
@@ -30,11 +29,11 @@ export async function POST(
         status?: string;
       };
     };
-    const nextURL = new URL("/ops", request.url);
-    nextURL.searchParams.set("resolvedDisputeId", result.dispute?.id ?? disputeId);
-    nextURL.searchParams.set("disputeStatus", result.dispute?.status ?? "resolved");
-    return NextResponse.redirect(nextURL, 303);
-  } catch {
-    return NextResponse.redirect(new URL("/ops?error=dispute-resolution-failed", request.url), 303);
-  }
+		const nextURL = new URL("/ops", "http://portal.internal");
+		nextURL.searchParams.set("resolvedDisputeId", result.dispute?.id ?? disputeId);
+		nextURL.searchParams.set("disputeStatus", result.dispute?.status ?? "resolved");
+		return redirectToPath(`${nextURL.pathname}${nextURL.search}${nextURL.hash}`);
+	} catch {
+		return redirectToPath("/ops?error=dispute-resolution-failed");
+	}
 }

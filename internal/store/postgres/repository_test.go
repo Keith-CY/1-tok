@@ -1,8 +1,11 @@
 package postgres
 
 import (
+	"fmt"
+	"net/url"
 	"os"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -530,4 +533,72 @@ func TestMigrateAddsRevokedAtToLegacyIAMSessions(t *testing.T) {
 	if !exists {
 		t.Fatalf("expected revoked_at column to exist after migrate")
 	}
+}
+
+func TestMigrateHandlesConcurrentCallsOnFreshSchema(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+
+	adminDB, err := Open(dsn)
+	if err != nil {
+		t.Fatalf("open admin db: %v", err)
+	}
+	defer adminDB.Close()
+
+	schemaName := fmt.Sprintf("migrate_lock_%d", time.Now().UTC().UnixNano())
+	if _, err := adminDB.Exec(fmt.Sprintf(`CREATE SCHEMA "%s"`, schemaName)); err != nil {
+		t.Fatalf("create schema: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = adminDB.Exec(fmt.Sprintf(`DROP SCHEMA IF EXISTS "%s" CASCADE`, schemaName))
+	})
+
+	schemaDSN := dsnWithSearchPath(t, dsn, schemaName)
+	const concurrentMigrations = 6
+
+	start := make(chan struct{})
+	errorsCh := make(chan error, concurrentMigrations)
+	var wg sync.WaitGroup
+	for i := 0; i < concurrentMigrations; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			db, err := Open(schemaDSN)
+			if err != nil {
+				errorsCh <- err
+				return
+			}
+			defer db.Close()
+
+			<-start
+			errorsCh <- Migrate(db)
+		}()
+	}
+
+	close(start)
+	wg.Wait()
+	close(errorsCh)
+
+	for err := range errorsCh {
+		if err != nil {
+			t.Fatalf("concurrent migrate: %v", err)
+		}
+	}
+}
+
+func dsnWithSearchPath(t *testing.T, dsn, searchPath string) string {
+	t.Helper()
+
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatalf("parse dsn: %v", err)
+	}
+
+	query := parsed.Query()
+	query.Set("search_path", searchPath)
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
 }

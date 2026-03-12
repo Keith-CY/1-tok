@@ -10,6 +10,7 @@
     "dev:api-gateway": "CGO_ENABLED=0 go run ./cmd/api-gateway",
     "build:web": "bun --cwd apps/web build",
     "dev:web": "bun --cwd apps/web dev",
+    "release:compose-smoke": "./scripts/release-compose-smoke.sh",
     "release:external-deps-smoke": "./scripts/release-external-deps-smoke.sh",
     "release:full-persisted-local-smoke": "./scripts/release-full-persisted-local-smoke.sh",
     "lint:web": "bun --cwd apps/web lint",

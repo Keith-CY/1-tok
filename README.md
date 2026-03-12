@@ -113,6 +113,14 @@ bun run release:external-deps-smoke
 
 This script boots an isolated Postgres container plus local `iam`, `api-gateway`, `settlement`, `execution`, and standalone `web`, but points settlement and execution at externally supplied Fiber and Carrier endpoints. For local verification of the script shape you can set `USE_LOCAL_FIBER_MOCK=true` and `USE_LOCAL_CARRIER_MOCK=true`.
 
+### Compose release smoke
+
+```bash
+bun run release:compose-smoke
+```
+
+This script builds and boots the compose stack with `postgres`, `mock-fiber`, `mock-carrier`, `iam`, `api-gateway`, `settlement`, `execution`, and `web`, then runs both release smoke commands against the published localhost ports before tearing the stack down.
+
 ### Contracts tests
 
 ```bash

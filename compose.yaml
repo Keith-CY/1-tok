@@ -5,8 +5,13 @@ services:
       POSTGRES_DB: onetok
       POSTGRES_USER: onetok
       POSTGRES_PASSWORD: onetok
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U onetok -d onetok"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PUBLISHED_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
@@ -14,8 +19,8 @@ services:
     image: nats:2.10-alpine
     command: ["-js"]
     ports:
-      - "4222:4222"
-      - "8222:8222"
+      - "${NATS_PUBLISHED_PORT:-4222}:4222"
+      - "${NATS_MONITOR_PUBLISHED_PORT:-8222}:8222"
 
   mock-fiber:
     build:
@@ -26,7 +31,7 @@ services:
     environment:
       MOCK_FIBER_ADDR: ":8090"
     ports:
-      - "8090:8090"
+      - "${MOCK_FIBER_PUBLISHED_PORT:-8090}:8090"
 
   mock-carrier:
     build:
@@ -38,7 +43,7 @@ services:
       MOCK_CARRIER_ADDR: ":8787"
       MOCK_CARRIER_API_TOKEN: ${CARRIER_GATEWAY_API_TOKEN:-test-gateway-token}
     ports:
-      - "8787:8787"
+      - "${MOCK_CARRIER_PUBLISHED_PORT:-8787}:8787"
 
   api-gateway:
     build:
@@ -53,10 +58,12 @@ services:
       NATS_URL: nats://nats:4222
       API_GATEWAY_EXECUTION_TOKEN: ${ONE_TOK_SERVICE_TOKEN:-local-service-token}
     ports:
-      - "8080:8080"
+      - "${API_GATEWAY_PUBLISHED_PORT:-8080}:8080"
     depends_on:
-      - postgres
-      - nats
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_started
 
   iam:
     build:
@@ -68,9 +75,10 @@ services:
       IAM_ADDR: ":8081"
       DATABASE_URL: postgres://onetok:onetok@postgres:5432/onetok?sslmode=disable
     ports:
-      - "8081:8081"
+      - "${IAM_PUBLISHED_PORT:-8081}:8081"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
   marketplace:
     build:
@@ -82,7 +90,7 @@ services:
       MARKETPLACE_ADDR: ":8082"
       API_GATEWAY_UPSTREAM: http://api-gateway:8080
     ports:
-      - "8082:8082"
+      - "${MARKETPLACE_PUBLISHED_PORT:-8082}:8082"
     depends_on:
       - api-gateway
 
@@ -102,11 +110,14 @@ services:
       FIBER_HMAC_SECRET: ${FIBER_HMAC_SECRET:-replace-me}
       SETTLEMENT_SERVICE_TOKEN: ${ONE_TOK_SERVICE_TOKEN:-local-service-token}
     ports:
-      - "8083:8083"
+      - "${SETTLEMENT_PUBLISHED_PORT:-8083}:8083"
     depends_on:
-      - api-gateway
-      - mock-fiber
-      - postgres
+      api-gateway:
+        condition: service_started
+      mock-fiber:
+        condition: service_started
+      postgres:
+        condition: service_healthy
 
   risk:
     build:
@@ -118,7 +129,7 @@ services:
       RISK_ADDR: ":8084"
       API_GATEWAY_UPSTREAM: http://api-gateway:8080
     ports:
-      - "8084:8084"
+      - "${RISK_PUBLISHED_PORT:-8084}:8084"
     depends_on:
       - api-gateway
 
@@ -136,7 +147,7 @@ services:
       CARRIER_GATEWAY_URL: ${CARRIER_GATEWAY_URL:-http://mock-carrier:8787}
       CARRIER_GATEWAY_API_TOKEN: ${CARRIER_GATEWAY_API_TOKEN:-test-gateway-token}
     ports:
-      - "8085:8085"
+      - "${EXECUTION_PUBLISHED_PORT:-8085}:8085"
     depends_on:
       - api-gateway
       - mock-carrier
@@ -151,7 +162,7 @@ services:
       NOTIFICATION_ADDR: ":8086"
       API_GATEWAY_UPSTREAM: http://api-gateway:8080
     ports:
-      - "8086:8086"
+      - "${NOTIFICATION_PUBLISHED_PORT:-8086}:8086"
     depends_on:
       - api-gateway
 
@@ -165,7 +176,7 @@ services:
       IAM_BASE_URL: http://iam:8081
       ONE_TOK_ALLOW_INSECURE_SESSION_COOKIE: "true"
     ports:
-      - "3000:3000"
+      - "${WEB_PUBLISHED_PORT:-3000}:3000"
     depends_on:
       - api-gateway
       - iam

@@ -1,6 +1,5 @@
-import { NextResponse } from "next/server";
-
 import { fetchIAMActor, findPortalMembership, type PortalKind } from "./viewer";
+import { redirectToPath } from "./redirect";
 import { parseCookieValue, SESSION_COOKIE_NAME } from "./session";
 
 export async function readRequestPortalViewer(request: Request, kind: PortalKind) {
@@ -26,12 +25,12 @@ export async function readRequestPortalViewer(request: Request, kind: PortalKind
   };
 }
 
-export function redirectToPortal(request: Request, path: string, error?: string) {
-  const nextURL = new URL(path, request.url);
-  if (error) {
-    nextURL.searchParams.set("error", error);
-  }
-  return NextResponse.redirect(nextURL, 303);
+export function redirectToPortal(_request: Request, path: string, error?: string) {
+	const nextURL = new URL(path, "http://portal.internal");
+	if (error) {
+		nextURL.searchParams.set("error", error);
+	}
+	return redirectToPath(`${nextURL.pathname}${nextURL.search}${nextURL.hash}`);
 }
 
 export async function postGatewayJSON(path: string, token: string, payload: unknown) {

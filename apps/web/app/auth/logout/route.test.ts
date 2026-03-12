@@ -29,7 +29,7 @@ describe("auth logout route", () => {
     }) as unknown as typeof fetch;
 
     const response = await POST(
-      new Request("http://localhost/auth/logout", {
+      new Request("http://web-7f9c6d4f8c-abcde:3000/auth/logout", {
         method: "POST",
         headers: {
           cookie: "one_tok_session=tok_123",
@@ -38,7 +38,7 @@ describe("auth logout route", () => {
     );
 
     expect(response.status).toBe(303);
-    expect(new URL(response.headers.get("location") ?? "").pathname).toBe("/login");
+    expect(response.headers.get("location")).toBe("/login");
 
     const cookie = response.headers.get("set-cookie");
     expect(cookie).toContain("one_tok_session=");

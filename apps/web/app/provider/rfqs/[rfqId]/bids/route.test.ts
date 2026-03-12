@@ -51,7 +51,7 @@ describe("provider bid route", () => {
     form.set("milestoneBudgetCents", "4200");
 
     const response = await POST(
-      new Request("http://localhost/provider/rfqs/rfq_1/bids", {
+      new Request("http://web-7f9c6d4f8c-abcde:3000/provider/rfqs/rfq_1/bids", {
         method: "POST",
         headers: {
           cookie: "one_tok_session=tok_123",
@@ -62,6 +62,6 @@ describe("provider bid route", () => {
     );
 
     expect(response.status).toBe(303);
-    expect(new URL(response.headers.get("location") ?? "").pathname).toBe("/provider");
+    expect(response.headers.get("location")).toBe("/provider");
   });
 });
