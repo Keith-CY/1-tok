@@ -91,6 +91,14 @@ bun run release:full-local-smoke
 
 This script starts local `mock-fiber`, `iam`, `api-gateway`, `settlement`, `execution`, and the built Next standalone server, wires IAM plus service-token auth, and then runs both `release:smoke` with withdrawal coverage and `release:portal-smoke` against the same stack.
 
+### Full persisted local release smoke
+
+```bash
+bun run release:full-persisted-local-smoke
+```
+
+This script boots an isolated `postgres:16-alpine` container on `127.0.0.1:${POSTGRES_PORT:-15432}`, wires `iam`, `api-gateway`, and `settlement` to that database, and then runs the same full-stack smoke sequence against persisted repositories instead of the in-memory defaults.
+
 ### Contracts tests
 
 ```bash
