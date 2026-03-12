@@ -513,6 +513,105 @@ func TestResolveDisputeRequiresOpsMembershipAndReturnsResolvedCase(t *testing.T)
 	}
 }
 
+func TestListDisputesRejectsNonOpsMembershipWhenIAMConfigured(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	order, err := app.CreateOrder(platform.CreateOrderInput{
+		BuyerOrgID:    "buyer_1",
+		ProviderOrgID: "provider_1",
+		Title:         "Operate agent",
+		FundingMode:   "credit",
+		CreditLineID:  "credit_1",
+		Milestones: []platform.CreateMilestoneInput{
+			{
+				ID:             "ms_1",
+				Title:          "Plan",
+				BasePriceCents: 1200,
+				BudgetCents:    1800,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create order: %v", err)
+	}
+	if _, _, err := app.SettleMilestone(order.ID, platform.SettleMilestoneInput{
+		MilestoneID: "ms_1",
+		Summary:     "done",
+		Source:      "carrier",
+		OccurredAt:  time.Date(2026, 3, 12, 0, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("settle milestone: %v", err)
+	}
+	if _, _, _, err := app.OpenDispute(order.ID, platform.OpenDisputeInput{
+		MilestoneID: "ms_1",
+		Reason:      "carrier output was incomplete",
+		RefundCents: 800,
+	}); err != nil {
+		t.Fatalf("open dispute: %v", err)
+	}
+
+	server := NewServerWithOptions(Options{
+		App: app,
+		IAM: &stubIAMClient{
+			actor: iamclient.Actor{
+				UserID: "usr_buyer_1",
+				Memberships: []iamclient.ActorMembership{
+					{
+						OrganizationID:   "buyer_1",
+						OrganizationKind: "buyer",
+						Role:             "procurement",
+					},
+				},
+			},
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/disputes", nil)
+	req.Header.Set("Authorization", "Bearer buyer-session-token")
+	res := httptest.NewRecorder()
+
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d body=%s", res.Code, res.Body.String())
+	}
+}
+
+func TestCreditDecisionRejectsNonOpsMembershipWhenIAMConfigured(t *testing.T) {
+	server := NewServerWithOptions(Options{
+		App: platform.NewAppWithMemory(),
+		IAM: &stubIAMClient{
+			actor: iamclient.Actor{
+				UserID: "usr_buyer_1",
+				Memberships: []iamclient.ActorMembership{
+					{
+						OrganizationID:   "buyer_1",
+						OrganizationKind: "buyer",
+						Role:             "procurement",
+					},
+				},
+			},
+		},
+	})
+
+	body, _ := json.Marshal(map[string]any{
+		"completedOrders":    12,
+		"successfulPayments": 11,
+		"failedPayments":     1,
+		"disputedOrders":     1,
+		"lifetimeSpendCents": 480000,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/credits/decision", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer buyer-session-token")
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d body=%s", res.Code, res.Body.String())
+	}
+}
+
 func TestCarrierMilestoneSettlementReturnsLedgerEntry(t *testing.T) {
 	server := NewServer()
 

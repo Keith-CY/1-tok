@@ -58,7 +58,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/rfqs":
 		s.handleListRFQs(w)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/disputes":
-		s.handleListDisputes(w)
+		s.handleListDisputes(w, r)
 	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/bids"):
 		s.handleListRFQBids(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/orders":
@@ -120,7 +120,12 @@ func (s *Server) handleListRFQs(w http.ResponseWriter) {
 	writeJSON(w, http.StatusOK, map[string]any{"rfqs": rfqs})
 }
 
-func (s *Server) handleListDisputes(w http.ResponseWriter) {
+func (s *Server) handleListDisputes(w http.ResponseWriter, r *http.Request) {
+	if _, err := s.resolveOpsUser(r); err != nil {
+		writeAuthError(w, err)
+		return
+	}
+
 	disputes, err := s.app.ListDisputes()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -628,6 +633,11 @@ func (s *Server) handleResolveDispute(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreditDecision(w http.ResponseWriter, r *http.Request) {
+	if _, err := s.resolveOpsUser(r); err != nil {
+		writeAuthError(w, err)
+		return
+	}
+
 	var history core.CreditHistory
 	if err := json.NewDecoder(r.Body).Decode(&history); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})

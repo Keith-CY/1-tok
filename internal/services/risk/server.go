@@ -28,7 +28,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.URL.Path == "/v1/credits/decision" || strings.HasSuffix(r.URL.Path, "/disputes") {
+	if r.URL.Path == "/v1/credits/decision" || strings.HasPrefix(r.URL.Path, "/v1/disputes") {
 		s.inner.ServeHTTP(w, r)
 		return
 	}
