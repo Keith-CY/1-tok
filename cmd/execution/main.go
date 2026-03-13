@@ -21,7 +21,7 @@ func main() {
 
 	log.Printf("execution listening on %s", addr)
 	handler := httputil.LimitBody(execution.NewServer(), 0)
-	if err := server.Run(addr, observability.WrapHTTP("execution", handler), 0); err != nil {
+	if err := server.Run(addr, httputil.AccessLog("execution", observability.WrapHTTP("execution", handler)), 0); err != nil {
 		log.Fatal(err)
 	}
 }

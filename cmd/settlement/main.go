@@ -21,7 +21,7 @@ func main() {
 
 	log.Printf("settlement listening on %s", addr)
 	handler := httputil.LimitBody(settlement.NewServer(), 0)
-	if err := server.Run(addr, observability.WrapHTTP("settlement", handler), 0); err != nil {
+	if err := server.Run(addr, httputil.AccessLog("settlement", observability.WrapHTTP("settlement", handler)), 0); err != nil {
 		log.Fatal(err)
 	}
 }

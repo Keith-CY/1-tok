@@ -21,7 +21,7 @@ func main() {
 
 	log.Printf("iam listening on %s", addr)
 	handler := httputil.LimitBody(iam.NewServer(), 0)
-	if err := server.Run(addr, observability.WrapHTTP("iam", handler), 0); err != nil {
+	if err := server.Run(addr, httputil.AccessLog("iam", observability.WrapHTTP("iam", handler)), 0); err != nil {
 		log.Fatal(err)
 	}
 }
