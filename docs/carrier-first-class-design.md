@@ -166,15 +166,17 @@ The platform must add `ExecutionJob` and `ExecutionAttempt`.
 | `failureCode` | machine-readable code |
 | `failureMessage` | operator-readable summary |
 
-`ExecutionAttempt` records retries or reschedules:
+`ExecutionAttempt` records retries or reschedules. Required fields:
 
-- `id`
-- `executionJobId`
-- `attemptNo`
-- `carrierExecutionId`
-- `startedAt`
-- `endedAt`
-- `resultSummary`
+| Field              | Meaning                                        |
+| ------------------ | ---------------------------------------------- |
+| `id`               | Platform identifier for the attempt            |
+| `executionJobId`   | Owning execution job                           |
+| `attemptNo`        | Monotonic attempt number (1-based)             |
+| `carrierExecutionId` | External Carrier execution id for this attempt |
+| `startedAt`        | Attempt start time                             |
+| `endedAt`          | Attempt end time                               |
+| `resultSummary`    | Summary of the attempt's outcome               |
 
 ### 4. Settlement, Risk, And Dispute Integration
 
