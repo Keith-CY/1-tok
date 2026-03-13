@@ -1,7 +1,7 @@
 {
   "name": "1-tok",
   "private": true,
-  "packageManager": "bun@1.1.8",
+  "packageManager": "bun@1.2.22",
   "workspaces": [
     "apps/*",
     "packages/*"
