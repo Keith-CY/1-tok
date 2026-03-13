@@ -1,9 +1,10 @@
 package mocksentry
 
 import (
-	"encoding/json"
 	"io"
 	"net/http"
+
+	"github.com/chenyu/1-tok/internal/httputil"
 	"sync"
 	"time"
 )
@@ -26,11 +27,11 @@ func NewServer() *Server {
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Method == http.MethodGet && r.URL.Path == "/healthz":
-		writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "service": "mock-sentry"})
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{"status": "ok", "service": "mock-sentry"})
 	case r.Method == http.MethodGet && r.URL.Path == "/events":
 		s.mu.Lock()
 		defer s.mu.Unlock()
-		writeJSON(w, http.StatusOK, map[string]any{"count": len(s.events), "events": append([]Event(nil), s.events...)})
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{"count": len(s.events), "events": append([]Event(nil), s.events...)})
 	case r.Method == http.MethodPost:
 		body, _ := io.ReadAll(r.Body)
 		s.mu.Lock()
@@ -46,8 +47,3 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func writeJSON(w http.ResponseWriter, status int, payload any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
-}

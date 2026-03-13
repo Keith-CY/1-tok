@@ -63,3 +63,16 @@ func TestLimitBody_DefaultMaxBytes(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 }
+
+func TestWriteJSON_StatusAndContentType(t *testing.T) {
+	rec := httptest.NewRecorder()
+	WriteJSON(rec, http.StatusCreated, map[string]string{"id": "abc"})
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", rec.Code)
+	}
+	ct := rec.Header().Get("Content-Type")
+	if ct != "application/json" {
+		t.Fatalf("expected application/json, got %q", ct)
+	}
+}
