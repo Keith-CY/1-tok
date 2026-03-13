@@ -1,16 +1,16 @@
 package release
 
 import (
-	"fmt"
+	"strconv"
 	"time"
 )
 
 var nowUTC = func() time.Time { return time.Now().UTC() }
 
 func nanoSuffix() string {
-	return fmt.Sprintf("%d", nowUTC().UnixNano())
+	return strconv.FormatInt(nowUTC().UnixNano(), 10)
 }
 
 func requestID() string {
-	return fmt.Sprintf("req_%d", nowUTC().UnixNano())
+	return "req_" + nanoSuffix()
 }
