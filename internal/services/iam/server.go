@@ -124,8 +124,8 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	if !validSignupPayload(payload.Email, payload.Password, payload.Name, payload.OrganizationName, payload.OrganizationKind) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required fields"})
+	if reason := validSignupPayload(payload.Email, payload.Password, payload.Name, payload.OrganizationName, payload.OrganizationKind); reason != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": reason})
 		return
 	}
 	r = observability.WithRequestTags(r, observability.RequestTags{
@@ -407,18 +407,24 @@ func loadConfiguredStoreFromEnv() (identity.Store, error) {
 	return postgres.NewIdentityStore(db), nil
 }
 
-func validSignupPayload(email, password, name, organizationName, organizationKind string) bool {
-	if strings.TrimSpace(email) == "" || strings.TrimSpace(password) == "" || strings.TrimSpace(name) == "" {
-		return false
+func validSignupPayload(email, password, name, organizationName, organizationKind string) string {
+	if err := identity.ValidateEmail(email); err != nil {
+		return err.Error()
+	}
+	if err := identity.ValidatePassword(password); err != nil {
+		return err.Error()
+	}
+	if strings.TrimSpace(name) == "" {
+		return "name is required"
 	}
 	if strings.TrimSpace(organizationName) == "" {
-		return false
+		return "organization name is required"
 	}
 	switch strings.TrimSpace(organizationKind) {
 	case "buyer", "provider", "ops":
-		return true
+		return ""
 	default:
-		return false
+		return "invalid organization kind"
 	}
 }
 
