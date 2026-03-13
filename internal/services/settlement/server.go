@@ -3,6 +3,7 @@ package settlement
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"strconv"
@@ -63,7 +64,11 @@ func NewServerWithOptions(options Options) *Server {
 		options.Fiber = fiberclient.NewClientFromEnv()
 	}
 	if options.Funding == nil {
-		options.Funding = loadFundingRecordRepository()
+		funding, err := loadFundingRecordRepositoryE()
+		if err != nil {
+			panic(fmt.Sprintf("settlement: funding store: %v", err))
+		}
+		options.Funding = funding
 	}
 	if options.Auth == nil {
 		options.Auth = iamclient.NewClientFromEnv()
