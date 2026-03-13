@@ -1,8 +1,11 @@
 package fiberadapter
 
 import (
-	"context"
 	"bytes"
+	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -381,4 +384,99 @@ func (rejectingRawNode) ValidatePaymentRequest(context.Context, string) error {
 
 func (rejectingRawNode) SendPayment(context.Context, string, string, string, string) (string, error) {
 	return "", errors.New("unexpected call")
+}
+
+func TestHMACVerification_NoSecretAllowsAll(t *testing.T) {
+	server := NewServerWithOptions(Options{
+		InvoiceNode: &stubRPCNode{},
+		PayerNode:   &stubRPCNode{},
+		// no AppID or HMACSecret
+	})
+
+	body := `{"jsonrpc":"2.0","id":1,"method":"tip.status","params":{"invoice":"inv_1"}}`
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+
+	// should not be 401 — HMAC is disabled
+	if rec.Code == http.StatusUnauthorized {
+		t.Fatalf("expected non-401 when HMAC is not configured, got %d", rec.Code)
+	}
+}
+
+func TestHMACVerification_RejectsMissingSignature(t *testing.T) {
+	server := NewServerWithOptions(Options{
+		InvoiceNode: &stubRPCNode{},
+		PayerNode:   &stubRPCNode{},
+		AppID:       "test-app",
+		HMACSecret:  "test-secret",
+	})
+
+	body := `{"jsonrpc":"2.0","id":1,"method":"tip.status","params":{"invoice":"inv_1"}}`
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+	// no x-signature headers
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHMACVerification_RejectsInvalidSignature(t *testing.T) {
+	server := NewServerWithOptions(Options{
+		InvoiceNode: &stubRPCNode{},
+		PayerNode:   &stubRPCNode{},
+		AppID:       "test-app",
+		HMACSecret:  "test-secret",
+	})
+
+	body := `{"jsonrpc":"2.0","id":1,"method":"tip.status","params":{"invoice":"inv_1"}}`
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+	req.Header.Set("x-app-id", "test-app")
+	req.Header.Set("x-ts", "1234567890")
+	req.Header.Set("x-nonce", "abc123")
+	req.Header.Set("x-signature", "badsignature")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHMACVerification_AcceptsValidSignature(t *testing.T) {
+	secret := "test-secret"
+	server := NewServerWithOptions(Options{
+		InvoiceNode: &stubRPCNode{invoiceStatus: "UNPAID"},
+		PayerNode:   &stubRPCNode{},
+		AppID:       "test-app",
+		HMACSecret:  secret,
+	})
+
+	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tip.status","params":{"invoice":"inv_1"}}`)
+	ts := "1234567890"
+	nonce := "abc123"
+
+	// compute valid HMAC-SHA256 signature matching fiber client format
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(ts))
+	mac.Write([]byte("."))
+	mac.Write([]byte(nonce))
+	mac.Write([]byte("."))
+	mac.Write(body)
+	signature := hex.EncodeToString(mac.Sum(nil))
+
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
+	req.Header.Set("x-app-id", "test-app")
+	req.Header.Set("x-ts", ts)
+	req.Header.Set("x-nonce", nonce)
+	req.Header.Set("x-signature", signature)
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+
+	// should not be 401
+	if rec.Code == http.StatusUnauthorized {
+		t.Fatalf("expected non-401 with valid signature, got %d body=%s", rec.Code, rec.Body.String())
+	}
 }

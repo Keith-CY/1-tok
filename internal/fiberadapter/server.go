@@ -2,12 +2,14 @@ package fiberadapter
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -23,11 +25,15 @@ type Options struct {
 	PayerRPCURL   string
 	InvoiceNode   rawNode
 	PayerNode     rawNode
+	AppID         string
+	HMACSecret    string
 }
 
 type Server struct {
 	invoiceNode rawNode
 	payerNode   rawNode
+	appID       string
+	hmacSecret  string
 
 	mu              sync.Mutex
 	tipSeq          int
@@ -57,7 +63,10 @@ type rawNode interface {
 }
 
 func NewServer() *Server {
-	return NewServerWithOptions(Options{})
+	return NewServerWithOptions(Options{
+		AppID:      strings.TrimSpace(os.Getenv("FIBER_APP_ID")),
+		HMACSecret: strings.TrimSpace(os.Getenv("FIBER_HMAC_SECRET")),
+	})
 }
 
 func NewServerWithOptions(options Options) *Server {
@@ -91,6 +100,8 @@ func NewServerWithOptions(options Options) *Server {
 	return &Server{
 		invoiceNode:     options.InvoiceNode,
 		payerNode:       options.PayerNode,
+		appID:           strings.TrimSpace(options.AppID),
+		hmacSecret:      strings.TrimSpace(options.HMACSecret),
 		tips:            map[string]*tipRecord{},
 		withdrawalsByID: map[string]*fiberclient.WithdrawalStatusItem{},
 	}
@@ -106,13 +117,25 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Read body into memory so we can verify the HMAC signature.
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeRPCError(w, nil, -32700, "failed to read request body")
+		return
+	}
+
+	if err := s.verifyHMAC(r, body); err != nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error()})
+		return
+	}
+
 	var payload struct {
 		JSONRPC string          `json:"jsonrpc"`
 		ID      any             `json:"id"`
 		Method  string          `json:"method"`
 		Params  json.RawMessage `json:"params"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+	if err := json.Unmarshal(body, &payload); err != nil {
 		writeRPCError(w, payload.ID, -32700, "invalid json")
 		return
 	}
@@ -572,6 +595,42 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+// verifyHMAC checks the x-signature header against the request body using the
+// shared HMAC secret. When no secret is configured, verification is skipped
+// (backward compatible with existing deployments that haven't set FIBER_HMAC_SECRET).
+//
+// The signature format matches the Fiber client: HMAC-SHA256(secret, ts + "." + nonce + "." + body).
+func (s *Server) verifyHMAC(r *http.Request, body []byte) error {
+	if s.hmacSecret == "" {
+		return nil // auth not configured — allow all (backward compat)
+	}
+
+	appID := strings.TrimSpace(r.Header.Get("x-app-id"))
+	ts := strings.TrimSpace(r.Header.Get("x-ts"))
+	nonce := strings.TrimSpace(r.Header.Get("x-nonce"))
+	signature := strings.TrimSpace(r.Header.Get("x-signature"))
+
+	if signature == "" || ts == "" || nonce == "" {
+		return errors.New("missing signature headers")
+	}
+	if s.appID != "" && appID != s.appID {
+		return errors.New("app id mismatch")
+	}
+
+	mac := hmac.New(sha256.New, []byte(s.hmacSecret))
+	_, _ = mac.Write([]byte(ts))
+	_, _ = mac.Write([]byte("."))
+	_, _ = mac.Write([]byte(nonce))
+	_, _ = mac.Write([]byte("."))
+	_, _ = mac.Write(body)
+	expected := hex.EncodeToString(mac.Sum(nil))
+
+	if !hmac.Equal([]byte(expected), []byte(signature)) {
+		return errors.New("invalid signature")
+	}
+	return nil
 }
 
 func writeRPCResult(w http.ResponseWriter, id any, result any) {
