@@ -9,13 +9,13 @@ import (
 	"time"
 
 	"github.com/chenyu/1-tok/internal/core"
+	"github.com/chenyu/1-tok/internal/httputil"
 	iamclient "github.com/chenyu/1-tok/internal/integrations/iam"
 	"github.com/chenyu/1-tok/internal/observability"
 	"github.com/chenyu/1-tok/internal/platform"
 	"github.com/chenyu/1-tok/internal/ratelimit"
 	"github.com/chenyu/1-tok/internal/runtimeconfig"
 	"github.com/chenyu/1-tok/internal/serviceauth"
-	"github.com/chenyu/1-tok/internal/httputil"
 )
 
 // Sentinel startup errors returned by NewServerWithOptionsE.
@@ -106,9 +106,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet && r.URL.Path == "/healthz":
 		httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/providers":
-		s.handleListProviders(w)
+		s.handleListProviders(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/listings":
-		s.handleListListings(w)
+		s.handleListListings(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/rfqs":
 		s.handleListRFQs(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/disputes":
@@ -144,24 +144,26 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) handleListProviders(w http.ResponseWriter) {
+func (s *Server) handleListProviders(w http.ResponseWriter, r *http.Request) {
 	providers, err := s.app.ListProviders()
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"providers": providers})
+	page := httputil.ParsePagination(r)
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"providers": httputil.Apply(providers, page), "pagination": map[string]any{"limit": page.Limit, "offset": page.Offset, "total": len(providers)}})
 }
 
-func (s *Server) handleListListings(w http.ResponseWriter) {
+func (s *Server) handleListListings(w http.ResponseWriter, r *http.Request) {
 	listings, err := s.app.ListListings()
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"listings": listings})
+	page := httputil.ParsePagination(r)
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"listings": httputil.Apply(listings, page), "pagination": map[string]any{"limit": page.Limit, "offset": page.Offset, "total": len(listings)}})
 }
 
 func (s *Server) handleListRFQs(w http.ResponseWriter, r *http.Request) {
@@ -185,7 +187,8 @@ func (s *Server) handleListRFQs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"rfqs": rfqs})
+	page := httputil.ParsePagination(r)
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"rfqs": httputil.Apply(rfqs, page), "pagination": map[string]any{"limit": page.Limit, "offset": page.Offset, "total": len(rfqs)}})
 }
 
 func (s *Server) handleListDisputes(w http.ResponseWriter, r *http.Request) {
@@ -200,7 +203,8 @@ func (s *Server) handleListDisputes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"disputes": disputes})
+	page := httputil.ParsePagination(r)
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"disputes": httputil.Apply(disputes, page), "pagination": map[string]any{"limit": page.Limit, "offset": page.Offset, "total": len(disputes)}})
 }
 
 func (s *Server) handleListOrders(w http.ResponseWriter, r *http.Request) {
@@ -224,7 +228,8 @@ func (s *Server) handleListOrders(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"orders": orders})
+	page := httputil.ParsePagination(r)
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"orders": httputil.Apply(orders, page), "pagination": map[string]any{"limit": page.Limit, "offset": page.Offset, "total": len(orders)}})
 }
 
 func (s *Server) handleGetOrder(w http.ResponseWriter, r *http.Request) {
@@ -416,7 +421,8 @@ func (s *Server) handleListRFQBids(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"bids": bids})
+	page := httputil.ParsePagination(r)
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"bids": httputil.Apply(bids, page), "pagination": map[string]any{"limit": page.Limit, "offset": page.Offset, "total": len(bids)}})
 }
 
 func (s *Server) handleCreateBid(w http.ResponseWriter, r *http.Request) {
