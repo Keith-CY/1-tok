@@ -283,7 +283,7 @@ func bearerFromPortalClient(client *http.Client, webBaseURL string) (string, err
 func (c *smokeClient) createPortalUser(ctx context.Context, iamBaseURL, kind, suffix string) (portalAccount, error) {
 	user := portalAccount{
 		email:    fmt.Sprintf("%s-smoke-%s@example.com", kind, suffix),
-		password: "correct horse battery staple",
+		password: "correct horse battery staple 123",
 	}
 
 	err := c.postJSON(ctx, iamBaseURL+"/v1/signup", map[string]any{
