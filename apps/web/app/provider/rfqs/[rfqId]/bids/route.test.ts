@@ -58,7 +58,7 @@ describe("provider bid route", () => {
         },
         body: form,
       }),
-      { params: { rfqId: "rfq_1" } },
+      { params: Promise.resolve({ rfqId: "rfq_1" }) },
     );
 
     expect(response.status).toBe(303);

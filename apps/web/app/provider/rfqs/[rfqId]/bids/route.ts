@@ -1,11 +1,12 @@
 import { redirectToPortal, postGatewayJSON, readRequestPortalViewer } from "../../../../../lib/marketplace-actions";
 
-export async function POST(request: Request, context: { params: { rfqId: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ rfqId: string }> }) {
   const viewer = await readRequestPortalViewer(request, "provider");
   if (!viewer) {
     return redirectToPortal(request, "/login?next=%2Fprovider");
   }
 
+  const { rfqId } = await params;
   const form = await request.formData();
   const message = String(form.get("message") ?? "").trim();
   const quoteCents = Number.parseInt(String(form.get("quoteCents") ?? "0"), 10);
@@ -20,7 +21,7 @@ export async function POST(request: Request, context: { params: { rfqId: string 
       : Math.max(quoteCents, milestoneBasePriceCents);
 
   if (
-    !context.params.rfqId ||
+    !rfqId ||
     !message ||
     !Number.isFinite(quoteCents) ||
     quoteCents <= 0 ||
@@ -33,7 +34,7 @@ export async function POST(request: Request, context: { params: { rfqId: string 
   }
 
   try {
-    await postGatewayJSON(`/api/v1/rfqs/${context.params.rfqId}/bids`, viewer.token, {
+    await postGatewayJSON(`/api/v1/rfqs/${rfqId}/bids`, viewer.token, {
       providerOrgId: viewer.membership.organization.id,
       message,
       quoteCents,
