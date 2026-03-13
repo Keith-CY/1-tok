@@ -307,11 +307,29 @@ type nextIDQueryer interface {
 }
 
 func nextIDScanner(db nextIDQueryer, sequenceName, prefix string) (string, error) {
+	if !validSequenceName(sequenceName) {
+		return "", fmt.Errorf("invalid sequence name: %q", sequenceName)
+	}
 	var value int64
 	if err := db.QueryRow(fmt.Sprintf(`SELECT nextval('%s')`, sequenceName)).Scan(&value); err != nil {
 		return "", err
 	}
 	return fmt.Sprintf("%s_%d", prefix, value), nil
+}
+
+// validSequenceName checks that a sequence name contains only lowercase letters,
+// digits, and underscores. This prevents SQL injection when the name is
+// interpolated into a query via fmt.Sprintf.
+func validSequenceName(name string) bool {
+	if len(name) == 0 || len(name) > 63 {
+		return false
+	}
+	for _, c := range name {
+		if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_') {
+			return false
+		}
+	}
+	return true
 }
 
 func decodeOrder(payload []byte) (*core.Order, error) {
