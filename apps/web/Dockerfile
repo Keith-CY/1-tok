@@ -1,4 +1,6 @@
-FROM oven/bun:1.2.22 AS deps
+ARG BUN_VERSION=1.2.22
+
+FROM oven/bun:${BUN_VERSION} AS deps
 
 WORKDIR /app
 COPY package.json bun.lockb tsconfig.base.json ./
@@ -6,14 +8,14 @@ COPY apps/web/package.json apps/web/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
 RUN bun install --frozen-lockfile
 
-FROM oven/bun:1.2.22 AS builder
+FROM oven/bun:${BUN_VERSION} AS builder
 
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN bun --cwd apps/web build
 
-FROM oven/bun:1.2.22 AS runner
+FROM oven/bun:${BUN_VERSION} AS runner
 
 WORKDIR /app
 ENV NODE_ENV=production
