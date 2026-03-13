@@ -49,9 +49,24 @@ func NewClient(baseURL string) *HTTPClient {
 func NewClientFromEnv() Client {
 	baseURL := strings.TrimSpace(os.Getenv("IAM_UPSTREAM"))
 	if baseURL == "" {
-		return nil
+		return NoopClient{}
 	}
 	return NewClient(baseURL)
+}
+
+// NoopClient is a Client that always returns ErrNotConfigured.
+// It replaces the previous pattern of returning nil, which caused
+// nil-pointer panics in callers that forgot to check.
+type NoopClient struct{}
+
+func (NoopClient) GetActor(_ context.Context, _ string) (Actor, error) {
+	return Actor{}, ErrNotConfigured
+}
+
+// IsNoop reports whether c is a NoopClient (i.e., IAM is not configured).
+func IsNoop(c Client) bool {
+	_, ok := c.(NoopClient)
+	return ok
 }
 
 func (c *HTTPClient) GetActor(ctx context.Context, bearerToken string) (Actor, error) {

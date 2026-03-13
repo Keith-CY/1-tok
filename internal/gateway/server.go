@@ -84,7 +84,7 @@ func NewServerWithOptionsE(options Options) (*Server, error) {
 		}
 	}
 	if runtimeconfig.RequireExternalDependencies() {
-		if options.IAM == nil {
+		if options.IAM == nil || iamclient.IsNoop(options.IAM) {
 			return nil, ErrIAMUpstreamRequired
 		}
 		if options.ExecutionTokens.Empty() {
@@ -546,7 +546,7 @@ func (s *Server) handleAwardRFQ(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) resolveBuyerOrg(r *http.Request, requestedBuyerOrgID string) (string, error) {
-	if s.auth == nil {
+	if s.auth == nil || iamclient.IsNoop(s.auth) {
 		return requestedBuyerOrgID, nil
 	}
 
@@ -577,7 +577,7 @@ func (s *Server) resolveBuyerOrg(r *http.Request, requestedBuyerOrgID string) (s
 }
 
 func (s *Server) resolveProviderOrg(r *http.Request, requestedProviderOrgID string) (string, error) {
-	if s.auth == nil {
+	if s.auth == nil || iamclient.IsNoop(s.auth) {
 		return requestedProviderOrgID, nil
 	}
 
@@ -643,7 +643,7 @@ func isOpsRole(role string) bool {
 }
 
 func (s *Server) resolveOpsUser(r *http.Request) (string, error) {
-	if s.auth == nil {
+	if s.auth == nil || iamclient.IsNoop(s.auth) {
 		return "", nil
 	}
 
@@ -666,7 +666,7 @@ func (s *Server) resolveOpsUser(r *http.Request) (string, error) {
 }
 
 func (s *Server) authenticatedActor(r *http.Request) (iamclient.Actor, error) {
-	if s.auth == nil {
+	if s.auth == nil || iamclient.IsNoop(s.auth) {
 		return iamclient.Actor{}, nil
 	}
 
@@ -1030,7 +1030,7 @@ func writeAuthError(w http.ResponseWriter, err error) {
 }
 
 func (s *Server) actorUserID(r *http.Request) string {
-	if s.auth == nil {
+	if s.auth == nil || iamclient.IsNoop(s.auth) {
 		return ""
 	}
 	actor, err := s.authenticatedActor(r)

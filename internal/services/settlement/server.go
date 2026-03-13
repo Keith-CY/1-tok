@@ -76,7 +76,7 @@ func NewServerWithOptions(options Options) *Server {
 		}
 	}
 	if runtimeconfig.RequireExternalDependencies() {
-		if options.Auth == nil {
+		if options.Auth == nil || iamclient.IsNoop(options.Auth) {
 			panic("IAM_UPSTREAM is required when ONE_TOK_REQUIRE_EXTERNALS=true")
 		}
 		if options.ServiceTokens.Empty() {
@@ -446,7 +446,7 @@ func parseWithdrawalRequest(r *http.Request) (withdrawalRequest, error) {
 }
 
 func (s *Server) scopeFundingFilter(r *http.Request, filter *FundingRecordFilter) error {
-	if s.auth == nil {
+	if s.auth == nil || iamclient.IsNoop(s.auth) {
 		return nil
 	}
 
@@ -503,7 +503,7 @@ func isOpsRole(role string) bool {
 }
 
 func (s *Server) resolveProviderOrg(r *http.Request, requestedProviderOrgID string) (string, error) {
-	if s.auth == nil {
+	if s.auth == nil || iamclient.IsNoop(s.auth) {
 		return requestedProviderOrgID, nil
 	}
 
