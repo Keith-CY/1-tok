@@ -2,11 +2,11 @@ package main
 
 import (
 	"log"
-	"net/http"
 	"os"
 	"time"
 
 	"github.com/chenyu/1-tok/internal/httputil"
+	"github.com/chenyu/1-tok/internal/server"
 	"github.com/chenyu/1-tok/internal/observability"
 	"github.com/chenyu/1-tok/internal/services/notification"
 )
@@ -21,7 +21,9 @@ func main() {
 
 	log.Printf("notification listening on %s", addr)
 	handler := httputil.LimitBody(notification.NewServer(), 0)
-	log.Fatal(http.ListenAndServe(addr, observability.WrapHTTP("notification", handler)))
+	if err := server.Run(addr, observability.WrapHTTP("notification", handler), 0); err != nil {
+		log.Fatal(err)
+	}
 }
 
 func envOrDefault(key, fallback string) string {

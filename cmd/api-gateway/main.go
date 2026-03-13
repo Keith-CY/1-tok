@@ -2,7 +2,6 @@ package main
 
 import (
 	"log"
-	"net/http"
 	"os"
 	"time"
 
@@ -10,6 +9,7 @@ import (
 	"github.com/chenyu/1-tok/internal/gateway"
 	"github.com/chenyu/1-tok/internal/httputil"
 	"github.com/chenyu/1-tok/internal/observability"
+	"github.com/chenyu/1-tok/internal/server"
 )
 
 func main() {
@@ -32,7 +32,9 @@ func main() {
 
 	log.Printf("api-gateway listening on %s", addr)
 	handler := httputil.LimitBody(gateway.NewServerWithApp(app), 0)
-	log.Fatal(http.ListenAndServe(addr, observability.WrapHTTP("api-gateway", handler)))
+	if err := server.Run(addr, observability.WrapHTTP("api-gateway", handler), 0); err != nil {
+		log.Fatal(err)
+	}
 }
 
 func envOrDefault(key, fallback string) string {

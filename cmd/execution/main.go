@@ -2,11 +2,11 @@ package main
 
 import (
 	"log"
-	"net/http"
 	"os"
 	"time"
 
 	"github.com/chenyu/1-tok/internal/httputil"
+	"github.com/chenyu/1-tok/internal/server"
 	"github.com/chenyu/1-tok/internal/observability"
 	"github.com/chenyu/1-tok/internal/services/execution"
 )
@@ -21,7 +21,9 @@ func main() {
 
 	log.Printf("execution listening on %s", addr)
 	handler := httputil.LimitBody(execution.NewServer(), 0)
-	log.Fatal(http.ListenAndServe(addr, observability.WrapHTTP("execution", handler)))
+	if err := server.Run(addr, observability.WrapHTTP("execution", handler), 0); err != nil {
+		log.Fatal(err)
+	}
 }
 
 func envOrDefault(key, fallback string) string {
