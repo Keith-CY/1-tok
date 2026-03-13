@@ -31,8 +31,8 @@ func TestParsePagination_CustomValues(t *testing.T) {
 func TestParsePagination_CapsAtMax(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/items?limit=999", nil)
 	p := ParsePagination(r)
-	if p.Limit != DefaultPageLimit {
-		t.Errorf("limit = %d, want %d (capped)", p.Limit, DefaultPageLimit)
+	if p.Limit != MaxPageLimit {
+		t.Errorf("limit = %d, want %d (capped)", p.Limit, MaxPageLimit)
 	}
 }
 

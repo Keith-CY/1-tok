@@ -22,7 +22,9 @@ type Pagination struct {
 // Limit is capped at MaxPageLimit.
 func ParsePagination(r *http.Request) Pagination {
 	limit := intParam(r, "limit", DefaultPageLimit)
-	if limit <= 0 || limit > MaxPageLimit {
+	if limit > MaxPageLimit {
+		limit = MaxPageLimit
+	} else if limit <= 0 {
 		limit = DefaultPageLimit
 	}
 
@@ -36,6 +38,11 @@ func ParsePagination(r *http.Request) Pagination {
 
 // Apply returns at most p.Limit items starting at p.Offset from the slice.
 // If offset exceeds the length, an empty slice is returned.
+//
+// NOTE: This is application-level pagination, suitable for the in-memory
+// store. For production postgres usage, pagination should be pushed down
+// to the repository layer with LIMIT/OFFSET SQL queries. See issue #59
+// for the full database-level pagination plan.
 func Apply[T any](items []T, p Pagination) []T {
 	if p.Offset >= len(items) {
 		return []T{}
