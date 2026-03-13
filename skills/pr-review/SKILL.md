@@ -1,4 +1,4 @@
-# PR Review Skill (Fiber Link)
+# PR Review Skill (1-tok)
 
 ## Purpose
 Guide agents to review pull requests like a collaborator: check CI first, use inline comments, distinguish blocking vs non-blocking issues.

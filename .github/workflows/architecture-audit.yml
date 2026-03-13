@@ -2,8 +2,7 @@ name: architecture-audit
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "12 * * * *"
+  # Add schedule in a later iteration after governance controls are in place.
 
 permissions:
   contents: write

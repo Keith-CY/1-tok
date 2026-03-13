@@ -1,4 +1,4 @@
-# Issue Triage Skill (Fiber Link)
+# Issue Triage Skill (1-tok)
 
 ## Purpose
 Guide agents to periodically check open issues and pick up work that can be started quickly.
@@ -24,8 +24,8 @@ Guide agents to periodically check open issues and pick up work that can be star
 - Security-critical or data-path changes without clear spec
 
 ## Handling Lightweight Issues
-1. Self-assign: `gh issue edit <number> --repo "$GITHUB_REPOSITORY" --add-assignee "$(gh api user --jq .login)`
-2. Create worktree: `git worktree add /tmp/fiber-link-issue-<number> -b codex/issue-<number>-<slug> origin/main`
+1. Self-assign: `gh issue edit <number> --repo "$GITHUB_REPOSITORY" --add-assignee "$(gh api user --jq .login)"`
+2. Create worktree: `git worktree add /tmp/1-tok-issue-<number> -b codex/issue-<number>-<slug> origin/main`
 3. Implement changes, commit, and push.
 4. Open PR: `gh pr create --repo "$GITHUB_REPOSITORY" --base main`
 5. Prefer merge queue for final merge after CI passes.

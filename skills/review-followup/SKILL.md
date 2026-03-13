@@ -1,4 +1,4 @@
-# Review Follow-up Skill (Fiber Link)
+# Review Follow-up Skill (1-tok)
 
 ## Purpose
 Standardize non-blocking review comments so they can be converted into follow-up issues automatically.
