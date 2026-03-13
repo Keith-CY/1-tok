@@ -218,7 +218,7 @@ func (s *Server) handleGetOrder(w http.ResponseWriter, r *http.Request) {
 
 	order, err := s.app.GetOrder(orderID)
 	if err != nil {
-		if err.Error() == "order not found" {
+		if errors.Is(err, core.ErrOrderNotFound) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 			return
 		}
@@ -987,10 +987,12 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 }
 
 func writeGatewayError(w http.ResponseWriter, err error) {
-	switch err.Error() {
-	case "order not found":
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
-	case "rfq not found", "bid not found", "dispute not found":
+	switch {
+	case errors.Is(err, core.ErrOrderNotFound),
+		errors.Is(err, core.ErrMilestoneNotFound),
+		errors.Is(err, platform.ErrRFQNotFound),
+		errors.Is(err, platform.ErrBidNotFound),
+		errors.Is(err, platform.ErrDisputeNotFound):
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 	default:
 		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})

@@ -249,7 +249,7 @@ func (o *Order) findMilestone(id string) (*Milestone, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("milestone %s not found", id)
+	return nil, fmt.Errorf("%w: %s", ErrMilestoneNotFound, id)
 }
 
 func (o Order) isLastMilestoneSettled() bool {

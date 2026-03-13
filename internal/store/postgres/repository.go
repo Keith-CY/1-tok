@@ -148,7 +148,7 @@ func (r *OrderRepository) Get(id string) (*core.Order, error) {
 	var payload []byte
 	err := r.db.QueryRow(`SELECT payload FROM orders WHERE id = $1`, id).Scan(&payload)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, errors.New("order not found")
+		return nil, core.ErrOrderNotFound
 	}
 	if err != nil {
 		return nil, err
@@ -280,7 +280,7 @@ func scanDispute(row rowScanner) (platform.Dispute, error) {
 		&dispute.CreatedAt,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return platform.Dispute{}, errors.New("dispute not found")
+			return platform.Dispute{}, platform.ErrDisputeNotFound
 		}
 		return platform.Dispute{}, err
 	}
@@ -525,7 +525,7 @@ func scanRFQ(row rowScanner) (platform.RFQ, error) {
 		&rfq.UpdatedAt,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return platform.RFQ{}, errors.New("rfq not found")
+			return platform.RFQ{}, platform.ErrRFQNotFound
 		}
 		return platform.RFQ{}, err
 	}
@@ -615,7 +615,7 @@ func scanBid(row rowScanner) (platform.Bid, error) {
 		&bid.UpdatedAt,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return platform.Bid{}, errors.New("bid not found")
+			return platform.Bid{}, platform.ErrBidNotFound
 		}
 		return platform.Bid{}, err
 	}
