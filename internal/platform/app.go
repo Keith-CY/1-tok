@@ -667,7 +667,7 @@ func (r *memoryOrderRepository) Get(id string) (*core.Order, error) {
 	defer r.mu.RUnlock()
 	order, ok := r.data[id]
 	if !ok {
-		return nil, errors.New("order not found")
+		return nil, core.ErrOrderNotFound
 	}
 	return cloneOrder(order), nil
 }
@@ -722,7 +722,7 @@ func (r *memoryRFQRepository) Get(id string) (RFQ, error) {
 			return rfq, nil
 		}
 	}
-	return RFQ{}, errors.New("rfq not found")
+	return RFQ{}, ErrRFQNotFound
 }
 
 func (r *memoryRFQRepository) Save(rfq RFQ) error {
@@ -769,7 +769,7 @@ func (r *memoryBidRepository) Get(id string) (Bid, error) {
 			return cloneBid(bid), nil
 		}
 	}
-	return Bid{}, errors.New("bid not found")
+	return Bid{}, ErrBidNotFound
 }
 
 func (r *memoryBidRepository) Save(bid Bid) error {
@@ -842,7 +842,7 @@ func (r *memoryDisputeRepository) Get(id string) (Dispute, error) {
 			return dispute, nil
 		}
 	}
-	return Dispute{}, errors.New("dispute not found")
+	return Dispute{}, ErrDisputeNotFound
 }
 
 func (r *memoryDisputeRepository) Save(dispute Dispute) error {
