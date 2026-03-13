@@ -292,7 +292,7 @@ func MigrateFundingRecordStore(db *sql.DB) error {
 			buyer_org_id TEXT,
 			provider_org_id TEXT,
 			asset TEXT NOT NULL,
-			amount TEXT NOT NULL,
+			amount NUMERIC NOT NULL DEFAULT 0,
 			invoice TEXT,
 			external_id TEXT,
 			state TEXT NOT NULL,
@@ -304,6 +304,24 @@ func MigrateFundingRecordStore(db *sql.DB) error {
 			ON settlement_funding_records (invoice) WHERE invoice IS NOT NULL;
 		CREATE UNIQUE INDEX IF NOT EXISTS settlement_funding_records_external_id_uidx
 			ON settlement_funding_records (external_id) WHERE external_id IS NOT NULL;
+
+		-- Migrate: convert amount from TEXT to NUMERIC if needed (idempotent)
+		DO $$ BEGIN
+			IF EXISTS (
+				SELECT 1 FROM information_schema.columns
+				WHERE table_name = 'settlement_funding_records'
+				AND column_name = 'amount'
+				AND data_type = 'text'
+			) THEN
+				ALTER TABLE settlement_funding_records
+					ALTER COLUMN amount TYPE NUMERIC USING amount::numeric;
+			END IF;
+		END $$;
+
+		-- Indexes on filter columns (#65)
+		CREATE INDEX IF NOT EXISTS idx_sfr_order_id ON settlement_funding_records (order_id);
+		CREATE INDEX IF NOT EXISTS idx_sfr_state ON settlement_funding_records (state);
+		CREATE INDEX IF NOT EXISTS idx_sfr_kind ON settlement_funding_records (kind);
 	`)
 	return err
 }
