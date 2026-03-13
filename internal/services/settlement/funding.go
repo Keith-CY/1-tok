@@ -239,17 +239,30 @@ func (r *postgresFundingRecordRepository) List(filter FundingRecordFilter) ([]Fu
 	return records, rows.Err()
 }
 
+// loadFundingRecordRepository returns a FundingRecordRepository.
+// Deprecated: Use loadFundingRecordRepositoryE for explicit error handling.
 func loadFundingRecordRepository() FundingRecordRepository {
+	repo, err := loadFundingRecordRepositoryE()
+	if err != nil {
+		panic(fmt.Sprintf("settlement funding store: %v", err))
+	}
+	return repo
+}
+
+// loadFundingRecordRepositoryE returns a FundingRecordRepository or an error.
+// When persistence is not required and the configured store fails to open,
+// it falls back to an in-memory implementation.
+func loadFundingRecordRepositoryE() (FundingRecordRepository, error) {
 	repository, err := loadConfiguredFundingRecordRepository()
 	if err != nil {
 		if runtimeconfig.RequirePersistence() {
-			panic(err)
+			return nil, err
 		}
 		log.Printf("settlement funding store: falling back to memory: %v", err)
-		return NewMemoryFundingRecordRepository()
+		return NewMemoryFundingRecordRepository(), nil
 	}
 
-	return repository
+	return repository, nil
 }
 
 func loadConfiguredFundingRecordRepository() (FundingRecordRepository, error) {

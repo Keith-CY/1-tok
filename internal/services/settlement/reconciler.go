@@ -31,7 +31,11 @@ func NewReconciler(options ReconcilerOptions) *Reconciler {
 		options.Fiber = fiberclient.NewClientFromEnv()
 	}
 	if options.Funding == nil {
-		options.Funding = loadFundingRecordRepository()
+		funding, err := loadFundingRecordRepositoryE()
+		if err != nil {
+			panic(fmt.Sprintf("reconciler: funding store: %v", err))
+		}
+		options.Funding = funding
 	}
 
 	return &Reconciler{
