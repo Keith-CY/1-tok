@@ -1,0 +1,25 @@
+# Environment Contract
+
+This file documents common environment variables used by 1-tok services.
+
+## Required in most local workflows
+- `DATABASE_URL`
+- `REDIS_URL` (required when `RATE_LIMIT_ENFORCE=true`)
+- `NATS_URL`
+
+## Service auth tokens
+- `API_GATEWAY_EXECUTION_TOKEN` (or `API_GATEWAY_EXECUTION_TOKENS`)
+- `EXECUTION_EVENT_TOKEN` (or `EXECUTION_EVENT_TOKENS`)
+- `EXECUTION_GATEWAY_TOKEN` (or `EXECUTION_GATEWAY_TOKENS`)
+- `SETTLEMENT_SERVICE_TOKEN` (or `SETTLEMENT_SERVICE_TOKENS`)
+
+## External dependencies (when `ONE_TOK_REQUIRE_EXTERNALS=true`)
+- `IAM_UPSTREAM`
+- `API_GATEWAY_UPSTREAM`
+- `FIBER_RPC_URL`, `FIBER_APP_ID`, `FIBER_HMAC_SECRET`
+- `CARRIER_GATEWAY_URL`, `CARRIER_GATEWAY_API_TOKEN`
+
+## Observability
+- `SENTRY_DSN`
+- `SENTRY_ENVIRONMENT`
+- `SENTRY_RELEASE`
