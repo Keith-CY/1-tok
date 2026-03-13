@@ -1,0 +1,14 @@
+# Global fallback
+* @Keith-CY
+
+# Core backend
+/internal/ @Keith-CY
+/cmd/ @Keith-CY
+
+# Web and contracts
+/apps/web/ @Keith-CY
+/packages/contracts/ @Keith-CY
+
+# Infra and scripts
+/scripts/ @Keith-CY
+/deploy/ @Keith-CY
