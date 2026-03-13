@@ -20,6 +20,7 @@ import (
 	"github.com/chenyu/1-tok/internal/ratelimit"
 	"github.com/chenyu/1-tok/internal/runtimeconfig"
 	"github.com/chenyu/1-tok/internal/store/postgres"
+	"github.com/chenyu/1-tok/internal/httputil"
 )
 
 const defaultSessionTTL = 30 * 24 * time.Hour
@@ -74,12 +75,12 @@ func NewServerWithOptions(options Options) *Server {
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/healthz" {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "service": "iam"})
+		httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok", "service": "iam"})
 		return
 	}
 
 	if r.Method == http.MethodGet && r.URL.Path == "/v1/roles" {
-		writeJSON(w, http.StatusOK, map[string]any{
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{
 			"roles": map[string][]string{
 				"buyer":    {"org_owner", "procurement", "operator", "finance_viewer"},
 				"provider": {"org_owner", "sales", "delivery_operator", "finance_viewer"},
@@ -121,11 +122,11 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		OrganizationKind string `json:"organizationKind"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
 	if reason := validSignupPayload(payload.Email, payload.Password, payload.Name, payload.OrganizationName, payload.OrganizationKind); reason != "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": reason})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": reason})
 		return
 	}
 	r = observability.WithRequestTags(r, observability.RequestTags{
@@ -145,7 +146,7 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(payload.Password), bcrypt.DefaultCost)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -157,17 +158,17 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		OrganizationKind: payload.OrganizationKind,
 	})
 	if errors.Is(err, identity.ErrConflict) {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "email already exists"})
+		httputil.WriteJSON(w, http.StatusConflict, map[string]string{"error": "email already exists"})
 		return
 	}
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
 	session, token, err := s.issueSession(actor.User.ID)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -186,7 +187,7 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]any{
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
 		"user": map[string]any{
 			"id":    actor.User.ID,
 			"email": actor.User.Email,
@@ -208,11 +209,11 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
 	if strings.TrimSpace(payload.Email) == "" || strings.TrimSpace(payload.Password) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required fields"})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required fields"})
 		return
 	}
 	subjectHash := ratelimit.SubjectHash(payload.Email)
@@ -233,26 +234,26 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 
 	user, err := s.store.FindUserByEmail(payload.Email)
 	if errors.Is(err, identity.ErrNotFound) {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
+		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
 		return
 	}
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(payload.Password)); err != nil {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
+		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
 		return
 	}
 
 	session, token, err := s.issueSession(user.ID)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]any{
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
 		"user": map[string]any{
 			"id":    user.ID,
 			"email": user.Email,
@@ -269,25 +270,25 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	token, ok := bearerToken(r.Header.Get("Authorization"))
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "missing bearer token"})
+		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": "missing bearer token"})
 		return
 	}
 
 	actor, err := s.store.GetAuthenticatedActorBySessionDigest(tokenDigest(token))
 	if errors.Is(err, identity.ErrNotFound) {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid session"})
+		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid session"})
 		return
 	}
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 	if actor.Session.RevokedAt != nil {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "session revoked"})
+		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": "session revoked"})
 		return
 	}
 	if actor.Session.ExpiresAt.Before(s.now()) {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "session expired"})
+		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": "session expired"})
 		return
 	}
 
@@ -303,7 +304,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"user": map[string]any{
 			"id":    actor.User.ID,
 			"email": actor.User.Email,
@@ -316,16 +317,16 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	token, ok := bearerToken(r.Header.Get("Authorization"))
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "missing bearer token"})
+		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": "missing bearer token"})
 		return
 	}
 	actor, err := s.store.GetAuthenticatedActorBySessionDigest(tokenDigest(token))
 	if errors.Is(err, identity.ErrNotFound) {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid session"})
+		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid session"})
 		return
 	}
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 	r = observability.WithRequestTags(r, observability.RequestTags{
@@ -339,14 +340,14 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.store.RevokeSession(tokenDigest(token)); errors.Is(err, identity.ErrNotFound) {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid session"})
+		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid session"})
 		return
 	} else if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"revoked": true})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"revoked": true})
 }
 
 func (s *Server) issueSession(userID string) (identity.Session, string, error) {
@@ -428,11 +429,6 @@ func validSignupPayload(email, password, name, organizationName, organizationKin
 	}
 }
 
-func writeJSON(w http.ResponseWriter, status int, payload any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
-}
 
 func bearerToken(header string) (string, bool) {
 	if !strings.HasPrefix(header, "Bearer ") {
@@ -462,7 +458,7 @@ func (s *Server) applyRateLimit(w http.ResponseWriter, r *http.Request, policy r
 	decision, err := s.rateLimiter.Allow(r.Context(), policy, meta)
 	if err != nil {
 		observability.CaptureError(r.Context(), err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "rate limiter unavailable"})
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "rate limiter unavailable"})
 		return true
 	}
 	if decision.Allowed {
@@ -470,6 +466,6 @@ func (s *Server) applyRateLimit(w http.ResponseWriter, r *http.Request, policy r
 	}
 	ratelimit.WriteHeaders(w, s.now(), decision)
 	observability.CaptureMessage(r.Context(), "rate limit exceeded")
-	writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "rate limit exceeded"})
+	httputil.WriteJSON(w, http.StatusTooManyRequests, map[string]string{"error": "rate limit exceeded"})
 	return true
 }

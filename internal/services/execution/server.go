@@ -14,6 +14,7 @@ import (
 	carrierclient "github.com/chenyu/1-tok/internal/integrations/carrier"
 	"github.com/chenyu/1-tok/internal/runtimeconfig"
 	"github.com/chenyu/1-tok/internal/serviceauth"
+	"github.com/chenyu/1-tok/internal/httputil"
 )
 
 type Server struct {
@@ -127,7 +128,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodPost && r.URL.Path == "/v1/carrier/events" {
 		if !s.inboundTokens.MatchesRequest(r) {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+			httputil.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 			return
 		}
 
@@ -161,16 +162,16 @@ func (s *Server) handleCodeAgentHealth(w http.ResponseWriter, r *http.Request) {
 		WorkspaceRoot: r.URL.Query().Get("workspaceRoot"),
 	}
 	if input.HostID == "" || input.AgentID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required fields"})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required fields"})
 		return
 	}
 
 	result, err := s.carrier.GetCodeAgentHealth(r.Context(), input)
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"health": result})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"health": result})
 }
 
 func (s *Server) handleCodeAgentVersion(w http.ResponseWriter, r *http.Request) {
@@ -180,35 +181,35 @@ func (s *Server) handleCodeAgentVersion(w http.ResponseWriter, r *http.Request) 
 		Backend: r.URL.Query().Get("backend"),
 	}
 	if input.HostID == "" || input.AgentID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required fields"})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required fields"})
 		return
 	}
 
 	result, err := s.carrier.GetCodeAgentVersion(r.Context(), input)
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"version": result})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"version": result})
 }
 
 func (s *Server) handleCodeAgentRun(w http.ResponseWriter, r *http.Request) {
 	var input carrierclient.CodeAgentRunInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
 	if input.HostID == "" || input.AgentID == "" || input.Capability == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required fields"})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required fields"})
 		return
 	}
 
 	result, err := s.carrier.RunCodeAgent(r.Context(), input)
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"run": result})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"run": result})
 }
 
 func actionForEvent(eventType string) string {
@@ -322,9 +323,4 @@ func (s *Server) postJSON(path string, payload any, target any) error {
 	return json.NewDecoder(res.Body).Decode(target)
 }
 
-func writeJSON(w http.ResponseWriter, status int, payload any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
-}
 

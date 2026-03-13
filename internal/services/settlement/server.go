@@ -15,6 +15,7 @@ import (
 	"github.com/chenyu/1-tok/internal/runtimeconfig"
 	"github.com/chenyu/1-tok/internal/serviceauth"
 	"github.com/chenyu/1-tok/internal/services/proxy"
+	"github.com/chenyu/1-tok/internal/httputil"
 )
 
 type Server struct {
@@ -167,12 +168,12 @@ func (s *Server) handleCreateInvoice(w http.ResponseWriter, r *http.Request) {
 		Memo          string `json:"memo"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
 
 	if payload.OrderID == "" || payload.BuyerOrgID == "" || payload.ProviderOrgID == "" || payload.Asset == "" || payload.Amount == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required fields"})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required fields"})
 		return
 	}
 
@@ -196,7 +197,7 @@ func (s *Server) handleCreateInvoice(w http.ResponseWriter, r *http.Request) {
 
 	recordID, err := s.funding.NextID()
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 	now := time.Now().UTC()
@@ -214,11 +215,11 @@ func (s *Server) handleCreateInvoice(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]string{"invoice": result.Invoice})
+	httputil.WriteJSON(w, http.StatusCreated, map[string]string{"invoice": result.Invoice})
 }
 
 func (s *Server) handleGetInvoiceStatus(w http.ResponseWriter, r *http.Request) {
@@ -229,7 +230,7 @@ func (s *Server) handleGetInvoiceStatus(w http.ResponseWriter, r *http.Request) 
 
 	invoice, err := invoiceFromPath(r.URL.Path)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -239,11 +240,11 @@ func (s *Server) handleGetInvoiceStatus(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err := s.funding.UpdateInvoiceState(invoice, result.State); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{
 		"invoice": invoice,
 		"state":   result.State,
 	})
@@ -252,7 +253,7 @@ func (s *Server) handleGetInvoiceStatus(w http.ResponseWriter, r *http.Request) 
 func (s *Server) handleQuoteWithdrawal(w http.ResponseWriter, r *http.Request) {
 	input, err := parseWithdrawalRequest(r)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	input.ProviderOrgID, err = s.resolveProviderOrg(r, input.ProviderOrgID)
@@ -272,13 +273,13 @@ func (s *Server) handleQuoteWithdrawal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, result)
+	httputil.WriteJSON(w, http.StatusOK, result)
 }
 
 func (s *Server) handleRequestWithdrawal(w http.ResponseWriter, r *http.Request) {
 	input, err := parseWithdrawalRequest(r)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	input.ProviderOrgID, err = s.resolveProviderOrg(r, input.ProviderOrgID)
@@ -300,7 +301,7 @@ func (s *Server) handleRequestWithdrawal(w http.ResponseWriter, r *http.Request)
 
 	recordID, err := s.funding.NextID()
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 	now := time.Now().UTC()
@@ -325,11 +326,11 @@ func (s *Server) handleRequestWithdrawal(w http.ResponseWriter, r *http.Request)
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, result)
+	httputil.WriteJSON(w, http.StatusCreated, result)
 }
 
 func (s *Server) handleListFundingRecords(w http.ResponseWriter, r *http.Request) {
@@ -345,10 +346,10 @@ func (s *Server) handleListFundingRecords(w http.ResponseWriter, r *http.Request
 
 	records, err := s.funding.List(filter)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"records": records})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"records": records})
 }
 
 func (s *Server) handleSettledFeed(w http.ResponseWriter, r *http.Request) {
@@ -361,7 +362,7 @@ func (s *Server) handleSettledFeed(w http.ResponseWriter, r *http.Request) {
 	if limit := strings.TrimSpace(r.URL.Query().Get("limit")); limit != "" {
 		parsed, err := strconv.Atoi(limit)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid limit"})
+			httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid limit"})
 			return
 		}
 		input.Limit = parsed
@@ -386,12 +387,12 @@ func (s *Server) handleSettledFeed(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if err := s.funding.UpdateInvoiceState(item.Invoice, "SETTLED"); err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
 	}
 
-	writeJSON(w, http.StatusOK, result)
+	httputil.WriteJSON(w, http.StatusOK, result)
 }
 
 func (s *Server) handleWithdrawalStatuses(w http.ResponseWriter, r *http.Request) {
@@ -401,7 +402,7 @@ func (s *Server) handleWithdrawalStatuses(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if userID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing providerOrgId"})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "missing providerOrgId"})
 		return
 	}
 
@@ -416,12 +417,12 @@ func (s *Server) handleWithdrawalStatuses(w http.ResponseWriter, r *http.Request
 			continue
 		}
 		if err := s.funding.UpdateExternalState(item.ID, item.State); err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
 	}
 
-	writeJSON(w, http.StatusOK, result)
+	httputil.WriteJSON(w, http.StatusOK, result)
 }
 
 func invoiceFromPath(path string) (string, error) {
@@ -537,30 +538,25 @@ func (s *Server) resolveProviderOrg(r *http.Request, requestedProviderOrgID stri
 	return "", errors.New("provider or ops membership is required")
 }
 
-func writeJSON(w http.ResponseWriter, status int, payload any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
-}
 
 func writeFiberError(w http.ResponseWriter, err error) {
 	if errors.Is(err, fiberclient.ErrNotConfigured) {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+	httputil.WriteJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 }
 
 func writeAuthError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, iamclient.ErrUnauthorized):
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 	case err != nil && err.Error() == "invalid service token":
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 	case strings.Contains(err.Error(), "mismatch"), strings.Contains(err.Error(), "required"):
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
 	default:
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 	}
 }
 

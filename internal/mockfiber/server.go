@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+
+	"github.com/chenyu/1-tok/internal/httputil"
 	"sync"
 	"time"
 
@@ -24,7 +26,7 @@ func NewServer() *Server {
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet && r.URL.Path == "/healthz" {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "service": "mock-fiber"})
+		httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok", "service": "mock-fiber"})
 		return
 	}
 	if r.Method != http.MethodPost || r.URL.Path != "/" {
@@ -175,14 +177,9 @@ func (s *Server) handleDashboardSummary(w http.ResponseWriter, id any, raw json.
 	})
 }
 
-func writeJSON(w http.ResponseWriter, status int, payload any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
-}
 
 func writeRPCResult(w http.ResponseWriter, id any, result any) {
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"jsonrpc": "2.0",
 		"id":      id,
 		"result":  result,
@@ -190,7 +187,7 @@ func writeRPCResult(w http.ResponseWriter, id any, result any) {
 }
 
 func writeRPCError(w http.ResponseWriter, id any, code int, message string) {
-	writeJSON(w, http.StatusOK, map[string]any{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"jsonrpc": "2.0",
 		"id":      id,
 		"error": map[string]any{

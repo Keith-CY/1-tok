@@ -15,6 +15,7 @@ import (
 	"github.com/chenyu/1-tok/internal/ratelimit"
 	"github.com/chenyu/1-tok/internal/runtimeconfig"
 	"github.com/chenyu/1-tok/internal/serviceauth"
+	"github.com/chenyu/1-tok/internal/httputil"
 )
 
 // Sentinel startup errors returned by NewServerWithOptionsE.
@@ -103,7 +104,7 @@ func NewServerWithOptionsE(options Options) (*Server, error) {
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Method == http.MethodGet && r.URL.Path == "/healthz":
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/providers":
 		s.handleListProviders(w)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/listings":
@@ -139,34 +140,34 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/messages":
 		s.handleCreateMessage(w, r)
 	default:
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "route not found"})
+		httputil.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "route not found"})
 	}
 }
 
 func (s *Server) handleListProviders(w http.ResponseWriter) {
 	providers, err := s.app.ListProviders()
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"providers": providers})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"providers": providers})
 }
 
 func (s *Server) handleListListings(w http.ResponseWriter) {
 	listings, err := s.app.ListListings()
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"listings": listings})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"listings": listings})
 }
 
 func (s *Server) handleListRFQs(w http.ResponseWriter, r *http.Request) {
 	rfqs, err := s.app.ListRFQs()
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -184,7 +185,7 @@ func (s *Server) handleListRFQs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"rfqs": rfqs})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"rfqs": rfqs})
 }
 
 func (s *Server) handleListDisputes(w http.ResponseWriter, r *http.Request) {
@@ -195,17 +196,17 @@ func (s *Server) handleListDisputes(w http.ResponseWriter, r *http.Request) {
 
 	disputes, err := s.app.ListDisputes()
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"disputes": disputes})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"disputes": disputes})
 }
 
 func (s *Server) handleListOrders(w http.ResponseWriter, r *http.Request) {
 	orders, err := s.app.ListOrders()
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -223,23 +224,23 @@ func (s *Server) handleListOrders(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"orders": orders})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"orders": orders})
 }
 
 func (s *Server) handleGetOrder(w http.ResponseWriter, r *http.Request) {
 	orderID, err := orderIDFromPath(r.URL.Path)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 
 	order, err := s.app.GetOrder(orderID)
 	if err != nil {
 		if errors.Is(err, core.ErrOrderNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+			httputil.WriteJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -255,7 +256,7 @@ func (s *Server) handleGetOrder(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"order": order})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"order": order})
 }
 
 func (s *Server) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
@@ -273,7 +274,7 @@ func (s *Server) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 		} `json:"milestones"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
 
@@ -297,7 +298,7 @@ func (s *Server) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if buyerOrgID == "" || payload.ProviderOrgID == "" || len(payload.Milestones) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required fields"})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required fields"})
 		return
 	}
 
@@ -320,11 +321,11 @@ func (s *Server) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 
 	order, err := s.app.CreateOrder(input)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]any{"order": order})
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{"order": order})
 }
 
 func (s *Server) handleCreateRFQ(w http.ResponseWriter, r *http.Request) {
@@ -337,7 +338,7 @@ func (s *Server) handleCreateRFQ(w http.ResponseWriter, r *http.Request) {
 		ResponseDeadlineAt string `json:"responseDeadlineAt"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
 
@@ -362,7 +363,7 @@ func (s *Server) handleCreateRFQ(w http.ResponseWriter, r *http.Request) {
 
 	responseDeadlineAt, err := time.Parse(time.RFC3339, payload.ResponseDeadlineAt)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid responseDeadlineAt"})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid responseDeadlineAt"})
 		return
 	}
 
@@ -375,17 +376,17 @@ func (s *Server) handleCreateRFQ(w http.ResponseWriter, r *http.Request) {
 		ResponseDeadlineAt: responseDeadlineAt,
 	})
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]any{"rfq": rfq})
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{"rfq": rfq})
 }
 
 func (s *Server) handleListRFQBids(w http.ResponseWriter, r *http.Request) {
 	rfqID, err := rfqIDFromBidsPath(r.URL.Path)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -415,13 +416,13 @@ func (s *Server) handleListRFQBids(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"bids": bids})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"bids": bids})
 }
 
 func (s *Server) handleCreateBid(w http.ResponseWriter, r *http.Request) {
 	rfqID, err := rfqIDFromBidsPath(r.URL.Path)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -437,7 +438,7 @@ func (s *Server) handleCreateBid(w http.ResponseWriter, r *http.Request) {
 		} `json:"milestones"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
 
@@ -482,13 +483,13 @@ func (s *Server) handleCreateBid(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]any{"bid": bid})
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{"bid": bid})
 }
 
 func (s *Server) handleAwardRFQ(w http.ResponseWriter, r *http.Request) {
 	rfqID, err := rfqIDFromAwardPath(r.URL.Path)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -498,7 +499,7 @@ func (s *Server) handleAwardRFQ(w http.ResponseWriter, r *http.Request) {
 		CreditLineID string `json:"creditLineId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
 
@@ -514,7 +515,7 @@ func (s *Server) handleAwardRFQ(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if buyerOrgID != rfq.BuyerOrgID {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "buyer org mismatch"})
+		httputil.WriteJSON(w, http.StatusForbidden, map[string]string{"error": "buyer org mismatch"})
 		return
 	}
 	actorUserID := s.actorUserID(r)
@@ -542,7 +543,7 @@ func (s *Server) handleAwardRFQ(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"rfq": awardedRFQ, "order": order})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"rfq": awardedRFQ, "order": order})
 }
 
 func (s *Server) resolveBuyerOrg(r *http.Request, requestedBuyerOrgID string) (string, error) {
@@ -686,7 +687,7 @@ func (s *Server) handleSettleMilestone(w http.ResponseWriter, r *http.Request) {
 
 	orderID, milestoneID, err := orderMilestoneFromSettlePath(r.URL.Path)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -696,7 +697,7 @@ func (s *Server) handleSettleMilestone(w http.ResponseWriter, r *http.Request) {
 		Source      string `json:"source"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
 
@@ -711,7 +712,7 @@ func (s *Server) handleSettleMilestone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"order": order, "ledgerEntry": entry})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"order": order, "ledgerEntry": entry})
 }
 
 func (s *Server) handleRecordUsage(w http.ResponseWriter, r *http.Request) {
@@ -722,7 +723,7 @@ func (s *Server) handleRecordUsage(w http.ResponseWriter, r *http.Request) {
 
 	orderID, milestoneID, err := orderMilestoneFromUsagePath(r.URL.Path)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -732,7 +733,7 @@ func (s *Server) handleRecordUsage(w http.ResponseWriter, r *http.Request) {
 		ProofRef    string               `json:"proofRef"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
 
@@ -747,13 +748,13 @@ func (s *Server) handleRecordUsage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"order": order, "usageCharge": charge})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"order": order, "usageCharge": charge})
 }
 
 func (s *Server) handleCreateDispute(w http.ResponseWriter, r *http.Request) {
 	orderID, err := orderIDFromDisputePath(r.URL.Path)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -763,7 +764,7 @@ func (s *Server) handleCreateDispute(w http.ResponseWriter, r *http.Request) {
 		RefundCents int64  `json:"refundCents"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
 
@@ -780,7 +781,7 @@ func (s *Server) handleCreateDispute(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if buyerOrgID != order.BuyerOrgID {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "buyer org mismatch"})
+			httputil.WriteJSON(w, http.StatusForbidden, map[string]string{"error": "buyer org mismatch"})
 			return
 		}
 		actorUserID := s.actorUserID(r)
@@ -808,13 +809,13 @@ func (s *Server) handleCreateDispute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]any{"order": order, "refundEntry": refund, "recoveryEntry": recovery})
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{"order": order, "refundEntry": refund, "recoveryEntry": recovery})
 }
 
 func (s *Server) handleResolveDispute(w http.ResponseWriter, r *http.Request) {
 	disputeID, err := disputeIDFromResolvePath(r.URL.Path)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -822,11 +823,11 @@ func (s *Server) handleResolveDispute(w http.ResponseWriter, r *http.Request) {
 		Resolution string `json:"resolution"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
 	if strings.TrimSpace(payload.Resolution) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "resolution is required"})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "resolution is required"})
 		return
 	}
 
@@ -855,7 +856,7 @@ func (s *Server) handleResolveDispute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"dispute": dispute, "order": order})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"dispute": dispute, "order": order})
 }
 
 func (s *Server) handleCreditDecision(w http.ResponseWriter, r *http.Request) {
@@ -877,11 +878,11 @@ func (s *Server) handleCreditDecision(w http.ResponseWriter, r *http.Request) {
 
 	var history core.CreditHistory
 	if err := json.NewDecoder(r.Body).Decode(&history); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"decision": s.app.DecideCredit(history)})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"decision": s.app.DecideCredit(history)})
 }
 
 func (s *Server) handleCreateMessage(w http.ResponseWriter, r *http.Request) {
@@ -891,7 +892,7 @@ func (s *Server) handleCreateMessage(w http.ResponseWriter, r *http.Request) {
 		Body    string `json:"body"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
 
@@ -934,11 +935,11 @@ func (s *Server) handleCreateMessage(w http.ResponseWriter, r *http.Request) {
 
 	message, err := s.app.CreateMessage(payload.OrderID, payload.Author, payload.Body)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]any{"message": message})
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{"message": message})
 }
 
 func orderIDFromPath(path string) (string, error) {
@@ -997,11 +998,6 @@ func disputeIDFromResolvePath(path string) (string, error) {
 	return parts[3], nil
 }
 
-func writeJSON(w http.ResponseWriter, status int, payload any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
-}
 
 func writeGatewayError(w http.ResponseWriter, err error) {
 	switch {
@@ -1010,22 +1006,22 @@ func writeGatewayError(w http.ResponseWriter, err error) {
 		errors.Is(err, platform.ErrRFQNotFound),
 		errors.Is(err, platform.ErrBidNotFound),
 		errors.Is(err, platform.ErrDisputeNotFound):
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 	default:
-		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 	}
 }
 
 func writeAuthError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, iamclient.ErrUnauthorized):
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 	case err != nil && err.Error() == "invalid service token":
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 	case strings.Contains(err.Error(), "mismatch"), strings.Contains(err.Error(), "required"):
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
 	default:
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		httputil.WriteJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 	}
 }
 
@@ -1047,7 +1043,7 @@ func (s *Server) applyRateLimit(w http.ResponseWriter, r *http.Request, policy r
 	decision, err := s.rateLimiter.Allow(r.Context(), policy, meta)
 	if err != nil {
 		observability.CaptureError(r.Context(), err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "rate limiter unavailable"})
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "rate limiter unavailable"})
 		return true
 	}
 	if decision.Allowed {
@@ -1055,7 +1051,7 @@ func (s *Server) applyRateLimit(w http.ResponseWriter, r *http.Request, policy r
 	}
 	ratelimit.WriteHeaders(w, time.Now().UTC(), decision)
 	observability.CaptureMessage(r.Context(), "rate limit exceeded")
-	writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "rate limit exceeded"})
+	httputil.WriteJSON(w, http.StatusTooManyRequests, map[string]string{"error": "rate limit exceeded"})
 	return true
 }
 

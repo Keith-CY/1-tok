@@ -1,6 +1,9 @@
 package httputil
 
-import "net/http"
+import (
+	"encoding/json"
+	"net/http"
+)
 
 // DefaultMaxBodyBytes is the maximum request body size (1 MB).
 // Most API endpoints expect payloads under 10 KB.
@@ -16,4 +19,12 @@ func LimitBody(next http.Handler, maxBytes int64) http.Handler {
 		r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 		next.ServeHTTP(w, r)
 	})
+}
+
+// WriteJSON encodes payload as JSON and writes it to w with the given HTTP
+// status code. The Content-Type header is set to application/json.
+func WriteJSON(w http.ResponseWriter, status int, payload any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(payload)
 }
