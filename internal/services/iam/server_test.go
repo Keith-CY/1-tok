@@ -17,7 +17,7 @@ func TestSignupLoginAndMeRoundTrip(t *testing.T) {
 
 	signupBody := map[string]any{
 		"email":            "owner@example.com",
-		"password":         "correct horse battery staple",
+		"password":         "correct horse battery staple 1",
 		"name":             "Owner One",
 		"organizationName": "Atlas Buyer",
 		"organizationKind": "buyer",
@@ -101,7 +101,7 @@ func TestSignupLoginAndMeRoundTrip(t *testing.T) {
 
 	loginBody := map[string]any{
 		"email":    "owner@example.com",
-		"password": "correct horse battery staple",
+		"password": "correct horse battery staple 1",
 	}
 	loginPayload, _ := json.Marshal(loginBody)
 	loginReq := httptest.NewRequest(http.MethodPost, "/v1/sessions", bytes.NewReader(loginPayload))
@@ -138,7 +138,7 @@ func TestLogoutRevokesSession(t *testing.T) {
 
 	signupBody := map[string]any{
 		"email":            "logout@example.com",
-		"password":         "correct horse battery staple",
+		"password":         "correct horse battery staple 1",
 		"name":             "Logout User",
 		"organizationName": "Logout Buyer",
 		"organizationKind": "buyer",
@@ -185,7 +185,7 @@ func TestSignupAssignsOpsReviewerMembership(t *testing.T) {
 
 	signupBody := map[string]any{
 		"email":            "ops@example.com",
-		"password":         "correct horse battery staple",
+		"password":         "correct horse battery staple 1",
 		"name":             "Ops User",
 		"organizationName": "Treasury Ops",
 		"organizationKind": "ops",
@@ -297,7 +297,7 @@ func TestCreateSessionIsRateLimited(t *testing.T) {
 
 	signupPayload, _ := json.Marshal(map[string]any{
 		"email":            "owner@example.com",
-		"password":         "correct horse battery staple",
+		"password":         "correct horse battery staple 1",
 		"name":             "Owner One",
 		"organizationName": "Atlas Buyer",
 		"organizationKind": "buyer",
@@ -312,7 +312,7 @@ func TestCreateSessionIsRateLimited(t *testing.T) {
 
 	loginPayload, _ := json.Marshal(map[string]any{
 		"email":    "owner@example.com",
-		"password": "correct horse battery staple",
+		"password": "correct horse battery staple 1",
 	})
 	for i := 0; i < 2; i++ {
 		req := httptest.NewRequest(http.MethodPost, "/v1/sessions", bytes.NewReader(loginPayload))
