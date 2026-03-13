@@ -36,7 +36,7 @@ type Options struct {
 
 func NewServer() *Server {
 	return NewServerWithOptions(Options{
-		Upstream: upstream(),
+		Upstream: runtimeconfig.APIGatewayUpstream(),
 		Fiber:    fiberclient.NewClientFromEnv(),
 		Auth:     iamclient.NewClientFromEnv(),
 	})
@@ -47,7 +47,7 @@ func NewServerWithOptions(options Options) *Server {
 		if runtimeconfig.RequireExternalDependencies() && strings.TrimSpace(os.Getenv("API_GATEWAY_UPSTREAM")) == "" {
 			panic("API_GATEWAY_UPSTREAM is required when ONE_TOK_REQUIRE_EXTERNALS=true")
 		}
-		options.Upstream = upstream()
+		options.Upstream = runtimeconfig.APIGatewayUpstream()
 	}
 	if options.Fiber == nil {
 		if runtimeconfig.RequireExternalDependencies() {
@@ -574,9 +574,3 @@ func (s *Server) authorizeInternalRoute(r *http.Request) error {
 	return errors.New("invalid service token")
 }
 
-func upstream() string {
-	if value := os.Getenv("API_GATEWAY_UPSTREAM"); value != "" {
-		return value
-	}
-	return "http://127.0.0.1:8080"
-}

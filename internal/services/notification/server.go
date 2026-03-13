@@ -3,9 +3,9 @@ package notification
 import (
 	"fmt"
 	"net/http"
-	"os"
 
 	"github.com/chenyu/1-tok/internal/services/proxy"
+	"github.com/chenyu/1-tok/internal/runtimeconfig"
 )
 
 type Server struct {
@@ -22,7 +22,7 @@ func NewServer() *Server {
 
 // NewServerE creates a Server with explicit error handling instead of panic.
 func NewServerE() (*Server, error) {
-	inner, err := proxy.NewSingleHostE(upstream(), func(req *http.Request) {
+	inner, err := proxy.NewSingleHostE(runtimeconfig.APIGatewayUpstream(), func(req *http.Request) {
 		req.URL.Path = "/api/v1/messages"
 	})
 	if err != nil {
@@ -47,9 +47,3 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	http.NotFound(w, r)
 }
 
-func upstream() string {
-	if value := os.Getenv("API_GATEWAY_UPSTREAM"); value != "" {
-		return value
-	}
-	return "http://127.0.0.1:8080"
-}
