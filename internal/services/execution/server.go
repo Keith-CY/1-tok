@@ -44,7 +44,7 @@ type carrierEventPayload struct {
 
 func NewServer() *Server {
 	return NewServerWithOptions(Options{
-		APIUpstream: upstream(),
+		APIUpstream: runtimeconfig.APIGatewayUpstream(),
 		Carrier:     carrierclient.NewClientFromEnv(),
 	})
 }
@@ -61,7 +61,7 @@ func NewServerWithOptions(options Options) *Server {
 		if runtimeconfig.RequireExternalDependencies() && strings.TrimSpace(os.Getenv("API_GATEWAY_UPSTREAM")) == "" {
 			panic("API_GATEWAY_UPSTREAM is required when ONE_TOK_REQUIRE_EXTERNALS=true")
 		}
-		options.APIUpstream = upstream()
+		options.APIUpstream = runtimeconfig.APIGatewayUpstream()
 	}
 	if options.Carrier == nil {
 		if runtimeconfig.RequireExternalDependencies() {
@@ -328,9 +328,3 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
-func upstream() string {
-	if value := os.Getenv("API_GATEWAY_UPSTREAM"); value != "" {
-		return value
-	}
-	return "http://127.0.0.1:8080"
-}
