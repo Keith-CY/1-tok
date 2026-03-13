@@ -3,6 +3,7 @@ package settlement
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -56,6 +57,10 @@ func (r *Reconciler) Sync(ctx context.Context) (ReconcileSummary, error) {
 	}, nil
 }
 
+// MaxConsecutiveErrors is the number of consecutive sync failures before
+// RunReconcilerLoop gives up and returns an error.
+const MaxConsecutiveErrors = 5
+
 func RunReconcilerLoop(ctx context.Context, reconciler *Reconciler, interval time.Duration, logger *log.Logger) error {
 	if reconciler == nil {
 		return errors.New("reconciler is required")
@@ -76,6 +81,7 @@ func RunReconcilerLoop(ctx context.Context, reconciler *Reconciler, interval tim
 		return nil
 	}
 
+	// First run — fail fast if the initial sync fails.
 	if err := runOnce(); err != nil {
 		return err
 	}
@@ -83,14 +89,21 @@ func RunReconcilerLoop(ctx context.Context, reconciler *Reconciler, interval tim
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
+	consecutiveErrors := 0
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
 			if err := runOnce(); err != nil {
-				return err
+				consecutiveErrors++
+				logger.Printf("settlement reconciler error (%d/%d consecutive): %v", consecutiveErrors, MaxConsecutiveErrors, err)
+				if consecutiveErrors >= MaxConsecutiveErrors {
+					return fmt.Errorf("reconciler exceeded %d consecutive errors, last: %w", MaxConsecutiveErrors, err)
+				}
+				continue
 			}
+			consecutiveErrors = 0
 		}
 	}
 }
