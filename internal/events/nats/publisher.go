@@ -3,6 +3,7 @@ package nats
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -15,7 +16,19 @@ type Publisher struct {
 }
 
 func Connect(url string) (*Publisher, error) {
-	conn, err := nats.Connect(url)
+	conn, err := nats.Connect(url,
+		nats.MaxReconnects(-1),              // unlimited reconnect attempts
+		nats.ReconnectWait(2*time.Second),   // wait 2s between attempts
+		nats.ReconnectBufSize(16*1024*1024), // buffer up to 16MB while disconnected
+		nats.DisconnectErrHandler(func(_ *nats.Conn, err error) {
+			if err != nil {
+				log.Printf("nats: disconnected: %v", err)
+			}
+		}),
+		nats.ReconnectHandler(func(nc *nats.Conn) {
+			log.Printf("nats: reconnected to %s", nc.ConnectedUrl())
+		}),
+	)
 	if err != nil {
 		return nil, err
 	}

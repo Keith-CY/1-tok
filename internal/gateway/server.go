@@ -112,27 +112,27 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleListRFQs(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/disputes":
 		s.handleListDisputes(w, r)
-	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/bids"):
+	case r.Method == http.MethodGet && isRFQBidsPath(r.URL.Path):
 		s.handleListRFQBids(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/orders":
 		s.handleListOrders(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/rfqs":
 		s.handleCreateRFQ(w, r)
-	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/bids"):
+	case r.Method == http.MethodPost && isRFQBidsPath(r.URL.Path):
 		s.handleCreateBid(w, r)
-	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/award"):
+	case r.Method == http.MethodPost && isRFQAwardPath(r.URL.Path):
 		s.handleAwardRFQ(w, r)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/v1/orders/"):
 		s.handleGetOrder(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/orders":
 		s.handleCreateOrder(w, r)
-	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/settle"):
+	case r.Method == http.MethodPost && isOrderSettlePath(r.URL.Path):
 		s.handleSettleMilestone(w, r)
-	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/usage"):
+	case r.Method == http.MethodPost && isOrderUsagePath(r.URL.Path):
 		s.handleRecordUsage(w, r)
-	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/disputes"):
+	case r.Method == http.MethodPost && isOrderDisputesPath(r.URL.Path):
 		s.handleCreateDispute(w, r)
-	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/resolve"):
+	case r.Method == http.MethodPost && isDisputeResolvePath(r.URL.Path):
 		s.handleResolveDispute(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/credits/decision":
 		s.handleCreditDecision(w, r)
@@ -1204,4 +1204,37 @@ func filterBidsForActor(rfq platform.RFQ, bids []platform.Bid, actor iamclient.A
 	}
 
 	return filtered, nil
+}
+
+// Route predicates — used in ServeHTTP to avoid fragile HasSuffix matching.
+// Each function validates that the path matches the expected structure.
+
+func isRFQBidsPath(path string) bool {
+	_, err := rfqIDFromBidsPath(path)
+	return err == nil
+}
+
+func isRFQAwardPath(path string) bool {
+	_, err := rfqIDFromAwardPath(path)
+	return err == nil
+}
+
+func isOrderSettlePath(path string) bool {
+	_, _, err := orderMilestoneFromSettlePath(path)
+	return err == nil
+}
+
+func isOrderUsagePath(path string) bool {
+	_, _, err := orderMilestoneFromUsagePath(path)
+	return err == nil
+}
+
+func isOrderDisputesPath(path string) bool {
+	_, err := orderIDFromDisputePath(path)
+	return err == nil
+}
+
+func isDisputeResolvePath(path string) bool {
+	_, err := disputeIDFromResolvePath(path)
+	return err == nil
 }

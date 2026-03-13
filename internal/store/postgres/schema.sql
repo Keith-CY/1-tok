@@ -142,3 +142,19 @@ ALTER TABLE disputes
 
 ALTER TABLE disputes
   ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ;
+
+-- Indexes on foreign keys and common filter columns (#65)
+CREATE INDEX IF NOT EXISTS idx_memberships_org_id ON memberships (organization_id);
+CREATE INDEX IF NOT EXISTS idx_iam_sessions_user_id ON iam_sessions (user_id);
+CREATE INDEX IF NOT EXISTS idx_iam_sessions_expires_at ON iam_sessions (expires_at) WHERE revoked_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_listings_provider_org_id ON listings (provider_org_id);
+CREATE INDEX IF NOT EXISTS idx_orders_buyer_org_id ON orders (buyer_org_id);
+CREATE INDEX IF NOT EXISTS idx_orders_provider_org_id ON orders (provider_org_id);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders (status);
+CREATE INDEX IF NOT EXISTS idx_rfqs_buyer_org_id ON rfqs (buyer_org_id);
+CREATE INDEX IF NOT EXISTS idx_rfqs_status ON rfqs (status);
+CREATE INDEX IF NOT EXISTS idx_bids_rfq_id ON bids (rfq_id);
+CREATE INDEX IF NOT EXISTS idx_bids_provider_org_id ON bids (provider_org_id);
+CREATE INDEX IF NOT EXISTS idx_messages_order_id ON messages (order_id);
+CREATE INDEX IF NOT EXISTS idx_disputes_order_id ON disputes (order_id);
+CREATE INDEX IF NOT EXISTS idx_disputes_status ON disputes (status);
