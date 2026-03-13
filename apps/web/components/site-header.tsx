@@ -4,7 +4,8 @@ import { cookies } from "next/headers";
 import { SESSION_COOKIE_NAME } from "../lib/session";
 
 export async function SiteHeader() {
-  const hasSession = (await cookies()).has(SESSION_COOKIE_NAME);
+  const cookieStore = await cookies();
+  const hasSession = cookieStore.has(SESSION_COOKIE_NAME);
 
   return (
     <header className="masthead">
