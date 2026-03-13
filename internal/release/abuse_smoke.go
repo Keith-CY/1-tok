@@ -47,7 +47,7 @@ func RunAbuseSmoke(ctx context.Context, cfg AbuseConfig) (AbuseSummary, error) {
 		return AbuseSummary{}, fmt.Errorf("sentry health: %w", err)
 	}
 
-	suffix := fmt.Sprintf("%d", time.Now().UTC().UnixNano())
+	suffix := nanoSuffix()
 	email := "abuse-" + suffix + "@example.com"
 	password := "correct horse battery staple"
 	if err := signupAbuseUser(ctx, client, cfg.IAMBaseURL, cfg.ForwardedIP, email, password); err != nil {
