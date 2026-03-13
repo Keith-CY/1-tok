@@ -66,7 +66,7 @@ func RunSmoke(ctx context.Context, cfg Config) (Summary, error) {
 	buyer := actorIdentity{OrgID: "buyer_1"}
 	provider := actorIdentity{OrgID: "provider_1"}
 	if strings.TrimSpace(cfg.IAMBaseURL) != "" {
-		suffix := fmt.Sprintf("%d", time.Now().UTC().UnixNano())
+		suffix := nanoSuffix()
 		var err error
 		buyer, err = client.createIAMUser(ctx, cfg.IAMBaseURL, "buyer", suffix)
 		if err != nil {

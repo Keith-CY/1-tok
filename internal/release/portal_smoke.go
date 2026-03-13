@@ -63,7 +63,7 @@ func RunPortalSmoke(ctx context.Context, cfg PortalConfig) (PortalSummary, error
 		return PortalSummary{}, fmt.Errorf("web login health: %w", err)
 	}
 
-	suffix := fmt.Sprintf("%d", time.Now().UTC().UnixNano())
+	suffix := nanoSuffix()
 	buyer, err := client.createPortalUser(ctx, iamBaseURL, "buyer", suffix)
 	if err != nil {
 		return PortalSummary{}, err

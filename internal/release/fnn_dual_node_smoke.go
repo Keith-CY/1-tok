@@ -443,7 +443,7 @@ type rawFNNRPCClient struct {
 func (c *rawFNNRPCClient) Call(ctx context.Context, method string, params any, target any) error {
 	body, err := json.Marshal(map[string]any{
 		"jsonrpc": "2.0",
-		"id":      fmt.Sprintf("req_%d", time.Now().UnixNano()),
+		"id":      requestID(),
 		"method":  method,
 		"params":  params,
 	})
