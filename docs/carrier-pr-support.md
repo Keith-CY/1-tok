@@ -1,20 +1,109 @@
-# Carrier PR Support Contract
+# Carrier Upstream PR Checklist
 
-This document captures the `1-tok -> carrier` contract we want to upstream into `carrier`. The current repo still uses [mock-carrier](/Users/ChenYu/Documents/Github/1-tok/internal/mockcarrier/server.go), but the goal is to converge the mock onto a real Carrier surface and later submit that support upstream as a PR.
+This document is the upstream-facing checklist derived from the authoritative design in [carrier-first-class-design.md](./carrier-first-class-design.md).
 
-## Current must-have endpoints
+Use this document to coordinate the actual Carrier implementation or PR scope. If there is any conflict, the design doc wins.
 
-The execution service currently depends on three synchronous control-plane endpoints:
+## Goal
 
-| Method | Path | Purpose | Current caller |
-| --- | --- | --- | --- |
-| `GET` | `/api/v1/remote/hosts/:hostId/instances/:agentId/codeagent/health` | Validate the remote codeagent is reachable and healthy for the selected backend/workspace | [client.go](/Users/ChenYu/Documents/Github/1-tok/internal/integrations/carrier/client.go) |
-| `GET` | `/api/v1/remote/hosts/:hostId/instances/:agentId/codeagent/version` | Expose the actual backend/version string for compatibility checks and ops visibility | [client.go](/Users/ChenYu/Documents/Github/1-tok/internal/integrations/carrier/client.go) |
-| `POST` | `/api/v1/remote/hosts/:hostId/instances/:agentId/codeagent/run` | Run a bounded capability on the remote codeagent and return a policy decision/result envelope | [client.go](/Users/ChenYu/Documents/Github/1-tok/internal/integrations/carrier/client.go) |
+`Carrier` should support `1-tok` as a first-class marketplace execution substrate for provider-owned resources.
 
-All three paths should accept `Authorization: Bearer <token>`.
+That means:
 
-## Run payload we need Carrier to support
+- each provider can issue a provider-scoped Carrier integration token to `1-tok`
+- each awarded marketplace milestone can become one asynchronous Carrier execution
+- Carrier can push signed lifecycle events and expose durable execution evidence
+
+## Required Carrier Deliverables
+
+### 1. Keep the existing compatibility probes
+
+Carrier must continue to support:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v1/remote/hosts/:hostId/instances/:agentId/codeagent/health` | resource verification and diagnostics |
+| `GET` | `/api/v1/remote/hosts/:hostId/instances/:agentId/codeagent/version` | backend/version visibility |
+| `POST` | `/api/v1/remote/hosts/:hostId/instances/:agentId/codeagent/run` | emergency probe and compatibility fallback |
+
+All three paths should continue to accept `Authorization: Bearer <token>`.
+
+### 2. Add a provider-scoped integration namespace
+
+Recommended namespace:
+
+- `/api/v1/integrations/one-tok/*`
+
+Required endpoints:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/v1/integrations/one-tok/bindings/verify` | verify provider host/agent/backend/workspace |
+| `POST` | `/api/v1/integrations/one-tok/executions` | create one async execution |
+| `GET` | `/api/v1/integrations/one-tok/executions/:id` | fetch authoritative execution state |
+| `POST` | `/api/v1/integrations/one-tok/executions/:id/actions` | pause, resume, or cancel execution |
+
+### 3. Support provider-scoped bearer tokens
+
+Carrier must support a provider-issued integration token with these properties:
+
+- scoped to one provider account or tenant
+- limited to that provider’s resources
+- rotatable without hard downtime
+- usable on both probe endpoints and async execution endpoints
+
+### 4. Support signed async callbacks
+
+Carrier must be able to push lifecycle events to the platform callback:
+
+- `POST /v1/carrier/callbacks/events`
+
+Required delivery guarantees:
+
+- unique `eventId`
+- monotonic `sequence` per execution
+- retry-safe delivery with the same `eventId`
+- HMAC signing using a binding-specific key and secret
+- exponential retry on transient failure
+
+Required event types:
+
+- `execution.accepted`
+- `execution.started`
+- `execution.heartbeat`
+- `milestone.started`
+- `usage.reported`
+- `artifact.ready`
+- `budget.low`
+- `milestone.ready`
+- `execution.pause_requested`
+- `execution.paused`
+- `execution.resumed`
+- `execution.failed`
+- `execution.completed`
+
+### 5. Support durable execution evidence
+
+Carrier must expose:
+
+- execution status
+- machine-readable failure category and code
+- artifact references for logs and outputs
+- usage proofs for billable usage events
+
+Minimum failure categories:
+
+- `provider_fault`
+- `policy_denied`
+- `infra_unavailable`
+- `timeout`
+- `invalid_input`
+- `buyer_dependency_missing`
+- `unknown`
+
+## Payload Expectations
+
+### Existing `run` payload
 
 `POST .../run` should continue to support the current request body:
 
@@ -34,65 +123,65 @@ All three paths should accept `Authorization: Bearer <token>`.
 - `appendOutput`
 - `resumeSessionId`
 
-And the response envelope should continue to include:
+The response envelope should continue to include:
 
 - `backend`
 - `result.ok`
 - `result.policy_decision`
 - `result.cost_estimate_usd`
 
-## Event delivery we want next
+### Async execution payload
 
-Beyond the synchronous control-plane calls, `1-tok` needs Carrier to be able to emit execution lifecycle events toward the execution service route [server.go](/Users/ChenYu/Documents/Github/1-tok/internal/services/execution/server.go):
+`POST /api/v1/integrations/one-tok/executions` must support these fields:
 
-- `POST /v1/carrier/events`
-- Auth: `X-One-Tok-Service-Token`
-
-Current event payload fields:
-
+- `platformExecutionId`
 - `orderId`
 - `milestoneId`
-- `eventType`
-- `usageKind`
-- `amountCents`
-- `proofRef`
-- `summary`
+- `providerOrgId`
+- `executionProfileId`
+- `target.hostId`
+- `target.agentId`
+- `target.backend`
+- `target.workspaceRoot`
+- `task.capability`
+- `task.title`
+- `task.instructions`
+- `task.timeoutSec`
+- `budget.basePriceCents`
+- `budget.maxVariableSpendCents`
+- `budget.pauseThresholdCents`
+- `artifacts.retentionHours`
+- `artifacts.requiredKinds`
+- `callbacks.eventsUrl`
+- `callbacks.auth.type`
+- `callbacks.auth.keyId`
 
-Current event types consumed by `1-tok`:
+The response must include:
 
-- `milestone_ready`
-- `usage_reported`
-- `budget_low`
+- `carrierExecutionId`
+- `accepted`
+- `queueState`
+- `estimatedStartAt`
 
-Event types we should standardize next for upstream Carrier support:
+The callback secret should be established during binding creation or credential rotation, then referenced by `callbacks.auth.keyId`. It should not be resent on every execution create request.
 
-- `order_started`
-- `milestone_started`
-- `heartbeat`
-- `pause_required`
-- `order_failed`
-- `order_completed`
+## Done Criteria For The Carrier PR
 
-## Behavioral expectations
+The Carrier work is complete when:
 
-Carrier support should eventually guarantee:
+- a provider-scoped token can verify one host/agent/backend/workspace combination
+- `1-tok` can create an async execution for one awarded milestone
+- Carrier can push signed lifecycle events for that execution
+- duplicate or retried callbacks are safe
+- Carrier can expose logs, output artifacts, and usage proofs by execution id
+- failure states are typed instead of only free-form strings
 
-- idempotent retry-safe event delivery
-- explicit timeout semantics for `run`
-- stable backend naming
-- policy decision values that are machine-readable
-- a way to correlate async events back to the original `run` or task execution
-- artifact references for stdout/stderr/log bundles rather than only inline summaries
+## Explicit Non-Goals For The First PR
 
-## What is still mocked today
+The first Carrier PR does not need to include:
 
-The current mock implementation always returns success and does not yet model:
-
-- remote workspace creation/fetch
-- streamed logs or progressive run state
-- resumable long-running sessions
-- artifact upload/download
-- typed failure categories
-- async event push from Carrier to `1-tok`
-
-Those are the gaps we should close before or during the upstream Carrier PR.
+- interactive terminal streaming
+- platform-managed host or agent creation
+- multi-agent DAG orchestration
+- buyer-facing UI work
+- payment settlement logic inside Carrier
