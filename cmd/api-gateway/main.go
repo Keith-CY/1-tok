@@ -8,6 +8,7 @@ import (
 
 	"github.com/chenyu/1-tok/internal/bootstrap"
 	"github.com/chenyu/1-tok/internal/gateway"
+	"github.com/chenyu/1-tok/internal/httputil"
 	"github.com/chenyu/1-tok/internal/observability"
 )
 
@@ -30,7 +31,8 @@ func main() {
 	}()
 
 	log.Printf("api-gateway listening on %s", addr)
-	log.Fatal(http.ListenAndServe(addr, observability.WrapHTTP("api-gateway", gateway.NewServerWithApp(app))))
+	handler := httputil.LimitBody(gateway.NewServerWithApp(app), 0)
+	log.Fatal(http.ListenAndServe(addr, observability.WrapHTTP("api-gateway", handler)))
 }
 
 func envOrDefault(key, fallback string) string {

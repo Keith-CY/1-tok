@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/chenyu/1-tok/internal/httputil"
 	"github.com/chenyu/1-tok/internal/observability"
 	"github.com/chenyu/1-tok/internal/services/execution"
 )
@@ -19,7 +20,8 @@ func main() {
 	defer shutdown(2 * time.Second)
 
 	log.Printf("execution listening on %s", addr)
-	log.Fatal(http.ListenAndServe(addr, observability.WrapHTTP("execution", execution.NewServer())))
+	handler := httputil.LimitBody(execution.NewServer(), 0)
+	log.Fatal(http.ListenAndServe(addr, observability.WrapHTTP("execution", handler)))
 }
 
 func envOrDefault(key, fallback string) string {

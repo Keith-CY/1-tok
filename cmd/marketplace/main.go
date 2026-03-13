@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/chenyu/1-tok/internal/httputil"
 	"github.com/chenyu/1-tok/internal/observability"
 	"github.com/chenyu/1-tok/internal/services/marketplace"
 )
@@ -19,7 +20,8 @@ func main() {
 	defer shutdown(2 * time.Second)
 
 	log.Printf("marketplace listening on %s", addr)
-	log.Fatal(http.ListenAndServe(addr, observability.WrapHTTP("marketplace", marketplace.NewServer())))
+	handler := httputil.LimitBody(marketplace.NewServer(), 0)
+	log.Fatal(http.ListenAndServe(addr, observability.WrapHTTP("marketplace", handler)))
 }
 
 func envOrDefault(key, fallback string) string {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/chenyu/1-tok/internal/fiberadapter"
+	"github.com/chenyu/1-tok/internal/httputil"
 	"github.com/chenyu/1-tok/internal/observability"
 )
 
@@ -19,7 +20,8 @@ func main() {
 	defer shutdown(2 * time.Second)
 
 	log.Printf("fiber-adapter listening on %s", addr)
-	log.Fatal(http.ListenAndServe(addr, observability.WrapHTTP("fiber-adapter", fiberadapter.NewServer())))
+	handler := httputil.LimitBody(fiberadapter.NewServer(), 0)
+	log.Fatal(http.ListenAndServe(addr, observability.WrapHTTP("fiber-adapter", handler)))
 }
 
 func envOrDefault(key, fallback string) string {
