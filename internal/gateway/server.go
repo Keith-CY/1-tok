@@ -3,6 +3,7 @@ package gateway
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -14,6 +15,12 @@ import (
 	"github.com/chenyu/1-tok/internal/ratelimit"
 	"github.com/chenyu/1-tok/internal/runtimeconfig"
 	"github.com/chenyu/1-tok/internal/serviceauth"
+)
+
+// Sentinel startup errors returned by NewServerWithOptionsE.
+var (
+	ErrIAMUpstreamRequired      = errors.New("IAM_UPSTREAM is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+	ErrExecutionTokenRequired   = errors.New("API_GATEWAY_EXECUTION_TOKEN or API_GATEWAY_EXECUTION_TOKENS is required when ONE_TOK_REQUIRE_EXTERNALS=true")
 )
 
 type Server struct {
@@ -46,6 +53,16 @@ type Options struct {
 }
 
 func NewServerWithOptions(options Options) *Server {
+	server, err := NewServerWithOptionsE(options)
+	if err != nil {
+		panic(fmt.Sprintf("gateway: %v", err))
+	}
+	return server
+}
+
+// NewServerWithOptionsE is the error-returning variant of NewServerWithOptions.
+// Prefer this in entrypoints where you want to log.Fatal instead of panic.
+func NewServerWithOptionsE(options Options) (*Server, error) {
 	if options.App == nil {
 		options.App = platform.NewAppWithMemory()
 	}
@@ -55,7 +72,7 @@ func NewServerWithOptions(options Options) *Server {
 	if options.RateLimiter == nil {
 		limiter, err := ratelimit.NewServiceFromEnv()
 		if err != nil {
-			panic(err)
+			return nil, fmt.Errorf("rate limiter: %w", err)
 		}
 		options.RateLimiter = limiter
 	}
@@ -68,10 +85,10 @@ func NewServerWithOptions(options Options) *Server {
 	}
 	if runtimeconfig.RequireExternalDependencies() {
 		if options.IAM == nil {
-			panic("IAM_UPSTREAM is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+			return nil, ErrIAMUpstreamRequired
 		}
 		if options.ExecutionTokens.Empty() {
-			panic("API_GATEWAY_EXECUTION_TOKEN or API_GATEWAY_EXECUTION_TOKENS is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+			return nil, ErrExecutionTokenRequired
 		}
 	}
 
@@ -80,7 +97,7 @@ func NewServerWithOptions(options Options) *Server {
 		auth:            options.IAM,
 		executionTokens: options.ExecutionTokens,
 		rateLimiter:     options.RateLimiter,
-	}
+	}, nil
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
