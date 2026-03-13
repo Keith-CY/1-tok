@@ -49,7 +49,7 @@ func RunAbuseSmoke(ctx context.Context, cfg AbuseConfig) (AbuseSummary, error) {
 
 	suffix := nanoSuffix()
 	email := "abuse-" + suffix + "@example.com"
-	password := "correct horse battery staple"
+	password := "correct horse battery staple 123"
 	if err := signupAbuseUser(ctx, client, cfg.IAMBaseURL, cfg.ForwardedIP, email, password); err != nil {
 		return AbuseSummary{}, err
 	}

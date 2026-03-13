@@ -533,7 +533,7 @@ func (c *smokeClient) createIAMUser(ctx context.Context, baseURL, kind, suffix s
 	}
 	err := c.postJSON(ctx, strings.TrimRight(baseURL, "/")+"/v1/signup", map[string]any{
 		"email":            fmt.Sprintf("%s-%s@example.com", kind, suffix),
-		"password":         "correct horse battery staple",
+		"password":         "correct horse battery staple 123",
 		"name":             strings.ToUpper(kind[:1]) + kind[1:] + " User",
 		"organizationName": strings.ToUpper(kind[:1]) + kind[1:] + " Org " + suffix,
 		"organizationKind": kind,
