@@ -186,7 +186,7 @@ This script builds and boots the compose stack with `postgres`, `redis`, `mock-f
 bun run release:compose-e2e
 ```
 
-This is the main Docker-only end-to-end path. It layers [compose.fnn.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.fnn.yaml) and [compose.e2e.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.e2e.yaml) on top of [compose.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.yaml), boots the full stack including `marketplace`, `redis`, `mock-sentry`, `fnn`, `fiber-adapter`, `mock-carrier`, and `mock-fiber`, and then runs four checks from the `e2e-runner` container inside the Docker network:
+This is the main Docker-only end-to-end path. It layers [compose.fnn.yaml](./compose.fnn.yaml) and [compose.e2e.yaml](./compose.e2e.yaml) on top of [compose.yaml](./compose.yaml), boots the full stack including `marketplace`, `redis`, `mock-sentry`, `fnn`, `fiber-adapter`, `mock-carrier`, and `mock-fiber`, and then runs four checks from the `e2e-runner` container inside the Docker network:
 
 - raw `fnn` adapter smoke via `release-fnn-adapter-smoke`
 - backend settlement smoke via `release-smoke`
@@ -201,7 +201,7 @@ export FIBER_SECRET_KEY_PASSWORD='replace-me'
 bun run release:compose-fnn-smoke
 ```
 
-This script layers [compose.fnn.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.fnn.yaml) on top of the base compose stack, boots a real Dockerized `fnn` node using the same general image/entrypoint pattern as `fiber-link`, and makes the local `fiber-adapter` service available for raw `fnn` translation checks. The commit-safe full business path still points to `mock-fiber`; only the adapter smoke talks to raw `fnn` today.
+This script layers [compose.fnn.yaml](./compose.fnn.yaml) on top of the base compose stack, boots a real Dockerized `fnn` node using the same general image/entrypoint pattern as `fiber-link`, and makes the local `fiber-adapter` service available for raw `fnn` translation checks. The commit-safe full business path still points to `mock-fiber`; only the adapter smoke talks to raw `fnn` today.
 
 ### Compose + dual-node FNN payment smoke
 
@@ -241,7 +241,7 @@ As of `2026-03-13`, this command has been live-verified once from this repo agai
 
 ### Carrier support contract
 
-The draft upstream Carrier contract is captured in [carrier-pr-support.md](/Users/ChenYu/Documents/Github/1-tok/docs/carrier-pr-support.md).
+The draft upstream Carrier contract is captured in [carrier-pr-support.md](./docs/carrier-pr-support.md).
 
 Persisted release paths now force `ONE_TOK_REQUIRE_PERSISTENCE=true`, so `iam`, `api-gateway`, and `settlement` fail fast instead of silently falling back to in-memory stores when database configuration is missing or broken.
 
@@ -280,7 +280,7 @@ That command now produces:
 
 The aggregated manifest is the handoff artifact to review before claiming a real production release.
 
-For a more detailed release handoff and blocker summary, see [docs/production-release-status.md](/Users/ChenYu/Documents/Github/1-tok/docs/production-release-status.md).
+For a more detailed release handoff and blocker summary, see [docs/production-release-status.md](./docs/production-release-status.md).
 
 ### Contracts tests
 
