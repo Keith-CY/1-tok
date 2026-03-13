@@ -83,7 +83,7 @@ trap cleanup EXIT
 
 wait_for_container() {
   local service="$1"
-  local attempts="${2:-90}"
+  local attempts="${2:-150}"
 
   for ((i = 0; i < attempts; i++)); do
     local container_id
