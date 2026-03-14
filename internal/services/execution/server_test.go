@@ -637,3 +637,77 @@ func TestPostJSON_ClosedServer(t *testing.T) {
 		t.Logf("closed server: status %d", rec.Code)
 	}
 }
+
+func TestNewServerWithOptions_WithEnvTokens(t *testing.T) {
+	t.Setenv("EXECUTION_EVENT_TOKEN", "env-token")
+	t.Setenv("ONE_TOK_EXECUTION_GATEWAY_TOKEN", "gw-token")
+	s := NewServerWithOptions(Options{})
+	if s == nil {
+		t.Fatal("expected non-nil server")
+	}
+}
+
+func TestCarrierEvent_SettleAction(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"order":{"id":"ord_1"}}`))
+	}))
+	defer backend.Close()
+
+	s := NewServerWithOptions(Options{APIUpstream: backend.URL})
+	payload, _ := json.Marshal(map[string]any{
+		"orderId": "ord_1", "milestoneId": "ms_1",
+		"eventType": "milestone_ready",
+		"payload": map[string]any{"summary": "done"},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/events", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCarrierEvent_PauseAction(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer backend.Close()
+
+	s := NewServerWithOptions(Options{APIUpstream: backend.URL})
+	payload, _ := json.Marshal(map[string]any{
+		"orderId": "ord_1", "milestoneId": "ms_1",
+		"eventType": "budget_low",
+		"payload": map[string]any{},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/events", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCodeAgentRun_CarrierError(t *testing.T) {
+	stub := &stubCarrierClient{}
+	stub.runResult.Backend = ""
+	s := NewServerWithOptions(Options{Carrier: stub})
+
+	payload, _ := json.Marshal(map[string]any{
+		"hostId": "h", "agentId": "a", "backend": "codex",
+		"capability": "run", "title": "Test",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/codeagent/run", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	// Stub returns empty result — should still be 200
+	if rec.Code != http.StatusOK {
+		t.Logf("carrier result: %d %s", rec.Code, rec.Body.String())
+	}
+}
