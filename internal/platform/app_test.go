@@ -761,3 +761,134 @@ func TestListRFQBids(t *testing.T) {
 		t.Errorf("expected 1 bid, got %d", len(bids))
 	}
 }
+
+func TestSettleMilestone_Completed(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "Complete", Category: "ai",
+		Scope: "test", BudgetCents: 10000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_2", Message: "bid",
+		QuoteCents: 10000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "Only", BasePriceCents: 10000, BudgetCents: 10000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "credit"})
+
+	// Settle the only milestone — order should complete
+	settled, _, err := app.SettleMilestone(order.ID, core.SettleMilestoneInput{
+		MilestoneID: "ms_1", Summary: "All done",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settled.Status != core.OrderStatusCompleted {
+		t.Errorf("order status = %s, want completed", settled.Status)
+	}
+}
+
+func TestOpenDispute_PublishesEvent(t *testing.T) {
+	app := NewAppWithMemory()
+	publisher := &spyPublisher{}
+	app.publisher = publisher
+
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "Dispute pub", Category: "ai",
+		Scope: "test", BudgetCents: 10000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_2", Message: "bid",
+		QuoteCents: 10000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 10000, BudgetCents: 10000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+	app.SettleMilestone(order.ID, core.SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+
+	publisher.subjects = nil
+	_, _, _, err := app.OpenDispute(order.ID, OpenDisputeInput{
+		MilestoneID: "ms_1", Reason: "issue", RefundCents: 500,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, s := range publisher.subjects {
+		if s == "market.dispute.opened" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected market.dispute.opened, got %v", publisher.subjects)
+	}
+}
+
+func TestResolveDispute_PublishesEvent(t *testing.T) {
+	app := NewAppWithMemory()
+	publisher := &spyPublisher{}
+	app.publisher = publisher
+
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "Resolve pub", Category: "ai",
+		Scope: "test", BudgetCents: 10000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_2", Message: "bid",
+		QuoteCents: 10000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 10000, BudgetCents: 10000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+	app.SettleMilestone(order.ID, core.SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+	app.OpenDispute(order.ID, OpenDisputeInput{
+		MilestoneID: "ms_1", Reason: "issue", RefundCents: 500,
+	})
+	disputes, _ := app.ListDisputes()
+
+	publisher.subjects = nil
+	_, _, err := app.ResolveDispute(disputes[0].ID, ResolveDisputeInput{
+		Resolution: "ok", ResolvedBy: "ops",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, s := range publisher.subjects {
+		if s == "market.dispute.resolved" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected market.dispute.resolved, got %v", publisher.subjects)
+	}
+}
+
+func TestSetPublisher_Nil(t *testing.T) {
+	app := NewAppWithMemory()
+	app.SetPublisher(nil) // should set noopPublisher
+	// Should still work — publish is a no-op
+	_, err := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "Noop", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCompareStrings(t *testing.T) {
+	if compareStrings("a", "b") != -1 {
+		t.Error("expected -1")
+	}
+	if compareStrings("b", "a") != 1 {
+		t.Error("expected 1")
+	}
+	if compareStrings("a", "a") != 0 {
+		t.Error("expected 0")
+	}
+}
