@@ -1984,7 +1984,7 @@ func TestListProviders_WithAuth(t *testing.T) {
 	}
 }
 
-func TestListListings_WithAuth(t *testing.T) {
+func TestListListings_WithAuthAndPagination(t *testing.T) {
 	iam := &stubIAMClient{
 		actor: iamclient.Actor{
 			UserID: "u_1",
@@ -3531,5 +3531,45 @@ func TestCreateRFQ_RateLimiterError(t *testing.T) {
 	gw.ServeHTTP(rec, req)
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestListProviders_WithAuthFiltered(t *testing.T) {
+	actor := iamclient.Actor{
+		UserID: "u_buyer",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "org_owner"},
+		},
+	}
+	gw, _ := NewServerWithOptionsE(Options{
+		App: platform.NewAppWithMemory(),
+		IAM: &stubIAMClient{actor: actor},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/providers", nil)
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestListListings_WithAuthPaginationAndPagination(t *testing.T) {
+	actor := iamclient.Actor{
+		UserID: "u_1",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_1", OrganizationKind: "buyer", Role: "org_owner"},
+		},
+	}
+	gw, _ := NewServerWithOptionsE(Options{
+		App: platform.NewAppWithMemory(),
+		IAM: &stubIAMClient{actor: actor},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/listings?limit=5", nil)
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 }
