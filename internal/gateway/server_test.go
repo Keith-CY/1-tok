@@ -2556,3 +2556,202 @@ func TestRecordUsage_MilestoneNotFound(t *testing.T) {
 		t.Error("expected error for nonexistent milestone")
 	}
 }
+
+func TestCreateRFQ_WithRateLimit(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	actor := iamclient.Actor{
+		UserID: "u_buyer",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "org_owner"},
+		},
+	}
+	limiter, _ := ratelimit.NewServiceWithOptions(ratelimit.Options{
+		Enforce: true,
+		Now:     func() time.Time { return time.Now() },
+		Store:   ratelimit.NewMemoryStore(nil),
+		Policies: map[ratelimit.Policy]ratelimit.PolicyConfig{
+			ratelimit.PolicyGatewayCreateRFQ: {Limit: 1, Window: time.Minute, Scope: []ratelimit.ScopePart{ratelimit.ScopeOrg}},
+		},
+	}), error(nil)
+
+	gw, _ := NewServerWithOptionsE(Options{
+		App: app, IAM: &stubIAMClient{actor: actor}, RateLimiter: limiter,
+	})
+
+	// First request succeeds
+	payload, _ := json.Marshal(map[string]any{
+		"title": "Rate limited", "category": "ai", "scope": "test",
+		"budgetCents": 5000, "responseDeadlineAt": "2026-04-01T00:00:00Z",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("first request: expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Second request gets rate limited
+	payload2, _ := json.Marshal(map[string]any{
+		"title": "Rate limited 2", "category": "ai", "scope": "test",
+		"budgetCents": 5000, "responseDeadlineAt": "2026-04-01T00:00:00Z",
+	})
+	req2 := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs", bytes.NewReader(payload2))
+	req2.Header.Set("Content-Type", "application/json")
+	req2.Header.Set("Authorization", "Bearer token")
+	rec2 := httptest.NewRecorder()
+	gw.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusTooManyRequests {
+		t.Fatalf("second request: expected 429, got %d: %s", rec2.Code, rec2.Body.String())
+	}
+}
+
+func TestFilterOrdersForActor_BuyerSees(t *testing.T) {
+	orders := []*core.Order{
+		{ID: "o1", BuyerOrgID: "org_b", ProviderOrgID: "org_p"},
+		{ID: "o2", BuyerOrgID: "org_other", ProviderOrgID: "org_p"},
+	}
+	actor := iamclient.Actor{
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "org_owner"},
+		},
+	}
+	filtered, err := filterOrdersForActor(orders, actor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered) != 1 || filtered[0].ID != "o1" {
+		t.Errorf("expected [o1], got %v", filtered)
+	}
+}
+
+func TestFilterOrdersForActor_ProviderSees(t *testing.T) {
+	orders := []*core.Order{
+		{ID: "o1", BuyerOrgID: "org_b", ProviderOrgID: "org_p"},
+		{ID: "o2", BuyerOrgID: "org_b", ProviderOrgID: "org_other"},
+	}
+	actor := iamclient.Actor{
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	filtered, err := filterOrdersForActor(orders, actor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered) != 1 || filtered[0].ID != "o1" {
+		t.Errorf("expected [o1], got %v", filtered)
+	}
+}
+
+func TestFilterOrdersForActor_OpsSeeAll(t *testing.T) {
+	orders := []*core.Order{
+		{ID: "o1"}, {ID: "o2"},
+	}
+	actor := iamclient.Actor{
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_ops", OrganizationKind: "ops", Role: "ops_reviewer"},
+		},
+	}
+	filtered, err := filterOrdersForActor(orders, actor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered) != 2 {
+		t.Errorf("expected 2, got %d", len(filtered))
+	}
+}
+
+func TestFilterRFQsForActor_BuyerSees(t *testing.T) {
+	rfqs := []platform.RFQ{
+		{ID: "r1", BuyerOrgID: "org_b", Status: "open"},
+		{ID: "r2", BuyerOrgID: "org_other", Status: "open"},
+	}
+	actor := iamclient.Actor{
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "org_owner"},
+		},
+	}
+	filtered, err := filterRFQsForActor(rfqs, actor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered) != 1 {
+		t.Errorf("expected 1, got %d", len(filtered))
+	}
+}
+
+func TestFilterBidsForActor_ProviderSees(t *testing.T) {
+	rfq := platform.RFQ{ID: "r1", BuyerOrgID: "org_b"}
+	bids := []platform.Bid{
+		{ID: "b1", ProviderOrgID: "org_p"},
+		{ID: "b2", ProviderOrgID: "org_other"},
+	}
+	actor := iamclient.Actor{
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	filtered, err := filterBidsForActor(rfq, bids, actor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered) != 1 || filtered[0].ID != "b1" {
+		t.Errorf("expected [b1], got %v", filtered)
+	}
+}
+
+func TestAuthorizeOrderForActor_Authorized(t *testing.T) {
+	order := &core.Order{BuyerOrgID: "org_b", ProviderOrgID: "org_p"}
+	actor := iamclient.Actor{
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "org_owner"},
+		},
+	}
+	if err := authorizeOrderForActor(order, actor); err != nil {
+		t.Errorf("expected authorized, got %v", err)
+	}
+}
+
+func TestAuthorizeOrderForActor_Unauthorized(t *testing.T) {
+	order := &core.Order{BuyerOrgID: "org_b", ProviderOrgID: "org_p"}
+	actor := iamclient.Actor{
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_other", OrganizationKind: "buyer", Role: "org_owner"},
+		},
+	}
+	if err := authorizeOrderForActor(order, actor); err == nil {
+		t.Error("expected unauthorized")
+	}
+}
+
+func TestFilterOrdersForActor_NoMembership(t *testing.T) {
+	orders := []*core.Order{{ID: "o1"}}
+	actor := iamclient.Actor{Memberships: nil}
+	_, err := filterOrdersForActor(orders, actor)
+	if err == nil {
+		t.Error("expected error with no membership")
+	}
+}
+
+func TestFilterRFQsForActor_ProviderSeesOpen(t *testing.T) {
+	rfqs := []platform.RFQ{
+		{ID: "r1", BuyerOrgID: "org_b", Status: "open"},
+		{ID: "r2", BuyerOrgID: "org_b", Status: "awarded", AwardedProviderOrgID: "org_p"},
+		{ID: "r3", BuyerOrgID: "org_b", Status: "awarded", AwardedProviderOrgID: "org_other"},
+	}
+	actor := iamclient.Actor{
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	filtered, err := filterRFQsForActor(rfqs, actor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Should see open + awarded-to-me
+	if len(filtered) != 2 {
+		t.Errorf("expected 2, got %d", len(filtered))
+	}
+}
