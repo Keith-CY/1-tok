@@ -447,3 +447,12 @@ func TestRunFNNDualNodeSmokeRetriesAcceptChannelUntilTempIDPropagates(t *testing
 		t.Fatalf("expected accept_channel retry, got %d attempts", acceptAttempts)
 	}
 }
+
+func TestFNNDualNodeSmokeConfigFromEnv(t *testing.T) {
+	t.Setenv("RELEASE_FNN_DUAL_INVOICE_RPC_URL", "http://fnn1:8227")
+	t.Setenv("RELEASE_FNN_DUAL_PAYER_RPC_URL", "http://fnn2:8227")
+	cfg := FNNDualNodeSmokeConfigFromEnv()
+	if cfg.InvoiceRPCURL != "http://fnn1:8227" {
+		t.Errorf("InvoiceRPCURL = %s", cfg.InvoiceRPCURL)
+	}
+}

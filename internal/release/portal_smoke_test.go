@@ -303,3 +303,13 @@ func assertPortalCookie(t *testing.T, r *http.Request, expected string) {
 		t.Fatalf("expected cookie %q, got %q", expected, cookie.Value)
 	}
 }
+
+func TestPortalConfigFromEnv(t *testing.T) {
+	t.Setenv("RELEASE_PORTAL_SMOKE_WEB_BASE_URL", "http://web:3000")
+	t.Setenv("RELEASE_PORTAL_SMOKE_API_BASE_URL", "http://api:8080")
+	t.Setenv("RELEASE_PORTAL_SMOKE_IAM_BASE_URL", "http://iam:8081")
+	cfg := PortalConfigFromEnv()
+	if cfg.WebBaseURL != "http://web:3000" {
+		t.Errorf("WebBaseURL = %s", cfg.WebBaseURL)
+	}
+}

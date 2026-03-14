@@ -758,3 +758,25 @@ func TestConfigFromEnv(t *testing.T) {
 		t.Errorf("IAMBaseURL = %s", cfg.IAMBaseURL)
 	}
 }
+
+func TestEnvBoolDefaultFalse(t *testing.T) {
+	t.Setenv("TEST_BOOL", "true")
+	if !envBoolDefaultFalse("TEST_BOOL") {
+		t.Error("expected true")
+	}
+	t.Setenv("TEST_BOOL", "")
+	if envBoolDefaultFalse("TEST_BOOL") {
+		t.Error("expected false for empty")
+	}
+}
+
+func TestEnvOrDefault(t *testing.T) {
+	t.Setenv("TEST_ENV", "value")
+	if envOrDefault("TEST_ENV", "default") != "value" {
+		t.Error("expected value")
+	}
+	t.Setenv("TEST_ENV", "")
+	if envOrDefault("TEST_ENV", "default") != "default" {
+		t.Error("expected default")
+	}
+}
