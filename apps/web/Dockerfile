@@ -1,4 +1,6 @@
 ARG BUN_VERSION=1.2.22
+# Prefer passing --build-arg BUN_VERSION=$(grep -o 'bun@[^"]*' package.json | cut -d'@' -f2)
+# to keep package.json as the single source of truth.
 
 FROM oven/bun:${BUN_VERSION} AS deps
 
