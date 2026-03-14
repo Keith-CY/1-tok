@@ -629,3 +629,135 @@ func TestNewApp(t *testing.T) {
 		t.Fatal("NewApp returned nil")
 	}
 }
+
+func TestOpenDispute_Success(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "Dispute test", Category: "ai",
+		Scope: "test", BudgetCents: 10000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_2", Message: "bid",
+		QuoteCents: 10000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "Work", BasePriceCents: 10000, BudgetCents: 10000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+	app.SettleMilestone(order.ID, core.SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+
+	updatedOrder, _, _, err := app.OpenDispute(order.ID, OpenDisputeInput{
+		MilestoneID: "ms_1", Reason: "quality issue", RefundCents: 500,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updatedOrder.Milestones[0].DisputeStatus != core.DisputeStatusOpen {
+		t.Errorf("dispute status = %s, want open", updatedOrder.Milestones[0].DisputeStatus)
+	}
+}
+
+func TestResolveDispute_Success(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "Resolve test", Category: "ai",
+		Scope: "test", BudgetCents: 10000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_2", Message: "bid",
+		QuoteCents: 10000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "Work", BasePriceCents: 10000, BudgetCents: 10000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+	app.SettleMilestone(order.ID, core.SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+	app.OpenDispute(order.ID, OpenDisputeInput{
+		MilestoneID: "ms_1", Reason: "issue", RefundCents: 500,
+	})
+
+	disputes, _ := app.ListDisputes()
+	if len(disputes) == 0 {
+		t.Fatal("no disputes")
+	}
+
+	dispute, updatedOrder, err := app.ResolveDispute(disputes[0].ID, ResolveDisputeInput{
+		Resolution: "Refund approved", ResolvedBy: "ops_admin",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dispute.Status != core.DisputeStatusResolved {
+		t.Errorf("dispute status = %s, want resolved", dispute.Status)
+	}
+	if updatedOrder.Milestones[0].DisputeStatus != core.DisputeStatusResolved {
+		t.Errorf("order dispute status = %s, want resolved", updatedOrder.Milestones[0].DisputeStatus)
+	}
+}
+
+func TestCreateMessage_EmptyBody(t *testing.T) {
+	app := NewAppWithMemory()
+	msg, err := app.CreateMessage("ord_1", "buyer", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Empty body is allowed — message still created
+	if msg.ID == "" {
+		t.Error("expected message ID")
+	}
+}
+
+func TestSettleMilestone_OrderNotFound(t *testing.T) {
+	app := NewAppWithMemory()
+	_, _, err := app.SettleMilestone("nonexistent", core.SettleMilestoneInput{MilestoneID: "ms_1"})
+	if !errors.Is(err, core.ErrOrderNotFound) {
+		t.Errorf("expected ErrOrderNotFound, got %v", err)
+	}
+}
+
+func TestRecordUsageCharge_OrderNotFound(t *testing.T) {
+	app := NewAppWithMemory()
+	_, _, err := app.RecordUsageCharge("nonexistent", RecordUsageChargeInput{MilestoneID: "ms_1", Kind: "token", AmountCents: 100})
+	if !errors.Is(err, core.ErrOrderNotFound) {
+		t.Errorf("expected ErrOrderNotFound, got %v", err)
+	}
+}
+
+func TestOpenDispute_OrderNotFound(t *testing.T) {
+	app := NewAppWithMemory()
+	_, _, _, err := app.OpenDispute("nonexistent", OpenDisputeInput{MilestoneID: "ms_1", Reason: "bad", RefundCents: 100})
+	if !errors.Is(err, core.ErrOrderNotFound) {
+		t.Errorf("expected ErrOrderNotFound, got %v", err)
+	}
+}
+
+func TestResolveDispute_DisputeNotFound(t *testing.T) {
+	app := NewAppWithMemory()
+	_, _, err := app.ResolveDispute("nonexistent", ResolveDisputeInput{Resolution: "ok", ResolvedBy: "ops"})
+	if !errors.Is(err, ErrDisputeNotFound) {
+		t.Errorf("expected ErrDisputeNotFound, got %v", err)
+	}
+}
+
+func TestListRFQBids(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "Bids test", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_2", Message: "bid1",
+		QuoteCents: 4000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 4000, BudgetCents: 4000},
+		},
+	})
+
+	bids, err := app.ListRFQBids(rfq.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bids) != 1 {
+		t.Errorf("expected 1 bid, got %d", len(bids))
+	}
+}
