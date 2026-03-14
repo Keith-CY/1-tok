@@ -1683,3 +1683,138 @@ func TestResolveDispute(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestCreateRFQ_MissingFields(t *testing.T) {
+	gw, _ := NewServerWithOptionsE(Options{App: platform.NewAppWithMemory()})
+	payload, _ := json.Marshal(map[string]any{"title": ""})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code == http.StatusOK || rec.Code == http.StatusCreated {
+		t.Errorf("expected error status, got %d", rec.Code)
+	}
+}
+
+func TestCreateRFQ_InvalidJSON(t *testing.T) {
+	gw, _ := NewServerWithOptionsE(Options{App: platform.NewAppWithMemory()})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs", bytes.NewReader([]byte("{broken")))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestCreateOrder_InvalidJSON(t *testing.T) {
+	gw, _ := NewServerWithOptionsE(Options{App: platform.NewAppWithMemory()})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders", bytes.NewReader([]byte("{broken")))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestCreateBid_InvalidJSON(t *testing.T) {
+	gw, _ := NewServerWithOptionsE(Options{App: platform.NewAppWithMemory()})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs/rfq_1/bids", bytes.NewReader([]byte("{broken")))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestAwardRFQ_InvalidJSON(t *testing.T) {
+	gw, _ := NewServerWithOptionsE(Options{App: platform.NewAppWithMemory()})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs/rfq_1/award", bytes.NewReader([]byte("{broken")))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestRecordUsage_InvalidJSON(t *testing.T) {
+	gw, _ := NewServerWithOptionsE(Options{App: platform.NewAppWithMemory()})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders/ord_1/milestones/ms_1/usage", bytes.NewReader([]byte("{broken")))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestCreateDispute_InvalidJSON(t *testing.T) {
+	gw, _ := NewServerWithOptionsE(Options{App: platform.NewAppWithMemory()})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders/ord_1/disputes", bytes.NewReader([]byte("{broken")))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestResolveDispute_InvalidJSON(t *testing.T) {
+	gw, _ := NewServerWithOptionsE(Options{App: platform.NewAppWithMemory()})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/disputes/disp_1/resolve", bytes.NewReader([]byte("{broken")))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestCreateMessage_InvalidJSON(t *testing.T) {
+	gw, _ := NewServerWithOptionsE(Options{App: platform.NewAppWithMemory()})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", bytes.NewReader([]byte("{broken")))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestCreditDecision_InvalidJSON(t *testing.T) {
+	gw, _ := NewServerWithOptionsE(Options{App: platform.NewAppWithMemory()})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/credits/decision", bytes.NewReader([]byte("{broken")))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestGetOrder_Found(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Get", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	bid, _ := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid",
+		QuoteCents: 5000, Milestones: []platform.BidMilestoneInput{
+			{ID: "ms_1", Title: "Work", BasePriceCents: 5000, BudgetCents: 5000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, platform.AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/orders/"+order.ID, nil)
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
