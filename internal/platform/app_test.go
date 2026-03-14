@@ -1541,3 +1541,49 @@ func TestAwardRFQ_AlreadyAwarded(t *testing.T) {
 		t.Error("expected error for double award")
 	}
 }
+
+func TestListOrders_WithData(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "List orders", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_2", Message: "bid",
+		QuoteCents: 5000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000},
+		},
+	})
+	app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	orders, err := app.ListOrders()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(orders) == 0 {
+		t.Error("expected at least one order")
+	}
+}
+
+func TestListRFQs_WithData(t *testing.T) {
+	app := NewAppWithMemory()
+	app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "RFQ1", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "RFQ2", Category: "ai",
+		Scope: "test", BudgetCents: 3000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+
+	rfqs, err := app.ListRFQs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rfqs) < 2 {
+		t.Errorf("expected at least 2 RFQs, got %d", len(rfqs))
+	}
+}
