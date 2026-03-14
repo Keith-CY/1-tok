@@ -179,7 +179,7 @@ func (s *MemoryStore) Allow(_ context.Context, key string, limit int, window tim
 		Limit:      limit,
 		Remaining:  remaining,
 		ResetAt:    entry.resetAt,
-		RetryAfter: maxDuration(time.Until(entry.resetAt), 0),
+		RetryAfter: maxDuration(entry.resetAt.Sub(now), 0),
 	}, nil
 }
 

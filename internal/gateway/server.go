@@ -575,12 +575,12 @@ func (s *Server) resolveBuyerOrg(r *http.Request, requestedBuyerOrgID string) (s
 			continue
 		}
 		if requestedBuyerOrgID != "" && requestedBuyerOrgID != membership.OrganizationID {
-			return "", errors.New("buyer org mismatch")
+			return "", fmt.Errorf("buyer org mismatch: %w", platform.ErrOrgMismatch)
 		}
 		return membership.OrganizationID, nil
 	}
 
-	return "", errors.New("buyer membership is required")
+	return "", fmt.Errorf("buyer membership is required: %w", platform.ErrMembershipRequired)
 }
 
 func (s *Server) resolveProviderOrg(r *http.Request, requestedProviderOrgID string) (string, error) {
@@ -606,12 +606,12 @@ func (s *Server) resolveProviderOrg(r *http.Request, requestedProviderOrgID stri
 			continue
 		}
 		if requestedProviderOrgID != "" && requestedProviderOrgID != membership.OrganizationID {
-			return "", errors.New("provider org mismatch")
+			return "", fmt.Errorf("provider org mismatch: %w", platform.ErrOrgMismatch)
 		}
 		return membership.OrganizationID, nil
 	}
 
-	return "", errors.New("provider membership is required")
+	return "", fmt.Errorf("provider membership is required: %w", platform.ErrMembershipRequired)
 }
 
 func bearerToken(header string) (string, bool) {
@@ -669,7 +669,7 @@ func (s *Server) resolveOpsUser(r *http.Request) (string, error) {
 		return actor.UserID, nil
 	}
 
-	return "", errors.New("ops membership is required")
+	return "", fmt.Errorf("ops membership is required: %w", platform.ErrMembershipRequired)
 }
 
 func (s *Server) authenticatedActor(r *http.Request) (iamclient.Actor, error) {
@@ -1019,16 +1019,7 @@ func writeGatewayError(w http.ResponseWriter, err error) {
 }
 
 func writeAuthError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, iamclient.ErrUnauthorized):
-		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
-	case err != nil && err.Error() == "invalid service token":
-		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
-	case strings.Contains(err.Error(), "mismatch"), strings.Contains(err.Error(), "required"):
-		httputil.WriteJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
-	default:
-		httputil.WriteJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
-	}
+	httputil.WriteAuthError(w, err)
 }
 
 func (s *Server) actorUserID(r *http.Request) string {
@@ -1068,12 +1059,12 @@ func (s *Server) authorizeExecutionMutation(r *http.Request) error {
 	if s.executionTokens.MatchesRequest(r) {
 		return nil
 	}
-	return errors.New("invalid service token")
+	return serviceauth.ErrInvalidServiceToken
 }
 
 func filterOrdersForActor(orders []*core.Order, actor iamclient.Actor) ([]*core.Order, error) {
 	if len(actor.Memberships) == 0 {
-		return nil, errors.New("membership is required")
+		return nil, platform.ErrMembershipRequired
 	}
 
 	buyerOrgIDs := make(map[string]struct{})
@@ -1105,7 +1096,7 @@ func filterOrdersForActor(orders []*core.Order, actor iamclient.Actor) ([]*core.
 	}
 
 	if len(filtered) == 0 && len(buyerOrgIDs) == 0 && len(providerOrgIDs) == 0 {
-		return nil, errors.New("membership is required")
+		return nil, platform.ErrMembershipRequired
 	}
 
 	return filtered, nil
@@ -1116,7 +1107,7 @@ func authorizeOrderForActor(order *core.Order, actor iamclient.Actor) error {
 		return errors.New("order is required")
 	}
 	if len(actor.Memberships) == 0 {
-		return errors.New("membership is required")
+		return platform.ErrMembershipRequired
 	}
 
 	for _, membership := range actor.Memberships {
@@ -1130,12 +1121,12 @@ func authorizeOrderForActor(order *core.Order, actor iamclient.Actor) error {
 		}
 	}
 
-	return errors.New("membership is required")
+	return platform.ErrMembershipRequired
 }
 
 func filterRFQsForActor(rfqs []platform.RFQ, actor iamclient.Actor) ([]platform.RFQ, error) {
 	if len(actor.Memberships) == 0 {
-		return nil, errors.New("membership is required")
+		return nil, platform.ErrMembershipRequired
 	}
 
 	buyerOrgIDs := make(map[string]struct{})
@@ -1171,7 +1162,7 @@ func filterRFQsForActor(rfqs []platform.RFQ, actor iamclient.Actor) ([]platform.
 	}
 
 	if len(filtered) == 0 && len(buyerOrgIDs) == 0 && len(providerOrgIDs) == 0 {
-		return nil, errors.New("membership is required")
+		return nil, platform.ErrMembershipRequired
 	}
 
 	return filtered, nil
@@ -1179,7 +1170,7 @@ func filterRFQsForActor(rfqs []platform.RFQ, actor iamclient.Actor) ([]platform.
 
 func filterBidsForActor(rfq platform.RFQ, bids []platform.Bid, actor iamclient.Actor) ([]platform.Bid, error) {
 	if len(actor.Memberships) == 0 {
-		return nil, errors.New("membership is required")
+		return nil, platform.ErrMembershipRequired
 	}
 
 	providerOrgIDs := make(map[string]struct{})
@@ -1195,7 +1186,7 @@ func filterBidsForActor(rfq platform.RFQ, bids []platform.Bid, actor iamclient.A
 	}
 
 	if len(providerOrgIDs) == 0 {
-		return nil, errors.New("membership is required")
+		return nil, platform.ErrMembershipRequired
 	}
 
 	filtered := make([]platform.Bid, 0, len(bids))
