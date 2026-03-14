@@ -315,3 +315,77 @@ func TestResolveDispute_MilestoneNotFound(t *testing.T) {
 		t.Error("expected error for nonexistent milestone")
 	}
 }
+
+func TestCreditDecision_InsufficientHistory(t *testing.T) {
+	engine := CreditDecisionEngine{BaseLimitCents: 10000, MaxLimitCents: 100000}
+	decision := engine.Decide(CreditHistory{CompletedOrders: 1, SuccessfulPayments: 1})
+
+	if decision.Approved {
+		t.Error("expected not approved")
+	}
+	if decision.Reason != "insufficient history" {
+		t.Errorf("reason = %s", decision.Reason)
+	}
+}
+
+func TestCreditDecision_Approved(t *testing.T) {
+	engine := CreditDecisionEngine{
+		BaseLimitCents:         10000,
+		MaxLimitCents:          100000,
+		ConsumptionMultiplier:  2,
+		DisputePenaltyCents:    1000,
+		FailurePenaltyCents:    2000,
+	}
+	decision := engine.Decide(CreditHistory{
+		CompletedOrders:    5,
+		SuccessfulPayments: 5,
+		LifetimeSpendCents: 50000,
+	})
+
+	if !decision.Approved {
+		t.Error("expected approved")
+	}
+	if decision.RecommendedLimitCents <= 0 {
+		t.Errorf("limit = %d", decision.RecommendedLimitCents)
+	}
+}
+
+func TestCreditDecision_RiskExceeded(t *testing.T) {
+	engine := CreditDecisionEngine{
+		BaseLimitCents:      1000,
+		MaxLimitCents:       100000,
+		DisputePenaltyCents: 5000,
+	}
+	decision := engine.Decide(CreditHistory{
+		CompletedOrders:    5,
+		SuccessfulPayments: 5,
+		DisputedOrders:     3,
+	})
+
+	if decision.Approved {
+		t.Error("expected not approved due to disputes")
+	}
+	if decision.Reason != "risk signals exceeded threshold" {
+		t.Errorf("reason = %s", decision.Reason)
+	}
+}
+
+func TestCreditDecision_CappedAtMax(t *testing.T) {
+	engine := CreditDecisionEngine{
+		BaseLimitCents:        100000,
+		MaxLimitCents:         50000,
+		ConsumptionMultiplier: 1,
+	}
+	decision := engine.Decide(CreditHistory{
+		CompletedOrders:    10,
+		SuccessfulPayments: 10,
+		LifetimeSpendCents: 500000,
+	})
+
+	if !decision.Approved {
+		t.Error("expected approved")
+	}
+	if decision.RecommendedLimitCents != 50000 {
+		t.Errorf("expected capped at 50000, got %d", decision.RecommendedLimitCents)
+	}
+}

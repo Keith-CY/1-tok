@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	carrierclient "github.com/chenyu/1-tok/internal/integrations/carrier"
@@ -72,5 +73,42 @@ func TestServerRejectsMissingBearerTokenWhenConfigured(t *testing.T) {
 
 	if res.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", res.StatusCode)
+	}
+}
+
+func TestNewServer_Default(t *testing.T) {
+	s := NewServer()
+	if s == nil {
+		t.Fatal("NewServer returned nil")
+	}
+}
+
+func TestServeHTTP_NotFound(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/unknown", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestServeHTTP_Unauthorized(t *testing.T) {
+	s := NewServerWithOptions(Options{APIToken: "secret"})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/remote/hosts/h/instances/a/codeagent/health", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestHandleRun_InvalidJSON(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/remote/hosts/h/instances/a/codeagent/run", strings.NewReader("{broken"))
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
 	}
 }

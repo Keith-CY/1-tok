@@ -2,7 +2,9 @@ package mockfiber
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	fiberclient "github.com/chenyu/1-tok/internal/integrations/fiber"
@@ -90,5 +92,35 @@ func TestServerQuotesAndTracksWithdrawals(t *testing.T) {
 	item := statuses.Withdrawals[0]
 	if item.ID != withdrawal.ID || item.UserID != "provider_1" || item.State != "PROCESSING" {
 		t.Fatalf("unexpected withdrawal status: %+v", item)
+	}
+}
+
+func TestServeHTTP_NotFound(t *testing.T) {
+	s := NewServer()
+	req := httptest.NewRequest(http.MethodGet, "/unknown", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestServeHTTP_NonPostMethod(t *testing.T) {
+	s := NewServer()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestServeHTTP_InvalidJSON(t *testing.T) {
+	s := NewServer()
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("{broken"))
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 with RPC error, got %d", rec.Code)
 	}
 }
