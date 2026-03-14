@@ -1132,3 +1132,43 @@ func TestSignup_FullFlowCheckResponse(t *testing.T) {
 	// Memberships are nested in user or separate key
 	_ = resp
 }
+
+func TestLogout_AfterLogin_ThenMe(t *testing.T) {
+	store := identity.NewMemoryStore()
+	s := NewServerWithOptions(Options{Store: store})
+
+	// Signup
+	signup := `{"email":"full_logout@test.com","password":"correct horse battery staple 123","name":"FL","organizationName":"Org","organizationKind":"buyer"}`
+	sReq := httptest.NewRequest(http.MethodPost, "/v1/signup", bytes.NewBufferString(signup))
+	sReq.Header.Set("Content-Type", "application/json")
+	sRec := httptest.NewRecorder()
+	s.ServeHTTP(sRec, sReq)
+
+	var resp struct{ Session struct{ Token string } `json:"session"` }
+	json.Unmarshal(sRec.Body.Bytes(), &resp)
+	token := resp.Session.Token
+
+	// Verify /me works
+	meReq := httptest.NewRequest(http.MethodGet, "/v1/me", nil)
+	meReq.Header.Set("Authorization", "Bearer "+token)
+	meRec := httptest.NewRecorder()
+	s.ServeHTTP(meRec, meReq)
+	if meRec.Code != http.StatusOK {
+		t.Fatalf("/me before logout: %d", meRec.Code)
+	}
+
+	// Logout
+	logoutReq := httptest.NewRequest(http.MethodPost, "/v1/logout", nil)
+	logoutReq.Header.Set("Authorization", "Bearer "+token)
+	logoutRec := httptest.NewRecorder()
+	s.ServeHTTP(logoutRec, logoutReq)
+
+	// /me after logout should fail (session revoked)
+	me2Req := httptest.NewRequest(http.MethodGet, "/v1/me", nil)
+	me2Req.Header.Set("Authorization", "Bearer "+token)
+	me2Rec := httptest.NewRecorder()
+	s.ServeHTTP(me2Rec, me2Req)
+	if me2Rec.Code != http.StatusUnauthorized {
+		t.Fatalf("/me after logout: expected 401, got %d", me2Rec.Code)
+	}
+}
