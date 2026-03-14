@@ -321,3 +321,35 @@ func TestInit_WithDSN(t *testing.T) {
 	}
 	flush(0)
 }
+
+func TestInit_WithRealDSN(t *testing.T) {
+	// Use a dummy DSN that Sentry SDK accepts but doesn't actually send
+	flush, err := Init(Config{
+		Service:          "test",
+		DSN:              "https://key@o0.ingest.sentry.io/0",
+		Environment:      "test",
+		Release:          "v0.0.0",
+		SampleRate:       0.0,
+		TracesSampleRate: 0.0,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	flush(0)
+}
+
+func TestWithRequestTags_OverwriteExisting(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+
+	// Set tags twice — should overwrite
+	req = WithRequestTags(req, RequestTags{Route: "/first"})
+	req = WithRequestTags(req, RequestTags{Route: "/second", UserID: "u_1"})
+
+	bag := requestTagsFromContext(req.Context())
+	if bag.Route != "/second" {
+		t.Errorf("route = %s, want /second", bag.Route)
+	}
+	if bag.UserID != "u_1" {
+		t.Errorf("userId = %s", bag.UserID)
+	}
+}
