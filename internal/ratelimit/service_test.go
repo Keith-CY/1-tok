@@ -390,3 +390,21 @@ func TestNewMemoryStore_WithNow(t *testing.T) {
 		t.Fatal("expected non-nil store")
 	}
 }
+
+func TestNewServiceWithOptions_DefaultPolicies(t *testing.T) {
+	svc := NewServiceWithOptions(Options{
+		Enforce: true,
+		Store:   NewMemoryStore(nil),
+		// No Policies — should use DefaultPolicies
+	})
+	if svc == nil {
+		t.Fatal("expected non-nil")
+	}
+}
+
+func TestNewServiceWithOptions_AllDefaults(t *testing.T) {
+	svc := NewServiceWithOptions(Options{})
+	if svc == nil {
+		t.Fatal("expected non-nil")
+	}
+}
