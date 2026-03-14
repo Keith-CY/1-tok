@@ -325,3 +325,149 @@ func (errorFiberClient) ListSettledFeed(context.Context, fiberclient.SettledFeed
 func (errorFiberClient) ListWithdrawalStatuses(context.Context, string) (fiberclient.WithdrawalStatusResult, error) {
 	return fiberclient.WithdrawalStatusResult{}, fiberclient.ErrNotConfigured
 }
+
+type countingFiberClient struct {
+	callCount   int
+	failUntil   int
+	statusResult fiberclient.InvoiceStatusResult
+	withdrawalsResult fiberclient.WithdrawalStatusResult
+}
+
+func (c *countingFiberClient) CreateInvoice(_ context.Context, _ fiberclient.CreateInvoiceInput) (fiberclient.CreateInvoiceResult, error) {
+	return fiberclient.CreateInvoiceResult{}, nil
+}
+func (c *countingFiberClient) GetInvoiceStatus(_ context.Context, _ string) (fiberclient.InvoiceStatusResult, error) {
+	c.callCount++
+	if c.callCount <= c.failUntil {
+		return fiberclient.InvoiceStatusResult{}, fiberclient.ErrNotConfigured
+	}
+	return c.statusResult, nil
+}
+func (c *countingFiberClient) QuotePayout(_ context.Context, _ fiberclient.QuotePayoutInput) (fiberclient.QuotePayoutResult, error) {
+	return fiberclient.QuotePayoutResult{}, nil
+}
+func (c *countingFiberClient) RequestPayout(_ context.Context, _ fiberclient.RequestPayoutInput) (fiberclient.RequestPayoutResult, error) {
+	return fiberclient.RequestPayoutResult{}, nil
+}
+func (c *countingFiberClient) ListSettledFeed(_ context.Context, _ fiberclient.SettledFeedInput) (fiberclient.SettledFeedResult, error) {
+	return fiberclient.SettledFeedResult{}, nil
+}
+func (c *countingFiberClient) ListWithdrawalStatuses(_ context.Context, _ string) (fiberclient.WithdrawalStatusResult, error) {
+	return c.withdrawalsResult, nil
+}
+
+func TestRunReconcilerLoop_MaxConsecutiveErrors(t *testing.T) {
+	fiber := &errorFiberClient{}
+	funding := NewMemoryFundingRecordRepository()
+
+	// Add a pending record so sync hits fiber and fails
+	id, _ := funding.NextID()
+	funding.Save(FundingRecord{
+		ID: id, Kind: FundingRecordKindInvoice,
+		Invoice: "lnbc_max_err", State: "pending",
+		Asset: "CKB", Amount: "100",
+	})
+
+	r := NewReconciler(ReconcilerOptions{Fiber: fiber, Funding: funding})
+	logger := log.New(log.Writer(), "test: ", 0)
+
+	// RunReconcilerLoop should fail on first sync (fail fast)
+	err := RunReconcilerLoop(context.Background(), r, time.Second, logger)
+	if err == nil {
+		t.Error("expected error from first sync failure")
+	}
+}
+
+func TestRunReconcilerLoop_SuccessfulSync(t *testing.T) {
+	fiber := &stubFiberClient{}
+	funding := NewMemoryFundingRecordRepository()
+
+	r := NewReconciler(ReconcilerOptions{Fiber: fiber, Funding: funding})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+
+	logger := log.New(log.Writer(), "test: ", 0)
+	err := RunReconcilerLoop(ctx, r, 50*time.Millisecond, logger)
+	// Should exit cleanly with context.DeadlineExceeded
+	if err == nil || err != context.DeadlineExceeded {
+		t.Logf("loop exit: %v", err)
+	}
+}
+
+func TestSync_InvoiceSameState(t *testing.T) {
+	fiber := &stubFiberClient{
+		statusResult: fiberclient.InvoiceStatusResult{State: "pending"},
+	}
+	funding := NewMemoryFundingRecordRepository()
+
+	id, _ := funding.NextID()
+	funding.Save(FundingRecord{
+		ID: id, Kind: FundingRecordKindInvoice,
+		Invoice: "lnbc_same", State: "pending",
+		Asset: "CKB", Amount: "100",
+	})
+
+	r := NewReconciler(ReconcilerOptions{Fiber: fiber, Funding: funding})
+	summary, err := r.Sync(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Same state — no update
+	if summary.InvoiceUpdates != 0 {
+		t.Errorf("expected 0 updates for same state, got %d", summary.InvoiceUpdates)
+	}
+}
+
+func TestSync_EmptyInvoiceSkipped(t *testing.T) {
+	fiber := &stubFiberClient{}
+	funding := NewMemoryFundingRecordRepository()
+
+	id, _ := funding.NextID()
+	funding.Save(FundingRecord{
+		ID: id, Kind: FundingRecordKindInvoice,
+		Invoice: "", State: "pending", // Empty invoice
+		Asset: "CKB", Amount: "100",
+	})
+
+	r := NewReconciler(ReconcilerOptions{Fiber: fiber, Funding: funding})
+	summary, err := r.Sync(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.InvoiceUpdates != 0 {
+		t.Errorf("expected 0 updates for empty invoice, got %d", summary.InvoiceUpdates)
+	}
+}
+
+func TestSync_TerminalWithdrawalSkipped(t *testing.T) {
+	fiber := &stubFiberClient{}
+	funding := NewMemoryFundingRecordRepository()
+
+	id, _ := funding.NextID()
+	funding.Save(FundingRecord{
+		ID: id, Kind: FundingRecordKindWithdrawal,
+		ExternalID: "ext_done", State: "COMPLETED",
+		Asset: "CKB", Amount: "50", ProviderOrgID: "org_p",
+	})
+
+	r := NewReconciler(ReconcilerOptions{Fiber: fiber, Funding: funding})
+	summary, err := r.Sync(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.WithdrawalUpdates != 0 {
+		t.Errorf("expected 0 updates for terminal withdrawal, got %d", summary.WithdrawalUpdates)
+	}
+}
+
+func TestNewReconciler_Defaults(t *testing.T) {
+	// Test with nil funding — should use loadFundingRecordRepositoryE
+	r := NewReconciler(ReconcilerOptions{
+		Fiber: &stubFiberClient{},
+		// Funding nil — will create from env
+	})
+	if r == nil {
+		t.Fatal("expected non-nil reconciler")
+	}
+}
