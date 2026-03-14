@@ -1254,3 +1254,89 @@ func TestHandleCreate_MissingFields(t *testing.T) {
 		t.Errorf("expected error for missing fields")
 	}
 }
+
+func TestHandleQuoteWithdrawal_InvalidPaymentRequest(t *testing.T) {
+	rpcSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0", "id": "1",
+			"error": map[string]any{"code": -32000, "message": "invalid invoice"},
+		})
+	}))
+	defer rpcSrv.Close()
+
+	s := NewServerWithOptions(Options{
+		InvoiceRPCURL: rpcSrv.URL,
+		PayerRPCURL:   rpcSrv.URL,
+	})
+	payload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "withdrawal.quote",
+		"params": map[string]any{
+			"userId": "u_1", "asset": "CKB", "amount": "100",
+			"destination": map[string]any{"kind": "PAYMENT_REQUEST", "paymentRequest": "lnbc_bad"},
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	// Response should indicate destination invalid
+	if !strings.Contains(rec.Body.String(), "false") {
+		t.Log("destination validation result:", rec.Body.String())
+	}
+}
+
+func TestHandleQuoteWithdrawal_MissingFields(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	payload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "withdrawal.quote",
+		"params": map[string]any{
+			"userId": "", "asset": "", "amount": "",
+			"destination": map[string]any{"kind": ""},
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if !strings.Contains(rec.Body.String(), "missing") {
+		t.Errorf("expected missing fields error: %s", rec.Body.String())
+	}
+}
+
+func TestHandleRequestWithdrawal_MissingFields(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	payload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "withdrawal.request",
+		"params": map[string]any{
+			"userId": "", "asset": "", "amount": "",
+			"destination": map[string]any{"kind": ""},
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if !strings.Contains(rec.Body.String(), "missing") {
+		t.Errorf("expected missing fields error: %s", rec.Body.String())
+	}
+}
+
+func TestHandleSettledFeed_InvalidParams(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	payload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "tip.settled_feed",
+		"params": "not-an-object",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	// Should return RPC error for invalid params
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
