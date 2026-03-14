@@ -1291,3 +1291,82 @@ func TestNewServerWithOptions_WithUpstream(t *testing.T) {
 		t.Fatal("expected non-nil server")
 	}
 }
+
+func TestCreateInvoice_WithAuth(t *testing.T) {
+	fiber := &stubFiberClient{
+		createResult: fiberclient.CreateInvoiceResult{Invoice: "lnbc_auth_inv"},
+	}
+	actor := iamclient.Actor{
+		UserID: "u_1",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber:         fiber,
+		Auth:          &stubIAMClient{actor: actor},
+		ServiceTokens: serviceauth.NewTokenSet("svc-token"),
+	})
+
+	payload := `{"orderId":"ord_1","milestoneId":"ms_1","buyerOrgId":"org_b","providerOrgId":"org_p","asset":"CKB","amount":"100"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/invoices", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(serviceauth.HeaderName, "svc-token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestQuoteWithdrawal_WithProviderAuth(t *testing.T) {
+	fiber := &stubFiberClient{
+		quoteResult: fiberclient.QuotePayoutResult{Asset: "CKB", Amount: "50"},
+	}
+	actor := iamclient.Actor{
+		UserID: "u_prov",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber: fiber,
+		Auth:  &stubIAMClient{actor: actor},
+	})
+
+	payload := `{"providerOrgId":"org_p","asset":"CKB","amount":"50","destination":{"kind":"address","address":"ckb1addr"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals/quote", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer prov-token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRequestWithdrawal_WithProviderAuth(t *testing.T) {
+	fiber := &stubFiberClient{
+		requestPayoutResult: fiberclient.RequestPayoutResult{ID: "payout_1"},
+	}
+	actor := iamclient.Actor{
+		UserID: "u_prov",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber: fiber,
+		Auth:  &stubIAMClient{actor: actor},
+	})
+
+	payload := `{"providerOrgId":"org_p","asset":"CKB","amount":"50","destination":{"kind":"address","address":"ckb1addr"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer prov-token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
