@@ -356,3 +356,37 @@ func TestAllow_UnknownPolicy(t *testing.T) {
 		t.Error("expected allowed for unknown policy")
 	}
 }
+
+func TestNewServiceWithOptions_NilNow(t *testing.T) {
+	svc := NewServiceWithOptions(Options{
+		Enforce:  true,
+		Now:      nil,
+		Store:    NewMemoryStore(nil),
+		Policies: DefaultPolicies(),
+	})
+	if svc == nil {
+		t.Fatal("expected non-nil service")
+	}
+}
+
+func TestClientIP_NoXForwarded(t *testing.T) {
+	req, _ := http.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "192.168.1.100:54321"
+	if ip := ClientIP(req); ip != "192.168.1.100" {
+		t.Errorf("ClientIP = %s", ip)
+	}
+}
+
+func TestClientIP_NilRequest(t *testing.T) {
+	if ip := ClientIP(nil); ip != "" {
+		t.Errorf("expected empty, got %s", ip)
+	}
+}
+
+func TestNewMemoryStore_WithNow(t *testing.T) {
+	fixed := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	store := NewMemoryStore(func() time.Time { return fixed })
+	if store == nil {
+		t.Fatal("expected non-nil store")
+	}
+}
