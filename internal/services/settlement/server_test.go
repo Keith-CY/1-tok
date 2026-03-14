@@ -800,3 +800,135 @@ func TestWriteFiberError_Generic(t *testing.T) {
 		t.Errorf("expected 502, got %d", rec.Code)
 	}
 }
+
+func TestListFundingRecords(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/v1/funding-records", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSettledFeed_Unauthorized(t *testing.T) {
+	s := NewServerWithOptions(Options{
+		ServiceTokens: serviceauth.NewTokenSet("secret-token"),
+	})
+	req := httptest.NewRequest(http.MethodGet, "/v1/settled-feed", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestSettledFeed_Authorized(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/v1/settled-feed", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	// Without fiber client configured, should return 503
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 (no fiber), got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSettledFeed_InvalidLimit(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/v1/settled-feed?limit=abc", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestWithdrawalStatuses_NoFiber(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/v1/withdrawals/status?providerOrgId=org_1", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateInvoice_NoFiber(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	payload := `{"orderId":"ord_1","milestoneId":"ms_1","buyerOrgId":"org_b","providerOrgId":"org_p","asset":"CKB","amount":"100"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/invoices", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 (no fiber), got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetInvoiceStatus_NoFiber(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/v1/invoices/lnbc_test_invoice", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 (no fiber), got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestQuoteWithdrawal_NoFiber(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	payload := `{"providerOrgId":"org_p","asset":"CKB","amount":"50","destination":{"kind":"address","address":"ckb1addr"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals/quote", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRequestWithdrawal_NoFiber(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	payload := `{"providerOrgId":"org_p","asset":"CKB","amount":"50","destination":{"kind":"address","address":"ckb1addr"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestNotFound(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/unknown-path", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestSettledFeed_Unauthorized_ServiceToken(t *testing.T) {
+	s := NewServerWithOptions(Options{
+		ServiceTokens: serviceauth.NewTokenSet("secret"),
+	})
+	req := httptest.NewRequest(http.MethodGet, "/v1/settled-feed", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
