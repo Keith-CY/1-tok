@@ -3500,3 +3500,36 @@ func TestCreateMessage_MissingAuth(t *testing.T) {
 		t.Fatalf("expected 401, got %d", rec.Code)
 	}
 }
+
+type errorRateLimiter struct{}
+
+func (errorRateLimiter) Allow(_ context.Context, _ ratelimit.Policy, _ ratelimit.Meta) (ratelimit.Decision, error) {
+	return ratelimit.Decision{}, errors.New("limiter broken")
+}
+
+func TestCreateRFQ_RateLimiterError(t *testing.T) {
+	actor := iamclient.Actor{
+		UserID: "u_buyer",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "org_owner"},
+		},
+	}
+	gw, _ := NewServerWithOptionsE(Options{
+		App: platform.NewAppWithMemory(),
+		IAM: &stubIAMClient{actor: actor},
+		RateLimiter: &errorRateLimiter{},
+	})
+
+	payload, _ := json.Marshal(map[string]any{
+		"title": "RL error", "category": "ai", "scope": "test",
+		"budgetCents": 5000, "responseDeadlineAt": "2026-04-01T00:00:00Z",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
