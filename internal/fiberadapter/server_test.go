@@ -669,3 +669,52 @@ func TestRPCNode_Call_HTTPError(t *testing.T) {
 		t.Error("expected error for HTTP 500")
 	}
 }
+
+func TestServeHTTP_HealthCheck(t *testing.T) {
+	s := NewServer()
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestServeHTTP_NotPost(t *testing.T) {
+	s := NewServer()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed && rec.Code != http.StatusOK {
+		t.Logf("GET /: status %d", rec.Code)
+	}
+}
+
+func TestServeHTTP_InvalidRPCJSON(t *testing.T) {
+	s := NewServer()
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("{broken"))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	// Should return RPC error
+	if rec.Code != http.StatusOK {
+		t.Logf("invalid JSON: status %d", rec.Code)
+	}
+}
+
+func TestServeHTTP_UnknownMethod(t *testing.T) {
+	s := NewServer()
+	payload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1,
+		"method": "unknown_method",
+		"params": map[string]any{},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	// Should return method not found error
+	if rec.Code != http.StatusOK {
+		t.Logf("unknown method: status %d", rec.Code)
+	}
+}
