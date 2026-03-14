@@ -20,12 +20,12 @@ export function parseGoCoverageSummary(text) {
   // Parse per-function lines to compute function coverage percentage.
   // Each non-total line from `go tool cover -func` looks like:
   //   package/file.go:line:  FuncName    XX.X%
-  const funcLines = text.split("\n").filter(
-    (line) => line.includes("%") && !line.startsWith("total:"),
-  );
   let coveredFuncs = 0;
   let totalFuncs = 0;
-  for (const line of funcLines) {
+  for (const line of text.split("\n")) {
+    if (line.startsWith("total:")) {
+      continue;
+    }
     const pctMatch = line.match(/([0-9.]+)%\s*$/);
     if (pctMatch) {
       totalFuncs += 1;
