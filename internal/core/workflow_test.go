@@ -389,3 +389,93 @@ func TestCreditDecision_CappedAtMax(t *testing.T) {
 		t.Errorf("expected capped at 50000, got %d", decision.RecommendedLimitCents)
 	}
 }
+
+func TestSettleMilestone_NotRunning(t *testing.T) {
+	order := Order{
+		ID: "ord_1", Status: OrderStatusRunning, FundingMode: FundingModeCredit,
+		PlatformWallet: "w",
+		Milestones: []Milestone{
+			{ID: "ms_1", State: MilestoneStatePending, BasePriceCents: 1000, BudgetCents: 1000},
+		},
+	}
+
+	_, err := order.SettleMilestone(SettleMilestoneInput{MilestoneID: "ms_1"})
+	if err == nil {
+		t.Error("expected error for settling non-running milestone")
+	}
+}
+
+func TestRecordUsageCharge_NotRunning(t *testing.T) {
+	order := Order{
+		ID: "ord_1", Status: OrderStatusRunning,
+		Milestones: []Milestone{
+			{ID: "ms_1", State: MilestoneStatePending, BasePriceCents: 1000, BudgetCents: 1000},
+		},
+	}
+
+	_, err := order.RecordUsageCharge(RecordUsageChargeInput{
+		MilestoneID: "ms_1", Kind: "token", AmountCents: 100,
+	})
+	if err == nil {
+		t.Error("expected error for usage on pending milestone")
+	}
+}
+
+func TestRecordUsageCharge_MilestoneNotFound(t *testing.T) {
+	order := Order{
+		ID: "ord_1", Status: OrderStatusRunning,
+		Milestones: []Milestone{
+			{ID: "ms_1", State: MilestoneStateRunning, BasePriceCents: 1000, BudgetCents: 1000},
+		},
+	}
+
+	_, err := order.RecordUsageCharge(RecordUsageChargeInput{
+		MilestoneID: "ms_nonexistent", Kind: "token", AmountCents: 100,
+	})
+	if err == nil {
+		t.Error("expected error for nonexistent milestone")
+	}
+}
+
+func TestOpenDispute_NotSettled(t *testing.T) {
+	order := Order{
+		ID: "ord_1", Status: OrderStatusRunning, FundingMode: FundingModeCredit,
+		PlatformWallet: "w",
+		Milestones: []Milestone{
+			{ID: "ms_1", State: MilestoneStateRunning, BasePriceCents: 1000, BudgetCents: 1000},
+		},
+	}
+
+	_, _, err := order.OpenDispute(OpenDisputeInput{
+		MilestoneID: "ms_1", Reason: "bad", RefundCents: 500,
+	})
+	if err == nil {
+		t.Error("expected error for disputing non-settled milestone")
+	}
+}
+
+func TestIsLastMilestoneSettled_AllSettled(t *testing.T) {
+	order := Order{
+		ID: "ord_1", Status: OrderStatusRunning,
+		Milestones: []Milestone{
+			{ID: "ms_1", State: MilestoneStateSettled},
+			{ID: "ms_2", State: MilestoneStateSettled},
+		},
+	}
+	if !order.isLastMilestoneSettled() {
+		t.Error("expected true when all milestones settled")
+	}
+}
+
+func TestIsLastMilestoneSettled_NotAll(t *testing.T) {
+	order := Order{
+		ID: "ord_1", Status: OrderStatusRunning,
+		Milestones: []Milestone{
+			{ID: "ms_1", State: MilestoneStateSettled},
+			{ID: "ms_2", State: MilestoneStateRunning},
+		},
+	}
+	if order.isLastMilestoneSettled() {
+		t.Error("expected false when not all milestones settled")
+	}
+}

@@ -164,3 +164,55 @@ func TestClientPropagatesCarrierErrors(t *testing.T) {
 		t.Fatalf("expected status code in error, got %v", err)
 	}
 }
+
+func TestGetCodeAgentHealth_Error(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"internal"}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "token")
+	_, err := c.GetCodeAgentHealth(context.Background(), CodeAgentHealthInput{
+		HostID: "h", AgentID: "a",
+	})
+	if err == nil {
+		t.Error("expected error for 500 response")
+	}
+}
+
+func TestGetCodeAgentVersion_Error(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "token")
+	_, err := c.GetCodeAgentVersion(context.Background(), CodeAgentVersionInput{
+		HostID: "h", AgentID: "a",
+	})
+	if err == nil {
+		t.Error("expected error for 503 response")
+	}
+}
+
+func TestNewClientFromEnv_Empty(t *testing.T) {
+	t.Setenv("CARRIER_GATEWAY_URL", "")
+	t.Setenv("CARRIER_GATEWAY_API_TOKEN", "")
+
+	c := NewClientFromEnv()
+	_, err := c.GetCodeAgentHealth(context.Background(), CodeAgentHealthInput{HostID: "h", AgentID: "a"})
+	if err == nil {
+		t.Error("expected error with empty URL")
+	}
+}
+
+func TestNewClientFromEnv_Configured(t *testing.T) {
+	t.Setenv("CARRIER_GATEWAY_URL", "http://carrier:8090")
+	t.Setenv("CARRIER_GATEWAY_API_TOKEN", "test-token")
+
+	c := NewClientFromEnv()
+	if c == nil {
+		t.Error("expected non-nil client")
+	}
+}
