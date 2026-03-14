@@ -803,3 +803,115 @@ func TestHandleStatus_Success(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", sRec.Code, sRec.Body.String())
 	}
 }
+
+func TestHandleSettledFeed_Success(t *testing.T) {
+	callCount := 0
+	rpcSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0", "id": "1",
+			"result": map[string]any{"items": []any{}},
+		})
+	}))
+	defer rpcSrv.Close()
+
+	s := NewServerWithOptions(Options{InvoiceRPCURL: rpcSrv.URL})
+	payload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "settled_feed",
+		"params": map[string]any{"limit": 10},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleQuoteWithdrawal_Success(t *testing.T) {
+	rpcSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0", "id": "1",
+			"result": map[string]any{"invoice_address": "lnbc_quote"},
+		})
+	}))
+	defer rpcSrv.Close()
+
+	s := NewServerWithOptions(Options{
+		InvoiceRPCURL: rpcSrv.URL,
+		PayerRPCURL:   rpcSrv.URL,
+	})
+	payload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "quote_withdrawal",
+		"params": map[string]any{
+			"userId": "u_1", "asset": "CKB", "amount": "100",
+			"destination": map[string]any{"kind": "address", "address": "ckb1addr"},
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleRequestWithdrawal_Success(t *testing.T) {
+	callCount := 0
+	rpcSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.Header().Set("Content-Type", "application/json")
+		if callCount == 1 {
+			// parse_invoice (validate payment request)
+			json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": "1",
+				"result": map[string]any{"invoice": map[string]any{"data": map[string]any{"payment_hash": "0xhash"}}},
+			})
+		} else {
+			// send_payment
+			json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": "1",
+				"result": map[string]any{"payment_hash": "0xpaid"},
+			})
+		}
+	}))
+	defer rpcSrv.Close()
+
+	s := NewServerWithOptions(Options{
+		InvoiceRPCURL: rpcSrv.URL,
+		PayerRPCURL:   rpcSrv.URL,
+	})
+	payload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "request_withdrawal",
+		"params": map[string]any{
+			"userId": "u_1", "asset": "CKB", "amount": "100",
+			"destination": map[string]any{"kind": "payment_request", "paymentRequest": "lnbc_req"},
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleDashboardSummary_Success(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	payload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "dashboard_summary",
+		"params": map[string]any{"userId": "u_1"},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
