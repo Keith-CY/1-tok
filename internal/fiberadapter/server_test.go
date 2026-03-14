@@ -1190,3 +1190,67 @@ func TestSettledFeed_WithPagination(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", fRec.Code, fRec.Body.String())
 	}
 }
+
+func TestHandleStatus_MissingInvoice(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	payload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "tip.status",
+		"params": map[string]any{"invoice": ""},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 (RPC error), got %d", rec.Code)
+	}
+	// Response should contain error
+	if !strings.Contains(rec.Body.String(), "missing invoice") {
+		t.Errorf("expected 'missing invoice' error, got: %s", rec.Body.String())
+	}
+}
+
+func TestHandleStatus_InvoiceNodeError(t *testing.T) {
+	rpcSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		body, _ := io.ReadAll(r.Body)
+		var rpc struct{ Method string `json:"method"` }
+		json.Unmarshal(body, &rpc)
+
+		if rpc.Method == "parse_invoice" {
+			json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": "1",
+				"error": map[string]any{"code": -32000, "message": "invalid invoice"},
+			})
+		}
+	}))
+	defer rpcSrv.Close()
+
+	s := NewServerWithOptions(Options{InvoiceRPCURL: rpcSrv.URL})
+	payload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "tip.status",
+		"params": map[string]any{"invoice": "lnbc_bad"},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 (RPC error), got %d", rec.Code)
+	}
+}
+
+func TestHandleCreate_MissingFields(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	payload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "tip.create",
+		"params": map[string]any{"postId": "", "asset": ""},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if !strings.Contains(rec.Body.String(), "error") {
+		t.Errorf("expected error for missing fields")
+	}
+}
