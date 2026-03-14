@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -751,5 +752,51 @@ func TestWithdrawalsUseAuthenticatedProviderMembership(t *testing.T) {
 	}
 	if stub.withdrawalsUserID != "provider_auth_1" {
 		t.Fatalf("expected authenticated provider for status sync, got %q", stub.withdrawalsUserID)
+	}
+}
+
+func TestNewServer_DefaultOptions(t *testing.T) {
+	s := NewServer()
+	if s == nil {
+		t.Fatal("NewServer returned nil")
+	}
+}
+
+func TestIsOpsRole(t *testing.T) {
+	tests := []struct {
+		role string
+		want bool
+	}{
+		{"ops_reviewer", true},
+		{"risk_admin", true},
+		{"finance_admin", true},
+		{"super_admin", true},
+		{"buyer", false},
+		{"provider", false},
+		{"admin", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		if got := isOpsRole(tt.role); got != tt.want {
+			t.Errorf("isOpsRole(%q) = %v, want %v", tt.role, got, tt.want)
+		}
+	}
+}
+
+func TestWriteFiberError_NotConfigured(t *testing.T) {
+	rec := httptest.NewRecorder()
+	writeFiberError(rec, fiberclient.ErrNotConfigured)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestWriteFiberError_Generic(t *testing.T) {
+	rec := httptest.NewRecorder()
+	writeFiberError(rec, errors.New("fiber rpc timeout"))
+
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("expected 502, got %d", rec.Code)
 	}
 }
