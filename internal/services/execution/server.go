@@ -312,7 +312,10 @@ func (s *Server) postJSON(path string, payload any, target any) error {
 	defer res.Body.Close()
 
 	if res.StatusCode >= http.StatusBadRequest {
-		responseBody, _ := io.ReadAll(io.LimitReader(res.Body, 10<<20)) // 10MB max
+		responseBody, err := io.ReadAll(io.LimitReader(res.Body, 10<<20)) // 10MB max
+		if err != nil {
+			return fmt.Errorf("gateway returned %d, failed to read body: %w", res.StatusCode, err)
+		}
 		return fmt.Errorf("gateway returned %d: %s", res.StatusCode, string(responseBody))
 	}
 
