@@ -1008,3 +1008,88 @@ func TestOpenDispute_PublishError(t *testing.T) {
 		t.Error("expected error from failed publisher")
 	}
 }
+
+func TestCreateBid_RFQNotFound(t *testing.T) {
+	app := NewAppWithMemory()
+	_, err := app.CreateBid("nonexistent", CreateBidInput{
+		ProviderOrgID: "org_2", Message: "bid",
+		QuoteCents: 5000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000},
+		},
+	})
+	if !errors.Is(err, ErrRFQNotFound) {
+		t.Errorf("expected ErrRFQNotFound, got %v", err)
+	}
+}
+
+func TestAwardRFQ_RFQNotFound(t *testing.T) {
+	app := NewAppWithMemory()
+	_, _, err := app.AwardRFQ("nonexistent", AwardRFQInput{BidID: "bid_1", FundingMode: "prepaid"})
+	if !errors.Is(err, ErrRFQNotFound) {
+		t.Errorf("expected ErrRFQNotFound, got %v", err)
+	}
+}
+
+func TestAwardRFQ_BidNotBelongToRFQ(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq1, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "RFQ1", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	rfq2, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "RFQ2", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq2.ID, CreateBidInput{
+		ProviderOrgID: "org_2", Message: "bid",
+		QuoteCents: 5000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000},
+		},
+	})
+
+	_, _, err := app.AwardRFQ(rfq1.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+	if err == nil {
+		t.Error("expected error when bid doesn't belong to RFQ")
+	}
+}
+
+func TestAwardRFQ_MissingBidID(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "No bid", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+
+	_, _, err := app.AwardRFQ(rfq.ID, AwardRFQInput{FundingMode: "prepaid"})
+	if err == nil {
+		t.Error("expected error for missing bid ID")
+	}
+}
+
+func TestResolveDispute_PublishError(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "Resolve pub err", Category: "ai",
+		Scope: "test", BudgetCents: 10000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_2", Message: "bid",
+		QuoteCents: 10000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 10000, BudgetCents: 10000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+	app.SettleMilestone(order.ID, core.SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+	app.OpenDispute(order.ID, OpenDisputeInput{MilestoneID: "ms_1", Reason: "issue", RefundCents: 500})
+	disputes, _ := app.ListDisputes()
+
+	app.SetPublisher(errorPublisher{})
+	_, _, err := app.ResolveDispute(disputes[0].ID, ResolveDisputeInput{Resolution: "ok", ResolvedBy: "ops"})
+	if err == nil {
+		t.Error("expected error from failed publisher")
+	}
+}

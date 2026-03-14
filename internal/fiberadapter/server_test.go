@@ -915,3 +915,55 @@ func TestHandleDashboardSummary_Success(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestHandleCreate_WithHMAC(t *testing.T) {
+	rpcSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0", "id": "1",
+			"result": map[string]any{"invoice_address": "lnbc_hmac_test"},
+		})
+	}))
+	defer rpcSrv.Close()
+
+	s := NewServerWithOptions(Options{
+		InvoiceRPCURL: rpcSrv.URL,
+		AppID:         "app_1",
+		HMACSecret:    "test-secret",
+	})
+
+	rpcPayload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1,
+		"method": "create",
+		"params": map[string]any{
+			"postId": "post_1", "fromUserId": "u_from", "toUserId": "u_to",
+			"asset": "CKB", "amount": "100",
+		},
+	})
+
+	// Without HMAC — should be rejected
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(rpcPayload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 without HMAC, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestNewServerWithOptions_WithRPCNodes(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	s := NewServerWithOptions(Options{
+		InvoiceRPCURL: srv.URL,
+		PayerRPCURL:   srv.URL,
+		AppID:         "app",
+		HMACSecret:    "secret",
+	})
+	if s == nil {
+		t.Fatal("expected non-nil server")
+	}
+}
