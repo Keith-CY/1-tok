@@ -408,3 +408,76 @@ func TestNewServiceWithOptions_AllDefaults(t *testing.T) {
 		t.Fatal("expected non-nil")
 	}
 }
+
+func TestAllow_Enforcing_MultipleScopes(t *testing.T) {
+	now := time.Date(2026, 3, 14, 12, 0, 0, 0, time.UTC)
+	svc := NewServiceWithOptions(Options{
+		Enforce: true,
+		Now:     func() time.Time { return now },
+		Store:   NewMemoryStore(func() time.Time { return now }),
+		Policies: map[Policy]PolicyConfig{
+			PolicyGatewayCreateRFQ: {Limit: 5, Window: time.Minute, Scope: []ScopePart{ScopeOrg, ScopeUser}},
+		},
+	})
+
+	meta := Meta{OrgID: "org_1", UserID: "u_1"}
+	for i := 0; i < 5; i++ {
+		d, err := svc.Allow(context.Background(), PolicyGatewayCreateRFQ, meta)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !d.Allowed {
+			t.Fatalf("request %d should be allowed", i)
+		}
+	}
+
+	d, _ := svc.Allow(context.Background(), PolicyGatewayCreateRFQ, meta)
+	if d.Allowed {
+		t.Error("6th request should be blocked")
+	}
+	if d.RetryAfter <= 0 {
+		t.Error("expected positive RetryAfter")
+	}
+}
+
+func TestDefaultPolicies(t *testing.T) {
+	policies := DefaultPolicies()
+	if len(policies) == 0 {
+		t.Error("expected non-empty default policies")
+	}
+	if _, ok := policies[PolicyIAMSignupIP]; !ok {
+		t.Error("expected IAM signup policy")
+	}
+}
+
+func TestEnvDuration(t *testing.T) {
+	t.Setenv("TEST_DUR", "5m")
+	d := envDuration("TEST_DUR", time.Second)
+	if d != 5*time.Minute {
+		t.Errorf("duration = %s, want 5m", d)
+	}
+}
+
+func TestEnvDuration_Default(t *testing.T) {
+	t.Setenv("TEST_DUR_EMPTY", "")
+	d := envDuration("TEST_DUR_EMPTY", 30*time.Second)
+	if d != 30*time.Second {
+		t.Errorf("duration = %s, want 30s", d)
+	}
+}
+
+func TestEnvInt(t *testing.T) {
+	t.Setenv("TEST_INT", "42")
+	v := envInt("TEST_INT", 10)
+	if v != 42 {
+		t.Errorf("int = %d, want 42", v)
+	}
+}
+
+func TestEnvInt_Default(t *testing.T) {
+	t.Setenv("TEST_INT_EMPTY", "")
+	v := envInt("TEST_INT_EMPTY", 10)
+	if v != 10 {
+		t.Errorf("int = %d, want 10", v)
+	}
+}
