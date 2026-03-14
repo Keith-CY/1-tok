@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -379,4 +380,56 @@ func signPayloadForTest(secret string, payload []byte, ts, nonce string) string 
 	_, _ = mac.Write([]byte("."))
 	_, _ = mac.Write(payload)
 	return hex.EncodeToString(mac.Sum(nil))
+}
+
+func TestNewClientFromEnv_Missing(t *testing.T) {
+	t.Setenv("FIBER_RPC_URL", "")
+	t.Setenv("FIBER_APP_ID", "")
+	t.Setenv("FIBER_HMAC_SECRET", "")
+
+	c := NewClientFromEnv()
+	_, err := c.CreateInvoice(context.Background(), CreateInvoiceInput{})
+	if !errors.Is(err, ErrNotConfigured) {
+		t.Errorf("expected ErrNotConfigured, got %v", err)
+	}
+}
+
+func TestNewClientFromEnv_Configured(t *testing.T) {
+	t.Setenv("FIBER_RPC_URL", "http://fiber:8091")
+	t.Setenv("FIBER_APP_ID", "app_1")
+	t.Setenv("FIBER_HMAC_SECRET", "secret")
+
+	c := NewClientFromEnv()
+	// Should be a real client, not missingClient
+	_, err := c.CreateInvoice(context.Background(), CreateInvoiceInput{})
+	// Will fail with connection error, not ErrNotConfigured
+	if errors.Is(err, ErrNotConfigured) {
+		t.Error("expected real client, got missingClient")
+	}
+}
+
+func TestMissingClient_AllMethods(t *testing.T) {
+	t.Setenv("FIBER_RPC_URL", "")
+	t.Setenv("FIBER_APP_ID", "")
+	t.Setenv("FIBER_HMAC_SECRET", "")
+	c := NewClientFromEnv()
+
+	if _, err := c.CreateInvoice(context.Background(), CreateInvoiceInput{}); !errors.Is(err, ErrNotConfigured) {
+		t.Errorf("CreateInvoice: %v", err)
+	}
+	if _, err := c.GetInvoiceStatus(context.Background(), "inv"); !errors.Is(err, ErrNotConfigured) {
+		t.Errorf("GetInvoiceStatus: %v", err)
+	}
+	if _, err := c.QuotePayout(context.Background(), QuotePayoutInput{}); !errors.Is(err, ErrNotConfigured) {
+		t.Errorf("QuotePayout: %v", err)
+	}
+	if _, err := c.RequestPayout(context.Background(), RequestPayoutInput{}); !errors.Is(err, ErrNotConfigured) {
+		t.Errorf("RequestPayout: %v", err)
+	}
+	if _, err := c.ListSettledFeed(context.Background(), SettledFeedInput{}); !errors.Is(err, ErrNotConfigured) {
+		t.Errorf("ListSettledFeed: %v", err)
+	}
+	if _, err := c.ListWithdrawalStatuses(context.Background(), "user"); !errors.Is(err, ErrNotConfigured) {
+		t.Errorf("ListWithdrawalStatuses: %v", err)
+	}
 }

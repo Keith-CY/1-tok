@@ -480,3 +480,83 @@ func TestHMACVerification_AcceptsValidSignature(t *testing.T) {
 		t.Fatalf("expected non-401 with valid signature, got %d body=%s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestMapInvoiceState(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"paid", "SETTLED"},
+		{"Paid", "SETTLED"},
+		{"settled", "SETTLED"},
+		{"SETTLED", "SETTLED"},
+		{"cancelled", "FAILED"},
+		{"expired", "FAILED"},
+		{"failed", "FAILED"},
+		{"pending", "UNPAID"},
+		{"", "UNPAID"},
+		{"unknown", "UNPAID"},
+	}
+	for _, tt := range tests {
+		if got := mapInvoiceState(tt.input); got != tt.want {
+			t.Errorf("mapInvoiceState(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestToHexQuantity(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+		err   bool
+	}{
+		{"0x1a", "0x1a", false},
+		{"0X1A", "0x1a", false},
+		{"100", "0x64", false},
+		{"0", "0x0", false},
+		{"abc", "", true},
+		{"", "", true},
+	}
+	for _, tt := range tests {
+		got, err := toHexQuantity(tt.input)
+		if tt.err && err == nil {
+			t.Errorf("toHexQuantity(%q) expected error", tt.input)
+		}
+		if !tt.err && err != nil {
+			t.Errorf("toHexQuantity(%q) unexpected error: %v", tt.input, err)
+		}
+		if !tt.err && got != tt.want {
+			t.Errorf("toHexQuantity(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestPickTxEvidence(t *testing.T) {
+	tests := []struct {
+		name   string
+		result map[string]any
+		want   string
+	}{
+		{"with tx_hash", map[string]any{"tx_hash": "0xabc"}, "0xabc"},
+		{"with txHash", map[string]any{"txHash": "0xdef"}, "0xdef"},
+		{"with payment_hash", map[string]any{"payment_hash": "0x123"}, "0x123"},
+		{"with paymentHash", map[string]any{"paymentHash": "0x456"}, "0x456"},
+		{"empty", map[string]any{}, ""},
+		{"nil", nil, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := pickTxEvidence(tt.result); got != tt.want {
+				t.Errorf("pickTxEvidence() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNewServer_Defaults(t *testing.T) {
+	// NewServer without env vars should create a server with nil RPC nodes
+	s := NewServer()
+	if s == nil {
+		t.Fatal("NewServer returned nil")
+	}
+}
