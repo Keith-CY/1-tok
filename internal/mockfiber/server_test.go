@@ -185,3 +185,17 @@ func TestDashboardSummary_WithUser(t *testing.T) {
 	}
 	_ = result
 }
+
+func TestRequestWithdrawal_MissingFields(t *testing.T) {
+	srv := httptest.NewServer(NewServer())
+	defer srv.Close()
+
+	c := fiberclient.NewClient(srv.URL, "app", "secret")
+	_, err := c.RequestPayout(context.Background(), fiberclient.RequestPayoutInput{
+		UserID: "u_1",
+		// Missing asset/amount/destination
+	})
+	if err == nil {
+		t.Error("expected error for missing fields")
+	}
+}

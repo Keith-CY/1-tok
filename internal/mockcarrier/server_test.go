@@ -143,3 +143,55 @@ func TestDefaultString(t *testing.T) {
 		t.Error("expected fallback")
 	}
 }
+
+func TestServeHTTP_InvalidPathLength(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/remote/hosts/h/instances", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestServeHTTP_UnknownAction(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/remote/hosts/h/instances/a/codeagent/unknown", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestServeHTTP_Healthz(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestHandleHealth(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/remote/hosts/h1/instances/a1/codeagent/health?backend=codex&workspaceRoot=/ws", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestHandleRun_Success(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	payload := `{"hostId":"h","agentId":"a","backend":"codex","capability":"run","title":"Test","instructions":"echo ok"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/remote/hosts/h/instances/a/codeagent/run", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
