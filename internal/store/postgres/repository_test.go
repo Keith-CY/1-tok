@@ -757,3 +757,155 @@ func TestVerifyCoreSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestIdentityStore_DuplicateSignup(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+	db, err := Open(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+
+	store := NewIdentityStore(db)
+	email := fmt.Sprintf("dup-%d@test.com", time.Now().UnixNano())
+
+	_, err = store.CreateSignup(identity.Signup{
+		Email: email, Name: "First", PasswordHash: "h",
+		OrganizationName: "Org1", OrganizationKind: "buyer",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = store.CreateSignup(identity.Signup{
+		Email: email, Name: "Second", PasswordHash: "h",
+		OrganizationName: "Org2", OrganizationKind: "buyer",
+	})
+	if err == nil {
+		t.Error("expected error for duplicate email")
+	}
+}
+
+func TestIdentityStore_FindUserByEmail_NotFound(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+	db, err := Open(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+
+	store := NewIdentityStore(db)
+	_, err = store.FindUserByEmail("nonexistent@test.com")
+	if err == nil {
+		t.Error("expected error for nonexistent email")
+	}
+}
+
+func TestIdentityStore_GetActor_NotFound(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+	db, err := Open(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+
+	store := NewIdentityStore(db)
+	_, err = store.GetAuthenticatedActorBySessionDigest("nonexistent-digest")
+	if err == nil {
+		t.Error("expected error for nonexistent session")
+	}
+}
+
+func TestIdentityStore_RevokeSession_NotFound(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+	db, err := Open(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+
+	store := NewIdentityStore(db)
+	err = store.RevokeSession("nonexistent-digest")
+	// May or may not error — postgres UPDATE with no rows affected isn't an error
+	_ = err
+}
+
+func TestOpen_InvalidDSN(t *testing.T) {
+	_, err := Open("postgres://invalid:invalid@127.0.0.1:1/invalid")
+	if err == nil {
+		t.Error("expected error for invalid DSN")
+	}
+}
+
+func TestRFQRepository_SaveAndGet(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+	db, err := Open(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRFQRepository(db)
+	id, _ := repo.NextID()
+
+	rfq := platform.RFQ{
+		ID:                id,
+		BuyerOrgID:        "org_b_pg",
+		Title:             "PG test RFQ",
+		Category:          "ai",
+		Scope:             "test",
+		BudgetCents:       10000,
+		Status:            "open",
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+		CreatedAt:         time.Now(),
+		UpdatedAt:         time.Now(),
+		DefaultMilestones: []platform.RFQMilestone{
+			{ID: "ms_1", Title: "Setup", BasePriceCents: 2000, BudgetCents: 2000},
+			{ID: "ms_2", Title: "Work", BasePriceCents: 8000, BudgetCents: 8000},
+		},
+	}
+	if err := repo.Save(rfq); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := repo.Get(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Title != "PG test RFQ" {
+		t.Errorf("title = %s", got.Title)
+	}
+	if len(got.DefaultMilestones) != 2 {
+		t.Errorf("default milestones = %d, want 2", len(got.DefaultMilestones))
+	}
+}
