@@ -274,3 +274,50 @@ func TestFlush(t *testing.T) {
 	result := Flush(0)
 	_ = result
 }
+
+func TestWrapHTTP_WritesStatus(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	})
+
+	handler := WrapHTTP("test-svc", inner)
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestConfigFromEnv_WithDSN(t *testing.T) {
+	t.Setenv("SENTRY_DSN", "https://key@sentry.io/1")
+	t.Setenv("SENTRY_ENVIRONMENT", "production")
+	t.Setenv("SENTRY_RELEASE", "v2.0")
+	t.Setenv("SENTRY_SAMPLE_RATE", "0.8")
+
+	cfg := ConfigFromEnv("my-service")
+	if cfg.DSN != "https://key@sentry.io/1" {
+		t.Errorf("DSN = %s", cfg.DSN)
+	}
+	if cfg.SampleRate != 0.8 {
+		t.Errorf("sample rate = %f", cfg.SampleRate)
+	}
+}
+
+func TestCaptureMessage_NoHub(t *testing.T) {
+	// Should not panic
+	CaptureMessage(context.Background(), "test message")
+}
+
+func TestInit_WithDSN(t *testing.T) {
+	flush, err := Init(Config{
+		Service:     "test",
+		DSN:         "", // Empty DSN = no-op
+		Environment: "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	flush(0)
+}

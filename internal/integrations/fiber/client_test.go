@@ -517,3 +517,46 @@ func TestClient_ListWithdrawalStatuses_Success(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestClient_Call_EmptyEndpoint(t *testing.T) {
+	c := NewClient("", "app", "secret")
+	_, err := c.CreateInvoice(context.Background(), CreateInvoiceInput{
+		PostID: "p", FromUserID: "u1", ToUserID: "u2", Asset: "CKB", Amount: "100",
+	})
+	if err == nil {
+		t.Error("expected error for empty endpoint")
+	}
+}
+
+func TestClient_ListWithdrawalStatuses_Error(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "app", "secret")
+	_, err := c.ListWithdrawalStatuses(context.Background(), "u_1")
+	if err == nil {
+		t.Error("expected error for 500 response")
+	}
+}
+
+func TestClient_GetInvoiceStatus_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0", "id": "1",
+			"result": map[string]any{"state": "paid", "amount": "100"},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "app", "secret")
+	result, err := c.GetInvoiceStatus(context.Background(), "inv_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.State != "paid" {
+		t.Errorf("state = %s", result.State)
+	}
+}
