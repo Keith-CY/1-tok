@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -2227,5 +2228,119 @@ func TestBearerToken_Missing(t *testing.T) {
 	_, ok = bearerToken("Basic abc123")
 	if ok {
 		t.Error("expected false for non-Bearer")
+	}
+}
+
+func TestWriteGatewayError_NotFound(t *testing.T) {
+	for _, err := range []error{
+		core.ErrOrderNotFound,
+		core.ErrMilestoneNotFound,
+		platform.ErrRFQNotFound,
+		platform.ErrBidNotFound,
+		platform.ErrDisputeNotFound,
+	} {
+		rec := httptest.NewRecorder()
+		writeGatewayError(rec, err)
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("writeGatewayError(%v) = %d, want 404", err, rec.Code)
+		}
+	}
+}
+
+func TestWriteGatewayError_Conflict(t *testing.T) {
+	rec := httptest.NewRecorder()
+	writeGatewayError(rec, errors.New("some conflict"))
+	if rec.Code != http.StatusConflict {
+		t.Errorf("expected 409, got %d", rec.Code)
+	}
+}
+
+func TestCreateOrder_MissingFields(t *testing.T) {
+	gw, _ := NewServerWithOptionsE(Options{App: platform.NewAppWithMemory()})
+	payload, _ := json.Marshal(map[string]any{
+		"buyerOrgId": "", "providerOrgId": "", "milestones": []any{},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code == http.StatusCreated {
+		t.Error("expected error for missing fields")
+	}
+}
+
+func TestAwardRFQ_NotFound(t *testing.T) {
+	gw, _ := NewServerWithOptionsE(Options{App: platform.NewAppWithMemory()})
+	payload, _ := json.Marshal(map[string]any{
+		"bidId": "bid_nonexistent", "fundingMode": "prepaid",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs/rfq_nonexistent/award", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSettleMilestone_OrderNotFound(t *testing.T) {
+	gw, _ := NewServerWithOptionsE(Options{App: platform.NewAppWithMemory()})
+	payload, _ := json.Marshal(map[string]any{"summary": "done"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders/ord_missing/milestones/ms_1/settle", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRecordUsage_OrderNotFound(t *testing.T) {
+	gw, _ := NewServerWithOptionsE(Options{App: platform.NewAppWithMemory()})
+	payload, _ := json.Marshal(map[string]any{"kind": "token", "amountCents": 100})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders/ord_missing/milestones/ms_1/usage", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateDispute_OrderNotFound(t *testing.T) {
+	gw, _ := NewServerWithOptionsE(Options{App: platform.NewAppWithMemory()})
+	payload, _ := json.Marshal(map[string]any{
+		"milestoneId": "ms_1", "reason": "bad", "refundCents": 100,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders/ord_missing/disputes", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestResolveDispute_NotFound(t *testing.T) {
+	gw, _ := NewServerWithOptionsE(Options{App: platform.NewAppWithMemory()})
+	payload, _ := json.Marshal(map[string]any{
+		"resolution": "refund", "resolvedBy": "ops",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/disputes/disp_missing/resolve", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestListRFQBids_EmptyForNewRFQ(t *testing.T) {
+	gw, _ := NewServerWithOptionsE(Options{App: platform.NewAppWithMemory()})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/rfqs/rfq_missing/bids", nil)
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 }

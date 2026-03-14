@@ -396,3 +396,40 @@ func TestActionForEvent(t *testing.T) {
 		}
 	}
 }
+
+func TestCarrierEvent_Success(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"order":{"id":"ord_1"}}`))
+	}))
+	defer backend.Close()
+
+	s := NewServerWithOptions(Options{
+		APIUpstream: backend.URL,
+	})
+
+	payload, _ := json.Marshal(map[string]any{
+		"orderId": "ord_1", "milestoneId": "ms_1",
+		"eventType": "usage_reported",
+		"payload": map[string]any{"kind": "token", "amountCents": 100},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/events", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCarrierEvent_InvalidJSON(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/events", bytes.NewReader([]byte("{broken")))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
