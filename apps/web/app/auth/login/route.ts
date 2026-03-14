@@ -1,5 +1,5 @@
 import { redirectToPath } from "../../../lib/redirect";
-import { createIAMSession, SESSION_COOKIE_NAME, shouldUseSecureSessionCookie } from "../../../lib/session";
+import { createIAMSession, SESSION_COOKIE_NAME, SESSION_MAX_AGE_SECONDS, shouldUseSecureSessionCookie } from "../../../lib/session";
 
 export async function POST(request: Request) {
   const form = await request.formData();
@@ -22,6 +22,7 @@ export async function POST(request: Request) {
       sameSite: "lax",
       secure: shouldUseSecureSessionCookie(),
       path: "/",
+      maxAge: SESSION_MAX_AGE_SECONDS,
     });
 
 		return response;

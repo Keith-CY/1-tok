@@ -167,6 +167,7 @@ type App struct {
 	disputes     DisputeRepository
 	creditEngine core.CreditDecisionEngine
 	publisher    EventPublisher
+	mu           sync.Mutex // guards compound multi-store operations
 }
 
 type EventPublisher interface {
@@ -490,6 +491,9 @@ func (a *App) RecordUsageCharge(orderID string, input RecordUsageChargeInput) (*
 }
 
 func (a *App) OpenDispute(orderID string, input OpenDisputeInput) (*core.Order, core.LedgerEntry, core.LedgerEntry, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	order, err := a.orders.Get(orderID)
 	if err != nil {
 		return nil, core.LedgerEntry{}, core.LedgerEntry{}, err
@@ -539,6 +543,9 @@ func (a *App) OpenDispute(orderID string, input OpenDisputeInput) (*core.Order, 
 }
 
 func (a *App) ResolveDispute(disputeID string, input ResolveDisputeInput) (Dispute, *core.Order, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	dispute, err := a.disputes.Get(disputeID)
 	if err != nil {
 		return Dispute{}, nil, err

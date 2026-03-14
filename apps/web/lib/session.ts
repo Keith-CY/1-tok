@@ -1,5 +1,11 @@
 export const SESSION_COOKIE_NAME = "one_tok_session";
 
+/**
+ * Default session cookie max-age in seconds (30 days).
+ * Matches the server-side defaultSessionTTL in internal/services/iam.
+ */
+export const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
+
 export interface IAMSessionResponse {
   session: {
     token: string;
