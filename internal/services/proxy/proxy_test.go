@@ -44,3 +44,4 @@ func TestNewSingleHost_PanicsOnBadURL(t *testing.T) {
 	}()
 	NewSingleHost("://bad", func(r *http.Request) {})
 }
+

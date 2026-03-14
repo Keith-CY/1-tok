@@ -560,3 +560,112 @@ func TestNewServer_Defaults(t *testing.T) {
 		t.Fatal("NewServer returned nil")
 	}
 }
+
+func TestMapAssetToCurrency(t *testing.T) {
+	tests := []struct {
+		asset string
+		want  string
+	}{
+		{"CKB", "Fibt"},
+		{"ckb", "Fibt"},
+		{"USDI", "Fibt"},
+		{"anything", "Fibt"},
+	}
+	for _, tt := range tests {
+		if got := mapAssetToCurrency(tt.asset); got != tt.want {
+			t.Errorf("mapAssetToCurrency(%q) = %q, want %q", tt.asset, got, tt.want)
+		}
+	}
+}
+
+func TestNextID(t *testing.T) {
+	id1 := nextID("test_")
+	id2 := nextID("test_")
+	if id1 == id2 {
+		t.Error("expected unique IDs")
+	}
+	if len(id1) < 10 {
+		t.Errorf("id too short: %s", id1)
+	}
+}
+
+func TestRPCNode_CreateInvoice_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0", "id": "1",
+			"result": map[string]any{"invoice_address": "lnbc_test"},
+		})
+	}))
+	defer srv.Close()
+
+	node := newRPCNode(srv.URL)
+	invoice, err := node.CreateInvoice(context.Background(), "CKB", "100")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if invoice != "lnbc_test" {
+		t.Errorf("invoice = %s, want lnbc_test", invoice)
+	}
+}
+
+func TestRPCNode_GetInvoiceStatus_Success(t *testing.T) {
+	callCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.Header().Set("Content-Type", "application/json")
+		if callCount == 1 {
+			// parse_invoice
+			json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": "1",
+				"result": map[string]any{"invoice": map[string]any{"data": map[string]any{"payment_hash": "0xabc123"}}},
+			})
+		} else {
+			// get_invoice
+			json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": "1",
+				"result": map[string]any{"status": "paid"},
+			})
+		}
+	}))
+	defer srv.Close()
+
+	node := newRPCNode(srv.URL)
+	status, err := node.GetInvoiceStatus(context.Background(), "lnbc_test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status != "SETTLED" {
+		t.Errorf("status = %s, want SETTLED", status)
+	}
+}
+
+func TestRPCNode_Call_RPCError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0", "id": "1",
+			"error": map[string]any{"code": -32600, "message": "invalid request"},
+		})
+	}))
+	defer srv.Close()
+
+	node := newRPCNode(srv.URL)
+	_, err := node.CreateInvoice(context.Background(), "CKB", "100")
+	if err == nil {
+		t.Error("expected error for RPC error response")
+	}
+}
+
+func TestRPCNode_Call_HTTPError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	node := newRPCNode(srv.URL)
+	_, err := node.CreateInvoice(context.Background(), "CKB", "100")
+	if err == nil {
+		t.Error("expected error for HTTP 500")
+	}
+}
