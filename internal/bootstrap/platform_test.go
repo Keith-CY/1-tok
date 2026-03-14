@@ -93,3 +93,53 @@ func TestLoadPlatformApp_RequireBootstrapped(t *testing.T) {
 		t.Fatal("expected non-nil app")
 	}
 }
+
+func TestLoadPlatformApp_WithNATS(t *testing.T) {
+	natsURL := os.Getenv("ONE_TOK_TEST_NATS_URL")
+	if natsURL == "" {
+		t.Skip("ONE_TOK_TEST_NATS_URL not set")
+	}
+
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("NATS_URL", natsURL)
+
+	app, cleanup, err := LoadPlatformApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+
+	if app == nil {
+		t.Fatal("expected non-nil app")
+	}
+}
+
+func TestLoadPlatformApp_WithPostgresAndNATS(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	natsURL := os.Getenv("ONE_TOK_TEST_NATS_URL")
+	if dsn == "" || natsURL == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL or ONE_TOK_TEST_NATS_URL not set")
+	}
+
+	t.Setenv("DATABASE_URL", dsn)
+	t.Setenv("NATS_URL", natsURL)
+
+	app, cleanup, err := LoadPlatformApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+
+	if app == nil {
+		t.Fatal("expected non-nil app")
+	}
+
+	// Verify works end to end
+	providers, err := app.ListProviders()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(providers) == 0 {
+		t.Error("expected providers")
+	}
+}
