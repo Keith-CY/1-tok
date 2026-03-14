@@ -232,3 +232,51 @@ func TestDoJSON_MalformedResponse(t *testing.T) {
 		t.Error("expected error for malformed JSON")
 	}
 }
+
+func TestRunCodeAgent_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"run": map[string]any{
+				"backend": "codex",
+				"result":  map[string]any{"completed": true, "output": "done"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "token")
+	result, err := c.RunCodeAgent(context.Background(), CodeAgentRunInput{
+		HostID: "h", AgentID: "a", Backend: "codex", Capability: "run",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Backend != "codex" {
+		t.Errorf("backend = %s", result.Backend)
+	}
+}
+
+func TestGetCodeAgentHealth_WithQueryParams(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("backend") != "codex" {
+			t.Errorf("backend = %s", r.URL.Query().Get("backend"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"health": map[string]any{"healthy": true, "workspaceRoot": "/ws"},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "token")
+	result, err := c.GetCodeAgentHealth(context.Background(), CodeAgentHealthInput{
+		HostID: "h", AgentID: "a", Backend: "codex", WorkspaceRoot: "/ws",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Healthy {
+		t.Error("expected healthy")
+	}
+}
