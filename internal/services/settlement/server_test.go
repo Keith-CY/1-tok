@@ -1060,3 +1060,115 @@ func TestHealthz_Settlement(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 }
+
+func TestCreateInvoice_MissingFields(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	payload := `{"orderId":"","asset":"","amount":""}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/invoices", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code == http.StatusCreated {
+		t.Error("expected error for missing fields")
+	}
+}
+
+func TestQuoteWithdrawal_MissingFields(t *testing.T) {
+	s := NewServerWithOptions(Options{Fiber: &stubFiberClient{}})
+	payload := `{"asset":"","amount":"","destination":{"kind":""}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals/quote", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRequestWithdrawal_MissingFields(t *testing.T) {
+	s := NewServerWithOptions(Options{Fiber: &stubFiberClient{}})
+	payload := `{"asset":"","amount":"","destination":{"kind":""}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestInvoiceFromPath_Invalid(t *testing.T) {
+	_, err := invoiceFromPath("/v1/invoices/")
+	if err == nil {
+		t.Error("expected error for trailing slash")
+	}
+	_, err = invoiceFromPath("/v1/wrong")
+	if err == nil {
+		t.Error("expected error for wrong path")
+	}
+}
+
+func TestInvoiceFromPath_Valid(t *testing.T) {
+	inv, err := invoiceFromPath("/v1/invoices/lnbc_123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inv != "lnbc_123" {
+		t.Errorf("invoice = %s", inv)
+	}
+}
+
+func TestParseWithdrawalRequest_InvalidJSON(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString("{broken"))
+	_, err := parseWithdrawalRequest(req)
+	if err == nil {
+		t.Error("expected error for invalid JSON")
+	}
+}
+
+func TestListFundingRecords_WithFilter(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/v1/funding-records?kind=invoice&orderId=ord_1&providerOrgId=org_p", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWithdrawalStatuses_WithAuth(t *testing.T) {
+	actor := iamclient.Actor{
+		UserID: "u_1",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	fiber := &stubFiberClient{
+		withdrawalsResult: fiberclient.WithdrawalStatusResult{},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber: fiber,
+		Auth:  &stubIAMClient{actor: actor},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/v1/withdrawals/status", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSettledFeed_WithLimit(t *testing.T) {
+	fiber := &stubFiberClient{
+		settledFeedResult: fiberclient.SettledFeedResult{},
+	}
+	s := NewServerWithOptions(Options{Fiber: fiber})
+	req := httptest.NewRequest(http.MethodGet, "/v1/settled-feed?limit=10&afterSettledAt=2026-01-01T00:00:00Z&afterId=rec_1", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
