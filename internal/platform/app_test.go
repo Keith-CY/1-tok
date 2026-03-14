@@ -1271,3 +1271,44 @@ func TestCreateBid_NextIDError(t *testing.T) {
 	}
 	_ = rfq
 }
+
+type failAfterFirstSaveOrderRepo struct {
+	real    OrderRepository
+	saveCount int
+}
+
+func (f *failAfterFirstSaveOrderRepo) NextID() (string, error) { return f.real.NextID() }
+func (f *failAfterFirstSaveOrderRepo) Get(id string) (*core.Order, error) { return f.real.Get(id) }
+func (f *failAfterFirstSaveOrderRepo) List() ([]*core.Order, error) { return f.real.List() }
+func (f *failAfterFirstSaveOrderRepo) Save(o *core.Order) error {
+	f.saveCount++
+	if f.saveCount > 1 {
+		return errors.New("save failed after first")
+	}
+	return f.real.Save(o)
+}
+
+func TestSettleMilestone_SaveError(t *testing.T) {
+	// Create a normal app, create an order, then swap repo
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "Save err", Category: "ai",
+		Scope: "test", BudgetCents: 10000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_2", Message: "bid",
+		QuoteCents: 10000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 10000, BudgetCents: 10000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	// Swap orders repo with one that fails on second save
+	app.orders = &failAfterFirstSaveOrderRepo{real: app.orders, saveCount: 1}
+
+	_, _, err := app.SettleMilestone(order.ID, core.SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+	if err == nil {
+		t.Error("expected error from save failure")
+	}
+}
