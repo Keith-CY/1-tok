@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -370,5 +371,200 @@ func TestAppResolveDisputeMarksMilestoneResolved(t *testing.T) {
 	}
 	if updatedOrder.Milestones[0].DisputeStatus != core.DisputeStatusResolved {
 		t.Fatalf("expected milestone dispute status resolved, got %s", updatedOrder.Milestones[0].DisputeStatus)
+	}
+}
+
+func TestListProviders(t *testing.T) {
+	app := NewAppWithMemory()
+	providers, err := app.ListProviders()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(providers) == 0 {
+		t.Error("expected default providers")
+	}
+}
+
+func TestListListings(t *testing.T) {
+	app := NewAppWithMemory()
+	listings, err := app.ListListings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listings) == 0 {
+		t.Error("expected default listings")
+	}
+}
+
+func TestGetRFQ(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "Test", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+
+	got, err := app.GetRFQ(rfq.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Title != "Test" {
+		t.Errorf("title = %s, want Test", got.Title)
+	}
+}
+
+func TestGetRFQ_NotFound(t *testing.T) {
+	app := NewAppWithMemory()
+	_, err := app.GetRFQ("nonexistent")
+	if !errors.Is(err, ErrRFQNotFound) {
+		t.Errorf("expected ErrRFQNotFound, got %v", err)
+	}
+}
+
+func TestListOrders(t *testing.T) {
+	app := NewAppWithMemory()
+	orders, err := app.ListOrders()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if orders == nil {
+		t.Error("expected non-nil slice")
+	}
+}
+
+func TestListDisputes(t *testing.T) {
+	app := NewAppWithMemory()
+	disputes, err := app.ListDisputes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Empty list may be nil or empty slice
+	if len(disputes) != 0 {
+		t.Errorf("expected 0 disputes, got %d", len(disputes))
+	}
+}
+
+func TestGetOrder_NotFound(t *testing.T) {
+	app := NewAppWithMemory()
+	_, err := app.GetOrder("nonexistent")
+	if !errors.Is(err, core.ErrOrderNotFound) {
+		t.Errorf("expected ErrOrderNotFound, got %v", err)
+	}
+}
+
+func TestCreateRFQ_MissingFields(t *testing.T) {
+	app := NewAppWithMemory()
+	_, err := app.CreateRFQ(CreateRFQInput{})
+	if err == nil {
+		t.Error("expected error for empty input")
+	}
+}
+
+func TestCreateRFQ_MissingDeadline(t *testing.T) {
+	app := NewAppWithMemory()
+	_, err := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "Test", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+	})
+	if err == nil {
+		t.Error("expected error for missing deadline")
+	}
+}
+
+func TestCreateOrder_MissingFields(t *testing.T) {
+	app := NewAppWithMemory()
+	_, err := app.CreateOrder(CreateOrderInput{})
+	if err == nil {
+		t.Error("expected error for empty input")
+	}
+}
+
+func TestSettleMilestone(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "Settle test", Category: "ai",
+		Scope: "test", BudgetCents: 10000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_2", Message: "bid",
+		QuoteCents: 10000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "Phase 1", BasePriceCents: 5000, BudgetCents: 5000},
+			{ID: "ms_2", Title: "Phase 2", BasePriceCents: 5000, BudgetCents: 5000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	settled, entry, err := app.SettleMilestone(order.ID, core.SettleMilestoneInput{
+		MilestoneID: "ms_1",
+		Summary:     "Done",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settled.Milestones[0].State != core.MilestoneStateSettled {
+		t.Errorf("milestone state = %s, want settled", settled.Milestones[0].State)
+	}
+	if entry.Kind == "" {
+		t.Error("expected ledger entry")
+	}
+	// ms_2 should advance to running
+	if settled.Milestones[1].State != core.MilestoneStateRunning {
+		t.Errorf("next milestone state = %s, want running", settled.Milestones[1].State)
+	}
+}
+
+func TestRecordUsageCharge(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "Usage test", Category: "ai",
+		Scope: "test", BudgetCents: 10000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_2", Message: "bid",
+		QuoteCents: 10000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "Work", BasePriceCents: 10000, BudgetCents: 10000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	updated, charge, err := app.RecordUsageCharge(order.ID, RecordUsageChargeInput{
+		MilestoneID: "ms_1",
+		Kind:        "token",
+		AmountCents: 500,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if charge.AmountCents != 500 {
+		t.Errorf("charge = %d, want 500", charge.AmountCents)
+	}
+	if len(updated.Milestones[0].UsageCharges) != 1 {
+		t.Errorf("usage charges = %d, want 1", len(updated.Milestones[0].UsageCharges))
+	}
+}
+
+func TestCreateMessage(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "Msg test", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_2", Message: "bid",
+		QuoteCents: 5000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "Work", BasePriceCents: 5000, BudgetCents: 5000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	msg, err := app.CreateMessage(order.ID, "buyer", "Hello provider")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msg.Body != "Hello provider" {
+		t.Errorf("body = %s", msg.Body)
 	}
 }

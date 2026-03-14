@@ -1441,3 +1441,103 @@ func TestAuthorizeExecutionMutationAcceptsRotatedExecutionServiceToken(t *testin
 		t.Fatalf("expected rotated token to authorize execution mutation: %v", err)
 	}
 }
+
+func TestListProviders(t *testing.T) {
+	gw := NewServerWithApp(platform.NewAppWithMemory())
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/providers", nil)
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := body["providers"]; !ok {
+		t.Error("response missing 'providers' key")
+	}
+}
+
+func TestListListings(t *testing.T) {
+	gw := NewServerWithApp(platform.NewAppWithMemory())
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/listings", nil)
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := body["listings"]; !ok {
+		t.Error("response missing 'listings' key")
+	}
+}
+
+func TestRecordUsageCharge(t *testing.T) {
+	app := platform.NewAppWithMemory()
+
+	// Create an order with a milestone
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_buyer", Title: "Usage test", Category: "ai",
+		Scope: "test", BudgetCents: 50000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	bid, _ := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_provider", Message: "I'll do it",
+		QuoteCents: 50000, Milestones: []platform.BidMilestoneInput{
+			{ID: "ms_1", Title: "Work", BasePriceCents: 50000, BudgetCents: 50000},
+		},
+	})
+	app.AwardRFQ(rfq.ID, platform.AwardRFQInput{
+		BidID: bid.ID, FundingMode: "prepaid",
+	})
+
+	orders, _ := app.ListOrders()
+	if len(orders) == 0 {
+		t.Fatal("no orders created")
+	}
+	orderID := orders[0].ID
+
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+	payload, _ := json.Marshal(map[string]any{
+		"kind":        "token",
+		"amountCents": 100,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders/"+orderID+"/milestones/ms_1/usage", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWriteGatewayError_OrderNotFound(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/orders/nonexistent", nil)
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHealthz(t *testing.T) {
+	gw := NewServerWithApp(platform.NewAppWithMemory())
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
