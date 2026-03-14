@@ -604,3 +604,156 @@ func dsnWithSearchPath(t *testing.T, dsn, searchPath string) string {
 	parsed.RawQuery = query.Encode()
 	return parsed.String()
 }
+
+func TestMessageRepositoryRoundTrip(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+	db, err := Open(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewMessageRepository(db)
+	id, err := repo.NextID()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	msg := platform.Message{
+		ID:      id,
+		OrderID: "ord_msg_test",
+		Author:  "buyer",
+		Body:    "Hello from test",
+	}
+	if err := repo.Save(msg); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDisputeRepositoryGetNotFound(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+	db, err := Open(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewDisputeRepository(db)
+	_, err = repo.Get("nonexistent_dispute")
+	if err == nil {
+		t.Error("expected error for nonexistent dispute")
+	}
+}
+
+func TestRFQRepositoryGetNotFound(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+	db, err := Open(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRFQRepository(db)
+	_, err = repo.Get("nonexistent_rfq")
+	if err == nil {
+		t.Error("expected error for nonexistent RFQ")
+	}
+}
+
+func TestBidRepositoryGetNotFound(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+	db, err := Open(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewBidRepository(db)
+	_, err = repo.Get("nonexistent_bid")
+	if err == nil {
+		t.Error("expected error for nonexistent bid")
+	}
+}
+
+func TestIdentityStoreRevokeSession(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+	db, err := Open(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+
+	store := NewIdentityStore(db)
+	testEmail := fmt.Sprintf("revoke-%d@test.com", time.Now().UnixNano())
+	testDigest := fmt.Sprintf("revoke-digest-%d", time.Now().UnixNano())
+
+	actor, err := store.CreateSignup(identity.Signup{
+		Email: testEmail, Name: "Revoke", PasswordHash: "hash",
+		OrganizationName: "Org", OrganizationKind: "buyer",
+	})
+	if err != nil && err != identity.ErrConflict {
+		t.Fatal(err)
+	}
+
+	_, err = store.CreateSession(identity.NewSession{
+		UserID:      actor.User.ID,
+		TokenDigest: testDigest,
+		ExpiresAt:   time.Now().Add(24 * time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.RevokeSession(testDigest); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestVerifyCoreSchema(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+	db, err := Open(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := VerifyCoreSchema(db); err != nil {
+		t.Fatal(err)
+	}
+}
