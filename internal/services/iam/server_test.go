@@ -333,3 +333,112 @@ func TestCreateSessionIsRateLimited(t *testing.T) {
 		}
 	}
 }
+
+func TestSignup_MissingFields(t *testing.T) {
+	store := identity.NewMemoryStore()
+	s := NewServerWithOptions(Options{Store: store})
+
+	payload := `{"email":"","password":"","name":"","organizationName":"","organizationKind":""}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/signup", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSignup_WeakPassword(t *testing.T) {
+	store := identity.NewMemoryStore()
+	s := NewServerWithOptions(Options{Store: store})
+
+	payload := `{"email":"weak@test.com","password":"123","name":"Test","organizationName":"Org","organizationKind":"buyer"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/signup", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestLogin_InvalidCredentials(t *testing.T) {
+	store := identity.NewMemoryStore()
+	s := NewServerWithOptions(Options{Store: store})
+
+	payload := `{"email":"missing@test.com","password":"correct horse battery staple 123"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestLogout_InvalidToken(t *testing.T) {
+	store := identity.NewMemoryStore()
+	s := NewServerWithOptions(Options{Store: store})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/logout", nil)
+	req.Header.Set("Authorization", "Bearer invalid-token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMe_Unauthenticated(t *testing.T) {
+	store := identity.NewMemoryStore()
+	s := NewServerWithOptions(Options{Store: store})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/me", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHealthz(t *testing.T) {
+	s := NewServerWithOptions(Options{Store: identity.NewMemoryStore()})
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestNotFound(t *testing.T) {
+	s := NewServerWithOptions(Options{Store: identity.NewMemoryStore()})
+
+	req := httptest.NewRequest(http.MethodGet, "/unknown", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestSignup_InvalidJSON(t *testing.T) {
+	s := NewServerWithOptions(Options{Store: identity.NewMemoryStore()})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/signup", bytes.NewBufferString("{broken"))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}

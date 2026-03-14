@@ -2,6 +2,7 @@ package ratelimit
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
@@ -114,5 +115,99 @@ func TestDefaultPoliciesAllowEnvironmentOverrides(t *testing.T) {
 	}
 	if policy.Window != 30*time.Second {
 		t.Fatalf("expected overridden window, got %+v", policy)
+	}
+}
+
+func TestWriteHeaders(t *testing.T) {
+	d := Decision{
+		Allowed:   true,
+		Limit:     10,
+		Remaining: 7,
+		ResetAt:   time.Now().Add(30 * time.Second),
+	}
+	rec := httptest.NewRecorder()
+	WriteHeaders(rec, time.Now(), d)
+
+	if rec.Header().Get("X-RateLimit-Limit") != "10" {
+		t.Errorf("limit = %s", rec.Header().Get("X-RateLimit-Limit"))
+	}
+	if rec.Header().Get("X-RateLimit-Remaining") != "7" {
+		t.Errorf("remaining = %s", rec.Header().Get("X-RateLimit-Remaining"))
+	}
+}
+
+func TestWriteHeaders_Blocked(t *testing.T) {
+	d := Decision{
+		Allowed:    false,
+		Limit:      5,
+		Remaining:  0,
+		RetryAfter: 30 * time.Second,
+	}
+	rec := httptest.NewRecorder()
+	WriteHeaders(rec, time.Now(), d)
+
+	if rec.Header().Get("Retry-After") != "30" {
+		t.Errorf("retry-after = %s, want 30", rec.Header().Get("Retry-After"))
+	}
+}
+
+func TestSubjectHash(t *testing.T) {
+	hash := SubjectHash("test@example.com")
+	if hash == "" {
+		t.Error("expected non-empty hash")
+	}
+	if hash == "test@example.com" {
+		t.Error("expected hashed value, got plain text")
+	}
+	// Same input = same output
+	if SubjectHash("test@example.com") != hash {
+		t.Error("expected deterministic hash")
+	}
+}
+
+func TestClientIP(t *testing.T) {
+	req, _ := http.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "192.168.1.1:12345"
+	if ip := ClientIP(req); ip != "192.168.1.1" {
+		t.Errorf("ClientIP = %s, want 192.168.1.1", ip)
+	}
+}
+
+func TestClientIP_XForwardedFor(t *testing.T) {
+	t.Setenv("RATE_LIMIT_TRUST_PROXY", "true")
+	req, _ := http.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("X-Forwarded-For", "10.0.0.1, 192.168.1.1")
+	req.RemoteAddr = "172.16.0.1:9999"
+	if ip := ClientIP(req); ip != "10.0.0.1" {
+		t.Errorf("ClientIP = %s, want 10.0.0.1", ip)
+	}
+}
+
+func TestParseRedisAddr(t *testing.T) {
+	if addr := parseRedisAddr("redis://localhost:6379/0"); addr != "localhost:6379" {
+		t.Errorf("parseRedisAddr = %s", addr)
+	}
+	if addr := parseRedisAddr("localhost:6379"); addr != "localhost:6379" {
+		t.Errorf("parseRedisAddr = %s", addr)
+	}
+}
+
+func TestNewServiceFromEnv_NoEnforce(t *testing.T) {
+	t.Setenv("RATE_LIMIT_ENFORCE", "")
+	t.Setenv("REDIS_URL", "")
+	svc, err := NewServiceFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Returns nil when not enforcing
+	if svc != nil {
+		t.Error("expected nil service when not enforcing")
+	}
+}
+
+func TestConfigError(t *testing.T) {
+	err := &ConfigError{Message: "missing config"}
+	if err.Error() != "missing config" {
+		t.Errorf("error = %s", err.Error())
 	}
 }
