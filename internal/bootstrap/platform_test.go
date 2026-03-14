@@ -1,6 +1,9 @@
 package bootstrap
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 func TestLoadPlatformAppRequiresPersistenceWhenConfigured(t *testing.T) {
 	t.Setenv("ONE_TOK_REQUIRE_PERSISTENCE", "true")
@@ -13,5 +16,34 @@ func TestLoadPlatformAppRequiresPersistenceWhenConfigured(t *testing.T) {
 	}
 	if err == nil {
 		t.Fatalf("expected LoadPlatformApp to fail when persistence is required, got app=%v", app)
+	}
+}
+
+func TestLoadPlatformApp_WithPostgres(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+
+	t.Setenv("DATABASE_URL", dsn)
+	t.Setenv("NATS_URL", "")
+
+	app, cleanup, err := LoadPlatformApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+
+	if app == nil {
+		t.Fatal("expected non-nil app")
+	}
+
+	// Verify app works
+	providers, err := app.ListProviders()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(providers) == 0 {
+		t.Error("expected seeded providers")
 	}
 }

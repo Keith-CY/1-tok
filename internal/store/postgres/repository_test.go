@@ -439,8 +439,10 @@ func TestIdentityStoreRoundTrip(t *testing.T) {
 	}
 
 	store := NewIdentityStore(db)
+	testEmail := fmt.Sprintf("identity-roundtrip-%d@example.com", time.Now().UnixNano())
+	testDigest := fmt.Sprintf("digest-roundtrip-%d", time.Now().UnixNano())
 	actor, err := store.CreateSignup(identity.Signup{
-		Email:            "identity-roundtrip@example.com",
+		Email:            testEmail,
 		Name:             "Identity Owner",
 		PasswordHash:     "hash_123",
 		OrganizationName: "Identity Buyer",
@@ -450,24 +452,24 @@ func TestIdentityStoreRoundTrip(t *testing.T) {
 		t.Fatalf("create signup: %v", err)
 	}
 	if actor.User.ID == "" {
-		user, lookupErr := store.FindUserByEmail("identity-roundtrip@example.com")
+		user, lookupErr := store.FindUserByEmail(testEmail)
 		if lookupErr != nil {
 			t.Fatalf("lookup user after conflict: %v", lookupErr)
 		}
 		actor.User = user
 	}
 
-	user, err := store.FindUserByEmail("identity-roundtrip@example.com")
+	user, err := store.FindUserByEmail(testEmail)
 	if err != nil {
 		t.Fatalf("find user by email: %v", err)
 	}
-	if user.ID == "" || user.Email != "identity-roundtrip@example.com" {
+	if user.ID == "" || user.Email != testEmail {
 		t.Fatalf("unexpected user: %+v", user)
 	}
 
 	session, err := store.CreateSession(identity.NewSession{
 		UserID:      user.ID,
-		TokenDigest: "digest-roundtrip",
+		TokenDigest: testDigest,
 		ExpiresAt:   time.Now().UTC().Add(24 * time.Hour),
 	})
 	if err != nil {
@@ -477,7 +479,7 @@ func TestIdentityStoreRoundTrip(t *testing.T) {
 		t.Fatalf("expected persisted session id, got %+v", session)
 	}
 
-	authenticated, err := store.GetAuthenticatedActorBySessionDigest("digest-roundtrip")
+	authenticated, err := store.GetAuthenticatedActorBySessionDigest(testDigest)
 	if err != nil {
 		t.Fatalf("get actor by session digest: %v", err)
 	}
