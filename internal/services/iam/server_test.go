@@ -1084,3 +1084,51 @@ func TestSignup_RateLimiterError(t *testing.T) {
 		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestLogout_NoAuthHeader(t *testing.T) {
+	s := NewServerWithOptions(Options{Store: identity.NewMemoryStore()})
+	req := httptest.NewRequest(http.MethodPost, "/v1/logout", nil)
+	// No Authorization header
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestSignup_FullFlowCheckResponse(t *testing.T) {
+	s := NewServerWithOptions(Options{Store: identity.NewMemoryStore()})
+
+	payload := `{"email":"check@test.com","password":"correct horse battery staple 123","name":"Check","organizationName":"Org","organizationKind":"provider"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/signup", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("signup: %d %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+
+	// Check user
+	user, ok := resp["user"].(map[string]any)
+	if !ok {
+		t.Fatal("missing user in response")
+	}
+	if user["email"] != "check@test.com" {
+		t.Errorf("email = %s", user["email"])
+	}
+
+	// Check session
+	session, ok := resp["session"].(map[string]any)
+	if !ok {
+		t.Fatal("missing session in response")
+	}
+	if session["token"] == nil || session["token"] == "" {
+		t.Error("missing token")
+	}
+
+	// Memberships are nested in user or separate key
+	_ = resp
+}
