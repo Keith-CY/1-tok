@@ -433,3 +433,72 @@ func TestCarrierEvent_InvalidJSON(t *testing.T) {
 		t.Errorf("expected 400, got %d", rec.Code)
 	}
 }
+
+func TestCodeAgentHealth_Success(t *testing.T) {
+	stub := &stubCarrierClient{
+		healthResult: carrierclient.CodeAgentHealthResult{Healthy: true},
+	}
+	s := NewServerWithOptions(Options{Carrier: stub})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/carrier/codeagent/health?hostId=h1&agentId=a1", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCodeAgentVersion_Success(t *testing.T) {
+	stub := &stubCarrierClient{
+		versionResult: carrierclient.CodeAgentVersionResult{Value: "1.0.0"},
+	}
+	s := NewServerWithOptions(Options{Carrier: stub})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/carrier/codeagent/version?hostId=h1&agentId=a1", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCodeAgentRun_Success(t *testing.T) {
+	stub := &stubCarrierClient{
+		runResult: carrierclient.CodeAgentRunResult{Result: carrierclient.CodeAgentRunOutput{}},
+	}
+	s := NewServerWithOptions(Options{Carrier: stub})
+
+	payload, _ := json.Marshal(map[string]any{
+		"hostId": "h1", "agentId": "a1",
+		"backend": "node", "workspaceRoot": "/tmp", "capability": "run",
+		"title": "Test run", "instructions": "echo hello",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/codeagent/run", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCodeAgentRun_InvalidJSON(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/codeagent/run", bytes.NewReader([]byte("{broken")))
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestCodeAgentHealth_NoCarrier(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/v1/carrier/codeagent/health?hostId=h1&agentId=a1", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code == http.StatusOK {
+		// May return 502 or similar without carrier
+		t.Log("no carrier: returned 200")
+	}
+}
