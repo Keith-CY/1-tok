@@ -995,3 +995,37 @@ func TestSignup_DailyRateLimited(t *testing.T) {
 		t.Fatalf("second: expected 429, got %d", rec2.Code)
 	}
 }
+
+func TestLogin_SubjectRateLimited(t *testing.T) {
+	store := identity.NewMemoryStore()
+	limiter := ratelimit.NewServiceWithOptions(ratelimit.Options{
+		Enforce: true,
+		Now:     func() time.Time { return time.Now() },
+		Store:   ratelimit.NewMemoryStore(nil),
+		Policies: map[ratelimit.Policy]ratelimit.PolicyConfig{
+			ratelimit.PolicyIAMLoginIP:      {Limit: 100, Window: time.Minute, Scope: []ratelimit.ScopePart{ratelimit.ScopeIP}},
+			ratelimit.PolicyIAMLoginSubject: {Limit: 1, Window: time.Minute, Scope: []ratelimit.ScopePart{ratelimit.ScopeSubject}},
+		},
+	})
+	s := NewServerWithOptions(Options{Store: store, RateLimiter: limiter})
+
+	signup := `{"email":"subjectrl@test.com","password":"correct horse battery staple 123","name":"SRL","organizationName":"Org","organizationKind":"buyer"}`
+	sReq := httptest.NewRequest(http.MethodPost, "/v1/signup", bytes.NewBufferString(signup))
+	sReq.Header.Set("Content-Type", "application/json")
+	sRec := httptest.NewRecorder()
+	s.ServeHTTP(sRec, sReq)
+
+	login := `{"email":"subjectrl@test.com","password":"correct horse battery staple 123"}`
+	req1 := httptest.NewRequest(http.MethodPost, "/v1/sessions", bytes.NewBufferString(login))
+	req1.Header.Set("Content-Type", "application/json")
+	rec1 := httptest.NewRecorder()
+	s.ServeHTTP(rec1, req1)
+
+	req2 := httptest.NewRequest(http.MethodPost, "/v1/sessions", bytes.NewBufferString(login))
+	req2.Header.Set("Content-Type", "application/json")
+	rec2 := httptest.NewRecorder()
+	s.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429, got %d", rec2.Code)
+	}
+}
