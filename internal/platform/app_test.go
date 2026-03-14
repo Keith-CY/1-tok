@@ -1510,3 +1510,34 @@ func TestOpenDispute_DisputeIDError(t *testing.T) {
 		t.Error("expected error from NextID")
 	}
 }
+
+func TestCreateMessage_SaveError(t *testing.T) {
+	app := NewAppWithMemory()
+	app.messages = failingMessageRepo{}
+	_, err := app.CreateMessage("ord_1", "buyer", "hello")
+	if err == nil {
+		t.Error("expected error from save")
+	}
+}
+
+func TestAwardRFQ_AlreadyAwarded(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "Double award", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_2", Message: "bid",
+		QuoteCents: 5000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000},
+		},
+	})
+	app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	// Try to award again
+	_, _, err := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+	if err == nil {
+		t.Error("expected error for double award")
+	}
+}
