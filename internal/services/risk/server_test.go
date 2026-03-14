@@ -115,3 +115,10 @@ func TestCreditDecisionPathRewrite(t *testing.T) {
 		t.Errorf("expected path /api/v1/credits/decision, got %s", receivedPath)
 	}
 }
+
+func TestNewServer_Success(t *testing.T) {
+	s := NewServer()
+	if s == nil {
+		t.Fatal("expected non-nil server")
+	}
+}

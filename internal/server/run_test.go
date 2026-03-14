@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"os"
 	"syscall"
 	"testing"
 	"time"
@@ -34,5 +35,52 @@ func TestRun_InvalidAddr(t *testing.T) {
 	err := Run("invalid-not-a-port", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}), time.Second)
 	if err == nil {
 		t.Error("expected error for invalid address")
+	}
+}
+
+func TestRun_GracefulShutdown(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	done := make(chan error, 1)
+	go func() {
+		done <- Run(":0", handler, 100*time.Millisecond)
+	}()
+
+	// Give server time to start
+	time.Sleep(50 * time.Millisecond)
+
+	// Send SIGINT to trigger graceful shutdown
+	p, _ := os.FindProcess(os.Getpid())
+	p.Signal(syscall.SIGINT)
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run returned error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for graceful shutdown")
+	}
+}
+
+func TestRun_DefaultDrainTimeout(t *testing.T) {
+	done := make(chan error, 1)
+	go func() {
+		done <- Run(":0", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}), 0)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	p, _ := os.FindProcess(os.Getpid())
+	p.Signal(syscall.SIGTERM)
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run returned error: %v", err)
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("timed out — DefaultDrainTimeout too long")
 	}
 }

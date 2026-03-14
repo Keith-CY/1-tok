@@ -66,3 +66,10 @@ func TestNewServer_PanicsOnBadUpstream(t *testing.T) {
 	}()
 	_ = NewServer()
 }
+
+func TestNewServer_Success(t *testing.T) {
+	s := NewServer()
+	if s == nil {
+		t.Fatal("expected non-nil server")
+	}
+}
