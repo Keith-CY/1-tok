@@ -86,3 +86,70 @@ func TestPostgresFundingRecordRepository(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestPostgresFundingRecordRepository_UpdateExternalState(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+	db, err := postgresstore.Open(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := MigrateFundingRecordStore(db); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := newPostgresFundingRecordRepository(db)
+
+	id, _ := repo.NextID()
+	record := FundingRecord{
+		ID: id, Kind: "withdrawal", OrderID: "ord_ext",
+		ProviderOrgID: "org_p", Asset: "CKB", Amount: "50",
+		State: "pending", ExternalID: "ext_test_" + id,
+	}
+	repo.Save(record)
+
+	// Update external state by external_id
+	if err := repo.UpdateExternalState(record.ExternalID, "completed"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify
+	records, _ := repo.List(FundingRecordFilter{Kind: "withdrawal"})
+	for _, r := range records {
+		if r.ID == id && r.State != "completed" {
+			t.Errorf("state = %s, want completed", r.State)
+		}
+	}
+}
+
+func TestLoadFundingRecordRepository_Memory(t *testing.T) {
+	t.Setenv("SETTLEMENT_DATABASE_URL", "")
+	t.Setenv("DATABASE_URL", "")
+
+	repo := loadFundingRecordRepository(); var err error
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repo == nil {
+		t.Fatal("expected non-nil repo")
+	}
+}
+
+func TestLoadFundingRecordRepository_Postgres(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL not set")
+	}
+	t.Setenv("SETTLEMENT_DATABASE_URL", dsn)
+
+	repo := loadFundingRecordRepository(); var err error
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repo == nil {
+		t.Fatal("expected non-nil repo")
+	}
+}
