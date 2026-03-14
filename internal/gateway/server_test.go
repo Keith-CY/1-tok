@@ -4230,3 +4230,48 @@ func TestListRFQBids_NoAuth_WithData(t *testing.T) {
 		t.Errorf("expected 1 bid (paginated), got %d", len(bids))
 	}
 }
+
+func TestAuthorizeOrderForActor_NilOrder(t *testing.T) {
+	actor := iamclient.Actor{
+		Memberships: []iamclient.ActorMembership{{OrganizationID: "org_1", OrganizationKind: "buyer", Role: "org_owner"}},
+	}
+	if err := authorizeOrderForActor(nil, actor); err == nil {
+		t.Error("expected error for nil order")
+	}
+}
+
+func TestAuthorizeOrderForActor_OpsAccess(t *testing.T) {
+	order := &core.Order{BuyerOrgID: "org_b", ProviderOrgID: "org_p"}
+	actor := iamclient.Actor{
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_ops", OrganizationKind: "ops", Role: "ops_reviewer"},
+		},
+	}
+	if err := authorizeOrderForActor(order, actor); err != nil {
+		t.Errorf("ops should have access: %v", err)
+	}
+}
+
+func TestAuthorizeOrderForActor_ProviderAccess(t *testing.T) {
+	order := &core.Order{BuyerOrgID: "org_b", ProviderOrgID: "org_p"}
+	actor := iamclient.Actor{
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	if err := authorizeOrderForActor(order, actor); err != nil {
+		t.Errorf("provider should have access: %v", err)
+	}
+}
+
+func TestAuthorizeOrderForActor_WrongRole(t *testing.T) {
+	order := &core.Order{BuyerOrgID: "org_b", ProviderOrgID: "org_p"}
+	actor := iamclient.Actor{
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "viewer"},
+		},
+	}
+	if err := authorizeOrderForActor(order, actor); err == nil {
+		t.Error("viewer should not have access")
+	}
+}
