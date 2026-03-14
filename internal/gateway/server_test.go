@@ -2857,3 +2857,190 @@ func TestHandleSettleMilestone_WithAuth(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestHandleRecordUsage_WithAuth(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Usage auth", Category: "ai",
+		Scope: "test", BudgetCents: 10000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	bid, _ := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid",
+		QuoteCents: 10000, Milestones: []platform.BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 10000, BudgetCents: 10000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, platform.AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	// Execution token auth
+	gw, _ := NewServerWithOptionsE(Options{
+		App:             app,
+		ExecutionTokens: serviceauth.NewTokenSet("exec-token"),
+	})
+
+	payload, _ := json.Marshal(map[string]any{"kind": "token", "amountCents": 100})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders/"+order.ID+"/milestones/ms_1/usage", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(serviceauth.HeaderName, "exec-token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleRecordUsage_Unauthorized(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	gw, _ := NewServerWithOptionsE(Options{
+		App:             app,
+		ExecutionTokens: serviceauth.NewTokenSet("exec-token"),
+	})
+
+	payload, _ := json.Marshal(map[string]any{"kind": "token", "amountCents": 100})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders/ord_1/milestones/ms_1/usage", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	// No token
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleResolveDispute_WithOpsAuth(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Resolve auth", Category: "ai",
+		Scope: "test", BudgetCents: 10000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	bid, _ := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid",
+		QuoteCents: 10000, Milestones: []platform.BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 10000, BudgetCents: 10000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, platform.AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+	app.SettleMilestone(order.ID, core.SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+	app.OpenDispute(order.ID, platform.OpenDisputeInput{
+		MilestoneID: "ms_1", Reason: "issue", RefundCents: 500,
+	})
+	disputes, _ := app.ListDisputes()
+
+	actor := iamclient.Actor{
+		UserID: "u_ops",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_ops", OrganizationKind: "ops", Role: "ops_reviewer"},
+		},
+	}
+	gw, _ := NewServerWithOptionsE(Options{App: app, IAM: &stubIAMClient{actor: actor}})
+
+	payload, _ := json.Marshal(map[string]any{
+		"resolution": "Approved", "resolvedBy": "ops",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/disputes/"+disputes[0].ID+"/resolve", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer ops-token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleAwardRFQ_WithAuth(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Award auth", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	bid, _ := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid",
+		QuoteCents: 5000, Milestones: []platform.BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000},
+		},
+	})
+
+	actor := iamclient.Actor{
+		UserID: "u_buyer",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "org_owner"},
+		},
+	}
+	gw, _ := NewServerWithOptionsE(Options{App: app, IAM: &stubIAMClient{actor: actor}})
+
+	payload, _ := json.Marshal(map[string]any{
+		"bidId": bid.ID, "fundingMode": "prepaid",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs/"+rfq.ID+"/award", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer buyer-token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleCreateMessage_WithBuyerAuth(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Msg auth", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	bid, _ := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid",
+		QuoteCents: 5000, Milestones: []platform.BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, platform.AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	actor := iamclient.Actor{
+		UserID: "u_buyer",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "org_owner"},
+		},
+	}
+	gw, _ := NewServerWithOptionsE(Options{App: app, IAM: &stubIAMClient{actor: actor}})
+
+	payload, _ := json.Marshal(map[string]any{
+		"orderId": order.ID, "body": "Hello from auth",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer buyer-token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleCreditDecision_WithOpsAuth(t *testing.T) {
+	actor := iamclient.Actor{
+		UserID: "u_ops",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_ops", OrganizationKind: "ops", Role: "ops_reviewer"},
+		},
+	}
+	gw, _ := NewServerWithOptionsE(Options{
+		App: platform.NewAppWithMemory(),
+		IAM: &stubIAMClient{actor: actor},
+	})
+
+	payload, _ := json.Marshal(map[string]any{
+		"buyerOrgId": "org_b", "requestedCents": 100000,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/credits/decision", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer ops-token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
