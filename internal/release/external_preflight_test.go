@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestRunExternalDependencyPreflightUsesDefaultHealthzRoutes(t *testing.T) {
@@ -79,5 +80,45 @@ func TestExternalDependencyConfigFromEnv(t *testing.T) {
 	}
 	if cfg.CarrierGatewayURL != "http://carrier:8090" {
 		t.Errorf("CarrierGatewayURL = %s", cfg.CarrierGatewayURL)
+	}
+}
+
+func TestRunHealthcheck_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	if err := runHealthcheck(context.Background(), client, srv.URL+"/healthz"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRunHealthcheck_Failure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	if err := runHealthcheck(context.Background(), client, srv.URL+"/healthz"); err == nil {
+		t.Error("expected error for 503")
+	}
+}
+
+func TestExternalHealthcheckURL(t *testing.T) {
+	tests := []struct {
+		base     string
+		explicit string
+		want     string
+	}{
+		{"http://fiber:8091", "", "http://fiber:8091/healthz"},
+		{"http://fiber:8091", "http://custom/check", "http://custom/check"},
+	}
+	for _, tt := range tests {
+		if got := externalHealthcheckURL(tt.base, tt.explicit); got != tt.want {
+			t.Errorf("externalHealthcheckURL(%q, %q) = %q, want %q", tt.base, tt.explicit, got, tt.want)
+		}
 	}
 }
