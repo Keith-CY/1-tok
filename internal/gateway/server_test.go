@@ -3440,3 +3440,46 @@ func TestListProviders_WithPagination(t *testing.T) {
 	}
 }
 
+
+func TestCreateRFQ_NoAuthHeader(t *testing.T) {
+	gw, _ := NewServerWithOptionsE(Options{
+		App: platform.NewAppWithMemory(),
+		IAM: &stubIAMClient{actor: iamclient.Actor{UserID: "u_1"}},
+	})
+	payload, _ := json.Marshal(map[string]any{
+		"title": "No auth", "category": "ai", "scope": "test",
+		"budgetCents": 5000, "responseDeadlineAt": "2026-04-01T00:00:00Z",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	// No Authorization header
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateBid_NoAuthHeader(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "No auth", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	gw, _ := NewServerWithOptionsE(Options{
+		App: app,
+		IAM: &stubIAMClient{actor: iamclient.Actor{UserID: "u_1"}},
+	})
+	payload, _ := json.Marshal(map[string]any{
+		"message": "bid", "quoteCents": 4000,
+		"milestones": []map[string]any{{"id": "ms_1", "title": "W", "basePriceCents": 4000, "budgetCents": 4000}},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs/"+rfq.ID+"/bids", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
