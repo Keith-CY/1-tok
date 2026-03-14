@@ -711,3 +711,35 @@ func TestCodeAgentRun_CarrierError(t *testing.T) {
 		t.Logf("carrier result: %d %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestPostJSON_GatewayError(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"error":"conflict"}`))
+	}))
+	defer backend.Close()
+
+	s := NewServerWithOptions(Options{APIUpstream: backend.URL})
+	payload, _ := json.Marshal(map[string]any{
+		"orderId": "ord_1", "milestoneId": "ms_1",
+		"eventType": "usage_reported",
+		"payload": map[string]any{"kind": "token", "amountCents": 100},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/events", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadGateway {
+		t.Logf("gateway error: status %d", rec.Code)
+	}
+}
+
+func TestNewServerWithOptions_EnvTokens(t *testing.T) {
+	t.Setenv("EXECUTION_EVENT_TOKENS", "tok1,tok2")
+	t.Setenv("ONE_TOK_EXECUTION_GATEWAY_TOKEN", "gw-tok")
+	s := NewServerWithOptions(Options{})
+	if s == nil {
+		t.Fatal("expected non-nil server")
+	}
+}

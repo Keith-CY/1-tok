@@ -163,3 +163,12 @@ func TestCreateRFQ_CustomMilestones(t *testing.T) {
 		t.Errorf("expected title Research, got %s", rfq.DefaultMilestones[0].Title)
 	}
 }
+
+func TestPercent_Zero(t *testing.T) {
+	if percent(0, 100) != 0 {
+		t.Error("expected 0")
+	}
+	if percent(50, 0) != 0 {
+		t.Error("expected 0 for zero total")
+	}
+}
