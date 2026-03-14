@@ -193,3 +193,31 @@ func TestFNNAdapterSmokeConfigFromEnv(t *testing.T) {
 		t.Errorf("BaseURL = %s", cfg.BaseURL)
 	}
 }
+
+func TestEnvBoolDefaultFalse_True(t *testing.T) {
+	t.Setenv("TEST_BOOL_DF", "true")
+	if !envBoolDefaultFalse("TEST_BOOL_DF") {
+		t.Error("expected true")
+	}
+}
+
+func TestEnvBoolDefaultFalse_False(t *testing.T) {
+	t.Setenv("TEST_BOOL_DF", "false")
+	if envBoolDefaultFalse("TEST_BOOL_DF") {
+		t.Error("expected false")
+	}
+}
+
+func TestEnvBoolDefaultFalse_One(t *testing.T) {
+	t.Setenv("TEST_BOOL_DF", "1")
+	if !envBoolDefaultFalse("TEST_BOOL_DF") {
+		t.Error("expected true for '1'")
+	}
+}
+
+func TestEnvBoolDefaultFalse_Invalid(t *testing.T) {
+	t.Setenv("TEST_BOOL_DF", "maybe")
+	if envBoolDefaultFalse("TEST_BOOL_DF") {
+		t.Error("expected false for invalid")
+	}
+}

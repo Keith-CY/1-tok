@@ -292,3 +292,40 @@ func TestRunExternalDependencyPreflight_FiberDown(t *testing.T) {
 		t.Error("expected error when fiber is down")
 	}
 }
+
+func TestRunExternalDependencyPreflight_CarrierDown(t *testing.T) {
+	healthySrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer healthySrv.Close()
+
+	downSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer downSrv.Close()
+
+	cfg := ExternalDependencyConfig{
+		FiberRPCURL:         healthySrv.URL,
+		CarrierGatewayURL:   downSrv.URL,
+		CarrierGatewayToken: "token",
+	}
+	if err := RunExternalDependencyPreflight(context.Background(), cfg); err == nil {
+		t.Error("expected error when carrier is down")
+	}
+}
+
+func TestRunExternalDependencyPreflight_BothDown(t *testing.T) {
+	downSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer downSrv.Close()
+
+	cfg := ExternalDependencyConfig{
+		FiberRPCURL:         downSrv.URL,
+		CarrierGatewayURL:   downSrv.URL,
+		CarrierGatewayToken: "token",
+	}
+	if err := RunExternalDependencyPreflight(context.Background(), cfg); err == nil {
+		t.Error("expected error when both are down")
+	}
+}
