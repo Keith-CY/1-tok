@@ -3483,3 +3483,20 @@ func TestCreateBid_NoAuthHeader(t *testing.T) {
 		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestCreateMessage_MissingAuth(t *testing.T) {
+	gw, _ := NewServerWithOptionsE(Options{
+		App: platform.NewAppWithMemory(),
+		IAM: &stubIAMClient{actor: iamclient.Actor{UserID: "u_1"}},
+	})
+	payload, _ := json.Marshal(map[string]any{
+		"orderId": "ord_1", "body": "hello",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
