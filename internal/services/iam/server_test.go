@@ -580,3 +580,68 @@ func TestValidSignupPayload_InvalidEmail(t *testing.T) {
 		t.Error("expected validation failure for invalid email")
 	}
 }
+
+func TestSignup_InvalidEmail(t *testing.T) {
+	s := NewServerWithOptions(Options{Store: identity.NewMemoryStore()})
+	payload := `{"email":"not-an-email","password":"correct horse battery staple 123","name":"Test","organizationName":"Org","organizationKind":"buyer"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/signup", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSignup_ShortPassword(t *testing.T) {
+	s := NewServerWithOptions(Options{Store: identity.NewMemoryStore()})
+	payload := `{"email":"short@test.com","password":"abc","name":"Test","organizationName":"Org","organizationKind":"buyer"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/signup", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestLogin_MissingEmail(t *testing.T) {
+	s := NewServerWithOptions(Options{Store: identity.NewMemoryStore()})
+	payload := `{"email":"","password":"somepass 123"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMe_MissingBearer(t *testing.T) {
+	s := NewServerWithOptions(Options{Store: identity.NewMemoryStore()})
+	req := httptest.NewRequest(http.MethodGet, "/v1/me", nil)
+	req.Header.Set("Authorization", "Basic invalid")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestLogout_MissingAuth(t *testing.T) {
+	s := NewServerWithOptions(Options{Store: identity.NewMemoryStore()})
+	req := httptest.NewRequest(http.MethodPost, "/v1/logout", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestLoadStoreFromEnv_Memory(t *testing.T) {
+	t.Setenv("DATABASE_URL", "")
+	store := loadStoreFromEnv()
+	if store == nil {
+		t.Fatal("expected non-nil store")
+	}
+}
