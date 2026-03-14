@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chenyu/1-tok/internal/core"
 	iamclient "github.com/chenyu/1-tok/internal/integrations/iam"
 	"github.com/chenyu/1-tok/internal/platform"
 	"github.com/chenyu/1-tok/internal/ratelimit"
@@ -1539,5 +1540,146 @@ func TestHealthz(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestSettleMilestone(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Settle", Category: "ai",
+		Scope: "test", BudgetCents: 10000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	bid, _ := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid",
+		QuoteCents: 10000, Milestones: []platform.BidMilestoneInput{
+			{ID: "ms_1", Title: "Work", BasePriceCents: 10000, BudgetCents: 10000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, platform.AwardRFQInput{BidID: bid.ID, FundingMode: "credit"})
+
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+	payload, _ := json.Marshal(map[string]any{"summary": "Done"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders/"+order.ID+"/milestones/ms_1/settle", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateMessage(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Msg", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	bid, _ := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid",
+		QuoteCents: 5000, Milestones: []platform.BidMilestoneInput{
+			{ID: "ms_1", Title: "Work", BasePriceCents: 5000, BudgetCents: 5000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, platform.AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+	payload, _ := json.Marshal(map[string]any{"orderId": order.ID, "author": "buyer", "body": "hello"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateDispute(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Dispute", Category: "ai",
+		Scope: "test", BudgetCents: 10000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	bid, _ := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid",
+		QuoteCents: 10000, Milestones: []platform.BidMilestoneInput{
+			{ID: "ms_1", Title: "Work", BasePriceCents: 10000, BudgetCents: 10000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, platform.AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	// Settle first (disputes only on settled milestones)
+	app.SettleMilestone(order.ID, core.SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+	payload, _ := json.Marshal(map[string]any{
+		"milestoneId": "ms_1", "reason": "quality issue", "refundCents": 500,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders/"+order.ID+"/disputes", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreditDecision(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+
+	payload, _ := json.Marshal(map[string]any{
+		"buyerOrgId": "org_b", "requestedCents": 100000,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/credits/decision", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestResolveDispute(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Resolve", Category: "ai",
+		Scope: "test", BudgetCents: 10000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	bid, _ := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid",
+		QuoteCents: 10000, Milestones: []platform.BidMilestoneInput{
+			{ID: "ms_1", Title: "Work", BasePriceCents: 10000, BudgetCents: 10000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, platform.AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+	app.SettleMilestone(order.ID, core.SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+	_, _, _, _ = app.OpenDispute(order.ID, platform.OpenDisputeInput{
+		MilestoneID: "ms_1", Reason: "issue", RefundCents: 500,
+	})
+
+	disputes, _ := app.ListDisputes()
+	if len(disputes) == 0 {
+		t.Fatal("no disputes")
+	}
+
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+	payload, _ := json.Marshal(map[string]any{
+		"resolution": "Refund approved", "resolvedBy": "ops_admin",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/disputes/"+disputes[0].ID+"/resolve", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 }

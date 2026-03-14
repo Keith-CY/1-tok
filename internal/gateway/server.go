@@ -173,7 +173,7 @@ func (s *Server) handleListRFQs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.auth != nil {
+	if s.auth != nil && !iamclient.IsNoop(s.auth) {
 		actor, err := s.authenticatedActor(r)
 		if err != nil {
 			writeAuthError(w, err)
@@ -214,7 +214,7 @@ func (s *Server) handleListOrders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.auth != nil {
+	if s.auth != nil && !iamclient.IsNoop(s.auth) {
 		actor, err := s.authenticatedActor(r)
 		if err != nil {
 			writeAuthError(w, err)
@@ -249,7 +249,7 @@ func (s *Server) handleGetOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.auth != nil {
+	if s.auth != nil && !iamclient.IsNoop(s.auth) {
 		actor, err := s.authenticatedActor(r)
 		if err != nil {
 			writeAuthError(w, err)
@@ -401,7 +401,7 @@ func (s *Server) handleListRFQBids(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.auth != nil {
+	if s.auth != nil && !iamclient.IsNoop(s.auth) {
 		actor, err := s.authenticatedActor(r)
 		if err != nil {
 			writeAuthError(w, err)
@@ -774,7 +774,7 @@ func (s *Server) handleCreateDispute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.auth != nil {
+	if s.auth != nil && !iamclient.IsNoop(s.auth) {
 		order, err := s.app.GetOrder(orderID)
 		if err != nil {
 			writeGatewayError(w, err)
@@ -902,7 +902,7 @@ func (s *Server) handleCreateMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.auth != nil {
+	if s.auth != nil && !iamclient.IsNoop(s.auth) {
 		actor, err := s.authenticatedActor(r)
 		if err != nil {
 			writeAuthError(w, err)
