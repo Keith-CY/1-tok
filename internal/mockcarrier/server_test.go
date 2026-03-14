@@ -112,3 +112,34 @@ func TestHandleRun_InvalidJSON(t *testing.T) {
 		t.Errorf("expected 400, got %d", rec.Code)
 	}
 }
+
+func TestHandleRun_MissingCapability(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	payload := `{"hostId":"h","agentId":"a","backend":"node"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/remote/hosts/h/instances/a/codeagent/run", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleVersion(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/remote/hosts/h/instances/a/codeagent/version", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestDefaultString(t *testing.T) {
+	if defaultString("value", "fallback") != "value" {
+		t.Error("expected value")
+	}
+	if defaultString("", "fallback") != "fallback" {
+		t.Error("expected fallback")
+	}
+}
