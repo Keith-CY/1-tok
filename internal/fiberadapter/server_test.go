@@ -1340,3 +1340,62 @@ func TestHandleSettledFeed_InvalidParams(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 }
+
+func TestSendPayment_Success(t *testing.T) {
+	callCount := 0
+	rpcSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.Header().Set("Content-Type", "application/json")
+		body, _ := io.ReadAll(r.Body)
+		var rpc struct{ Method string `json:"method"` }
+		json.Unmarshal(body, &rpc)
+
+		switch rpc.Method {
+		case "parse_invoice":
+			json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": "1",
+				"result": map[string]any{"invoice": map[string]any{"data": map[string]any{"payment_hash": "0xhash"}}},
+			})
+		case "send_payment":
+			json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": "1",
+				"result": map[string]any{"payment_hash": "0xpaid_hash", "tx_hash": "0xtx"},
+			})
+		}
+	}))
+	defer rpcSrv.Close()
+
+	node := newRPCNode(rpcSrv.URL)
+	evidence, err := node.SendPayment(context.Background(), "lnbc_pay", "100", "CKB", "req_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if evidence == "" {
+		t.Error("expected non-empty evidence")
+	}
+}
+
+func TestSendPayment_ParseError(t *testing.T) {
+	rpcSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0", "id": "1",
+			"error": map[string]any{"code": -32000, "message": "parse failed"},
+		})
+	}))
+	defer rpcSrv.Close()
+
+	node := newRPCNode(rpcSrv.URL)
+	_, err := node.SendPayment(context.Background(), "lnbc_bad", "100", "CKB", "req_1")
+	if err == nil {
+		t.Error("expected error for parse failure")
+	}
+}
+
+func TestCall_ConnectionRefused(t *testing.T) {
+	node := newRPCNode("http://127.0.0.1:1")
+	_, err := node.CreateInvoice(context.Background(), "CKB", "100")
+	if err == nil {
+		t.Error("expected error for connection refused")
+	}
+}
