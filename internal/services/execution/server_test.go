@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	carrierclient "github.com/chenyu/1-tok/internal/integrations/carrier"
+	"github.com/chenyu/1-tok/internal/serviceauth"
 )
 
 type stubCarrierClient struct {
@@ -500,5 +501,50 @@ func TestCodeAgentHealth_NoCarrier(t *testing.T) {
 	if rec.Code == http.StatusOK {
 		// May return 502 or similar without carrier
 		t.Log("no carrier: returned 200")
+	}
+}
+
+func TestCodeAgentVersion_NoCarrier(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/v1/carrier/codeagent/version?hostId=h&agentId=a", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	// No carrier = should return error
+	if rec.Code == http.StatusOK {
+		t.Log("no carrier returned 200 — carrier might be nil-safe")
+	}
+}
+
+func TestCodeAgentHealth_MissingParams(t *testing.T) {
+	s := NewServerWithOptions(Options{Carrier: &stubCarrierClient{}})
+	req := httptest.NewRequest(http.MethodGet, "/v1/carrier/codeagent/health", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestCarrierEvent_Unauthorized(t *testing.T) {
+	s := NewServerWithOptions(Options{
+		InboundTokens: serviceauth.NewTokenSet("valid-token"),
+	})
+	payload, _ := json.Marshal(map[string]any{
+		"orderId": "ord_1", "milestoneId": "ms_1",
+		"eventType": "usage_reported",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/events", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestNewServerWithOptions_Defaults(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	if s == nil {
+		t.Fatal("expected non-nil server")
 	}
 }

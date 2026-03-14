@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
@@ -643,5 +644,57 @@ func TestLoadStoreFromEnv_Memory(t *testing.T) {
 	store := loadStoreFromEnv()
 	if store == nil {
 		t.Fatal("expected non-nil store")
+	}
+}
+
+func TestValidSignupPayload_AllValid(t *testing.T) {
+	result := validSignupPayload("test@example.com", "correct horse battery staple 123", "Test User", "Test Org", "buyer")
+	if result != "" {
+		t.Errorf("expected empty (valid), got %s", result)
+	}
+}
+
+func TestValidSignupPayload_MissingName(t *testing.T) {
+	result := validSignupPayload("test@example.com", "correct horse battery staple 123", "", "Org", "buyer")
+	if result == "" {
+		t.Error("expected validation failure for missing name")
+	}
+}
+
+func TestValidSignupPayload_MissingOrgName(t *testing.T) {
+	result := validSignupPayload("test@example.com", "correct horse battery staple 123", "Name", "", "buyer")
+	if result == "" {
+		t.Error("expected validation failure for missing org name")
+	}
+}
+
+func TestValidSignupPayload_MissingOrgKind(t *testing.T) {
+	result := validSignupPayload("test@example.com", "correct horse battery staple 123", "Name", "Org", "")
+	if result == "" {
+		t.Error("expected validation failure for missing org kind")
+	}
+}
+
+func TestLogin_MissingPassword(t *testing.T) {
+	s := NewServerWithOptions(Options{Store: identity.NewMemoryStore()})
+	payload := `{"email":"test@example.com","password":""}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestLoadStoreFromEnv_Postgres(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL not set")
+	}
+	t.Setenv("DATABASE_URL", dsn)
+	store := loadStoreFromEnv()
+	if store == nil {
+		t.Fatal("expected non-nil store with DATABASE_URL")
 	}
 }

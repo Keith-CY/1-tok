@@ -288,3 +288,71 @@ func TestMaxInt(t *testing.T) {
 		t.Error("expected 10")
 	}
 }
+
+func TestToInt64(t *testing.T) {
+	tests := []struct {
+		values []any
+		index  int
+		want   int64
+	}{
+		{[]any{int64(42)}, 0, 42},
+		{[]any{"100"}, 0, 100},
+		{[]any{3.14}, 0, 0},
+		{[]any{}, 0, 0},
+		{[]any{int64(1)}, 5, 0},
+	}
+	for _, tt := range tests {
+		if got := toInt64(tt.values, tt.index); got != tt.want {
+			t.Errorf("toInt64(%v, %d) = %d, want %d", tt.values, tt.index, got, tt.want)
+		}
+	}
+}
+
+func TestFallback(t *testing.T) {
+	if fallback("hello", "default") != "hello" {
+		t.Error("expected hello")
+	}
+	if fallback("", "default") != "default" {
+		t.Error("expected default")
+	}
+	if fallback("  ", "default") != "default" {
+		t.Error("expected default for whitespace")
+	}
+}
+
+func TestAllow_NotEnforcing(t *testing.T) {
+	svc := NewServiceWithOptions(Options{
+		Enforce: false,
+		Store:   NewMemoryStore(nil),
+		Policies: map[Policy]PolicyConfig{
+			PolicyIAMLoginIP: {Limit: 1, Window: time.Minute, Scope: []ScopePart{ScopeIP}},
+		},
+	})
+
+	meta := Meta{IP: "10.0.0.1"}
+	d, err := svc.Allow(context.Background(), PolicyIAMLoginIP, meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !d.Allowed {
+		t.Error("expected allowed when not enforcing")
+	}
+}
+
+func TestAllow_UnknownPolicy(t *testing.T) {
+	svc := NewServiceWithOptions(Options{
+		Enforce:  true,
+		Store:    NewMemoryStore(nil),
+		Policies: map[Policy]PolicyConfig{},
+	})
+
+	meta := Meta{IP: "10.0.0.1"}
+	d, err := svc.Allow(context.Background(), "unknown.policy", meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Unknown policy = allow
+	if !d.Allowed {
+		t.Error("expected allowed for unknown policy")
+	}
+}
