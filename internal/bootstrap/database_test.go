@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"database/sql"
+	"os"
 	"reflect"
 	"testing"
 )
@@ -63,5 +64,22 @@ func TestRunDatabaseBootstrapExecutesCoreAndFundingSteps(t *testing.T) {
 func TestBootstrapDatabaseRejectsMissingDSN(t *testing.T) {
 	if err := BootstrapDatabase(""); err == nil {
 		t.Fatalf("expected missing DATABASE_URL to fail")
+	}
+}
+
+func TestBootstrapDatabase_WithPostgres(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL not set")
+	}
+	if err := BootstrapDatabase(dsn); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBootstrapDatabase_NoDSN(t *testing.T) {
+	err := BootstrapDatabase("")
+	if err == nil {
+		t.Error("expected error without DSN")
 	}
 }

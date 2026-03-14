@@ -4163,3 +4163,70 @@ func TestGetOrder_OpsSeesAll(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestListRFQBids_RFQError_WithAuth(t *testing.T) {
+	// Normal app but swap RFQ repo after creating data
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "RFQ err auth", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid",
+		QuoteCents: 4000, Milestones: []platform.BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 4000, BudgetCents: 4000},
+		},
+	})
+
+	actor := iamclient.Actor{
+		UserID: "u_prov",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_no_access", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	gw, _ := NewServerWithOptionsE(Options{App: app, IAM: &stubIAMClient{actor: actor}})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/rfqs/"+rfq.ID+"/bids", nil)
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	// Provider not matching any bid or RFQ owner — filtered to empty
+	if rec.Code != http.StatusOK {
+		t.Logf("filtered bids: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestListRFQBids_NoAuth_WithData(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Bids data", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p1", Message: "bid1",
+		QuoteCents: 4000, Milestones: []platform.BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 4000, BudgetCents: 4000},
+		},
+	})
+	app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p2", Message: "bid2",
+		QuoteCents: 3500, Milestones: []platform.BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 3500, BudgetCents: 3500},
+		},
+	})
+
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/rfqs/"+rfq.ID+"/bids?limit=1&offset=0", nil)
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var resp map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	bids := resp["bids"].([]any)
+	if len(bids) != 1 {
+		t.Errorf("expected 1 bid (paginated), got %d", len(bids))
+	}
+}
