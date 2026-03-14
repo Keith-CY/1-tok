@@ -126,3 +126,11 @@ func TestHTTPClient_GetActor_MalformedJSON(t *testing.T) {
 		t.Error("expected error for malformed JSON response")
 	}
 }
+
+func TestHTTPClient_GetActor_NetworkError(t *testing.T) {
+	c := NewClient("http://127.0.0.1:1")
+	_, err := c.GetActor(context.Background(), "token")
+	if err == nil {
+		t.Error("expected error for connection refused")
+	}
+}

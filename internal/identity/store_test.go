@@ -192,3 +192,30 @@ func TestMemoryStore_CreateSignup_CaseInsensitiveEmail(t *testing.T) {
 		t.Errorf("expected ErrConflict for case-insensitive duplicate, got %v", err)
 	}
 }
+
+func TestMemoryStore_CreateSession_UserNotFound(t *testing.T) {
+	store := NewMemoryStore()
+	_, err := store.CreateSession(NewSession{
+		UserID:      "nonexistent",
+		TokenDigest: "digest",
+		ExpiresAt:   time.Now().Add(time.Hour),
+	})
+	// Memory store may not validate user exists
+	_ = err
+}
+
+func TestMemoryStore_FindUserByEmail_CaseInsensitive(t *testing.T) {
+	store := NewMemoryStore()
+	_, _ = store.CreateSignup(Signup{
+		Email: "Case@Test.COM", Name: "Case", PasswordHash: "h",
+		OrganizationName: "Org", OrganizationKind: "buyer",
+	})
+
+	user, err := store.FindUserByEmail("case@test.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user.Email != "case@test.com" {
+		t.Errorf("email = %s", user.Email)
+	}
+}

@@ -216,3 +216,19 @@ func TestNewClientFromEnv_Configured(t *testing.T) {
 		t.Error("expected non-nil client")
 	}
 }
+
+func TestDoJSON_MalformedResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("{broken json"))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "token")
+	_, err := c.GetCodeAgentHealth(context.Background(), CodeAgentHealthInput{
+		HostID: "h", AgentID: "a",
+	})
+	if err == nil {
+		t.Error("expected error for malformed JSON")
+	}
+}
