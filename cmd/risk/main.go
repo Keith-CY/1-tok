@@ -21,7 +21,7 @@ func main() {
 
 	log.Printf("risk listening on %s", addr)
 	handler := httputil.LimitBody(risk.NewServer(), 0)
-	if err := server.Run(addr, observability.WrapHTTP("risk", handler), 0); err != nil {
+	if err := server.Run(addr, httputil.AccessLog("risk", observability.WrapHTTP("risk", handler)), 0); err != nil {
 		log.Fatal(err)
 	}
 }

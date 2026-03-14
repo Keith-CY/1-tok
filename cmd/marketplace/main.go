@@ -21,7 +21,7 @@ func main() {
 
 	log.Printf("marketplace listening on %s", addr)
 	handler := httputil.LimitBody(marketplace.NewServer(), 0)
-	if err := server.Run(addr, observability.WrapHTTP("marketplace", handler), 0); err != nil {
+	if err := server.Run(addr, httputil.AccessLog("marketplace", observability.WrapHTTP("marketplace", handler)), 0); err != nil {
 		log.Fatal(err)
 	}
 }

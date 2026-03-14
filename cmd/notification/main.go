@@ -21,7 +21,7 @@ func main() {
 
 	log.Printf("notification listening on %s", addr)
 	handler := httputil.LimitBody(notification.NewServer(), 0)
-	if err := server.Run(addr, observability.WrapHTTP("notification", handler), 0); err != nil {
+	if err := server.Run(addr, httputil.AccessLog("notification", observability.WrapHTTP("notification", handler)), 0); err != nil {
 		log.Fatal(err)
 	}
 }

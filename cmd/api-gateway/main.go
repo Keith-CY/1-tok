@@ -39,7 +39,7 @@ func main() {
 	}
 	corsOrigin := envOrDefault("CORS_ALLOWED_ORIGIN", "*")
 	handler := httputil.CORS(corsOrigin, httputil.LimitBody(gw, 0))
-	if err := server.Run(addr, observability.WrapHTTP("api-gateway", handler), 0); err != nil {
+	if err := server.Run(addr, httputil.AccessLog("api-gateway", observability.WrapHTTP("api-gateway", handler)), 0); err != nil {
 		log.Fatal(err)
 	}
 }
