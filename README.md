@@ -241,7 +241,9 @@ As of `2026-03-13`, this command has been live-verified once from this repo agai
 
 ### Carrier support contract
 
-The draft upstream Carrier contract is captured in [carrier-pr-support.md](./docs/carrier-pr-support.md).
+The authoritative first-class Carrier design is captured in [carrier-first-class-design.md](./docs/carrier-first-class-design.md).
+
+The upstream-facing implementation checklist derived from that design is captured in [carrier-pr-support.md](./docs/carrier-pr-support.md).
 
 Persisted release paths now force `ONE_TOK_REQUIRE_PERSISTENCE=true`, so `iam`, `api-gateway`, and `settlement` fail fast instead of silently falling back to in-memory stores when database configuration is missing or broken.
 

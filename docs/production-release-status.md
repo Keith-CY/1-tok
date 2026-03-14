@@ -15,6 +15,7 @@ Repo-local release work already in place:
 - RFQ, bidding, award, credit review, and dispute resolution flows
 - dedicated `settlement-reconciler` worker
 - rotating internal service-token support
+- an authoritative first-class Carrier design doc plus an upstream implementation checklist
 - release smoke commands for local, persisted, compose, and external-dependency rehearsals
 - CI-safe reference coverage for a Dockerized `fnn` runtime overlay plus local `fiber-adapter`
 - a dedicated `release:compose-fnn-smoke` path for validating raw FNN container startup alongside the stack
@@ -126,5 +127,5 @@ These are still worth doing, but they are not the current hard blocker for a rel
 - run the same external rehearsal from the intended deployment platform, not only from a developer workstation
 - persist and archive artifacts from the successful dual-node live smoke so it can serve as reusable release evidence
 - replace `mock-fiber` in business smoke with a dual-node, funded adapter-backed FNN path once paid settlement is deterministic enough for CI or release rehearsal
-- upstream the Carrier contract described in [carrier-pr-support.md](/Users/ChenYu/Documents/Github/1-tok/docs/carrier-pr-support.md)
-- track the remaining launch items in [production-launch-checklist.md](/Users/ChenYu/Documents/Github/1-tok/docs/production-launch-checklist.md)
+- implement and upstream the Carrier work described in [carrier-first-class-design.md](./carrier-first-class-design.md) and [carrier-pr-support.md](./carrier-pr-support.md)
+- track the remaining launch items in [production-launch-checklist.md](./production-launch-checklist.md)

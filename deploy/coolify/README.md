@@ -48,9 +48,9 @@ This repository is structured so Coolify can manage each Go service as an indepe
 - Run `bootstrap` as a one-shot job before `iam`, `api-gateway`, `settlement`, and `settlement-reconciler`.
 - Run `settlement-reconciler` as a long-lived worker on the same internal network as `postgres` and `settlement`.
 - Keep `redis` on the same internal network as `iam` and `api-gateway`; the current production rate limiting depends on it.
-- If you also want raw Fiber node infra under Coolify, add the optional `fnn` service using [compose.fnn.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.fnn.yaml) as the reference shape.
-- If you want to rehearse real raw-FNN payment routing, add both `fnn` and `fnn2` from [compose.fnn.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.fnn.yaml), then run the dual-node smoke once those nodes are funded.
-- If you want a bridge between existing `tip.*` / `withdrawal.*` calls and raw `fnn`, add the optional `fiber-adapter` service from the same [compose.fnn.yaml](/Users/ChenYu/Documents/Github/1-tok/compose.fnn.yaml) overlay.
+- If you also want raw Fiber node infra under Coolify, add the optional `fnn` service using [compose.fnn.yaml](../../compose.fnn.yaml) as the reference shape.
+- If you want to rehearse real raw-FNN payment routing, add both `fnn` and `fnn2` from [compose.fnn.yaml](../../compose.fnn.yaml), then run the dual-node smoke once those nodes are funded.
+- If you want a bridge between existing `tip.*` / `withdrawal.*` calls and raw `fnn`, add the optional `fiber-adapter` service from the same [compose.fnn.yaml](../../compose.fnn.yaml) overlay.
 
 ## Minimum environment variables
 
@@ -107,5 +107,5 @@ Optional `fiber-adapter` service env:
 - Configure real Sentry alert rules and notification routing for the production project.
 - Run `bun run release:external-deps-smoke` from the target deployment environment.
 - Archive the resulting `release-manifest.json` as the deployment evidence package.
-- Complete the remaining `P0` items in [production-launch-checklist.md](/Users/ChenYu/Documents/Github/1-tok/docs/production-launch-checklist.md).
-- Upstream the desired Carrier support described in [carrier-pr-support.md](/Users/ChenYu/Documents/Github/1-tok/docs/carrier-pr-support.md).
+- Complete the remaining `P0` items in [production-launch-checklist.md](../../docs/production-launch-checklist.md).
+- Implement and upstream the Carrier work described in [carrier-first-class-design.md](../../docs/carrier-first-class-design.md) and [carrier-pr-support.md](../../docs/carrier-pr-support.md).
