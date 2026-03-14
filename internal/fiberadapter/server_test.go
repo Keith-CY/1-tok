@@ -718,3 +718,88 @@ func TestServeHTTP_UnknownMethod(t *testing.T) {
 		t.Logf("unknown method: status %d", rec.Code)
 	}
 }
+
+func TestHandleCreate_Success(t *testing.T) {
+	rpcSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0", "id": "1",
+			"result": map[string]any{"invoice_address": "lnbc_created"},
+		})
+	}))
+	defer rpcSrv.Close()
+
+	s := NewServerWithOptions(Options{
+		InvoiceRPCURL: rpcSrv.URL,
+		AppID:         "app_1",
+	})
+
+	// Send RPC create request
+	rpcPayload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1,
+		"method": "create",
+		"params": map[string]any{
+			"postId": "post_1", "fromUserId": "u_from", "toUserId": "u_to",
+			"asset": "CKB", "amount": "100", "message": "tip",
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(rpcPayload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleStatus_Success(t *testing.T) {
+	callCount := 0
+	rpcSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.Header().Set("Content-Type", "application/json")
+		if callCount == 1 {
+			// parse_invoice
+			json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": "1",
+				"result": map[string]any{"invoice": map[string]any{"data": map[string]any{"payment_hash": "0xhash"}}},
+			})
+		} else {
+			// get_invoice
+			json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": "1",
+				"result": map[string]any{"status": "paid"},
+			})
+		}
+	}))
+	defer rpcSrv.Close()
+
+	s := NewServerWithOptions(Options{InvoiceRPCURL: rpcSrv.URL})
+
+	// Create a tip first (to have invoice in state)
+	createPayload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "create",
+		"params": map[string]any{
+			"postId": "post_1", "fromUserId": "u1", "toUserId": "u2",
+			"asset": "CKB", "amount": "100",
+		},
+	})
+	cReq := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(createPayload))
+	cReq.Header.Set("Content-Type", "application/json")
+	cRec := httptest.NewRecorder()
+	s.ServeHTTP(cRec, cReq)
+
+	// Now check status
+	statusPayload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 2, "method": "status",
+		"params": map[string]any{"invoice": "lnbc_created"},
+	})
+	sReq := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(statusPayload))
+	sReq.Header.Set("Content-Type", "application/json")
+	sRec := httptest.NewRecorder()
+	s.ServeHTTP(sRec, sReq)
+
+	if sRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", sRec.Code, sRec.Body.String())
+	}
+}

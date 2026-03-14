@@ -892,3 +892,119 @@ func TestCompareStrings(t *testing.T) {
 		t.Error("expected 0")
 	}
 }
+
+type errorPublisher struct{}
+
+func (errorPublisher) Publish(string, any) error {
+	return errors.New("publish failed")
+}
+
+func TestCreateOrder_PublishError(t *testing.T) {
+	app := NewAppWithMemory()
+	app.SetPublisher(errorPublisher{})
+
+	_, err := app.CreateOrder(CreateOrderInput{
+		BuyerOrgID: "org_b", ProviderOrgID: "org_p",
+		Title: "Pub error", FundingMode: "prepaid",
+		Milestones: []CreateMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000},
+		},
+	})
+	if err == nil {
+		t.Error("expected error from failed publisher")
+	}
+}
+
+func TestSettleMilestone_PublishError(t *testing.T) {
+	app := NewAppWithMemory()
+
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "Settle pub err", Category: "ai",
+		Scope: "test", BudgetCents: 10000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_2", Message: "bid",
+		QuoteCents: 10000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 10000, BudgetCents: 10000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	app.SetPublisher(errorPublisher{})
+	_, _, err := app.SettleMilestone(order.ID, core.SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+	if err == nil {
+		t.Error("expected error from failed publisher")
+	}
+}
+
+func TestRecordUsageCharge_PublishError(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "Usage pub err", Category: "ai",
+		Scope: "test", BudgetCents: 10000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_2", Message: "bid",
+		QuoteCents: 10000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 10000, BudgetCents: 10000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	app.SetPublisher(errorPublisher{})
+	_, _, err := app.RecordUsageCharge(order.ID, RecordUsageChargeInput{
+		MilestoneID: "ms_1", Kind: "token", AmountCents: 100,
+	})
+	if err == nil {
+		t.Error("expected error from failed publisher")
+	}
+}
+
+func TestCreateMessage_PublishError(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "Msg pub err", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_2", Message: "bid",
+		QuoteCents: 5000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	app.SetPublisher(errorPublisher{})
+	_, err := app.CreateMessage(order.ID, "buyer", "Hello")
+	if err == nil {
+		t.Error("expected error from failed publisher")
+	}
+}
+
+func TestOpenDispute_PublishError(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "Disp pub err", Category: "ai",
+		Scope: "test", BudgetCents: 10000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_2", Message: "bid",
+		QuoteCents: 10000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 10000, BudgetCents: 10000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+	app.SettleMilestone(order.ID, core.SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+
+	app.SetPublisher(errorPublisher{})
+	_, _, _, err := app.OpenDispute(order.ID, OpenDisputeInput{
+		MilestoneID: "ms_1", Reason: "issue", RefundCents: 500,
+	})
+	if err == nil {
+		t.Error("expected error from failed publisher")
+	}
+}
