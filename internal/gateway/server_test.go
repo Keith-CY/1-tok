@@ -1966,7 +1966,7 @@ func TestListProviders_WithAuth(t *testing.T) {
 		actor: iamclient.Actor{
 			UserID: "u_1",
 			Memberships: []iamclient.ActorMembership{
-				{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "admin"},
+				{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "org_owner"},
 			},
 		},
 	}
@@ -1988,7 +1988,7 @@ func TestListListings_WithAuth(t *testing.T) {
 		actor: iamclient.Actor{
 			UserID: "u_1",
 			Memberships: []iamclient.ActorMembership{
-				{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "admin"},
+				{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "org_owner"},
 			},
 		},
 	}
@@ -2002,5 +2002,230 @@ func TestListListings_WithAuth(t *testing.T) {
 	gw.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func newAuthGateway(t *testing.T, orgKind string) (*Server, *platform.App, iamclient.Actor) {
+	t.Helper()
+	app := platform.NewAppWithMemory()
+	actor := iamclient.Actor{
+		UserID: "u_test",
+		Email:  "test@example.com",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_test", OrganizationKind: orgKind, OrganizationName: "Test Org", Role: "org_owner"},
+		},
+	}
+	iam := &stubIAMClient{actor: actor}
+	gw, _ := NewServerWithOptionsE(Options{App: app, IAM: iam})
+	return gw, app, actor
+}
+
+func TestCreateRFQ_WithBuyerAuth(t *testing.T) {
+	gw, _, _ := newAuthGateway(t, "buyer")
+	payload, _ := json.Marshal(map[string]any{
+		"title": "Auth RFQ", "category": "ai", "scope": "test",
+		"budgetCents": 10000, "responseDeadlineAt": "2026-04-01T00:00:00Z",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateBid_WithProviderAuth(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_buyer", Title: "Auth bid", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	actor := iamclient.Actor{
+		UserID: "u_prov",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_prov", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	gw, _ := NewServerWithOptionsE(Options{App: app, IAM: &stubIAMClient{actor: actor}})
+
+	payload, _ := json.Marshal(map[string]any{
+		"message": "I can do this", "quoteCents": 4500,
+		"milestones": []map[string]any{
+			{"id": "ms_1", "title": "Work", "basePriceCents": 4500, "budgetCents": 4500},
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs/"+rfq.ID+"/bids", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer prov-token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetOrder_WithBuyerAuth(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_buyer", Title: "Order auth", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	bid, _ := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_prov", Message: "bid",
+		QuoteCents: 5000, Milestones: []platform.BidMilestoneInput{
+			{ID: "ms_1", Title: "Work", BasePriceCents: 5000, BudgetCents: 5000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, platform.AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	actor := iamclient.Actor{
+		UserID: "u_buyer",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_buyer", OrganizationKind: "buyer", Role: "org_owner"},
+		},
+	}
+	gw, _ := NewServerWithOptionsE(Options{App: app, IAM: &stubIAMClient{actor: actor}})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/orders/"+order.ID, nil)
+	req.Header.Set("Authorization", "Bearer buyer-token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateOrder_WithAuth(t *testing.T) {
+	actor := iamclient.Actor{
+		UserID: "u_buyer",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "org_owner"},
+		},
+	}
+	gw, _ := NewServerWithOptionsE(Options{
+		App: platform.NewAppWithMemory(),
+		IAM: &stubIAMClient{actor: actor},
+	})
+
+	payload, _ := json.Marshal(map[string]any{
+		"providerOrgId": "org_p", "title": "Auth order", "fundingMode": "prepaid",
+		"milestones": []map[string]any{
+			{"id": "ms_1", "title": "Work", "basePriceCents": 5000, "budgetCents": 5000},
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer buyer-token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestListOrders_WithBuyerAuth(t *testing.T) {
+	actor := iamclient.Actor{
+		UserID: "u_buyer",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "org_owner"},
+		},
+	}
+	gw, _ := NewServerWithOptionsE(Options{
+		App: platform.NewAppWithMemory(),
+		IAM: &stubIAMClient{actor: actor},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/orders", nil)
+	req.Header.Set("Authorization", "Bearer buyer-token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestListRFQs_WithBuyerAuth(t *testing.T) {
+	actor := iamclient.Actor{
+		UserID: "u_buyer",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "org_owner"},
+		},
+	}
+	gw, _ := NewServerWithOptionsE(Options{
+		App: platform.NewAppWithMemory(),
+		IAM: &stubIAMClient{actor: actor},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/rfqs", nil)
+	req.Header.Set("Authorization", "Bearer buyer-token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestIsBuyerRole(t *testing.T) {
+	for _, role := range []string{"org_owner", "procurement", "operator"} {
+		if !isBuyerRole(role) {
+			t.Errorf("isBuyerRole(%q) = false", role)
+		}
+	}
+	for _, role := range []string{"admin", "viewer", "", "provider"} {
+		if isBuyerRole(role) {
+			t.Errorf("isBuyerRole(%q) = true", role)
+		}
+	}
+}
+
+func TestIsProviderRole(t *testing.T) {
+	for _, role := range []string{"org_owner", "sales", "delivery_operator"} {
+		if !isProviderRole(role) {
+			t.Errorf("isProviderRole(%q) = false", role)
+		}
+	}
+	for _, role := range []string{"admin", "viewer", ""} {
+		if isProviderRole(role) {
+			t.Errorf("isProviderRole(%q) = true", role)
+		}
+	}
+}
+
+func TestIsOpsRole(t *testing.T) {
+	for _, role := range []string{"ops_reviewer", "risk_admin", "finance_admin", "super_admin"} {
+		if !isOpsRole(role) {
+			t.Errorf("isOpsRole(%q) = false", role)
+		}
+	}
+	for _, role := range []string{"admin", "buyer", ""} {
+		if isOpsRole(role) {
+			t.Errorf("isOpsRole(%q) = true", role)
+		}
+	}
+}
+
+func TestListProviders_Error(t *testing.T) {
+	gw, _ := NewServerWithOptionsE(Options{App: platform.NewAppWithMemory()})
+	// Test with pagination params
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/providers?limit=5&offset=10", nil)
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestBearerToken_Missing(t *testing.T) {
+	_, ok := bearerToken("")
+	if ok {
+		t.Error("expected false for empty header")
+	}
+	_, ok = bearerToken("Basic abc123")
+	if ok {
+		t.Error("expected false for non-Bearer")
 	}
 }
