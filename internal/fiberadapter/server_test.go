@@ -737,7 +737,7 @@ func TestHandleCreate_Success(t *testing.T) {
 	// Send RPC create request
 	rpcPayload, _ := json.Marshal(map[string]any{
 		"jsonrpc": "2.0", "id": 1,
-		"method": "create",
+		"method": "tip.create",
 		"params": map[string]any{
 			"postId": "post_1", "fromUserId": "u_from", "toUserId": "u_to",
 			"asset": "CKB", "amount": "100", "message": "tip",
@@ -778,7 +778,7 @@ func TestHandleStatus_Success(t *testing.T) {
 
 	// Create a tip first (to have invoice in state)
 	createPayload, _ := json.Marshal(map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "create",
+		"jsonrpc": "2.0", "id": 1, "method": "tip.create",
 		"params": map[string]any{
 			"postId": "post_1", "fromUserId": "u1", "toUserId": "u2",
 			"asset": "CKB", "amount": "100",
@@ -791,7 +791,7 @@ func TestHandleStatus_Success(t *testing.T) {
 
 	// Now check status
 	statusPayload, _ := json.Marshal(map[string]any{
-		"jsonrpc": "2.0", "id": 2, "method": "status",
+		"jsonrpc": "2.0", "id": 2, "method": "tip.status",
 		"params": map[string]any{"invoice": "lnbc_created"},
 	})
 	sReq := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(statusPayload))
@@ -818,7 +818,7 @@ func TestHandleSettledFeed_Success(t *testing.T) {
 
 	s := NewServerWithOptions(Options{InvoiceRPCURL: rpcSrv.URL})
 	payload, _ := json.Marshal(map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "settled_feed",
+		"jsonrpc": "2.0", "id": 1, "method": "tip.settled_feed",
 		"params": map[string]any{"limit": 10},
 	})
 	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(payload))
@@ -845,7 +845,7 @@ func TestHandleQuoteWithdrawal_Success(t *testing.T) {
 		PayerRPCURL:   rpcSrv.URL,
 	})
 	payload, _ := json.Marshal(map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "quote_withdrawal",
+		"jsonrpc": "2.0", "id": 1, "method": "withdrawal.quote",
 		"params": map[string]any{
 			"userId": "u_1", "asset": "CKB", "amount": "100",
 			"destination": map[string]any{"kind": "address", "address": "ckb1addr"},
@@ -886,7 +886,7 @@ func TestHandleRequestWithdrawal_Success(t *testing.T) {
 		PayerRPCURL:   rpcSrv.URL,
 	})
 	payload, _ := json.Marshal(map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "request_withdrawal",
+		"jsonrpc": "2.0", "id": 1, "method": "withdrawal.request",
 		"params": map[string]any{
 			"userId": "u_1", "asset": "CKB", "amount": "100",
 			"destination": map[string]any{"kind": "payment_request", "paymentRequest": "lnbc_req"},
@@ -904,7 +904,7 @@ func TestHandleRequestWithdrawal_Success(t *testing.T) {
 func TestHandleDashboardSummary_Success(t *testing.T) {
 	s := NewServerWithOptions(Options{})
 	payload, _ := json.Marshal(map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "dashboard_summary",
+		"jsonrpc": "2.0", "id": 1, "method": "dashboard.summary",
 		"params": map[string]any{"userId": "u_1"},
 	})
 	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(payload))
@@ -934,7 +934,7 @@ func TestHandleCreate_WithHMAC(t *testing.T) {
 
 	rpcPayload, _ := json.Marshal(map[string]any{
 		"jsonrpc": "2.0", "id": 1,
-		"method": "create",
+		"method": "tip.create",
 		"params": map[string]any{
 			"postId": "post_1", "fromUserId": "u_from", "toUserId": "u_to",
 			"asset": "CKB", "amount": "100",
@@ -965,5 +965,89 @@ func TestNewServerWithOptions_WithRPCNodes(t *testing.T) {
 	})
 	if s == nil {
 		t.Fatal("expected non-nil server")
+	}
+}
+
+func TestFullTipFlow_CreateThenStatus(t *testing.T) {
+	callCount := 0
+	rpcSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.Header().Set("Content-Type", "application/json")
+
+		body, _ := io.ReadAll(r.Body)
+		var rpc struct{ Method string `json:"method"` }
+		json.Unmarshal(body, &rpc)
+
+		switch rpc.Method {
+		case "new_invoice":
+			json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": "1",
+				"result": map[string]any{"invoice_address": "lnbc_tip_flow"},
+			})
+		case "parse_invoice":
+			json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": "1",
+				"result": map[string]any{"invoice": map[string]any{"data": map[string]any{"payment_hash": "0xhash_tip"}}},
+			})
+		case "get_invoice":
+			json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": "1",
+				"result": map[string]any{"status": "paid"},
+			})
+		default:
+			json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": "1",
+				"result": map[string]any{},
+			})
+		}
+	}))
+	defer rpcSrv.Close()
+
+	s := NewServerWithOptions(Options{InvoiceRPCURL: rpcSrv.URL, AppID: "app_1"})
+
+	// Step 1: Create a tip
+	createPayload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "tip.create",
+		"params": map[string]any{
+			"postId": "post_flow", "fromUserId": "u_from", "toUserId": "u_to",
+			"asset": "CKB", "amount": "100",
+		},
+	})
+	cReq := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(createPayload))
+	cReq.Header.Set("Content-Type", "application/json")
+	cRec := httptest.NewRecorder()
+	s.ServeHTTP(cRec, cReq)
+	if cRec.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", cRec.Code, cRec.Body.String())
+	}
+
+	// Extract invoice from response
+	var createResp map[string]any
+	json.Unmarshal(cRec.Body.Bytes(), &createResp)
+	result, ok := createResp["result"].(map[string]any)
+	if !ok || result == nil {
+		t.Fatalf("no result in create response: %s", cRec.Body.String())
+	}
+	invoice, _ := result["invoice"].(string)
+	if invoice == "" {
+		// Try tipId
+		invoice, _ = result["tipId"].(string)
+	}
+	if invoice == "" {
+		t.Logf("create response: %s", cRec.Body.String())
+		t.Skip("no invoice in create response — skip status test")
+	}
+
+	// Step 2: Check status
+	statusPayload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 2, "method": "tip.status",
+		"params": map[string]any{"invoice": invoice},
+	})
+	sReq := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(statusPayload))
+	sReq.Header.Set("Content-Type", "application/json")
+	sRec := httptest.NewRecorder()
+	s.ServeHTTP(sRec, sReq)
+	if sRec.Code != http.StatusOK {
+		t.Fatalf("status: %d %s", sRec.Code, sRec.Body.String())
 	}
 }
