@@ -2,6 +2,7 @@ import { formatMoney } from "@1tok/contracts";
 
 import { PortalShell } from "../../components/portal-shell";
 import { SummaryCard } from "../../components/summary-card";
+import { StatusBadge, ProgressBar, EmptyState } from "../../components/ui";
 import { getBuyerDashboardData } from "../../lib/api";
 import { requirePortalViewer } from "../../lib/viewer";
 
@@ -114,7 +115,7 @@ export default async function BuyerPage() {
               <div key={rfq.id} className="message-item">
                 <strong>{rfq.title}</strong>
                 <p>
-                  {rfq.status} · {rfq.bidCount} bids · budget {formatMoney(rfq.budgetCents)}
+                  <StatusBadge status={rfq.status} /> · {rfq.bidCount} bids · budget {formatMoney(rfq.budgetCents)}
                 </p>
                 <p>Response deadline {rfq.responseDeadlineAt.slice(0, 10)}</p>
                 <div className="message-list">
@@ -161,13 +162,21 @@ export default async function BuyerPage() {
           {data.activeOrders[0]?.milestones.map((milestone) => (
             <div key={milestone.id} className="timeline-item">
               <strong>
-                {milestone.title} · {milestone.state}
+                {milestone.title} · <StatusBadge status={milestone.state} />
               </strong>
               <p>
                 Budget {formatMoney(milestone.budgetCents)} · Settled {formatMoney(milestone.settledCents)}
               </p>
+              <ProgressBar
+                current={milestone.settledCents}
+                total={milestone.budgetCents}
+                tone={milestone.settledCents > milestone.budgetCents * 0.9 ? "warning" : "default"}
+              />
             </div>
           ))}
+          {!data.activeOrders[0]?.milestones.length && (
+            <EmptyState icon="📋" message="No active milestones yet." />
+          )}
         </div>
       </article>
     </PortalShell>
