@@ -278,6 +278,8 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        BUN_VERSION: ${BUN_VERSION:?Set BUN_VERSION or export from package.json}
     environment:
       NEXT_PUBLIC_API_BASE_URL: http://api-gateway:8080
       NEXT_PUBLIC_SETTLEMENT_BASE_URL: http://settlement:8083
