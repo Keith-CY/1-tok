@@ -219,3 +219,58 @@ func TestWrapHTTP_PanicRecovery(t *testing.T) {
 		t.Logf("panic recovery status: %d", rec.Code)
 	}
 }
+
+func TestWrapHTTP_StatusRecording(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+		w.Write([]byte("accepted"))
+	})
+
+	handler := WrapHTTP("test-svc", inner)
+	req := httptest.NewRequest(http.MethodPost, "/api/test", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Errorf("expected 202, got %d", rec.Code)
+	}
+}
+
+func TestWrapHTTP_Default200(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("ok"))
+	})
+
+	handler := WrapHTTP("test-svc", inner)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestConfigFromEnv_Defaults(t *testing.T) {
+	t.Setenv("SENTRY_DSN", "")
+	t.Setenv("SENTRY_ENVIRONMENT", "test")
+	t.Setenv("SENTRY_RELEASE", "v1.0")
+	t.Setenv("SENTRY_TRACES_SAMPLE_RATE", "0.5")
+
+	cfg := ConfigFromEnv("test-svc")
+	if cfg.Service != "test-svc" {
+		t.Errorf("service = %s", cfg.Service)
+	}
+	if cfg.Environment != "test" {
+		t.Errorf("env = %s", cfg.Environment)
+	}
+	if cfg.TracesSampleRate != 0.5 {
+		t.Errorf("traces rate = %f", cfg.TracesSampleRate)
+	}
+}
+
+func TestFlush(t *testing.T) {
+	// Should not panic even without Sentry initialized
+	result := Flush(0)
+	_ = result
+}

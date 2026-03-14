@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -43,5 +44,45 @@ func TestNewSingleHost_PanicsOnBadURL(t *testing.T) {
 		}
 	}()
 	NewSingleHost("://bad", func(r *http.Request) {})
+}
+
+
+func TestNewSingleHostE_RewritesPath(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Path", r.URL.Path)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	handler, err := NewSingleHostE(backend.URL, func(req *http.Request) {
+		req.URL.Path = "/rewritten" + req.URL.Path
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/original", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Header().Get("X-Path") != "/rewritten/original" {
+		t.Errorf("path = %s", rec.Header().Get("X-Path"))
+	}
+}
+
+func TestNewSingleHost_Success(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	handler := NewSingleHost(backend.URL, func(r *http.Request) {})
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
 }
 
