@@ -1818,3 +1818,145 @@ func TestGetOrder_Found(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestCreateOrder_Success(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+
+	payload, _ := json.Marshal(map[string]any{
+		"buyerOrgId": "org_b", "providerOrgId": "org_p",
+		"title": "Test order", "fundingMode": "prepaid",
+		"milestones": []map[string]any{
+			{"id": "ms_1", "title": "Work", "basePriceCents": 5000, "budgetCents": 5000},
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateRFQ_Success(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+
+	payload, _ := json.Marshal(map[string]any{
+		"buyerOrgId": "org_b", "title": "Need agent", "category": "ai",
+		"scope": "Build something", "budgetCents": 10000,
+		"responseDeadlineAt": "2026-04-01T00:00:00Z",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateBid_Success(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Bid test", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+	payload, _ := json.Marshal(map[string]any{
+		"providerOrgId": "org_p", "message": "I can do this",
+		"quoteCents": 4500, "milestones": []map[string]any{
+			{"id": "ms_1", "title": "Deliver", "basePriceCents": 4500, "budgetCents": 4500},
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs/"+rfq.ID+"/bids", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAwardRFQ_Success(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Award", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	bid, _ := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid",
+		QuoteCents: 5000, Milestones: []platform.BidMilestoneInput{
+			{ID: "ms_1", Title: "Work", BasePriceCents: 5000, BudgetCents: 5000},
+		},
+	})
+
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+	payload, _ := json.Marshal(map[string]any{
+		"bidId": bid.ID, "fundingMode": "credit",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs/"+rfq.ID+"/award", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestListRFQBids(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Bids", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid1",
+		QuoteCents: 4000, Milestones: []platform.BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 4000, BudgetCents: 4000},
+		},
+	})
+
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/rfqs/"+rfq.ID+"/bids", nil)
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestListOrders(t *testing.T) {
+	gw, _ := NewServerWithOptionsE(Options{App: platform.NewAppWithMemory()})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/orders", nil)
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestListRFQs(t *testing.T) {
+	gw, _ := NewServerWithOptionsE(Options{App: platform.NewAppWithMemory()})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/rfqs", nil)
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestListDisputes(t *testing.T) {
+	gw, _ := NewServerWithOptionsE(Options{App: platform.NewAppWithMemory()})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/disputes", nil)
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}

@@ -932,3 +932,131 @@ func TestSettledFeed_Unauthorized_ServiceToken(t *testing.T) {
 		t.Fatalf("expected 401, got %d", rec.Code)
 	}
 }
+
+func TestCreateInvoice_WithFiber(t *testing.T) {
+	fiber := &stubFiberClient{
+		createResult: fiberclient.CreateInvoiceResult{Invoice: "lnbc_test_123"},
+	}
+	s := NewServerWithOptions(Options{Fiber: fiber})
+
+	payload := `{"orderId":"ord_1","milestoneId":"ms_1","buyerOrgId":"org_b","providerOrgId":"org_p","asset":"CKB","amount":"100"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/invoices", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetInvoiceStatus_WithFiber(t *testing.T) {
+	fiber := &stubFiberClient{
+		createResult: fiberclient.CreateInvoiceResult{Invoice: "lnbc_inv"},
+		statusResult: fiberclient.InvoiceStatusResult{State: "paid"},
+	}
+	s := NewServerWithOptions(Options{Fiber: fiber})
+
+	// Create first
+	createPayload := `{"orderId":"ord_1","milestoneId":"ms_1","buyerOrgId":"org_b","providerOrgId":"org_p","asset":"CKB","amount":"100"}`
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/invoices", bytes.NewBufferString(createPayload))
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	s.ServeHTTP(createRec, createReq)
+
+	// Get status
+	req := httptest.NewRequest(http.MethodGet, "/v1/invoices/lnbc_inv", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestQuoteWithdrawal_WithFiber(t *testing.T) {
+	fiber := &stubFiberClient{
+		quoteResult: fiberclient.QuotePayoutResult{Asset: "CKB", Amount: "50"},
+	}
+	s := NewServerWithOptions(Options{Fiber: fiber})
+
+	payload := `{"providerOrgId":"org_p","asset":"CKB","amount":"50","destination":{"kind":"address","address":"ckb1addr"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals/quote", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRequestWithdrawal_WithFiber(t *testing.T) {
+	fiber := &stubFiberClient{
+		requestPayoutResult: fiberclient.RequestPayoutResult{ID: "ext_1"},
+	}
+	s := NewServerWithOptions(Options{Fiber: fiber})
+
+	payload := `{"providerOrgId":"org_p","asset":"CKB","amount":"50","destination":{"kind":"address","address":"ckb1addr"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSettledFeed_WithFiber(t *testing.T) {
+	fiber := &stubFiberClient{
+		settledFeedResult: fiberclient.SettledFeedResult{},
+	}
+	s := NewServerWithOptions(Options{Fiber: fiber})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/settled-feed", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWithdrawalStatuses_WithFiber(t *testing.T) {
+	fiber := &stubFiberClient{
+		withdrawalsResult: fiberclient.WithdrawalStatusResult{},
+	}
+	s := NewServerWithOptions(Options{Fiber: fiber})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/withdrawals/status?providerOrgId=org_p", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateInvoice_InvalidJSON(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodPost, "/v1/invoices", bytes.NewBufferString("{broken"))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestHealthz_Settlement(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
