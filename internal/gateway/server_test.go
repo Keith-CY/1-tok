@@ -1960,3 +1960,47 @@ func TestListDisputes(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 }
+
+func TestListProviders_WithAuth(t *testing.T) {
+	iam := &stubIAMClient{
+		actor: iamclient.Actor{
+			UserID: "u_1",
+			Memberships: []iamclient.ActorMembership{
+				{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "admin"},
+			},
+		},
+	}
+	gw, _ := NewServerWithOptionsE(Options{
+		App: platform.NewAppWithMemory(),
+		IAM: iam,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/providers", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestListListings_WithAuth(t *testing.T) {
+	iam := &stubIAMClient{
+		actor: iamclient.Actor{
+			UserID: "u_1",
+			Memberships: []iamclient.ActorMembership{
+				{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "admin"},
+			},
+		},
+	}
+	gw, _ := NewServerWithOptionsE(Options{
+		App: platform.NewAppWithMemory(),
+		IAM: iam,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/listings", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
