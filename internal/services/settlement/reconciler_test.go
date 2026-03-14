@@ -2,6 +2,7 @@ package settlement
 
 import (
 	"context"
+	"log"
 	"testing"
 	"time"
 
@@ -159,4 +160,168 @@ func TestReconcilerSyncPendingWithdrawalsUpdatesPendingProviderStatuses(t *testi
 			t.Fatalf("expected pending withdrawal to be updated, got %+v", record)
 		}
 	}
+}
+
+func TestNewReconciler(t *testing.T) {
+	fiber := &stubFiberClient{}
+	funding := NewMemoryFundingRecordRepository()
+
+	r := NewReconciler(ReconcilerOptions{
+		Fiber:   fiber,
+		Funding: funding,
+	})
+	if r == nil {
+		t.Fatal("expected non-nil reconciler")
+	}
+}
+
+func TestSync_EmptyStore(t *testing.T) {
+	fiber := &stubFiberClient{}
+	funding := NewMemoryFundingRecordRepository()
+
+	r := NewReconciler(ReconcilerOptions{Fiber: fiber, Funding: funding})
+	summary, err := r.Sync(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.InvoiceUpdates != 0 || summary.WithdrawalUpdates != 0 {
+		t.Errorf("expected 0 updates, got %+v", summary)
+	}
+}
+
+func TestSync_InvoiceStateUpdate(t *testing.T) {
+	fiber := &stubFiberClient{
+		statusResult: fiberclient.InvoiceStatusResult{State: "paid"},
+	}
+	funding := NewMemoryFundingRecordRepository()
+
+	// Add a pending invoice
+	id, _ := funding.NextID()
+	funding.Save(FundingRecord{
+		ID: id, Kind: FundingRecordKindInvoice,
+		Invoice: "lnbc_reconcile", State: "pending",
+		Asset: "CKB", Amount: "100", ProviderOrgID: "org_p",
+	})
+
+	r := NewReconciler(ReconcilerOptions{Fiber: fiber, Funding: funding})
+	summary, err := r.Sync(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.InvoiceUpdates != 1 {
+		t.Errorf("expected 1 invoice update, got %d", summary.InvoiceUpdates)
+	}
+}
+
+func TestSync_SettledInvoiceSkipped(t *testing.T) {
+	fiber := &stubFiberClient{}
+	funding := NewMemoryFundingRecordRepository()
+
+	id, _ := funding.NextID()
+	funding.Save(FundingRecord{
+		ID: id, Kind: FundingRecordKindInvoice,
+		Invoice: "lnbc_settled", State: "SETTLED",
+		Asset: "CKB", Amount: "100",
+	})
+
+	r := NewReconciler(ReconcilerOptions{Fiber: fiber, Funding: funding})
+	summary, err := r.Sync(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.InvoiceUpdates != 0 {
+		t.Errorf("expected 0 updates for settled invoice, got %d", summary.InvoiceUpdates)
+	}
+}
+
+func TestSync_WithdrawalUpdate(t *testing.T) {
+	fiber := &stubFiberClient{
+		withdrawalsResult: fiberclient.WithdrawalStatusResult{
+			Withdrawals: []fiberclient.WithdrawalStatusItem{
+				{ID: "ext_1", State: "completed"},
+			},
+		},
+	}
+	funding := NewMemoryFundingRecordRepository()
+
+	id, _ := funding.NextID()
+	funding.Save(FundingRecord{
+		ID: id, Kind: FundingRecordKindWithdrawal,
+		ExternalID: "ext_1", State: "pending",
+		Asset: "CKB", Amount: "50", ProviderOrgID: "org_p",
+	})
+
+	r := NewReconciler(ReconcilerOptions{Fiber: fiber, Funding: funding})
+	summary, err := r.Sync(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.WithdrawalUpdates != 1 {
+		t.Errorf("expected 1 withdrawal update, got %d", summary.WithdrawalUpdates)
+	}
+}
+
+func TestRunReconcilerLoop_NilReconciler(t *testing.T) {
+	err := RunReconcilerLoop(context.Background(), nil, time.Second, nil)
+	if err == nil {
+		t.Error("expected error for nil reconciler")
+	}
+}
+
+func TestRunReconcilerLoop_ContextCancelled(t *testing.T) {
+	fiber := &stubFiberClient{}
+	funding := NewMemoryFundingRecordRepository()
+	r := NewReconciler(ReconcilerOptions{Fiber: fiber, Funding: funding})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	logger := log.New(log.Writer(), "test: ", 0)
+	err := RunReconcilerLoop(ctx, r, 50*time.Millisecond, logger)
+	if err == nil {
+		t.Error("expected context error")
+	}
+}
+
+func TestRunReconcilerLoop_ConsecutiveErrors(t *testing.T) {
+	// Create a reconciler with a fiber client that always errors
+	fiber := &errorFiberClient{}
+	funding := NewMemoryFundingRecordRepository()
+
+	// Add a pending record so sync actually tries fiber
+	id, _ := funding.NextID()
+	funding.Save(FundingRecord{
+		ID: id, Kind: FundingRecordKindInvoice,
+		Invoice: "lnbc_err", State: "pending",
+		Asset: "CKB", Amount: "100",
+	})
+
+	r := NewReconciler(ReconcilerOptions{Fiber: fiber, Funding: funding})
+
+	// First sync fails immediately
+	_, err := r.Sync(context.Background())
+	if err == nil {
+		t.Error("expected error from fiber")
+	}
+}
+
+type errorFiberClient struct{}
+
+func (errorFiberClient) CreateInvoice(context.Context, fiberclient.CreateInvoiceInput) (fiberclient.CreateInvoiceResult, error) {
+	return fiberclient.CreateInvoiceResult{}, fiberclient.ErrNotConfigured
+}
+func (errorFiberClient) GetInvoiceStatus(context.Context, string) (fiberclient.InvoiceStatusResult, error) {
+	return fiberclient.InvoiceStatusResult{}, fiberclient.ErrNotConfigured
+}
+func (errorFiberClient) QuotePayout(context.Context, fiberclient.QuotePayoutInput) (fiberclient.QuotePayoutResult, error) {
+	return fiberclient.QuotePayoutResult{}, fiberclient.ErrNotConfigured
+}
+func (errorFiberClient) RequestPayout(context.Context, fiberclient.RequestPayoutInput) (fiberclient.RequestPayoutResult, error) {
+	return fiberclient.RequestPayoutResult{}, fiberclient.ErrNotConfigured
+}
+func (errorFiberClient) ListSettledFeed(context.Context, fiberclient.SettledFeedInput) (fiberclient.SettledFeedResult, error) {
+	return fiberclient.SettledFeedResult{}, fiberclient.ErrNotConfigured
+}
+func (errorFiberClient) ListWithdrawalStatuses(context.Context, string) (fiberclient.WithdrawalStatusResult, error) {
+	return fiberclient.WithdrawalStatusResult{}, fiberclient.ErrNotConfigured
 }
