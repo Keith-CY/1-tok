@@ -1051,3 +1051,142 @@ func TestFullTipFlow_CreateThenStatus(t *testing.T) {
 		t.Fatalf("status: %d %s", sRec.Code, sRec.Body.String())
 	}
 }
+
+func TestQuoteWithdrawal_PaymentRequestValidation(t *testing.T) {
+	callCount := 0
+	rpcSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.Header().Set("Content-Type", "application/json")
+
+		body, _ := io.ReadAll(r.Body)
+		var rpc struct{ Method string `json:"method"` }
+		json.Unmarshal(body, &rpc)
+
+		if rpc.Method == "parse_invoice" {
+			json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": "1",
+				"result": map[string]any{"invoice": map[string]any{"data": map[string]any{"payment_hash": "0xhash"}}},
+			})
+		} else {
+			json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": "1",
+				"result": map[string]any{},
+			})
+		}
+	}))
+	defer rpcSrv.Close()
+
+	s := NewServerWithOptions(Options{
+		InvoiceRPCURL: rpcSrv.URL,
+		PayerRPCURL:   rpcSrv.URL,
+	})
+
+	payload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "withdrawal.quote",
+		"params": map[string]any{
+			"userId": "u_1", "asset": "CKB", "amount": "100",
+			"destination": map[string]any{"kind": "PAYMENT_REQUEST", "paymentRequest": "lnbc_quote_req"},
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRequestWithdrawal_PaymentRequest(t *testing.T) {
+	callCount := 0
+	rpcSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.Header().Set("Content-Type", "application/json")
+
+		body, _ := io.ReadAll(r.Body)
+		var rpc struct{ Method string `json:"method"` }
+		json.Unmarshal(body, &rpc)
+
+		switch rpc.Method {
+		case "parse_invoice":
+			json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": "1",
+				"result": map[string]any{"invoice": map[string]any{"data": map[string]any{"payment_hash": "0xhash"}}},
+			})
+		case "send_payment":
+			json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": "1",
+				"result": map[string]any{"payment_hash": "0xpaid", "status": "completed"},
+			})
+		default:
+			json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": "1",
+				"result": map[string]any{},
+			})
+		}
+	}))
+	defer rpcSrv.Close()
+
+	s := NewServerWithOptions(Options{
+		InvoiceRPCURL: rpcSrv.URL,
+		PayerRPCURL:   rpcSrv.URL,
+	})
+
+	payload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "withdrawal.request",
+		"params": map[string]any{
+			"userId": "u_1", "asset": "CKB", "amount": "50",
+			"destination": map[string]any{"kind": "PAYMENT_REQUEST", "paymentRequest": "lnbc_pay_req"},
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSettledFeed_WithPagination(t *testing.T) {
+	rpcSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0", "id": "1",
+			"result": map[string]any{"invoice_address": "lnbc_feed"},
+		})
+	}))
+	defer rpcSrv.Close()
+
+	s := NewServerWithOptions(Options{InvoiceRPCURL: rpcSrv.URL})
+
+	// Create a tip first to have data
+	createPayload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "tip.create",
+		"params": map[string]any{
+			"postId": "post_sf", "fromUserId": "u1", "toUserId": "u2",
+			"asset": "CKB", "amount": "100",
+		},
+	})
+	cReq := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(createPayload))
+	cReq.Header.Set("Content-Type", "application/json")
+	cRec := httptest.NewRecorder()
+	s.ServeHTTP(cRec, cReq)
+
+	// Query settled feed with pagination
+	feedPayload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 2, "method": "tip.settled_feed",
+		"params": map[string]any{
+			"limit":          5,
+			"afterSettledAt": "2020-01-01T00:00:00Z",
+			"afterId":        "",
+		},
+	})
+	fReq := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(feedPayload))
+	fReq.Header.Set("Content-Type", "application/json")
+	fRec := httptest.NewRecorder()
+	s.ServeHTTP(fRec, fReq)
+	if fRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", fRec.Code, fRec.Body.String())
+	}
+}
