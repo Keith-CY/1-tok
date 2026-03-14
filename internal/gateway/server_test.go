@@ -3641,3 +3641,82 @@ func TestCreateMessage_ForeignOrg(t *testing.T) {
 		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+type failingProviderRepo struct{}
+func (failingProviderRepo) List() ([]platform.ProviderProfile, error) { return nil, errors.New("broken") }
+
+type failingListingRepo struct{}
+func (failingListingRepo) List() ([]platform.Listing, error) { return nil, errors.New("broken") }
+
+func TestListProviders_AppError(t *testing.T) {
+	app := platform.NewApp(nil, failingProviderRepo{}, nil, nil, nil, nil, nil)
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/providers", nil)
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
+	}
+}
+
+func TestListListings_AppError(t *testing.T) {
+	app := platform.NewApp(nil, nil, failingListingRepo{}, nil, nil, nil, nil)
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/listings", nil)
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
+	}
+}
+
+type failingRFQRepo struct{}
+func (failingRFQRepo) NextID() (string, error) { return "", errors.New("broken") }
+func (failingRFQRepo) Get(string) (platform.RFQ, error) { return platform.RFQ{}, platform.ErrRFQNotFound }
+func (failingRFQRepo) Save(platform.RFQ) error { return errors.New("broken") }
+func (failingRFQRepo) List() ([]platform.RFQ, error) { return nil, errors.New("broken") }
+
+type failingOrderRepo struct{}
+func (failingOrderRepo) NextID() (string, error) { return "", errors.New("broken") }
+func (failingOrderRepo) Get(string) (*core.Order, error) { return nil, core.ErrOrderNotFound }
+func (failingOrderRepo) Save(*core.Order) error { return errors.New("broken") }
+func (failingOrderRepo) List() ([]*core.Order, error) { return nil, errors.New("broken") }
+
+type failingDisputeRepo struct{}
+func (failingDisputeRepo) NextID() (string, error) { return "", errors.New("broken") }
+func (failingDisputeRepo) Get(string) (platform.Dispute, error) { return platform.Dispute{}, platform.ErrDisputeNotFound }
+func (failingDisputeRepo) Save(platform.Dispute) error { return errors.New("broken") }
+func (failingDisputeRepo) List() ([]platform.Dispute, error) { return nil, errors.New("broken") }
+
+func TestListRFQs_AppError(t *testing.T) {
+	app := platform.NewApp(nil, nil, nil, failingRFQRepo{}, nil, nil, nil)
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/rfqs", nil)
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
+	}
+}
+
+func TestListOrders_AppError(t *testing.T) {
+	app := platform.NewApp(failingOrderRepo{}, nil, nil, nil, nil, nil, nil)
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/orders", nil)
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
+	}
+}
+
+func TestListDisputes_AppError(t *testing.T) {
+	app := platform.NewApp(nil, nil, nil, nil, nil, nil, failingDisputeRepo{})
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/disputes", nil)
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
+	}
+}
