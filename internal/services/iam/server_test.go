@@ -904,3 +904,94 @@ func TestLogout_RateLimited(t *testing.T) {
 		t.Logf("logout RL: %d (may not be rate limited if user scope differs)", rec2.Code)
 	}
 }
+
+func TestMe_RevokedSession(t *testing.T) {
+	store := identity.NewMemoryStore()
+	s := NewServerWithOptions(Options{Store: store})
+
+	// Signup to get a token
+	signup := `{"email":"revoked@test.com","password":"correct horse battery staple 123","name":"Rev","organizationName":"Org","organizationKind":"buyer"}`
+	sReq := httptest.NewRequest(http.MethodPost, "/v1/signup", bytes.NewBufferString(signup))
+	sReq.Header.Set("Content-Type", "application/json")
+	sRec := httptest.NewRecorder()
+	s.ServeHTTP(sRec, sReq)
+
+	var resp struct{ Session struct{ Token string } `json:"session"` }
+	json.Unmarshal(sRec.Body.Bytes(), &resp)
+
+	// Logout (revokes session)
+	logoutReq := httptest.NewRequest(http.MethodPost, "/v1/logout", nil)
+	logoutReq.Header.Set("Authorization", "Bearer "+resp.Session.Token)
+	logoutRec := httptest.NewRecorder()
+	s.ServeHTTP(logoutRec, logoutReq)
+
+	// /me should return 401 (session revoked)
+	meReq := httptest.NewRequest(http.MethodGet, "/v1/me", nil)
+	meReq.Header.Set("Authorization", "Bearer "+resp.Session.Token)
+	meRec := httptest.NewRecorder()
+	s.ServeHTTP(meRec, meReq)
+	if meRec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 (revoked), got %d: %s", meRec.Code, meRec.Body.String())
+	}
+}
+
+func TestMe_ExpiredSession(t *testing.T) {
+	store := identity.NewMemoryStore()
+	// Use a very short session TTL
+	s := NewServerWithOptions(Options{
+		Store:      store,
+		SessionTTL: 1 * time.Millisecond,
+	})
+
+	signup := `{"email":"expired_me@test.com","password":"correct horse battery staple 123","name":"Exp","organizationName":"Org","organizationKind":"buyer"}`
+	sReq := httptest.NewRequest(http.MethodPost, "/v1/signup", bytes.NewBufferString(signup))
+	sReq.Header.Set("Content-Type", "application/json")
+	sRec := httptest.NewRecorder()
+	s.ServeHTTP(sRec, sReq)
+
+	var resp struct{ Session struct{ Token string } `json:"session"` }
+	json.Unmarshal(sRec.Body.Bytes(), &resp)
+
+	// Wait for expiry
+	time.Sleep(10 * time.Millisecond)
+
+	meReq := httptest.NewRequest(http.MethodGet, "/v1/me", nil)
+	meReq.Header.Set("Authorization", "Bearer "+resp.Session.Token)
+	meRec := httptest.NewRecorder()
+	s.ServeHTTP(meRec, meReq)
+	if meRec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 (expired), got %d: %s", meRec.Code, meRec.Body.String())
+	}
+}
+
+func TestSignup_DailyRateLimited(t *testing.T) {
+	store := identity.NewMemoryStore()
+	limiter := ratelimit.NewServiceWithOptions(ratelimit.Options{
+		Enforce: true,
+		Now:     func() time.Time { return time.Now() },
+		Store:   ratelimit.NewMemoryStore(nil),
+		Policies: map[ratelimit.Policy]ratelimit.PolicyConfig{
+			ratelimit.PolicyIAMSignupIP:      {Limit: 100, Window: time.Minute, Scope: []ratelimit.ScopePart{ratelimit.ScopeIP}},
+			ratelimit.PolicyIAMSignupDailyIP: {Limit: 1, Window: 24 * time.Hour, Scope: []ratelimit.ScopePart{ratelimit.ScopeIP}},
+		},
+	})
+	s := NewServerWithOptions(Options{Store: store, RateLimiter: limiter})
+
+	p1 := `{"email":"daily1@test.com","password":"correct horse battery staple 123","name":"D1","organizationName":"Org","organizationKind":"buyer"}`
+	req1 := httptest.NewRequest(http.MethodPost, "/v1/signup", bytes.NewBufferString(p1))
+	req1.Header.Set("Content-Type", "application/json")
+	rec1 := httptest.NewRecorder()
+	s.ServeHTTP(rec1, req1)
+	if rec1.Code != http.StatusCreated {
+		t.Fatalf("first: %d %s", rec1.Code, rec1.Body.String())
+	}
+
+	p2 := `{"email":"daily2@test.com","password":"correct horse battery staple 123","name":"D2","organizationName":"Org2","organizationKind":"buyer"}`
+	req2 := httptest.NewRequest(http.MethodPost, "/v1/signup", bytes.NewBufferString(p2))
+	req2.Header.Set("Content-Type", "application/json")
+	rec2 := httptest.NewRecorder()
+	s.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusTooManyRequests {
+		t.Fatalf("second: expected 429, got %d", rec2.Code)
+	}
+}
