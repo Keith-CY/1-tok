@@ -124,3 +124,64 @@ func TestServeHTTP_InvalidJSON(t *testing.T) {
 		t.Errorf("expected 200 with RPC error, got %d", rec.Code)
 	}
 }
+
+func TestQuoteWithdrawal_Success(t *testing.T) {
+	srv := httptest.NewServer(NewServer())
+	defer srv.Close()
+
+	c := fiberclient.NewClient(srv.URL, "app", "secret")
+	result, err := c.QuotePayout(context.Background(), fiberclient.QuotePayoutInput{
+		UserID:      "u_1",
+		Asset:       "CKB",
+		Amount:      "100",
+		Destination: fiberclient.WithdrawalDestination{Kind: "address", Address: "ckb1addr"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Asset != "CKB" {
+		t.Errorf("asset = %s, want CKB", result.Asset)
+	}
+}
+
+func TestQuoteWithdrawal_MissingFields(t *testing.T) {
+	srv := httptest.NewServer(NewServer())
+	defer srv.Close()
+
+	c := fiberclient.NewClient(srv.URL, "app", "secret")
+	_, err := c.QuotePayout(context.Background(), fiberclient.QuotePayoutInput{})
+	if err == nil {
+		t.Error("expected error for missing fields")
+	}
+}
+
+func TestRequestWithdrawal_Success(t *testing.T) {
+	srv := httptest.NewServer(NewServer())
+	defer srv.Close()
+
+	c := fiberclient.NewClient(srv.URL, "app", "secret")
+	result, err := c.RequestPayout(context.Background(), fiberclient.RequestPayoutInput{
+		UserID:      "u_1",
+		Asset:       "CKB",
+		Amount:      "100",
+		Destination: fiberclient.WithdrawalDestination{Kind: "address", Address: "ckb1addr"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ID == "" {
+		t.Error("expected non-empty payout ID")
+	}
+}
+
+func TestDashboardSummary_WithUser(t *testing.T) {
+	srv := httptest.NewServer(NewServer())
+	defer srv.Close()
+
+	c := fiberclient.NewClient(srv.URL, "app", "secret")
+	result, err := c.ListWithdrawalStatuses(context.Background(), "u_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = result
+}

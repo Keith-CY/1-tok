@@ -69,3 +69,15 @@ func TestRunExternalDependencyPreflightHonorsHealthcheckOverrides(t *testing.T) 
 		t.Fatalf("run external dependency preflight with overrides: %v", err)
 	}
 }
+
+func TestExternalDependencyConfigFromEnv(t *testing.T) {
+	t.Setenv("DEPENDENCY_FIBER_RPC_URL", "http://fiber:8091")
+	t.Setenv("DEPENDENCY_CARRIER_GATEWAY_URL", "http://carrier:8090")
+	cfg := ExternalDependencyConfigFromEnv()
+	if cfg.FiberRPCURL != "http://fiber:8091" {
+		t.Errorf("FiberRPCURL = %s", cfg.FiberRPCURL)
+	}
+	if cfg.CarrierGatewayURL != "http://carrier:8090" {
+		t.Errorf("CarrierGatewayURL = %s", cfg.CarrierGatewayURL)
+	}
+}

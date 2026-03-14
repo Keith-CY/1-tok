@@ -150,3 +150,12 @@ func TestAbuseSmokeLoginRequestUsesForwardedIP(t *testing.T) {
 		t.Fatalf("expected signup and login to use same forwarded ip, got %q vs %q", signupForwarded, loginForwarded)
 	}
 }
+
+func TestAbuseConfigFromEnv(t *testing.T) {
+	t.Setenv("RELEASE_ABUSE_IAM_BASE_URL", "http://iam:8081")
+	t.Setenv("RELEASE_ABUSE_SENTRY_BASE_URL", "http://sentry:8092")
+	cfg := AbuseConfigFromEnv()
+	if cfg.IAMBaseURL != "http://iam:8081" {
+		t.Errorf("IAMBaseURL = %s", cfg.IAMBaseURL)
+	}
+}

@@ -746,3 +746,15 @@ func TestRunSmokeUsesIAMProviderOrgForDirectOrderFallback(t *testing.T) {
 		t.Fatalf("run smoke: %v", err)
 	}
 }
+
+func TestConfigFromEnv(t *testing.T) {
+	t.Setenv("RELEASE_SMOKE_API_BASE_URL", "http://api:8080")
+	t.Setenv("RELEASE_SMOKE_IAM_BASE_URL", "http://iam:8081")
+	cfg := ConfigFromEnv()
+	if cfg.APIBaseURL != "http://api:8080" {
+		t.Errorf("APIBaseURL = %s", cfg.APIBaseURL)
+	}
+	if cfg.IAMBaseURL != "http://iam:8081" {
+		t.Errorf("IAMBaseURL = %s", cfg.IAMBaseURL)
+	}
+}

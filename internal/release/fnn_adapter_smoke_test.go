@@ -183,3 +183,13 @@ func TestRunFNNAdapterSmokeCanRequestPaymentWhenEnabled(t *testing.T) {
 		t.Fatalf("expected request amount to match invoice amount, got %q", requestAmount)
 	}
 }
+
+func TestFNNAdapterSmokeConfigFromEnv(t *testing.T) {
+	t.Setenv("RELEASE_FNN_ADAPTER_BASE_URL", "http://adapter:8091")
+	t.Setenv("RELEASE_FNN_ADAPTER_APP_ID", "app_1")
+	t.Setenv("RELEASE_FNN_ADAPTER_HMAC_SECRET", "secret")
+	cfg := FNNAdapterSmokeConfigFromEnv()
+	if cfg.BaseURL != "http://adapter:8091" {
+		t.Errorf("BaseURL = %s", cfg.BaseURL)
+	}
+}
