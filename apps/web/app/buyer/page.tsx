@@ -8,6 +8,8 @@ import { requirePortalViewer } from "../../lib/viewer";
 
 export const dynamic = "force-dynamic";
 
+const PROGRESS_WARNING_THRESHOLD = 0.9;
+
 export default async function BuyerPage() {
   const viewer = await requirePortalViewer("buyer", "/buyer");
   const data = await getBuyerDashboardData({
@@ -170,7 +172,7 @@ export default async function BuyerPage() {
               <ProgressBar
                 current={milestone.settledCents}
                 total={milestone.budgetCents}
-                tone={milestone.settledCents > milestone.budgetCents * 0.9 ? "warning" : "default"}
+                tone={milestone.settledCents > milestone.budgetCents * PROGRESS_WARNING_THRESHOLD ? "warning" : "default"}
               />
             </div>
           ))}

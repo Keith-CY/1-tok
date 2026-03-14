@@ -28,16 +28,16 @@ interface ProgressBarProps {
 
 export function ProgressBar({ current, total, tone }: ProgressBarProps) {
   const pct = total > 0 ? Math.min((current / total) * 100, 100) : 0;
-  const fillClass =
+  const modifier =
     tone === "danger"
-      ? "progress-bar__fill progress-bar__fill--danger"
+      ? " progress-bar__fill--danger"
       : tone === "warning"
-        ? "progress-bar__fill progress-bar__fill--warning"
-        : "progress-bar__fill";
+        ? " progress-bar__fill--warning"
+        : "";
 
   return (
     <div className="progress-bar" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-      <div className={fillClass} style={{ width: `${pct}%` }} />
+      <div className={`progress-bar__fill${modifier}`} style={{ width: `${pct}%` }} />
     </div>
   );
 }

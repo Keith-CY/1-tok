@@ -681,7 +681,8 @@ select {
   text-transform: uppercase;
 }
 
-.status-badge--running {
+.status-badge--running,
+.status-badge--open {
   border: 1px solid rgba(143, 246, 211, 0.3);
   background: rgba(143, 246, 211, 0.1);
   color: var(--mint);
@@ -697,12 +698,6 @@ select {
   border: 1px solid rgba(255, 255, 255, 0.15);
   background: rgba(255, 255, 255, 0.05);
   color: var(--muted);
-}
-
-.status-badge--open {
-  border: 1px solid rgba(143, 246, 211, 0.3);
-  background: rgba(143, 246, 211, 0.1);
-  color: var(--mint);
 }
 
 .status-badge--disputed {
