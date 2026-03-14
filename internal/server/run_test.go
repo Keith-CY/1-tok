@@ -29,3 +29,10 @@ func TestRun_ShutdownOnSIGTERM(t *testing.T) {
 		t.Fatal("Run did not return within 5s after SIGTERM")
 	}
 }
+
+func TestRun_InvalidAddr(t *testing.T) {
+	err := Run("invalid-not-a-port", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}), time.Second)
+	if err == nil {
+		t.Error("expected error for invalid address")
+	}
+}
