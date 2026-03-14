@@ -442,3 +442,141 @@ func TestSignup_InvalidJSON(t *testing.T) {
 		t.Fatalf("expected 400, got %d", rec.Code)
 	}
 }
+
+func TestSignup_DuplicateEmail(t *testing.T) {
+	store := identity.NewMemoryStore()
+	s := NewServerWithOptions(Options{Store: store})
+
+	payload := `{"email":"dup@test.com","password":"correct horse battery staple 123","name":"Test","organizationName":"Org","organizationKind":"buyer"}`
+
+	// First signup
+	req := httptest.NewRequest(http.MethodPost, "/v1/signup", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("first signup: expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Duplicate
+	req2 := httptest.NewRequest(http.MethodPost, "/v1/signup", bytes.NewBufferString(payload))
+	req2.Header.Set("Content-Type", "application/json")
+	rec2 := httptest.NewRecorder()
+	s.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusConflict {
+		t.Fatalf("duplicate signup: expected 409, got %d: %s", rec2.Code, rec2.Body.String())
+	}
+}
+
+func TestLogin_Success(t *testing.T) {
+	store := identity.NewMemoryStore()
+	s := NewServerWithOptions(Options{Store: store})
+
+	// Signup first
+	signup := `{"email":"login@test.com","password":"correct horse battery staple 123","name":"Login User","organizationName":"Org","organizationKind":"buyer"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/signup", bytes.NewBufferString(signup))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	// Login
+	login := `{"email":"login@test.com","password":"correct horse battery staple 123"}`
+	req2 := httptest.NewRequest(http.MethodPost, "/v1/sessions", bytes.NewBufferString(login))
+	req2.Header.Set("Content-Type", "application/json")
+	rec2 := httptest.NewRecorder()
+	s.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusCreated {
+		t.Fatalf("login: expected 201, got %d: %s", rec2.Code, rec2.Body.String())
+	}
+}
+
+func TestLogin_WrongPassword(t *testing.T) {
+	store := identity.NewMemoryStore()
+	s := NewServerWithOptions(Options{Store: store})
+
+	signup := `{"email":"wrongpw@test.com","password":"correct horse battery staple 123","name":"Test","organizationName":"Org","organizationKind":"buyer"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/signup", bytes.NewBufferString(signup))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	login := `{"email":"wrongpw@test.com","password":"wrong password here 123"}`
+	req2 := httptest.NewRequest(http.MethodPost, "/v1/sessions", bytes.NewBufferString(login))
+	req2.Header.Set("Content-Type", "application/json")
+	rec2 := httptest.NewRecorder()
+	s.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rec2.Code, rec2.Body.String())
+	}
+}
+
+func TestLogin_InvalidJSON(t *testing.T) {
+	s := NewServerWithOptions(Options{Store: identity.NewMemoryStore()})
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions", bytes.NewBufferString("{broken"))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestMe_WithValidSession(t *testing.T) {
+	store := identity.NewMemoryStore()
+	s := NewServerWithOptions(Options{Store: store})
+
+	// Signup
+	signup := `{"email":"me@test.com","password":"correct horse battery staple 123","name":"Me User","organizationName":"Org","organizationKind":"buyer"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/signup", bytes.NewBufferString(signup))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	// Extract token
+	var signupResp struct {
+		Session struct{ Token string } `json:"session"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &signupResp)
+
+	// Get /me
+	meReq := httptest.NewRequest(http.MethodGet, "/v1/me", nil)
+	meReq.Header.Set("Authorization", "Bearer "+signupResp.Session.Token)
+	meRec := httptest.NewRecorder()
+	s.ServeHTTP(meRec, meReq)
+	if meRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", meRec.Code, meRec.Body.String())
+	}
+}
+
+func TestLogout_WithValidSession(t *testing.T) {
+	store := identity.NewMemoryStore()
+	s := NewServerWithOptions(Options{Store: store})
+
+	// Signup
+	signup := `{"email":"logout@test.com","password":"correct horse battery staple 123","name":"Logout","organizationName":"Org","organizationKind":"buyer"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/signup", bytes.NewBufferString(signup))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	var signupResp struct {
+		Session struct{ Token string } `json:"session"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &signupResp)
+
+	// Logout
+	logoutReq := httptest.NewRequest(http.MethodPost, "/v1/logout", nil)
+	logoutReq.Header.Set("Authorization", "Bearer "+signupResp.Session.Token)
+	logoutRec := httptest.NewRecorder()
+	s.ServeHTTP(logoutRec, logoutReq)
+	if logoutRec.Code != http.StatusNoContent && logoutRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 or 204, got %d: %s", logoutRec.Code, logoutRec.Body.String())
+	}
+}
+
+func TestValidSignupPayload_InvalidEmail(t *testing.T) {
+	result := validSignupPayload("not-an-email", "correct horse battery staple 123", "Name", "Org", "buyer")
+	if result == "" {
+		t.Error("expected validation failure for invalid email")
+	}
+}
