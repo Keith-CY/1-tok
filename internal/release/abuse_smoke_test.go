@@ -218,3 +218,77 @@ func TestSentryEventCount_Error(t *testing.T) {
 		t.Error("expected error")
 	}
 }
+
+func TestWaitForSentryEvents_ImmediateSuccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"count":3,"events":[]}`))
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	count, err := waitForSentryEvents(ctx, client, srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 3 {
+		t.Errorf("count = %d, want 3", count)
+	}
+}
+
+func TestWaitForSentryEvents_Timeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"count":0,"events":[]}`))
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	_, err := waitForSentryEvents(ctx, client, srv.URL)
+	if err == nil {
+		t.Error("expected error on timeout")
+	}
+}
+
+func TestRunExternalDependencyPreflight_AllHealthy(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	cfg := ExternalDependencyConfig{
+		FiberRPCURL:           srv.URL,
+		CarrierGatewayURL:    srv.URL,
+		CarrierGatewayToken:  "test-token",
+	}
+	if err := RunExternalDependencyPreflight(context.Background(), cfg); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRunExternalDependencyPreflight_FiberDown(t *testing.T) {
+	healthySrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer healthySrv.Close()
+
+	downSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer downSrv.Close()
+
+	cfg := ExternalDependencyConfig{
+		FiberRPCURL:          downSrv.URL,
+		CarrierGatewayURL:   healthySrv.URL,
+		CarrierGatewayToken: "test-token",
+	}
+	if err := RunExternalDependencyPreflight(context.Background(), cfg); err == nil {
+		t.Error("expected error when fiber is down")
+	}
+}

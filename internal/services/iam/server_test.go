@@ -1029,3 +1029,33 @@ func TestLogin_SubjectRateLimited(t *testing.T) {
 		t.Fatalf("expected 429, got %d", rec2.Code)
 	}
 }
+
+func TestLoadConfiguredStoreFromEnv_DatabaseURL(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL not set")
+	}
+	// Use DATABASE_URL instead of IAM_DATABASE_URL
+	t.Setenv("IAM_DATABASE_URL", "")
+	t.Setenv("DATABASE_URL", dsn)
+	store, err := loadConfiguredStoreFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store == nil {
+		t.Fatal("expected non-nil store with DATABASE_URL")
+	}
+}
+
+func TestLoadStoreFromEnv_RequireBootstrap(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL not set")
+	}
+	t.Setenv("DATABASE_URL", dsn)
+	t.Setenv("ONE_TOK_REQUIRE_BOOTSTRAP", "true")
+	store := loadStoreFromEnv()
+	if store == nil {
+		t.Fatal("expected non-nil store")
+	}
+}
