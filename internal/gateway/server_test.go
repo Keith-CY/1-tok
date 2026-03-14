@@ -3262,3 +3262,93 @@ func TestApplyRateLimit_AllowsWhenNil(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 }
+
+// Test rate limit blocking in create bid flow
+func TestCreateBid_RateLimited(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "RL bid", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+
+	actor := iamclient.Actor{
+		UserID: "u_prov",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	limiter := ratelimit.NewServiceWithOptions(ratelimit.Options{
+		Enforce: true,
+		Now:     func() time.Time { return time.Now() },
+		Store:   ratelimit.NewMemoryStore(nil),
+		Policies: map[ratelimit.Policy]ratelimit.PolicyConfig{
+			ratelimit.PolicyGatewayCreateBid: {Limit: 1, Window: time.Minute, Scope: []ratelimit.ScopePart{ratelimit.ScopeOrg}},
+		},
+	})
+	gw, _ := NewServerWithOptionsE(Options{
+		App: app, IAM: &stubIAMClient{actor: actor}, RateLimiter: limiter,
+	})
+
+	// First bid succeeds
+	payload, _ := json.Marshal(map[string]any{
+		"message": "bid", "quoteCents": 4000,
+		"milestones": []map[string]any{{"id": "ms_1", "title": "W", "basePriceCents": 4000, "budgetCents": 4000}},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs/"+rfq.ID+"/bids", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("first bid: expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Second bid rate limited
+	payload2, _ := json.Marshal(map[string]any{
+		"message": "bid2", "quoteCents": 3000,
+		"milestones": []map[string]any{{"id": "ms_1", "title": "W", "basePriceCents": 3000, "budgetCents": 3000}},
+	})
+	req2 := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs/"+rfq.ID+"/bids", bytes.NewReader(payload2))
+	req2.Header.Set("Content-Type", "application/json")
+	req2.Header.Set("Authorization", "Bearer token")
+	rec2 := httptest.NewRecorder()
+	gw.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusTooManyRequests {
+		t.Fatalf("second bid: expected 429, got %d: %s", rec2.Code, rec2.Body.String())
+	}
+}
+
+// Test GetOrder unauthorized for foreign org
+func TestGetOrder_ForeignOrg(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Foreign", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	bid, _ := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid",
+		QuoteCents: 5000, Milestones: []platform.BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, platform.AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	// Actor from different org
+	actor := iamclient.Actor{
+		UserID: "u_foreign",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_foreign", OrganizationKind: "buyer", Role: "org_owner"},
+		},
+	}
+	gw, _ := NewServerWithOptionsE(Options{App: app, IAM: &stubIAMClient{actor: actor}})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/orders/"+order.ID, nil)
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
