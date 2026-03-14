@@ -25,8 +25,11 @@ func Run(addr string, handler http.Handler, drainTimeout time.Duration) error {
 	}
 
 	srv := &http.Server{
-		Addr:    addr,
-		Handler: handler,
+		Addr:         addr,
+		Handler:      handler,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 60 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
 
 	errCh := make(chan error, 1)

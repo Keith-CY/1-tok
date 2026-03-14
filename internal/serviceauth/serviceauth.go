@@ -1,12 +1,16 @@
 package serviceauth
 
 import (
+	"errors"
 	"net/http"
 	"os"
 	"strings"
 )
 
 const HeaderName = "X-One-Tok-Service-Token"
+
+// ErrInvalidServiceToken is returned when the request lacks a valid service token.
+var ErrInvalidServiceToken = errors.New("invalid service token")
 
 type TokenSet struct {
 	primary string

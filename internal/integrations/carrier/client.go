@@ -185,7 +185,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, query url.Valu
 	}
 	defer res.Body.Close()
 
-	responseBody, err := io.ReadAll(res.Body)
+	responseBody, err := io.ReadAll(io.LimitReader(res.Body, 10<<20)) // 10MB max
 	if err != nil {
 		return err
 	}

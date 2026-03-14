@@ -548,16 +548,7 @@ func writeFiberError(w http.ResponseWriter, err error) {
 }
 
 func writeAuthError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, iamclient.ErrUnauthorized):
-		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
-	case err != nil && err.Error() == "invalid service token":
-		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
-	case strings.Contains(err.Error(), "mismatch"), strings.Contains(err.Error(), "required"):
-		httputil.WriteJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
-	default:
-		httputil.WriteJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
-	}
+	httputil.WriteAuthError(w, err)
 }
 
 func (s *Server) authorizeInternalRoute(r *http.Request) error {
@@ -567,6 +558,6 @@ func (s *Server) authorizeInternalRoute(r *http.Request) error {
 	if s.serviceTokens.MatchesRequest(r) {
 		return nil
 	}
-	return errors.New("invalid service token")
+	return serviceauth.ErrInvalidServiceToken
 }
 

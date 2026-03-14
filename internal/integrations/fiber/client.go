@@ -244,7 +244,7 @@ func (c *Client) call(ctx context.Context, method string, params any, target any
 	}
 	defer res.Body.Close()
 
-	body, err := io.ReadAll(res.Body)
+	body, err := io.ReadAll(io.LimitReader(res.Body, 10<<20)) // 10MB max
 	if err != nil {
 		return err
 	}
