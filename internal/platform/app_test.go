@@ -1414,3 +1414,99 @@ func TestRecordUsageCharge_SaveError(t *testing.T) {
 		t.Error("expected error from save failure")
 	}
 }
+
+func TestOpenDispute_SaveError(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "OD save", Category: "ai",
+		Scope: "test", BudgetCents: 10000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_2", Message: "bid",
+		QuoteCents: 10000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 10000, BudgetCents: 10000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+	app.SettleMilestone(order.ID, core.SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+
+	// Swap disputes repo with failing one
+	app.disputes = failingDisputeRepo{}
+
+	_, _, _, err := app.OpenDispute(order.ID, OpenDisputeInput{
+		MilestoneID: "ms_1", Reason: "issue", RefundCents: 500,
+	})
+	if err == nil {
+		t.Error("expected error from failing dispute repo")
+	}
+}
+
+func TestResolveDispute_SaveOrderError(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "RD save", Category: "ai",
+		Scope: "test", BudgetCents: 10000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_2", Message: "bid",
+		QuoteCents: 10000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 10000, BudgetCents: 10000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+	app.SettleMilestone(order.ID, core.SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+	app.OpenDispute(order.ID, OpenDisputeInput{MilestoneID: "ms_1", Reason: "issue", RefundCents: 500})
+	disputes, _ := app.ListDisputes()
+
+	// Swap both repos with failing ones
+	app.orders = &failAfterFirstSaveOrderRepo{real: app.orders, saveCount: 1}
+
+	_, _, err := app.ResolveDispute(disputes[0].ID, ResolveDisputeInput{Resolution: "ok", ResolvedBy: "ops"})
+	if err == nil {
+		t.Error("expected error from save failure")
+	}
+}
+
+func TestAwardRFQ_BidNotFound(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "Award bad bid", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+
+	_, _, err := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: "nonexistent_bid", FundingMode: "prepaid"})
+	if !errors.Is(err, ErrBidNotFound) {
+		t.Errorf("expected ErrBidNotFound, got %v", err)
+	}
+}
+
+func TestOpenDispute_DisputeIDError(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "OD id err", Category: "ai",
+		Scope: "test", BudgetCents: 10000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_2", Message: "bid",
+		QuoteCents: 10000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 10000, BudgetCents: 10000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+	app.SettleMilestone(order.ID, core.SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+
+	// Swap dispute repo with one that fails on NextID
+	type failNextID struct{ failingDisputeRepo }
+	app.disputes = failNextID{}
+
+	_, _, _, err := app.OpenDispute(order.ID, OpenDisputeInput{
+		MilestoneID: "ms_1", Reason: "issue", RefundCents: 500,
+	})
+	if err == nil {
+		t.Error("expected error from NextID")
+	}
+}
