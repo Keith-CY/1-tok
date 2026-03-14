@@ -353,3 +353,36 @@ func TestWithRequestTags_OverwriteExisting(t *testing.T) {
 		t.Errorf("userId = %s", bag.UserID)
 	}
 }
+
+func TestWrapHTTP_WithTags(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r = WithRequestTags(r, RequestTags{
+			Route:   "/api/test",
+			OrgID:   "org_1",
+			UserID:  "u_1",
+			OrderID: "ord_1",
+		})
+		_ = r
+		w.WriteHeader(http.StatusOK)
+	})
+
+	handler := WrapHTTP("test-svc", inner)
+	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestConfigFromEnv_SampleRateDefault(t *testing.T) {
+	t.Setenv("SENTRY_DSN", "")
+	t.Setenv("SENTRY_SAMPLE_RATE", "")
+	t.Setenv("SENTRY_TRACES_SAMPLE_RATE", "")
+
+	cfg := ConfigFromEnv("default-svc")
+	if cfg.SampleRate != 1.0 {
+		t.Errorf("default sample rate = %f, want 1.0", cfg.SampleRate)
+	}
+}
