@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -19,6 +20,7 @@ type stubCarrierClient struct {
 	versionResult carrierclient.CodeAgentVersionResult
 	runInput      carrierclient.CodeAgentRunInput
 	runResult     carrierclient.CodeAgentRunResult
+	runErr        error
 }
 
 func (s *stubCarrierClient) GetCodeAgentHealth(_ context.Context, input carrierclient.CodeAgentHealthInput) (carrierclient.CodeAgentHealthResult, error) {
@@ -33,7 +35,7 @@ func (s *stubCarrierClient) GetCodeAgentVersion(_ context.Context, input carrier
 
 func (s *stubCarrierClient) RunCodeAgent(_ context.Context, input carrierclient.CodeAgentRunInput) (carrierclient.CodeAgentRunResult, error) {
 	s.runInput = input
-	return s.runResult, nil
+	return s.runResult, s.runErr
 }
 
 func TestMilestoneReadyEventSettlesThroughGateway(t *testing.T) {
@@ -694,21 +696,19 @@ func TestCarrierEvent_PauseAction(t *testing.T) {
 }
 
 func TestCodeAgentRun_CarrierError(t *testing.T) {
-	stub := &stubCarrierClient{}
-	stub.runResult.Backend = ""
+	stub := &stubCarrierClient{runErr: errors.New("carrier failed")}
 	s := NewServerWithOptions(Options{Carrier: stub})
 
 	payload, _ := json.Marshal(map[string]any{
 		"hostId": "h", "agentId": "a", "backend": "codex",
-		"capability": "run", "title": "Test",
+		"capability": "run", "title": "Fail",
 	})
 	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/codeagent/run", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	s.ServeHTTP(rec, req)
-	// Stub returns empty result — should still be 200
-	if rec.Code != http.StatusOK {
-		t.Logf("carrier result: %d %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -743,3 +743,18 @@ func TestNewServerWithOptions_EnvTokens(t *testing.T) {
 		t.Fatal("expected non-nil server")
 	}
 }
+
+func TestNewServerWithOptions_RequireExternals(t *testing.T) {
+	t.Setenv("ONE_TOK_REQUIRE_EXTERNALS", "true")
+	t.Setenv("API_GATEWAY_UPSTREAM", "http://gw:8080")
+	t.Setenv("CARRIER_GATEWAY_URL", "http://carrier:8090")
+	t.Setenv("CARRIER_GATEWAY_API_TOKEN", "token")
+	t.Setenv("EXECUTION_EVENT_TOKEN", "evt-token")
+	t.Setenv("EXECUTION_GATEWAY_TOKEN", "gw-token")
+
+	s := NewServerWithOptions(Options{})
+	if s == nil {
+		t.Fatal("expected non-nil server")
+	}
+}
+
