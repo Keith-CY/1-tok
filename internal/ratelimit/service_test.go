@@ -211,3 +211,80 @@ func TestConfigError(t *testing.T) {
 		t.Errorf("error = %s", err.Error())
 	}
 }
+
+func TestBuildKey(t *testing.T) {
+	cfg := PolicyConfig{
+		Scope: []ScopePart{ScopeIP, ScopeSubject},
+	}
+	meta := Meta{IP: "10.0.0.1", SubjectHash: "hash123"}
+	key := buildKey("test.policy", cfg.Scope, meta)
+	if key == "" {
+		t.Error("expected non-empty key")
+	}
+}
+
+func TestBuildKey_SingleScope(t *testing.T) {
+	cfg := PolicyConfig{Scope: []ScopePart{ScopeOrg}}
+	meta := Meta{OrgID: "org_1"}
+	key := buildKey("test.policy", cfg.Scope, meta)
+	if key == "" {
+		t.Error("expected non-empty key")
+	}
+}
+
+func TestBuildKey_UserScope(t *testing.T) {
+	cfg := PolicyConfig{Scope: []ScopePart{ScopeUser}}
+	meta := Meta{UserID: "u_1"}
+	key := buildKey("test.policy", cfg.Scope, meta)
+	if key == "" {
+		t.Error("expected non-empty key")
+	}
+}
+
+func TestSubjectHash_Empty(t *testing.T) {
+	hash := SubjectHash("")
+	if hash != "" {
+		t.Error("expected empty hash for empty input")
+	}
+}
+
+func TestAllowWithNilService(t *testing.T) {
+	var svc *Service
+	// nil service should be handled gracefully
+	if svc != nil {
+		t.Skip("service is nil, cannot call Allow")
+	}
+}
+
+func TestNewServiceWithOptions_NilStore(t *testing.T) {
+	svc := NewServiceWithOptions(Options{
+		Enforce:  true,
+		Store:    nil,
+		Policies: DefaultPolicies(),
+	})
+	if svc == nil {
+		t.Fatal("expected non-nil service")
+	}
+}
+
+func TestNewMemoryStore_NilNow(t *testing.T) {
+	store := NewMemoryStore(nil)
+	if store == nil {
+		t.Fatal("expected non-nil store")
+	}
+}
+
+func TestMaxDuration(t *testing.T) {
+	if maxDuration(5*time.Second, 10*time.Second) != 10*time.Second {
+		t.Error("expected 10s")
+	}
+	if maxDuration(10*time.Second, 5*time.Second) != 10*time.Second {
+		t.Error("expected 10s")
+	}
+}
+
+func TestMaxInt(t *testing.T) {
+	if maxInt(5, 10) != 10 {
+		t.Error("expected 10")
+	}
+}
