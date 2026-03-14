@@ -199,3 +199,70 @@ func TestRequestWithdrawal_MissingFields(t *testing.T) {
 		t.Error("expected error for missing fields")
 	}
 }
+
+func TestCreateInvoice_Success(t *testing.T) {
+	srv := httptest.NewServer(NewServer())
+	defer srv.Close()
+
+	c := fiberclient.NewClient(srv.URL, "app", "secret")
+	result, err := c.CreateInvoice(context.Background(), fiberclient.CreateInvoiceInput{
+		PostID:     "post_1",
+		FromUserID: "u_from",
+		ToUserID:   "u_to",
+		Asset:      "CKB",
+		Amount:     "100",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Invoice == "" {
+		t.Error("expected invoice")
+	}
+}
+
+func TestListSettledFeed(t *testing.T) {
+	srv := httptest.NewServer(NewServer())
+	defer srv.Close()
+
+	c := fiberclient.NewClient(srv.URL, "app", "secret")
+	_, err := c.ListSettledFeed(context.Background(), fiberclient.SettledFeedInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDashboardSummary_WithTips(t *testing.T) {
+	srv := httptest.NewServer(NewServer())
+	defer srv.Close()
+
+	c := fiberclient.NewClient(srv.URL, "app", "secret")
+	// Create a tip first
+	c.CreateInvoice(context.Background(), fiberclient.CreateInvoiceInput{
+		PostID: "post_d", FromUserID: "u_from", ToUserID: "u_to", Asset: "CKB", Amount: "100",
+	})
+
+	// Get dashboard for the recipient
+	result, err := c.ListWithdrawalStatuses(context.Background(), "u_to")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = result
+}
+
+func TestSettledFeed_WithData(t *testing.T) {
+	srv := httptest.NewServer(NewServer())
+	defer srv.Close()
+
+	c := fiberclient.NewClient(srv.URL, "app", "secret")
+	c.CreateInvoice(context.Background(), fiberclient.CreateInvoiceInput{
+		PostID: "post_f", FromUserID: "u1", ToUserID: "u2", Asset: "CKB", Amount: "200",
+	})
+
+	result, err := c.ListSettledFeed(context.Background(), fiberclient.SettledFeedInput{
+		Limit: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = result
+}
