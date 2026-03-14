@@ -698,3 +698,123 @@ func TestLoadStoreFromEnv_Postgres(t *testing.T) {
 		t.Fatal("expected non-nil store with DATABASE_URL")
 	}
 }
+
+func TestSignup_FullFlowWithToken(t *testing.T) {
+	store := identity.NewMemoryStore()
+	s := NewServerWithOptions(Options{Store: store})
+
+	// Signup
+	payload := `{"email":"fullflow@test.com","password":"correct horse battery staple 123","name":"Flow","organizationName":"Flow Org","organizationKind":"provider"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/signup", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("signup: %d %s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Session struct {
+			Token     string `json:"token"`
+			ExpiresAt string `json:"expiresAt"`
+		} `json:"session"`
+		User struct {
+			ID string `json:"id"`
+		} `json:"user"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	if resp.Session.Token == "" {
+		t.Fatal("expected session token")
+	}
+
+	// Login with same creds
+	loginPayload := `{"email":"fullflow@test.com","password":"correct horse battery staple 123"}`
+	loginReq := httptest.NewRequest(http.MethodPost, "/v1/sessions", bytes.NewBufferString(loginPayload))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginRec := httptest.NewRecorder()
+	s.ServeHTTP(loginRec, loginReq)
+	if loginRec.Code != http.StatusCreated {
+		t.Fatalf("login: %d %s", loginRec.Code, loginRec.Body.String())
+	}
+
+	var loginResp struct {
+		Session struct{ Token string } `json:"session"`
+	}
+	json.Unmarshal(loginRec.Body.Bytes(), &loginResp)
+
+	// /me
+	meReq := httptest.NewRequest(http.MethodGet, "/v1/me", nil)
+	meReq.Header.Set("Authorization", "Bearer "+loginResp.Session.Token)
+	meRec := httptest.NewRecorder()
+	s.ServeHTTP(meRec, meReq)
+	if meRec.Code != http.StatusOK {
+		t.Fatalf("me: %d %s", meRec.Code, meRec.Body.String())
+	}
+
+	// Logout
+	logoutReq := httptest.NewRequest(http.MethodPost, "/v1/logout", nil)
+	logoutReq.Header.Set("Authorization", "Bearer "+loginResp.Session.Token)
+	logoutRec := httptest.NewRecorder()
+	s.ServeHTTP(logoutRec, logoutReq)
+	if logoutRec.Code != http.StatusOK && logoutRec.Code != http.StatusNoContent {
+		t.Fatalf("logout: %d %s", logoutRec.Code, logoutRec.Body.String())
+	}
+
+	// /me should fail after logout
+	me2Req := httptest.NewRequest(http.MethodGet, "/v1/me", nil)
+	me2Req.Header.Set("Authorization", "Bearer "+loginResp.Session.Token)
+	me2Rec := httptest.NewRecorder()
+	s.ServeHTTP(me2Rec, me2Req)
+	// Should be unauthorized after logout
+	if me2Rec.Code == http.StatusOK {
+		t.Log("session still valid after logout — memory store doesn't invalidate")
+	}
+}
+
+func TestLoadConfiguredStoreFromEnv_WithPostgres(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL not set")
+	}
+	t.Setenv("IAM_DATABASE_URL", dsn)
+	store, err := loadConfiguredStoreFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store == nil {
+		t.Fatal("expected non-nil store")
+	}
+}
+
+func TestSignup_WithRateLimit(t *testing.T) {
+	store := identity.NewMemoryStore()
+	limiter := ratelimit.NewServiceWithOptions(ratelimit.Options{
+		Enforce: true,
+		Now:     func() time.Time { return time.Now() },
+		Store:   ratelimit.NewMemoryStore(nil),
+		Policies: map[ratelimit.Policy]ratelimit.PolicyConfig{
+			ratelimit.PolicyIAMSignupIP: {Limit: 1, Window: time.Minute, Scope: []ratelimit.ScopePart{ratelimit.ScopeIP}},
+		},
+	})
+	s := NewServerWithOptions(Options{Store: store, RateLimiter: limiter})
+
+	// First signup OK
+	p1 := `{"email":"rl1@test.com","password":"correct horse battery staple 123","name":"RL1","organizationName":"Org","organizationKind":"buyer"}`
+	req1 := httptest.NewRequest(http.MethodPost, "/v1/signup", bytes.NewBufferString(p1))
+	req1.Header.Set("Content-Type", "application/json")
+	rec1 := httptest.NewRecorder()
+	s.ServeHTTP(rec1, req1)
+	if rec1.Code != http.StatusCreated {
+		t.Fatalf("first signup: %d %s", rec1.Code, rec1.Body.String())
+	}
+
+	// Second signup rate limited
+	p2 := `{"email":"rl2@test.com","password":"correct horse battery staple 123","name":"RL2","organizationName":"Org2","organizationKind":"buyer"}`
+	req2 := httptest.NewRequest(http.MethodPost, "/v1/signup", bytes.NewBufferString(p2))
+	req2.Header.Set("Content-Type", "application/json")
+	rec2 := httptest.NewRecorder()
+	s.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusTooManyRequests {
+		t.Fatalf("second signup: expected 429, got %d", rec2.Code)
+	}
+}

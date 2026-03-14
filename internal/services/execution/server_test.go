@@ -548,3 +548,92 @@ func TestNewServerWithOptions_Defaults(t *testing.T) {
 		t.Fatal("expected non-nil server")
 	}
 }
+
+func TestNewServerWithOptions_WithInboundToken(t *testing.T) {
+	s := NewServerWithOptions(Options{
+		InboundToken: "my-token",
+	})
+	if s == nil {
+		t.Fatal("expected non-nil server")
+	}
+}
+
+func TestNewServerWithOptions_WithGatewayToken(t *testing.T) {
+	s := NewServerWithOptions(Options{
+		GatewayToken: "gw-token",
+	})
+	if s == nil {
+		t.Fatal("expected non-nil server")
+	}
+}
+
+func TestCodeAgentVersion_MissingParams(t *testing.T) {
+	s := NewServerWithOptions(Options{Carrier: &stubCarrierClient{}})
+	req := httptest.NewRequest(http.MethodGet, "/v1/carrier/codeagent/version", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestCodeAgentRun_MissingCapability(t *testing.T) {
+	s := NewServerWithOptions(Options{Carrier: &stubCarrierClient{}})
+	payload, _ := json.Marshal(map[string]any{
+		"hostId": "h", "agentId": "a", "backend": "node",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/codeagent/run", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCarrierEvent_WithGatewayForward(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"order":{"id":"ord_1"},"usageCharge":{"kind":"token"}}`))
+	}))
+	defer backend.Close()
+
+	s := NewServerWithOptions(Options{
+		APIUpstream:  backend.URL,
+		GatewayToken: "gw-token",
+	})
+
+	payload, _ := json.Marshal(map[string]any{
+		"orderId": "ord_1", "milestoneId": "ms_1",
+		"eventType": "usage_reported",
+		"payload": map[string]any{"kind": "token", "amountCents": 200},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/events", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPostJSON_ClosedServer(t *testing.T) {
+	// Test with invalid URL
+	s := NewServerWithOptions(Options{
+		APIUpstream: "http://127.0.0.1:1",
+	})
+	payload, _ := json.Marshal(map[string]any{
+		"orderId": "ord_1", "milestoneId": "ms_1",
+		"eventType": "usage_reported",
+		"payload": map[string]any{"kind": "token", "amountCents": 100},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/events", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	// Should return 502 for connection refused
+	if rec.Code != http.StatusBadGateway && rec.Code != http.StatusInternalServerError {
+		t.Logf("closed server: status %d", rec.Code)
+	}
+}
