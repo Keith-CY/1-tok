@@ -260,3 +260,58 @@ func TestCreditDecisionUsesHistorySignals(t *testing.T) {
 		t.Fatalf("expected capped limit below max, got %d", decision.RecommendedLimitCents)
 	}
 }
+
+func TestResolveDispute(t *testing.T) {
+	order := Order{
+		ID: "ord_1", BuyerOrgID: "b", ProviderOrgID: "p",
+		FundingMode: FundingModeCredit, Status: OrderStatusRunning,
+		PlatformWallet: "w",
+		Milestones: []Milestone{
+			{ID: "ms_1", Title: "Work", BasePriceCents: 1000, BudgetCents: 1000,
+				State: MilestoneStateSettled, DisputeStatus: DisputeStatusNone},
+		},
+	}
+
+	_, _, err := order.OpenDispute(OpenDisputeInput{
+		MilestoneID: "ms_1", Reason: "quality issue", RefundCents: 500,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = order.ResolveDispute(ResolveDisputeInput{MilestoneID: "ms_1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if order.Milestones[0].DisputeStatus != DisputeStatusResolved {
+		t.Errorf("dispute status = %s, want resolved", order.Milestones[0].DisputeStatus)
+	}
+}
+
+func TestResolveDispute_NoOpenDispute(t *testing.T) {
+	order := Order{
+		ID: "ord_1", Status: OrderStatusRunning,
+		Milestones: []Milestone{
+			{ID: "ms_1", State: MilestoneStateRunning, DisputeStatus: DisputeStatusNone},
+		},
+	}
+
+	err := order.ResolveDispute(ResolveDisputeInput{MilestoneID: "ms_1"})
+	if err == nil {
+		t.Error("expected error when resolving non-disputed milestone")
+	}
+}
+
+func TestResolveDispute_MilestoneNotFound(t *testing.T) {
+	order := Order{
+		ID: "ord_1", Status: OrderStatusRunning,
+		Milestones: []Milestone{
+			{ID: "ms_1", State: MilestoneStateRunning},
+		},
+	}
+
+	err := order.ResolveDispute(ResolveDisputeInput{MilestoneID: "nonexistent"})
+	if err == nil {
+		t.Error("expected error for nonexistent milestone")
+	}
+}
