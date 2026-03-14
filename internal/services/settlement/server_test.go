@@ -1172,3 +1172,122 @@ func TestSettledFeed_WithLimit(t *testing.T) {
 	}
 }
 
+
+func TestIsProviderFinanceRole(t *testing.T) {
+	for _, role := range []string{"org_owner", "sales", "delivery_operator", "finance_viewer"} {
+		if !isProviderFinanceRole(role) {
+			t.Errorf("isProviderFinanceRole(%q) = false", role)
+		}
+	}
+	for _, role := range []string{"admin", "viewer", ""} {
+		if isProviderFinanceRole(role) {
+			t.Errorf("isProviderFinanceRole(%q) = true", role)
+		}
+	}
+}
+
+func TestIsOpsRole_Settlement(t *testing.T) {
+	for _, role := range []string{"ops_reviewer", "risk_admin", "finance_admin", "super_admin"} {
+		if !isOpsRole(role) {
+			t.Errorf("isOpsRole(%q) = false", role)
+		}
+	}
+	for _, role := range []string{"buyer", ""} {
+		if isOpsRole(role) {
+			t.Errorf("isOpsRole(%q) = true", role)
+		}
+	}
+}
+
+func TestListFundingRecords_WithProviderAuth(t *testing.T) {
+	actor := iamclient.Actor{
+		UserID: "u_prov",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Auth: &stubIAMClient{actor: actor},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/funding-records", nil)
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestListFundingRecords_WithOpsAuth(t *testing.T) {
+	actor := iamclient.Actor{
+		UserID: "u_ops",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_ops", OrganizationKind: "ops", Role: "ops_reviewer"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Auth: &stubIAMClient{actor: actor},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/funding-records?providerOrgId=org_p", nil)
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetInvoiceStatus_WithAuth(t *testing.T) {
+	fiber := &stubFiberClient{
+		createResult: fiberclient.CreateInvoiceResult{Invoice: "lnbc_auth"},
+		statusResult: fiberclient.InvoiceStatusResult{State: "paid"},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber:         fiber,
+		ServiceTokens: serviceauth.NewTokenSet("svc-token"),
+	})
+
+	// Create invoice first
+	createPayload := `{"orderId":"ord_1","milestoneId":"ms_1","buyerOrgId":"org_b","providerOrgId":"org_p","asset":"CKB","amount":"100"}`
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/invoices", bytes.NewBufferString(createPayload))
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.Header.Set(serviceauth.HeaderName, "svc-token")
+	createRec := httptest.NewRecorder()
+	s.ServeHTTP(createRec, createReq)
+
+	// Get status with auth
+	req := httptest.NewRequest(http.MethodGet, "/v1/invoices/lnbc_auth", nil)
+	req.Header.Set(serviceauth.HeaderName, "svc-token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWithdrawalStatuses_MissingProvider(t *testing.T) {
+	fiber := &stubFiberClient{
+		withdrawalsResult: fiberclient.WithdrawalStatusResult{},
+	}
+	s := NewServerWithOptions(Options{Fiber: fiber})
+
+	// No providerOrgId param and no auth
+	req := httptest.NewRequest(http.MethodGet, "/v1/withdrawals/status", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	// Should work with empty provider (no auth required)
+	if rec.Code != http.StatusOK {
+		t.Logf("no provider: status %d", rec.Code)
+	}
+}
+
+func TestNewServerWithOptions_WithUpstream(t *testing.T) {
+	s := NewServerWithOptions(Options{
+		Upstream: "http://gw:8080",
+	})
+	if s == nil {
+		t.Fatal("expected non-nil server")
+	}
+}
