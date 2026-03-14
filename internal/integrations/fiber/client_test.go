@@ -433,3 +433,87 @@ func TestMissingClient_AllMethods(t *testing.T) {
 		t.Errorf("ListWithdrawalStatuses: %v", err)
 	}
 }
+
+func TestClient_Call_RPCError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0", "id": "1",
+			"error": map[string]any{"code": -32600, "message": "bad request"},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "app", "secret")
+	_, err := c.GetInvoiceStatus(context.Background(), "inv_1")
+	if err == nil {
+		t.Error("expected error for RPC error response")
+	}
+}
+
+func TestClient_Call_HTTPError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("internal error"))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "app", "secret")
+	_, err := c.QuotePayout(context.Background(), QuotePayoutInput{
+		UserID: "u", Asset: "CKB", Amount: "100",
+		Destination: WithdrawalDestination{Kind: "address"},
+	})
+	if err == nil {
+		t.Error("expected error for HTTP 500")
+	}
+}
+
+func TestClient_Call_MalformedJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("{broken json"))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "app", "secret")
+	_, err := c.RequestPayout(context.Background(), RequestPayoutInput{
+		UserID: "u", Asset: "CKB", Amount: "100",
+		Destination: WithdrawalDestination{Kind: "address"},
+	})
+	if err == nil {
+		t.Error("expected error for malformed JSON")
+	}
+}
+
+func TestClient_Call_EmptyResult(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0", "id": "1",
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "app", "secret")
+	_, err := c.ListSettledFeed(context.Background(), SettledFeedInput{})
+	if err == nil {
+		t.Error("expected error for empty result")
+	}
+}
+
+func TestClient_ListWithdrawalStatuses_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0", "id": "1",
+			"result": map[string]any{"items": []any{}},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "app", "secret")
+	_, err := c.ListWithdrawalStatuses(context.Background(), "u_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+}

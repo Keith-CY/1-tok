@@ -174,3 +174,48 @@ func TestFallback(t *testing.T) {
 		t.Errorf("fallback = %s, want default", got)
 	}
 }
+
+func TestWithRequestTags_AllFields(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req = WithRequestTags(req, RequestTags{
+		Route:   "/api/v1/orders",
+		OrgID:   "org_1",
+		UserID:  "u_1",
+		OrderID: "ord_1",
+		RFQID:   "rfq_1",
+		Subject: "test@example.com",
+	})
+
+	bag := requestTagsFromContext(req.Context())
+	if bag == nil {
+		t.Fatal("expected tags in context")
+	}
+	if bag.Route != "/api/v1/orders" {
+		t.Errorf("route = %s", bag.Route)
+	}
+	if bag.OrgID != "org_1" {
+		t.Errorf("org = %s", bag.OrgID)
+	}
+}
+
+func TestWrapHTTP_PanicRecovery(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		panic("test panic")
+	})
+
+	handler := WrapHTTP("test-svc", inner)
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	rec := httptest.NewRecorder()
+
+	// Should not propagate panic
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("panic was not recovered: %v", r)
+		}
+	}()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Logf("panic recovery status: %d", rec.Code)
+	}
+}
