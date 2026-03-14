@@ -359,3 +359,40 @@ func TestCodeAgentRunRouteUsesCarrierClient(t *testing.T) {
 		t.Fatalf("unexpected run response: %+v", response.Run)
 	}
 }
+
+func TestHealthz(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestNotFound(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/unknown", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestActionForEvent(t *testing.T) {
+	tests := []struct {
+		event string
+		want  string
+	}{
+		{"budget_low", "pause"},
+		{"milestone_ready", "settle"},
+		{"usage_reported", "continue"},
+		{"unknown.event", "continue"},
+	}
+	for _, tt := range tests {
+		if got := actionForEvent(tt.event); got != tt.want {
+			t.Errorf("actionForEvent(%q) = %q, want %q", tt.event, got, tt.want)
+		}
+	}
+}

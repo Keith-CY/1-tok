@@ -1,7 +1,9 @@
 package observability
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -126,5 +128,49 @@ func TestConfigFromEnvReadsSentryVariables(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), "sha-123") {
 		t.Fatalf("expected release in config, got %s", string(raw))
+	}
+}
+
+func TestCaptureError_NilHub(t *testing.T) {
+	// Should not panic with nil context
+	CaptureError(context.Background(), errors.New("test error"))
+}
+
+func TestInitFromEnv(t *testing.T) {
+	t.Setenv("SENTRY_DSN", "")
+	flush, err := InitFromEnv("test-svc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	flush(0)
+}
+
+func TestEnvFloat(t *testing.T) {
+	t.Setenv("TEST_FLOAT", "0.5")
+	if got := envFloat("TEST_FLOAT", 1.0); got != 0.5 {
+		t.Errorf("envFloat = %f, want 0.5", got)
+	}
+}
+
+func TestEnvFloat_Default(t *testing.T) {
+	t.Setenv("TEST_FLOAT_MISSING", "")
+	if got := envFloat("TEST_FLOAT_MISSING", 0.75); got != 0.75 {
+		t.Errorf("envFloat = %f, want 0.75", got)
+	}
+}
+
+func TestEnvFloat_Invalid(t *testing.T) {
+	t.Setenv("TEST_FLOAT_BAD", "abc")
+	if got := envFloat("TEST_FLOAT_BAD", 0.5); got != 0.5 {
+		t.Errorf("envFloat = %f, want 0.5 (fallback)", got)
+	}
+}
+
+func TestFallback(t *testing.T) {
+	if got := fallback("hello", "default"); got != "hello" {
+		t.Errorf("fallback = %s, want hello", got)
+	}
+	if got := fallback("", "default"); got != "default" {
+		t.Errorf("fallback = %s, want default", got)
 	}
 }

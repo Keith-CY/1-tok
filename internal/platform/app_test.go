@@ -568,3 +568,64 @@ func TestCreateMessage(t *testing.T) {
 		t.Errorf("body = %s", msg.Body)
 	}
 }
+
+func TestSetPublisher(t *testing.T) {
+	app := NewAppWithMemory()
+	// Should not panic
+	app.SetPublisher(nil)
+}
+
+func TestDecideCredit(t *testing.T) {
+	app := NewAppWithMemory()
+	decision := app.DecideCredit(core.CreditHistory{
+		CompletedOrders:    5,
+		SuccessfulPayments: 5,
+		LifetimeSpendCents: 50000,
+	})
+	if !decision.Approved {
+		t.Error("expected approved")
+	}
+}
+
+func TestDecideCredit_InsufficientHistory(t *testing.T) {
+	app := NewAppWithMemory()
+	decision := app.DecideCredit(core.CreditHistory{
+		CompletedOrders: 1,
+	})
+	if decision.Approved {
+		t.Error("expected not approved")
+	}
+}
+
+func TestCreateBid_ClosedRFQ(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "Closed", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_2", Message: "bid",
+		QuoteCents: 5000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "Work", BasePriceCents: 5000, BudgetCents: 5000},
+		},
+	})
+	// Award closes the RFQ
+	app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	// Try to bid on closed RFQ
+	_, err := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_3", Message: "late bid", QuoteCents: 3000,
+		Milestones: []BidMilestoneInput{{ID: "ms_1", Title: "W", BasePriceCents: 3000, BudgetCents: 3000}},
+	})
+	if err == nil {
+		t.Error("expected error for closed RFQ")
+	}
+}
+
+func TestNewApp(t *testing.T) {
+	app := NewApp(nil, nil, nil, nil, nil, nil, nil)
+	if app == nil {
+		t.Fatal("NewApp returned nil")
+	}
+}
