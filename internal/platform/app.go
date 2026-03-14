@@ -35,19 +35,29 @@ const (
 )
 
 type RFQ struct {
-	ID                   string    `json:"id"`
-	BuyerOrgID           string    `json:"buyerOrgId"`
-	Title                string    `json:"title"`
-	Category             string    `json:"category"`
-	Scope                string    `json:"scope"`
-	BudgetCents          int64     `json:"budgetCents"`
-	Status               RFQStatus `json:"status"`
-	AwardedBidID         string    `json:"awardedBidId,omitempty"`
-	AwardedProviderOrgID string    `json:"awardedProviderOrgId,omitempty"`
-	OrderID              string    `json:"orderId,omitempty"`
-	ResponseDeadlineAt   time.Time `json:"responseDeadlineAt"`
-	CreatedAt            time.Time `json:"createdAt"`
-	UpdatedAt            time.Time `json:"updatedAt"`
+	ID                   string           `json:"id"`
+	BuyerOrgID           string           `json:"buyerOrgId"`
+	Title                string           `json:"title"`
+	Category             string           `json:"category"`
+	Scope                string           `json:"scope"`
+	BudgetCents          int64            `json:"budgetCents"`
+	DefaultMilestones    []RFQMilestone   `json:"defaultMilestones"`
+	Status               RFQStatus        `json:"status"`
+	AwardedBidID         string           `json:"awardedBidId,omitempty"`
+	AwardedProviderOrgID string           `json:"awardedProviderOrgId,omitempty"`
+	OrderID              string           `json:"orderId,omitempty"`
+	ResponseDeadlineAt   time.Time        `json:"responseDeadlineAt"`
+	CreatedAt            time.Time        `json:"createdAt"`
+	UpdatedAt            time.Time        `json:"updatedAt"`
+}
+
+// RFQMilestone is a platform-generated default milestone attached to an RFQ.
+// Providers may accept these defaults or override with their own in a bid.
+type RFQMilestone struct {
+	ID             string `json:"id"`
+	Title          string `json:"title"`
+	BasePriceCents int64  `json:"basePriceCents"`
+	BudgetCents    int64  `json:"budgetCents"`
 }
 
 type Message struct {
@@ -93,6 +103,7 @@ type CreateRFQInput struct {
 	Category           string
 	Scope              string
 	BudgetCents        int64
+	Milestones         []CreateMilestoneInput // optional; auto-generated if empty
 	ResponseDeadlineAt time.Time
 }
 
@@ -309,6 +320,21 @@ func (a *App) CreateRFQ(input CreateRFQInput) (RFQ, error) {
 		return RFQ{}, err
 	}
 
+	milestones := input.Milestones
+	if len(milestones) == 0 {
+		milestones = DefaultMilestoneSplit(input.BudgetCents)
+	}
+
+	defaultMilestones := make([]RFQMilestone, 0, len(milestones))
+	for _, m := range milestones {
+		defaultMilestones = append(defaultMilestones, RFQMilestone{
+			ID:             m.ID,
+			Title:          m.Title,
+			BasePriceCents: m.BasePriceCents,
+			BudgetCents:    m.BudgetCents,
+		})
+	}
+
 	now := time.Now().UTC()
 	rfq := RFQ{
 		ID:                 rfqID,
@@ -317,6 +343,7 @@ func (a *App) CreateRFQ(input CreateRFQInput) (RFQ, error) {
 		Category:           input.Category,
 		Scope:              input.Scope,
 		BudgetCents:        input.BudgetCents,
+		DefaultMilestones:  defaultMilestones,
 		Status:             RFQStatusOpen,
 		ResponseDeadlineAt: input.ResponseDeadlineAt.UTC(),
 		CreatedAt:          now,
