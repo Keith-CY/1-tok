@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestRunAbuseSmokeTriggersRateLimitAndObservesSentryEvent(t *testing.T) {
@@ -157,5 +158,63 @@ func TestAbuseConfigFromEnv(t *testing.T) {
 	cfg := AbuseConfigFromEnv()
 	if cfg.IAMBaseURL != "http://iam:8081" {
 		t.Errorf("IAMBaseURL = %s", cfg.IAMBaseURL)
+	}
+}
+
+func TestHealthcheck_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	if err := healthcheck(context.Background(), client, srv.URL); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestHealthcheck_Failure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	if err := healthcheck(context.Background(), client, srv.URL); err == nil {
+		t.Error("expected error for unhealthy service")
+	}
+}
+
+func TestSentryEventCount_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"count":5,"events":[]}`))
+	}))
+	defer srv.Close()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	count, err := sentryEventCount(context.Background(), client, srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 5 {
+		t.Errorf("count = %d, want 5", count)
+	}
+}
+
+func TestSentryEventCount_Error(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	_, err := sentryEventCount(context.Background(), client, srv.URL)
+	if err == nil {
+		t.Error("expected error")
 	}
 }
