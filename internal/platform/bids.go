@@ -45,8 +45,8 @@ type BidMilestoneInput struct {
 type CreateBidInput struct {
 	ProviderOrgID string
 	Message       string
-	QuoteCents    int64
-	Milestones    []BidMilestoneInput
+	QuoteCents    int64              // optional: defaults to RFQ budget
+	Milestones    []BidMilestoneInput // optional: defaults to RFQ default milestones
 }
 
 type AwardRFQInput struct {
@@ -67,8 +67,31 @@ func (a *App) CreateBid(rfqID string, input CreateBidInput) (Bid, error) {
 	if rfq.Status != RFQStatusOpen {
 		return Bid{}, errors.New("rfq is not open for bids")
 	}
-	if input.ProviderOrgID == "" || input.Message == "" || input.QuoteCents <= 0 || len(input.Milestones) == 0 {
+	if input.ProviderOrgID == "" || input.Message == "" {
 		return Bid{}, errors.New("missing required fields")
+	}
+
+	// Default to RFQ budget and milestones when the provider does not supply their own.
+	quoteCents := input.QuoteCents
+	if quoteCents <= 0 {
+		quoteCents = rfq.BudgetCents
+	}
+
+	milestones := input.Milestones
+	if len(milestones) == 0 && len(rfq.DefaultMilestones) > 0 {
+		milestones = make([]BidMilestoneInput, 0, len(rfq.DefaultMilestones))
+		for _, m := range rfq.DefaultMilestones {
+			milestones = append(milestones, BidMilestoneInput{
+				ID:             m.ID,
+				Title:          m.Title,
+				BasePriceCents: m.BasePriceCents,
+				BudgetCents:    m.BudgetCents,
+			})
+		}
+	}
+
+	if len(milestones) == 0 {
+		return Bid{}, errors.New("milestones are required")
 	}
 
 	bidID, err := a.bids.NextID()
@@ -82,13 +105,13 @@ func (a *App) CreateBid(rfqID string, input CreateBidInput) (Bid, error) {
 		RFQID:         rfqID,
 		ProviderOrgID: input.ProviderOrgID,
 		Message:       input.Message,
-		QuoteCents:    input.QuoteCents,
+		QuoteCents:    quoteCents,
 		Status:        BidStatusOpen,
-		Milestones:    make([]BidMilestone, 0, len(input.Milestones)),
+		Milestones:    make([]BidMilestone, 0, len(milestones)),
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}
-	for _, milestone := range input.Milestones {
+	for _, milestone := range milestones {
 		bid.Milestones = append(bid.Milestones, BidMilestone{
 			ID:             milestone.ID,
 			Title:          milestone.Title,

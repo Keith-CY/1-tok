@@ -80,6 +80,7 @@ CREATE TABLE IF NOT EXISTS rfqs (
   category TEXT NOT NULL,
   scope TEXT NOT NULL,
   budget_cents BIGINT NOT NULL,
+  default_milestones JSONB NOT NULL DEFAULT '[]'::jsonb,
   status TEXT NOT NULL,
   awarded_bid_id TEXT,
   awarded_provider_org_id TEXT,
@@ -97,6 +98,9 @@ ALTER TABLE IF EXISTS rfqs
 
 ALTER TABLE IF EXISTS rfqs
   ADD COLUMN IF NOT EXISTS order_id TEXT;
+
+ALTER TABLE IF EXISTS rfqs
+  ADD COLUMN IF NOT EXISTS default_milestones JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 CREATE TABLE IF NOT EXISTS bids (
   id TEXT PRIMARY KEY,
