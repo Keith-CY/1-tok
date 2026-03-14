@@ -2,7 +2,9 @@ package iam
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1057,5 +1059,28 @@ func TestLoadStoreFromEnv_RequireBootstrap(t *testing.T) {
 	store := loadStoreFromEnv()
 	if store == nil {
 		t.Fatal("expected non-nil store")
+	}
+}
+
+type errorRateLimiter struct{}
+
+func (errorRateLimiter) Allow(_ context.Context, _ ratelimit.Policy, _ ratelimit.Meta) (ratelimit.Decision, error) {
+	return ratelimit.Decision{}, errors.New("limiter broken")
+}
+
+func TestSignup_RateLimiterError(t *testing.T) {
+	store := identity.NewMemoryStore()
+	s := NewServerWithOptions(Options{
+		Store:       store,
+		RateLimiter: &errorRateLimiter{},
+	})
+
+	payload := `{"email":"lim_err@test.com","password":"correct horse battery staple 123","name":"Err","organizationName":"Org","organizationKind":"buyer"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/signup", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
