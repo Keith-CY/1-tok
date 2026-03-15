@@ -2859,3 +2859,72 @@ func TestGetOrderTimeline_WithSettlement(t *testing.T) {
 	if !types["order.created"] { t.Error("missing order.created") }
 	if !types["order.rated"] { t.Error("missing order.rated") }
 }
+
+func TestResolveDispute_AlreadyResolved(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "DR", Category: "ai",
+		Scope: "t", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_p", Message: "b", QuoteCents: 5000,
+		Milestones: []BidMilestoneInput{{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000}},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+	app.SettleMilestone(order.ID, core.SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+	app.OpenDispute(order.ID, OpenDisputeInput{MilestoneID: "ms_1", Reason: "bad", RefundCents: 100})
+
+	disputes, _ := app.ListDisputes()
+	disputeID := disputes[0].ID
+
+	// First resolve
+	app.ResolveDispute(disputeID, ResolveDisputeInput{ResolvedBy: "ops", Resolution: "ok"})
+
+	// Second resolve should fail
+	_, _, err := app.ResolveDispute(disputeID, ResolveDisputeInput{ResolvedBy: "ops", Resolution: "again"})
+	if err == nil {
+		t.Error("expected error on already-resolved dispute")
+	}
+}
+
+func TestOpenDispute_NotSettled(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "NS", Category: "ai",
+		Scope: "t", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_p", Message: "b", QuoteCents: 5000,
+		Milestones: []BidMilestoneInput{{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000}},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	// Try dispute on running (not settled) milestone
+	_, _, _, err := app.OpenDispute(order.ID, OpenDisputeInput{MilestoneID: "ms_1", Reason: "bad", RefundCents: 100})
+	if err == nil {
+		t.Error("expected error for non-settled milestone")
+	}
+}
+
+func TestRateOrder_DuplicateRating(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Dup", Category: "ai",
+		Scope: "t", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_p", Message: "b", QuoteCents: 5000,
+		Milestones: []BidMilestoneInput{{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000}},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+	app.SettleMilestone(order.ID, core.SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+
+	app.RateOrder(order.ID, RateOrderInput{Score: 5})
+	_, err := app.RateOrder(order.ID, RateOrderInput{Score: 3})
+	if err != ErrOrderAlreadyRated {
+		t.Errorf("expected ErrOrderAlreadyRated, got %v", err)
+	}
+}
