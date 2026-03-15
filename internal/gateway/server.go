@@ -6,27 +6,28 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/chenyu/1-tok/internal/carrier"
 	"github.com/chenyu/1-tok/internal/core"
 	"github.com/chenyu/1-tok/internal/httputil"
 	iamclient "github.com/chenyu/1-tok/internal/integrations/iam"
-	"github.com/chenyu/1-tok/internal/observability"
-	"github.com/chenyu/1-tok/internal/carrier"
 	"github.com/chenyu/1-tok/internal/notifications"
+	"github.com/chenyu/1-tok/internal/observability"
 	"github.com/chenyu/1-tok/internal/platform"
-	"github.com/chenyu/1-tok/internal/validation"
 	"github.com/chenyu/1-tok/internal/ratelimit"
 	"github.com/chenyu/1-tok/internal/runtimeconfig"
 	"github.com/chenyu/1-tok/internal/serviceauth"
+	"github.com/chenyu/1-tok/internal/validation"
 )
 
 // Sentinel startup errors returned by NewServerWithOptionsE.
 var (
-	ErrIAMUpstreamRequired      = errors.New("IAM_UPSTREAM is required when ONE_TOK_REQUIRE_EXTERNALS=true")
-	ErrExecutionTokenRequired   = errors.New("API_GATEWAY_EXECUTION_TOKEN or API_GATEWAY_EXECUTION_TOKENS is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+	ErrIAMUpstreamRequired    = errors.New("IAM_UPSTREAM is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+	ErrExecutionTokenRequired = errors.New("API_GATEWAY_EXECUTION_TOKEN or API_GATEWAY_EXECUTION_TOKENS is required when ONE_TOK_REQUIRE_EXTERNALS=true")
 )
 
 type Server struct {
@@ -280,6 +281,30 @@ func (s *Server) handleListListings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Sort support
+	if sortBy := q.Get("sort"); sortBy != "" {
+		switch sortBy {
+		case "price_asc":
+			slices.SortFunc(listings, func(a, b platform.Listing) int {
+				return int(a.BasePriceCents - b.BasePriceCents)
+			})
+		case "price_desc":
+			slices.SortFunc(listings, func(a, b platform.Listing) int {
+				return int(b.BasePriceCents - a.BasePriceCents)
+			})
+		case "title":
+			slices.SortFunc(listings, func(a, b platform.Listing) int {
+				if a.Title < b.Title {
+					return -1
+				}
+				if a.Title > b.Title {
+					return 1
+				}
+				return 0
+			})
+		}
+	}
+
 	page := httputil.ParsePagination(r)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"listings": httputil.Apply(listings, page), "pagination": map[string]any{"limit": page.Limit, "offset": page.Offset, "total": len(listings)}})
 }
@@ -457,8 +482,8 @@ func (s *Server) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 		UserID: actorUserID,
 	})
 	if blocked := s.applyRateLimit(w, r, ratelimit.PolicyGatewayCreateOrder, ratelimit.Meta{
-		IP:    ratelimit.ClientIP(r),
-		OrgID: buyerOrgID,
+		IP:     ratelimit.ClientIP(r),
+		OrgID:  buyerOrgID,
 		UserID: actorUserID,
 	}); blocked {
 		return
@@ -532,8 +557,8 @@ func (s *Server) handleCreateRFQ(w http.ResponseWriter, r *http.Request) {
 		UserID: actorUserID,
 	})
 	if blocked := s.applyRateLimit(w, r, ratelimit.PolicyGatewayCreateRFQ, ratelimit.Meta{
-		IP:    ratelimit.ClientIP(r),
-		OrgID: buyerOrgID,
+		IP:     ratelimit.ClientIP(r),
+		OrgID:  buyerOrgID,
 		UserID: actorUserID,
 	}); blocked {
 		return
@@ -642,8 +667,8 @@ func (s *Server) handleCreateBid(w http.ResponseWriter, r *http.Request) {
 		RFQID:  rfqID,
 	})
 	if blocked := s.applyRateLimit(w, r, ratelimit.PolicyGatewayCreateBid, ratelimit.Meta{
-		IP:    ratelimit.ClientIP(r),
-		OrgID: providerOrgID,
+		IP:     ratelimit.ClientIP(r),
+		OrgID:  providerOrgID,
 		UserID: actorUserID,
 	}); blocked {
 		return
@@ -713,8 +738,8 @@ func (s *Server) handleAwardRFQ(w http.ResponseWriter, r *http.Request) {
 		RFQID:  rfqID,
 	})
 	if blocked := s.applyRateLimit(w, r, ratelimit.PolicyGatewayAwardRFQ, ratelimit.Meta{
-		IP:    ratelimit.ClientIP(r),
-		OrgID: buyerOrgID,
+		IP:     ratelimit.ClientIP(r),
+		OrgID:  buyerOrgID,
 		UserID: actorUserID,
 	}); blocked {
 		return
@@ -1008,7 +1033,7 @@ func (s *Server) handleCreateDispute(w http.ResponseWriter, r *http.Request) {
 			OrderID: orderID,
 		})
 		if blocked := s.applyRateLimit(w, r, ratelimit.PolicyGatewayCreateDisp, ratelimit.Meta{
-			OrgID: order.BuyerOrgID,
+			OrgID:  order.BuyerOrgID,
 			UserID: actorUserID,
 		}); blocked {
 			return
@@ -1057,7 +1082,7 @@ func (s *Server) handleResolveDispute(w http.ResponseWriter, r *http.Request) {
 		UserID: resolvedBy,
 	})
 	if blocked := s.applyRateLimit(w, r, ratelimit.PolicyGatewayResolveDisp, ratelimit.Meta{
-		OrgID: "ops",
+		OrgID:  "ops",
 		UserID: resolvedBy,
 	}); blocked {
 		return
@@ -1086,7 +1111,7 @@ func (s *Server) handleCreditDecision(w http.ResponseWriter, r *http.Request) {
 		UserID: actorUserID,
 	})
 	if blocked := s.applyRateLimit(w, r, ratelimit.PolicyGatewayCreditDec, ratelimit.Meta{
-		OrgID: "ops",
+		OrgID:  "ops",
 		UserID: actorUserID,
 	}); blocked {
 		return
@@ -1150,7 +1175,7 @@ func (s *Server) handleCreateMessage(w http.ResponseWriter, r *http.Request) {
 			OrderID: payload.OrderID,
 		})
 		if blocked := s.applyRateLimit(w, r, ratelimit.PolicyGatewayCreateMsg, ratelimit.Meta{
-			OrgID: orgID,
+			OrgID:  orgID,
 			UserID: actor.UserID,
 		}); blocked {
 			return
@@ -1221,7 +1246,6 @@ func disputeIDFromResolvePath(path string) (string, error) {
 	}
 	return parts[3], nil
 }
-
 
 func writeGatewayError(w http.ResponseWriter, err error) {
 	switch {
