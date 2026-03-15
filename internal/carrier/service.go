@@ -94,6 +94,7 @@ type Service struct {
 	bindingIdx  map[string]string             // "orderID|milestoneID" → binding id
 	jobs        map[string]ExecutionJob       // id → job
 	jobsByBinding map[string][]string         // binding id → job ids
+	attempts      map[string][]ExecutionAttempt // job id → attempts
 	logger      Logger
 }
 
@@ -344,4 +345,61 @@ func (s *Service) ReconcileStaleJobs() []StaleJob {
 		}
 	}
 	return stale
+}
+
+// ExecutionAttempt represents one attempt within an ExecutionJob.
+// Retries create new attempts; all share the same job.
+type ExecutionAttempt struct {
+	ID              string     `json:"id"`
+	JobID           string     `json:"jobId"`
+	AttemptNo       int        `json:"attemptNo"`
+	CarrierExecID   string     `json:"carrierExecutionId,omitempty"`
+	BindingSnapshot string     `json:"bindingSnapshot,omitempty"` // serialized binding at attempt time
+	State           JobState   `json:"state"`
+	FailureCategory string     `json:"failureCategory,omitempty"`
+	FailureCode     string     `json:"failureCode,omitempty"`
+	StartedAt       *time.Time `json:"startedAt,omitempty"`
+	EndedAt         *time.Time `json:"endedAt,omitempty"`
+	ResultSummary   string     `json:"resultSummary,omitempty"`
+}
+
+// CreateAttempt creates a new execution attempt for a job.
+func (s *Service) CreateAttempt(jobID, carrierExecID string) (ExecutionAttempt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	job, ok := s.jobs[jobID]
+	if !ok {
+		return ExecutionAttempt{}, ErrJobNotFound
+	}
+
+	attemptNo := len(s.attempts[jobID]) + 1
+	now := time.Now().UTC()
+	attempt := ExecutionAttempt{
+		ID:            fmt.Sprintf("%s_att_%d", jobID, attemptNo),
+		JobID:         jobID,
+		AttemptNo:     attemptNo,
+		CarrierExecID: carrierExecID,
+		State:         JobStatePending,
+		StartedAt:     &now,
+	}
+
+	if s.attempts == nil {
+		s.attempts = make(map[string][]ExecutionAttempt)
+	}
+	s.attempts[jobID] = append(s.attempts[jobID], attempt)
+
+	s.log("carrier.attempt.created", map[string]any{
+		"jobId": jobID, "attemptNo": attemptNo, "carrierExecId": carrierExecID,
+	})
+
+	_ = job // keep reference for future binding snapshot
+	return attempt, nil
+}
+
+// ListAttempts returns all attempts for a job.
+func (s *Service) ListAttempts(jobID string) []ExecutionAttempt {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.attempts[jobID]
 }

@@ -428,3 +428,53 @@ func TestReconcileStaleJobs_OnlyRunning(t *testing.T) {
 		t.Errorf("pending job should not be stale, got %d", len(stale))
 	}
 }
+
+func TestCreateAttempt(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job, _ := svc.CreateJob(b.ID, "ms_1", "input")
+
+	att, err := svc.CreateAttempt(job.ID, "carrier_exec_123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if att.AttemptNo != 1 {
+		t.Errorf("attemptNo = %d", att.AttemptNo)
+	}
+	if att.CarrierExecID != "carrier_exec_123" {
+		t.Errorf("carrierExecId = %s", att.CarrierExecID)
+	}
+}
+
+func TestCreateAttempt_Multiple(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job, _ := svc.CreateJob(b.ID, "ms_1", "input")
+
+	svc.CreateAttempt(job.ID, "exec_1")
+	att2, _ := svc.CreateAttempt(job.ID, "exec_2")
+	if att2.AttemptNo != 2 {
+		t.Errorf("attemptNo = %d", att2.AttemptNo)
+	}
+
+	attempts := svc.ListAttempts(job.ID)
+	if len(attempts) != 2 {
+		t.Errorf("expected 2 attempts, got %d", len(attempts))
+	}
+}
+
+func TestCreateAttempt_JobNotFound(t *testing.T) {
+	svc := NewService()
+	_, err := svc.CreateAttempt("nonexistent", "exec_1")
+	if err != ErrJobNotFound {
+		t.Errorf("expected ErrJobNotFound, got %v", err)
+	}
+}
+
+func TestListAttempts_Empty(t *testing.T) {
+	svc := NewService()
+	attempts := svc.ListAttempts("nonexistent")
+	if attempts != nil {
+		t.Errorf("expected nil, got %v", attempts)
+	}
+}
