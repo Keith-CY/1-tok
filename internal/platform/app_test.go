@@ -2315,3 +2315,103 @@ func TestGetCreditLimit_NotSet(t *testing.T) {
 		t.Error("expected not found")
 	}
 }
+
+func TestMultipleBidsOnSameRFQ(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Multi bid", Category: "ai",
+		Scope: "test", BudgetCents: 10000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+
+	bid1, err := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_p1", Message: "bid 1", QuoteCents: 9000,
+		Milestones: []BidMilestoneInput{{ID: "ms_1", Title: "W", BasePriceCents: 9000, BudgetCents: 9000}},
+	})
+	if err != nil { t.Fatal(err) }
+
+	bid2, err := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_p2", Message: "bid 2", QuoteCents: 8000,
+		Milestones: []BidMilestoneInput{{ID: "ms_1", Title: "W", BasePriceCents: 8000, BudgetCents: 8000}},
+	})
+	if err != nil { t.Fatal(err) }
+
+	bids, _ := app.ListBids(rfq.ID)
+	if len(bids) != 2 {
+		t.Errorf("expected 2 bids, got %d", len(bids))
+	}
+
+	// Award bid 2 — bid 1 should be rejected
+	_, order, err := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid2.ID, FundingMode: "prepaid"})
+	if err != nil { t.Fatal(err) }
+	if order.ProviderOrgID != "org_p2" {
+		t.Errorf("provider = %s, want org_p2", order.ProviderOrgID)
+	}
+
+	// Verify bid statuses
+	bids, _ = app.ListBids(rfq.ID)
+	for _, b := range bids {
+		if b.ID == bid1.ID && b.Status != BidStatusRejected {
+			t.Errorf("bid1 status = %s, want rejected", b.Status)
+		}
+		if b.ID == bid2.ID && b.Status != BidStatusAwarded {
+			t.Errorf("bid2 status = %s, want awarded", b.Status)
+		}
+	}
+}
+
+func TestMilestoneAutoAdvance(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Advance", Category: "ai",
+		Scope: "test", BudgetCents: 6000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid", QuoteCents: 6000,
+		Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "First", BasePriceCents: 3000, BudgetCents: 3000},
+			{ID: "ms_2", Title: "Second", BasePriceCents: 3000, BudgetCents: 3000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	// ms_1 should be running, ms_2 pending
+	if order.Milestones[0].State != core.MilestoneStateRunning {
+		t.Errorf("ms_1 = %s, want running", order.Milestones[0].State)
+	}
+	if order.Milestones[1].State != core.MilestoneStatePending {
+		t.Errorf("ms_2 = %s, want pending", order.Milestones[1].State)
+	}
+
+	// Settle ms_1 → ms_2 should auto-advance to running
+	updated, _, _ := app.SettleMilestone(order.ID, core.SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+	for _, ms := range updated.Milestones {
+		if ms.ID == "ms_2" && ms.State != core.MilestoneStateRunning {
+			t.Errorf("ms_2 after settle = %s, want running", ms.State)
+		}
+	}
+}
+
+func TestCreditFundingMode(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Credit", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid", QuoteCents: 5000,
+		Milestones: []BidMilestoneInput{{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000}},
+	})
+
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{
+		BidID: bid.ID, FundingMode: "credit", CreditLineID: "credit_line_1",
+	})
+	if order.FundingMode != "credit" {
+		t.Errorf("fundingMode = %s", order.FundingMode)
+	}
+	if order.CreditLineID != "credit_line_1" {
+		t.Errorf("creditLineId = %s", order.CreditLineID)
+	}
+}
