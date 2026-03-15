@@ -2121,3 +2121,31 @@ func TestCreateListing_WithProfile(t *testing.T) {
 		t.Errorf("profileID = %s", listing.ExecutionProfileID)
 	}
 }
+
+func TestAwardRFQ_BlockedBySuspendedBinding(t *testing.T) {
+	app := NewAppWithMemory()
+
+	// Register and suspend provider binding
+	binding, _ := app.RegisterCarrierBinding(ProviderCarrierBinding{
+		ProviderOrgID: "org_2", CarrierBaseURL: "https://carrier.test", HostID: "h1",
+	})
+	app.VerifyCarrierBinding(binding.ID)
+	app.SuspendCarrierBinding(binding.ID)
+
+	// Create RFQ + bid
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "Suspend test", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_2", Message: "bid", QuoteCents: 5000,
+		Milestones: []BidMilestoneInput{{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000}},
+	})
+
+	// Award should fail
+	_, _, err := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+	if err != ErrProviderSuspended {
+		t.Errorf("expected ErrProviderSuspended, got %v", err)
+	}
+}

@@ -25,6 +25,9 @@ var (
 	ErrBidIDRequired      = errors.New("bid id is required")
 	ErrBidNotBelongToRFQ  = errors.New("bid does not belong to rfq")
 
+	// Provider errors
+	ErrProviderSuspended = errors.New("provider carrier binding is suspended")
+
 	// Rating errors
 	ErrInvalidScore    = errors.New("score must be between 1 and 5")
 	ErrOrderNotCompleted = errors.New("only completed orders can be rated")
