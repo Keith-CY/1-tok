@@ -119,6 +119,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Method == http.MethodGet && r.URL.Path == "/healthz":
 		httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/stats":
+		s.handleMarketplaceStats(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/providers":
 		s.handleListProviders(w, r)
 	case r.Method == http.MethodGet && isProviderPath(r.URL.Path):
@@ -301,6 +303,16 @@ func (s *Server) handleListDisputes(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
+	}
+
+	if status := r.URL.Query().Get("status"); status != "" {
+		filtered := make([]platform.Dispute, 0)
+		for _, d := range disputes {
+			if string(d.Status) == status {
+				filtered = append(filtered, d)
+			}
+		}
+		disputes = filtered
 	}
 
 	page := httputil.ParsePagination(r)
@@ -1593,4 +1605,13 @@ func (s *Server) handleUnregisterWebhook(w http.ResponseWriter, r *http.Request)
 	target := parts[3]
 	s.webhooks.Unregister(target)
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "unregistered"})
+}
+
+func (s *Server) handleMarketplaceStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := s.app.GetMarketplaceStats()
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, stats)
 }

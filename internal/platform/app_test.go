@@ -1860,3 +1860,17 @@ func TestSearchProviders_ByTier(t *testing.T) {
 		}
 	}
 }
+
+func TestGetMarketplaceStats(t *testing.T) {
+	app := NewAppWithMemory()
+	stats, err := app.GetMarketplaceStats()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.TotalProviders == 0 {
+		t.Error("expected providers")
+	}
+	if stats.TotalListings == 0 {
+		t.Error("expected listings")
+	}
+}

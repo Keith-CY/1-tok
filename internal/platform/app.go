@@ -1384,3 +1384,80 @@ func (a *App) SearchProviders(input SearchProvidersInput) ([]ProviderProfile, er
 	}
 	return result, nil
 }
+
+// MarketplaceStats holds aggregate marketplace statistics.
+type MarketplaceStats struct {
+	TotalProviders  int     `json:"totalProviders"`
+	TotalListings   int     `json:"totalListings"`
+	TotalRFQs       int     `json:"totalRfqs"`
+	OpenRFQs        int     `json:"openRfqs"`
+	TotalOrders     int     `json:"totalOrders"`
+	ActiveOrders    int     `json:"activeOrders"`
+	TotalDisputes   int     `json:"totalDisputes"`
+	OpenDisputes    int     `json:"openDisputes"`
+	TotalRatings    int     `json:"totalRatings"`
+	AverageRating   float64 `json:"averageRating"`
+}
+
+// GetMarketplaceStats returns aggregate marketplace statistics.
+func (a *App) GetMarketplaceStats() (MarketplaceStats, error) {
+	stats := MarketplaceStats{}
+
+	providers, err := a.providers.List()
+	if err != nil {
+		return stats, err
+	}
+	stats.TotalProviders = len(providers)
+
+	listings, err := a.listings.List()
+	if err != nil {
+		return stats, err
+	}
+	stats.TotalListings = len(listings)
+
+	rfqs, err := a.rfqs.List()
+	if err != nil {
+		return stats, err
+	}
+	stats.TotalRFQs = len(rfqs)
+	for _, rfq := range rfqs {
+		if rfq.Status == RFQStatusOpen {
+			stats.OpenRFQs++
+		}
+	}
+
+	orders, err := a.orders.List()
+	if err != nil {
+		return stats, err
+	}
+	stats.TotalOrders = len(orders)
+	for _, o := range orders {
+		if o.Status == core.OrderStatusRunning {
+			stats.ActiveOrders++
+		}
+	}
+
+	disputes, err := a.disputes.List()
+	if err != nil {
+		return stats, err
+	}
+	stats.TotalDisputes = len(disputes)
+	for _, d := range disputes {
+		if d.Status == "open" {
+			stats.OpenDisputes++
+		}
+	}
+
+	a.mu.Lock()
+	stats.TotalRatings = len(a.ratings)
+	if stats.TotalRatings > 0 {
+		total := 0
+		for _, r := range a.ratings {
+			total += r.Score
+		}
+		stats.AverageRating = float64(total) / float64(stats.TotalRatings)
+	}
+	a.mu.Unlock()
+
+	return stats, nil
+}
