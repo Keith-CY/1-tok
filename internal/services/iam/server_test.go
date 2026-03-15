@@ -1226,3 +1226,45 @@ func TestLoadConfiguredStoreFromEnv_NoDSN(t *testing.T) {
 		t.Error("expected error without DSN")
 	}
 }
+
+func TestLoadConfiguredStoreFromEnv_WithIAMDatabaseURL(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL not set")
+	}
+	t.Setenv("IAM_DATABASE_URL", dsn)
+	t.Setenv("DATABASE_URL", "")
+	store, err := loadConfiguredStoreFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store == nil {
+		t.Fatal("expected non-nil store with IAM_DATABASE_URL")
+	}
+}
+
+func TestLoadConfiguredStoreFromEnv_RequireBootstrap(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL not set")
+	}
+	t.Setenv("IAM_DATABASE_URL", "")
+	t.Setenv("DATABASE_URL", dsn)
+	t.Setenv("ONE_TOK_REQUIRE_BOOTSTRAP", "true")
+	store, err := loadConfiguredStoreFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store == nil {
+		t.Fatal("expected non-nil store")
+	}
+}
+
+func TestLoadConfiguredStoreFromEnv_InvalidDSN(t *testing.T) {
+	t.Setenv("IAM_DATABASE_URL", "")
+	t.Setenv("DATABASE_URL", "postgres://invalid:invalid@127.0.0.1:1/invalid")
+	_, err := loadConfiguredStoreFromEnv()
+	if err == nil {
+		t.Error("expected error for invalid DSN")
+	}
+}
