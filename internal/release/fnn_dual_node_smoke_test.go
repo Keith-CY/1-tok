@@ -447,3 +447,102 @@ func TestRunFNNDualNodeSmokeRetriesAcceptChannelUntilTempIDPropagates(t *testing
 		t.Fatalf("expected accept_channel retry, got %d attempts", acceptAttempts)
 	}
 }
+
+func TestFNNDualNodeSmokeConfigFromEnv(t *testing.T) {
+	t.Setenv("RELEASE_FNN_DUAL_INVOICE_RPC_URL", "http://fnn1:8227")
+	t.Setenv("RELEASE_FNN_DUAL_PAYER_RPC_URL", "http://fnn2:8227")
+	cfg := FNNDualNodeSmokeConfigFromEnv()
+	if cfg.InvoiceRPCURL != "http://fnn1:8227" {
+		t.Errorf("InvoiceRPCURL = %s", cfg.InvoiceRPCURL)
+	}
+}
+
+func TestNormalizeRawChannelState(t *testing.T) {
+	tests := []struct {
+		input any
+		want  string
+	}{
+		{"ready", "READY"},
+		{"  OPEN  ", "OPEN"},
+		{map[string]any{"state_name": "ready"}, "READY"},
+		{map[string]any{"state": "open"}, "OPEN"},
+		{map[string]any{}, ""},
+		{42, ""},
+		{nil, ""},
+	}
+	for _, tt := range tests {
+		if got := normalizeRawChannelState(tt.input); got != tt.want {
+			t.Errorf("normalizeRawChannelState(%v) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestEnvIntOrDefault(t *testing.T) {
+	t.Setenv("TEST_ENV_INT", "42")
+	if v := envIntOrDefault("TEST_ENV_INT", 10); v != 42 {
+		t.Errorf("expected 42, got %d", v)
+	}
+
+	t.Setenv("TEST_ENV_INT", "")
+	if v := envIntOrDefault("TEST_ENV_INT", 10); v != 10 {
+		t.Errorf("expected 10 (default), got %d", v)
+	}
+
+	t.Setenv("TEST_ENV_INT", "abc")
+	if v := envIntOrDefault("TEST_ENV_INT", 5); v != 5 {
+		t.Errorf("expected 5 (default), got %d", v)
+	}
+
+	t.Setenv("TEST_ENV_INT", "-1")
+	if v := envIntOrDefault("TEST_ENV_INT", 5); v != 5 {
+		t.Errorf("expected 5 (default for negative), got %d", v)
+	}
+}
+
+func TestReleaseHexQuantity(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+		err   bool
+	}{
+		{"100", "0x64", false},
+		{"0x1a", "0x1a", false},
+		{"0X1A", "0x1a", false},
+		{"", "", true},
+		{"abc", "", true},
+	}
+	for _, tt := range tests {
+		got, err := releaseHexQuantity(tt.input)
+		if tt.err && err == nil {
+			t.Errorf("releaseHexQuantity(%q) expected error", tt.input)
+		}
+		if !tt.err && got != tt.want {
+			t.Errorf("releaseHexQuantity(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestFirstChannelReady(t *testing.T) {
+	ready := rawChannelList{
+		Channels: []rawChannelState{
+			{State: "CHANNEL_READY", Enabled: true},
+		},
+	}
+	if !firstChannelReady(ready) {
+		t.Error("expected true")
+	}
+
+	notReady := rawChannelList{
+		Channels: []rawChannelState{
+			{State: "OPEN", Enabled: true},
+		},
+	}
+	if firstChannelReady(notReady) {
+		t.Error("expected false")
+	}
+
+	empty := rawChannelList{}
+	if firstChannelReady(empty) {
+		t.Error("expected false for empty")
+	}
+}

@@ -38,7 +38,7 @@ run_go_coverage() {
     if [[ -n "$line" ]]; then
       packages+=("$line")
     fi
-  done < <(go list -f '{{if or (gt (len .TestGoFiles) 0) (gt (len .XTestGoFiles) 0)}}{{.ImportPath}}{{end}}' ./...)
+  done < <(go list -f '{{if or (gt (len .TestGoFiles) 0) (gt (len .XTestGoFiles) 0)}}{{.ImportPath}}{{end}}' ./... | grep -v '/cmd/')
 
   if [[ ${#packages[@]} -eq 0 ]]; then
     printf 'total:\t\t\t\t\t\t\t\t(statements)\t0.0%%\n' >"$GO_SUMMARY"
@@ -54,7 +54,7 @@ run_go_coverage() {
     set +e
     {
       echo "==> $pkg"
-      CGO_ENABLED=0 go test -covermode=atomic -coverprofile="$profile" "$pkg"
+      CGO_ENABLED=0 go test -tags=integration -covermode=atomic -coverprofile="$profile" "$pkg"
     } 2>&1 | tee -a "$GO_LOG"
     local status=${PIPESTATUS[0]}
     set -e

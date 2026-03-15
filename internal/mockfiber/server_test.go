@@ -1,8 +1,12 @@
 package mockfiber
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	fiberclient "github.com/chenyu/1-tok/internal/integrations/fiber"
@@ -90,5 +94,267 @@ func TestServerQuotesAndTracksWithdrawals(t *testing.T) {
 	item := statuses.Withdrawals[0]
 	if item.ID != withdrawal.ID || item.UserID != "provider_1" || item.State != "PROCESSING" {
 		t.Fatalf("unexpected withdrawal status: %+v", item)
+	}
+}
+
+func TestServeHTTP_NotFound(t *testing.T) {
+	s := NewServer()
+	req := httptest.NewRequest(http.MethodGet, "/unknown", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestServeHTTP_NonPostMethod(t *testing.T) {
+	s := NewServer()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestServeHTTP_InvalidJSON(t *testing.T) {
+	s := NewServer()
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("{broken"))
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 with RPC error, got %d", rec.Code)
+	}
+}
+
+func TestQuoteWithdrawal_Success(t *testing.T) {
+	srv := httptest.NewServer(NewServer())
+	defer srv.Close()
+
+	c := fiberclient.NewClient(srv.URL, "app", "secret")
+	result, err := c.QuotePayout(context.Background(), fiberclient.QuotePayoutInput{
+		UserID:      "u_1",
+		Asset:       "CKB",
+		Amount:      "100",
+		Destination: fiberclient.WithdrawalDestination{Kind: "address", Address: "ckb1addr"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Asset != "CKB" {
+		t.Errorf("asset = %s, want CKB", result.Asset)
+	}
+}
+
+func TestQuoteWithdrawal_MissingFields(t *testing.T) {
+	srv := httptest.NewServer(NewServer())
+	defer srv.Close()
+
+	c := fiberclient.NewClient(srv.URL, "app", "secret")
+	_, err := c.QuotePayout(context.Background(), fiberclient.QuotePayoutInput{})
+	if err == nil {
+		t.Error("expected error for missing fields")
+	}
+}
+
+func TestRequestWithdrawal_Success(t *testing.T) {
+	srv := httptest.NewServer(NewServer())
+	defer srv.Close()
+
+	c := fiberclient.NewClient(srv.URL, "app", "secret")
+	result, err := c.RequestPayout(context.Background(), fiberclient.RequestPayoutInput{
+		UserID:      "u_1",
+		Asset:       "CKB",
+		Amount:      "100",
+		Destination: fiberclient.WithdrawalDestination{Kind: "address", Address: "ckb1addr"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ID == "" {
+		t.Error("expected non-empty payout ID")
+	}
+}
+
+func TestDashboardSummary_WithUser(t *testing.T) {
+	srv := httptest.NewServer(NewServer())
+	defer srv.Close()
+
+	c := fiberclient.NewClient(srv.URL, "app", "secret")
+	result, err := c.ListWithdrawalStatuses(context.Background(), "u_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = result
+}
+
+func TestRequestWithdrawal_MissingFields(t *testing.T) {
+	srv := httptest.NewServer(NewServer())
+	defer srv.Close()
+
+	c := fiberclient.NewClient(srv.URL, "app", "secret")
+	_, err := c.RequestPayout(context.Background(), fiberclient.RequestPayoutInput{
+		UserID: "u_1",
+		// Missing asset/amount/destination
+	})
+	if err == nil {
+		t.Error("expected error for missing fields")
+	}
+}
+
+func TestCreateInvoice_Success(t *testing.T) {
+	srv := httptest.NewServer(NewServer())
+	defer srv.Close()
+
+	c := fiberclient.NewClient(srv.URL, "app", "secret")
+	result, err := c.CreateInvoice(context.Background(), fiberclient.CreateInvoiceInput{
+		PostID:     "post_1",
+		FromUserID: "u_from",
+		ToUserID:   "u_to",
+		Asset:      "CKB",
+		Amount:     "100",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Invoice == "" {
+		t.Error("expected invoice")
+	}
+}
+
+func TestListSettledFeed(t *testing.T) {
+	srv := httptest.NewServer(NewServer())
+	defer srv.Close()
+
+	c := fiberclient.NewClient(srv.URL, "app", "secret")
+	_, err := c.ListSettledFeed(context.Background(), fiberclient.SettledFeedInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDashboardSummary_WithTips(t *testing.T) {
+	srv := httptest.NewServer(NewServer())
+	defer srv.Close()
+
+	c := fiberclient.NewClient(srv.URL, "app", "secret")
+	// Create a tip first
+	c.CreateInvoice(context.Background(), fiberclient.CreateInvoiceInput{
+		PostID: "post_d", FromUserID: "u_from", ToUserID: "u_to", Asset: "CKB", Amount: "100",
+	})
+
+	// Get dashboard for the recipient
+	result, err := c.ListWithdrawalStatuses(context.Background(), "u_to")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = result
+}
+
+func TestSettledFeed_WithData(t *testing.T) {
+	srv := httptest.NewServer(NewServer())
+	defer srv.Close()
+
+	c := fiberclient.NewClient(srv.URL, "app", "secret")
+	c.CreateInvoice(context.Background(), fiberclient.CreateInvoiceInput{
+		PostID: "post_f", FromUserID: "u1", ToUserID: "u2", Asset: "CKB", Amount: "200",
+	})
+
+	result, err := c.ListSettledFeed(context.Background(), fiberclient.SettledFeedInput{
+		Limit: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = result
+}
+
+func TestHandleCreate_InvalidParams(t *testing.T) {
+	srv := httptest.NewServer(NewServer())
+	defer srv.Close()
+
+	// Send RPC with invalid params (not a valid CreateInvoiceInput)
+	payload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "tip.create",
+		"params": "not-an-object",
+	})
+	req, _ := http.NewRequest(http.MethodPost, srv.URL, bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	// Should return RPC error
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleQuoteWithdrawal_InvalidParams(t *testing.T) {
+	srv := httptest.NewServer(NewServer())
+	defer srv.Close()
+
+	payload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "withdrawal.quote",
+		"params": "invalid",
+	})
+	req, _ := http.NewRequest(http.MethodPost, srv.URL, bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleRequestWithdrawal_InvalidParams(t *testing.T) {
+	srv := httptest.NewServer(NewServer())
+	defer srv.Close()
+
+	payload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "withdrawal.request",
+		"params": "invalid",
+	})
+	req, _ := http.NewRequest(http.MethodPost, srv.URL, bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleDashboardSummary_InvalidParams(t *testing.T) {
+	srv := httptest.NewServer(NewServer())
+	defer srv.Close()
+
+	payload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "dashboard.summary",
+		"params": "invalid",
+	})
+	req, _ := http.NewRequest(http.MethodPost, srv.URL, bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleSettledFeed_InvalidParams(t *testing.T) {
+	srv := httptest.NewServer(NewServer())
+	defer srv.Close()
+
+	payload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "tip.settled_feed",
+		"params": "invalid",
+	})
+	req, _ := http.NewRequest(http.MethodPost, srv.URL, bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
 }

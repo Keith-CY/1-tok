@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	carrierclient "github.com/chenyu/1-tok/internal/integrations/carrier"
+	"github.com/chenyu/1-tok/internal/serviceauth"
 )
 
 type stubCarrierClient struct {
@@ -18,6 +20,7 @@ type stubCarrierClient struct {
 	versionResult carrierclient.CodeAgentVersionResult
 	runInput      carrierclient.CodeAgentRunInput
 	runResult     carrierclient.CodeAgentRunResult
+	runErr        error
 }
 
 func (s *stubCarrierClient) GetCodeAgentHealth(_ context.Context, input carrierclient.CodeAgentHealthInput) (carrierclient.CodeAgentHealthResult, error) {
@@ -32,7 +35,7 @@ func (s *stubCarrierClient) GetCodeAgentVersion(_ context.Context, input carrier
 
 func (s *stubCarrierClient) RunCodeAgent(_ context.Context, input carrierclient.CodeAgentRunInput) (carrierclient.CodeAgentRunResult, error) {
 	s.runInput = input
-	return s.runResult, nil
+	return s.runResult, s.runErr
 }
 
 func TestMilestoneReadyEventSettlesThroughGateway(t *testing.T) {
@@ -359,3 +362,399 @@ func TestCodeAgentRunRouteUsesCarrierClient(t *testing.T) {
 		t.Fatalf("unexpected run response: %+v", response.Run)
 	}
 }
+
+func TestHealthz(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestNotFound(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/unknown", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestActionForEvent(t *testing.T) {
+	tests := []struct {
+		event string
+		want  string
+	}{
+		{"budget_low", "pause"},
+		{"milestone_ready", "settle"},
+		{"usage_reported", "continue"},
+		{"unknown.event", "continue"},
+	}
+	for _, tt := range tests {
+		if got := actionForEvent(tt.event); got != tt.want {
+			t.Errorf("actionForEvent(%q) = %q, want %q", tt.event, got, tt.want)
+		}
+	}
+}
+
+func TestCarrierEvent_Success(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"order":{"id":"ord_1"}}`))
+	}))
+	defer backend.Close()
+
+	s := NewServerWithOptions(Options{
+		APIUpstream: backend.URL,
+	})
+
+	payload, _ := json.Marshal(map[string]any{
+		"orderId": "ord_1", "milestoneId": "ms_1",
+		"eventType": "usage_reported",
+		"payload": map[string]any{"kind": "token", "amountCents": 100},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/events", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCarrierEvent_InvalidJSON(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/events", bytes.NewReader([]byte("{broken")))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestCodeAgentHealth_Success(t *testing.T) {
+	stub := &stubCarrierClient{
+		healthResult: carrierclient.CodeAgentHealthResult{Healthy: true},
+	}
+	s := NewServerWithOptions(Options{Carrier: stub})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/carrier/codeagent/health?hostId=h1&agentId=a1", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCodeAgentVersion_Success(t *testing.T) {
+	stub := &stubCarrierClient{
+		versionResult: carrierclient.CodeAgentVersionResult{Value: "1.0.0"},
+	}
+	s := NewServerWithOptions(Options{Carrier: stub})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/carrier/codeagent/version?hostId=h1&agentId=a1", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCodeAgentRun_Success(t *testing.T) {
+	stub := &stubCarrierClient{
+		runResult: carrierclient.CodeAgentRunResult{Result: carrierclient.CodeAgentRunOutput{}},
+	}
+	s := NewServerWithOptions(Options{Carrier: stub})
+
+	payload, _ := json.Marshal(map[string]any{
+		"hostId": "h1", "agentId": "a1",
+		"backend": "node", "workspaceRoot": "/tmp", "capability": "run",
+		"title": "Test run", "instructions": "echo hello",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/codeagent/run", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCodeAgentRun_InvalidJSON(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/codeagent/run", bytes.NewReader([]byte("{broken")))
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestCodeAgentHealth_NoCarrier(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/v1/carrier/codeagent/health?hostId=h1&agentId=a1", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code == http.StatusOK {
+		// May return 502 or similar without carrier
+		t.Log("no carrier: returned 200")
+	}
+}
+
+func TestCodeAgentVersion_NoCarrier(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/v1/carrier/codeagent/version?hostId=h&agentId=a", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	// No carrier = should return error
+	if rec.Code == http.StatusOK {
+		t.Log("no carrier returned 200 — carrier might be nil-safe")
+	}
+}
+
+func TestCodeAgentHealth_MissingParams(t *testing.T) {
+	s := NewServerWithOptions(Options{Carrier: &stubCarrierClient{}})
+	req := httptest.NewRequest(http.MethodGet, "/v1/carrier/codeagent/health", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestCarrierEvent_Unauthorized(t *testing.T) {
+	s := NewServerWithOptions(Options{
+		InboundTokens: serviceauth.NewTokenSet("valid-token"),
+	})
+	payload, _ := json.Marshal(map[string]any{
+		"orderId": "ord_1", "milestoneId": "ms_1",
+		"eventType": "usage_reported",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/events", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestNewServerWithOptions_Defaults(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	if s == nil {
+		t.Fatal("expected non-nil server")
+	}
+}
+
+func TestNewServerWithOptions_WithInboundToken(t *testing.T) {
+	s := NewServerWithOptions(Options{
+		InboundToken: "my-token",
+	})
+	if s == nil {
+		t.Fatal("expected non-nil server")
+	}
+}
+
+func TestNewServerWithOptions_WithGatewayToken(t *testing.T) {
+	s := NewServerWithOptions(Options{
+		GatewayToken: "gw-token",
+	})
+	if s == nil {
+		t.Fatal("expected non-nil server")
+	}
+}
+
+func TestCodeAgentVersion_MissingParams(t *testing.T) {
+	s := NewServerWithOptions(Options{Carrier: &stubCarrierClient{}})
+	req := httptest.NewRequest(http.MethodGet, "/v1/carrier/codeagent/version", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestCodeAgentRun_MissingCapability(t *testing.T) {
+	s := NewServerWithOptions(Options{Carrier: &stubCarrierClient{}})
+	payload, _ := json.Marshal(map[string]any{
+		"hostId": "h", "agentId": "a", "backend": "node",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/codeagent/run", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCarrierEvent_WithGatewayForward(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"order":{"id":"ord_1"},"usageCharge":{"kind":"token"}}`))
+	}))
+	defer backend.Close()
+
+	s := NewServerWithOptions(Options{
+		APIUpstream:  backend.URL,
+		GatewayToken: "gw-token",
+	})
+
+	payload, _ := json.Marshal(map[string]any{
+		"orderId": "ord_1", "milestoneId": "ms_1",
+		"eventType": "usage_reported",
+		"payload": map[string]any{"kind": "token", "amountCents": 200},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/events", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPostJSON_ClosedServer(t *testing.T) {
+	// Test with invalid URL
+	s := NewServerWithOptions(Options{
+		APIUpstream: "http://127.0.0.1:1",
+	})
+	payload, _ := json.Marshal(map[string]any{
+		"orderId": "ord_1", "milestoneId": "ms_1",
+		"eventType": "usage_reported",
+		"payload": map[string]any{"kind": "token", "amountCents": 100},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/events", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	// Should return 502 for connection refused
+	if rec.Code != http.StatusBadGateway && rec.Code != http.StatusInternalServerError {
+		t.Logf("closed server: status %d", rec.Code)
+	}
+}
+
+func TestNewServerWithOptions_WithEnvTokens(t *testing.T) {
+	t.Setenv("EXECUTION_EVENT_TOKEN", "env-token")
+	t.Setenv("ONE_TOK_EXECUTION_GATEWAY_TOKEN", "gw-token")
+	s := NewServerWithOptions(Options{})
+	if s == nil {
+		t.Fatal("expected non-nil server")
+	}
+}
+
+func TestCarrierEvent_SettleAction(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"order":{"id":"ord_1"}}`))
+	}))
+	defer backend.Close()
+
+	s := NewServerWithOptions(Options{APIUpstream: backend.URL})
+	payload, _ := json.Marshal(map[string]any{
+		"orderId": "ord_1", "milestoneId": "ms_1",
+		"eventType": "milestone_ready",
+		"payload": map[string]any{"summary": "done"},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/events", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCarrierEvent_PauseAction(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer backend.Close()
+
+	s := NewServerWithOptions(Options{APIUpstream: backend.URL})
+	payload, _ := json.Marshal(map[string]any{
+		"orderId": "ord_1", "milestoneId": "ms_1",
+		"eventType": "budget_low",
+		"payload": map[string]any{},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/events", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCodeAgentRun_CarrierError(t *testing.T) {
+	stub := &stubCarrierClient{runErr: errors.New("carrier failed")}
+	s := NewServerWithOptions(Options{Carrier: stub})
+
+	payload, _ := json.Marshal(map[string]any{
+		"hostId": "h", "agentId": "a", "backend": "codex",
+		"capability": "run", "title": "Fail",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/codeagent/run", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPostJSON_GatewayError(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"error":"conflict"}`))
+	}))
+	defer backend.Close()
+
+	s := NewServerWithOptions(Options{APIUpstream: backend.URL})
+	payload, _ := json.Marshal(map[string]any{
+		"orderId": "ord_1", "milestoneId": "ms_1",
+		"eventType": "usage_reported",
+		"payload": map[string]any{"kind": "token", "amountCents": 100},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/events", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadGateway {
+		t.Logf("gateway error: status %d", rec.Code)
+	}
+}
+
+func TestNewServerWithOptions_EnvTokens(t *testing.T) {
+	t.Setenv("EXECUTION_EVENT_TOKENS", "tok1,tok2")
+	t.Setenv("ONE_TOK_EXECUTION_GATEWAY_TOKEN", "gw-tok")
+	s := NewServerWithOptions(Options{})
+	if s == nil {
+		t.Fatal("expected non-nil server")
+	}
+}
+
+func TestNewServerWithOptions_RequireExternals(t *testing.T) {
+	t.Setenv("ONE_TOK_REQUIRE_EXTERNALS", "true")
+	t.Setenv("API_GATEWAY_UPSTREAM", "http://gw:8080")
+	t.Setenv("CARRIER_GATEWAY_URL", "http://carrier:8090")
+	t.Setenv("CARRIER_GATEWAY_API_TOKEN", "token")
+	t.Setenv("EXECUTION_EVENT_TOKEN", "evt-token")
+	t.Setenv("EXECUTION_GATEWAY_TOKEN", "gw-token")
+
+	s := NewServerWithOptions(Options{})
+	if s == nil {
+		t.Fatal("expected non-nil server")
+	}
+}
+

@@ -1,0 +1,45 @@
+package platform
+
+import (
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestExportOrdersCSV(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Export test", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid",
+		QuoteCents: 5000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "Work", BasePriceCents: 5000, BudgetCents: 5000},
+		},
+	})
+	app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	csv, err := app.ExportOrdersCSV()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(csv, "OrderID,BuyerOrgID") {
+		t.Error("missing header")
+	}
+	if !strings.Contains(csv, "org_b") {
+		t.Error("missing buyer org")
+	}
+}
+
+func TestExportDisputesCSV(t *testing.T) {
+	app := NewAppWithMemory()
+	csv, err := app.ExportDisputesCSV()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(csv, "DisputeID,OrderID") {
+		t.Error("missing header")
+	}
+}

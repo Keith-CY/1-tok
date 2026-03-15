@@ -1,7 +1,6 @@
 package platform
 
 import (
-	"errors"
 	"slices"
 	"time"
 
@@ -65,10 +64,10 @@ func (a *App) CreateBid(rfqID string, input CreateBidInput) (Bid, error) {
 		return Bid{}, err
 	}
 	if rfq.Status != RFQStatusOpen {
-		return Bid{}, errors.New("rfq is not open for bids")
+		return Bid{}, ErrRFQNotOpenForBids
 	}
 	if input.ProviderOrgID == "" || input.Message == "" {
-		return Bid{}, errors.New("missing required fields")
+		return Bid{}, ErrMissingRequiredFields
 	}
 
 	// Default to RFQ budget and milestones when the provider does not supply their own.
@@ -91,7 +90,7 @@ func (a *App) CreateBid(rfqID string, input CreateBidInput) (Bid, error) {
 	}
 
 	if len(milestones) == 0 {
-		return Bid{}, errors.New("milestones are required")
+		return Bid{}, ErrMilestonesRequired
 	}
 
 	bidID, err := a.bids.NextID()
@@ -99,7 +98,7 @@ func (a *App) CreateBid(rfqID string, input CreateBidInput) (Bid, error) {
 		return Bid{}, err
 	}
 
-	now := time.Now().UTC()
+	now := a.now()
 	bid := Bid{
 		ID:            bidID,
 		RFQID:         rfqID,
@@ -142,10 +141,10 @@ func (a *App) AwardRFQ(rfqID string, input AwardRFQInput) (RFQ, *core.Order, err
 		return RFQ{}, nil, err
 	}
 	if rfq.Status != RFQStatusOpen {
-		return RFQ{}, nil, errors.New("rfq is not open for award")
+		return RFQ{}, nil, ErrRFQNotOpenForAward
 	}
 	if input.BidID == "" {
-		return RFQ{}, nil, errors.New("bid id is required")
+		return RFQ{}, nil, ErrBidIDRequired
 	}
 
 	bid, err := a.bids.Get(input.BidID)
@@ -153,7 +152,7 @@ func (a *App) AwardRFQ(rfqID string, input AwardRFQInput) (RFQ, *core.Order, err
 		return RFQ{}, nil, err
 	}
 	if bid.RFQID != rfqID {
-		return RFQ{}, nil, errors.New("bid does not belong to rfq")
+		return RFQ{}, nil, ErrBidNotBelongToRFQ
 	}
 
 	bids, err := a.bids.ListByRFQ(rfqID)
@@ -161,7 +160,7 @@ func (a *App) AwardRFQ(rfqID string, input AwardRFQInput) (RFQ, *core.Order, err
 		return RFQ{}, nil, err
 	}
 	for _, candidate := range bids {
-		candidate.UpdatedAt = time.Now().UTC()
+		candidate.UpdatedAt = a.now()
 		if candidate.ID == bid.ID {
 			candidate.Status = BidStatusAwarded
 		} else {
@@ -198,7 +197,7 @@ func (a *App) AwardRFQ(rfqID string, input AwardRFQInput) (RFQ, *core.Order, err
 	rfq.AwardedBidID = bid.ID
 	rfq.AwardedProviderOrgID = bid.ProviderOrgID
 	rfq.OrderID = order.ID
-	rfq.UpdatedAt = time.Now().UTC()
+	rfq.UpdatedAt = a.now()
 	if err := a.rfqs.Save(rfq); err != nil {
 		return RFQ{}, nil, err
 	}
@@ -213,6 +212,9 @@ func (a *App) AwardRFQ(rfqID string, input AwardRFQInput) (RFQ, *core.Order, err
 	}); err != nil {
 		return RFQ{}, nil, err
 	}
+
+	a.notify("rfq.awarded", rfq.BuyerOrgID, map[string]any{"rfqId": rfq.ID, "orderId": order.ID})
+	a.notify("rfq.awarded", bid.ProviderOrgID, map[string]any{"rfqId": rfq.ID, "orderId": order.ID})
 
 	return rfq, order, nil
 }

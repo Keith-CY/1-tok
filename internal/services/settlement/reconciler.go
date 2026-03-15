@@ -27,13 +27,22 @@ type ReconcileSummary struct {
 }
 
 func NewReconciler(options ReconcilerOptions) *Reconciler {
+	r, err := NewReconcilerE(options)
+	if err != nil {
+		panic(fmt.Sprintf("reconciler: %v", err))
+	}
+	return r
+}
+
+// NewReconcilerE is the error-returning variant of NewReconciler.
+func NewReconcilerE(options ReconcilerOptions) (*Reconciler, error) {
 	if options.Fiber == nil {
 		options.Fiber = fiberclient.NewClientFromEnv()
 	}
 	if options.Funding == nil {
 		funding, err := loadFundingRecordRepositoryE()
 		if err != nil {
-			panic(fmt.Sprintf("reconciler: funding store: %v", err))
+			return nil, fmt.Errorf("funding store: %w", err)
 		}
 		options.Funding = funding
 	}
@@ -41,7 +50,7 @@ func NewReconciler(options ReconcilerOptions) *Reconciler {
 	return &Reconciler{
 		fiber:   options.Fiber,
 		funding: options.Funding,
-	}
+	}, nil
 }
 
 func (r *Reconciler) Sync(ctx context.Context) (ReconcileSummary, error) {

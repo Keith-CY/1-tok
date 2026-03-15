@@ -59,3 +59,63 @@ func TestApply_OffsetBeyondLength(t *testing.T) {
 		t.Errorf("got %v, want empty", result)
 	}
 }
+
+func TestApply_EmptySlice(t *testing.T) {
+	result := Apply([]string{}, Pagination{Limit: 10, Offset: 0})
+	if len(result) != 0 {
+		t.Errorf("expected 0, got %d", len(result))
+	}
+}
+
+func TestIntParam_InvalidValue(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/items?limit=abc", nil)
+	p := ParsePagination(r)
+	if p.Limit != DefaultPageLimit {
+		t.Errorf("limit = %d, want %d (default)", p.Limit, DefaultPageLimit)
+	}
+}
+
+func TestIntParam_NegativeValue(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/items?limit=-5", nil)
+	p := ParsePagination(r)
+	if p.Limit != DefaultPageLimit {
+		t.Errorf("limit = %d, want %d (default for negative)", p.Limit, DefaultPageLimit)
+	}
+}
+
+func TestIntParam_NegativeOffset(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/items?offset=-1", nil)
+	p := ParsePagination(r)
+	if p.Offset != 0 {
+		t.Errorf("offset = %d, want 0", p.Offset)
+	}
+}
+
+func TestNewPaginatedResponse(t *testing.T) {
+	items := []string{"a", "b", "c", "d", "e"}
+	page := Pagination{Limit: 2, Offset: 1}
+	resp := NewPaginatedResponse(items, page)
+
+	if len(resp.Data) != 2 {
+		t.Errorf("data = %d", len(resp.Data))
+	}
+	if resp.Pagination.Total != 5 {
+		t.Errorf("total = %d", resp.Pagination.Total)
+	}
+	if resp.Pagination.Limit != 2 {
+		t.Errorf("limit = %d", resp.Pagination.Limit)
+	}
+	if resp.Data[0] != "b" {
+		t.Errorf("first = %s", resp.Data[0])
+	}
+}
+
+func TestNewPaginatedResponse_Empty(t *testing.T) {
+	resp := NewPaginatedResponse([]string{}, Pagination{Limit: 10})
+	if len(resp.Data) != 0 {
+		t.Errorf("data = %d", len(resp.Data))
+	}
+	if resp.Pagination.Total != 0 {
+		t.Errorf("total = %d", resp.Pagination.Total)
+	}
+}

@@ -207,3 +207,74 @@ func (s *spyPublisher) Publish(subject string, _ any) error {
 	s.subjects = append(s.subjects, subject)
 	return nil
 }
+
+
+func TestCreateMessage_PublishesEvent(t *testing.T) {
+	app := NewAppWithMemory()
+	publisher := &spyPublisher{}
+	app.publisher = publisher
+
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "Msg pub", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_2", Message: "bid",
+		QuoteCents: 5000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	publisher.subjects = nil
+	_, err := app.CreateMessage(order.ID, "buyer", "Hello")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, s := range publisher.subjects {
+		if s == "market.message.created" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected market.message.created, got %v", publisher.subjects)
+	}
+}
+
+func TestRecordUsageCharge_PublishesEvent(t *testing.T) {
+	app := NewAppWithMemory()
+	publisher := &spyPublisher{}
+	app.publisher = publisher
+
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_1", Title: "Usage pub", Category: "ai",
+		Scope: "test", BudgetCents: 10000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_2", Message: "bid",
+		QuoteCents: 10000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 10000, BudgetCents: 10000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	publisher.subjects = nil
+	_, _, err := app.RecordUsageCharge(order.ID, RecordUsageChargeInput{
+		MilestoneID: "ms_1", Kind: "token", AmountCents: 500,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, s := range publisher.subjects {
+		if s == "market.usage.recorded" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected market.usage.recorded, got %v", publisher.subjects)
+	}
+}

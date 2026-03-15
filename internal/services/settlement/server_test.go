@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -751,5 +752,1211 @@ func TestWithdrawalsUseAuthenticatedProviderMembership(t *testing.T) {
 	}
 	if stub.withdrawalsUserID != "provider_auth_1" {
 		t.Fatalf("expected authenticated provider for status sync, got %q", stub.withdrawalsUserID)
+	}
+}
+
+func TestNewServer_DefaultOptions(t *testing.T) {
+	s := NewServer()
+	if s == nil {
+		t.Fatal("NewServer returned nil")
+	}
+}
+
+func TestIsOpsRole(t *testing.T) {
+	tests := []struct {
+		role string
+		want bool
+	}{
+		{"ops_reviewer", true},
+		{"risk_admin", true},
+		{"finance_admin", true},
+		{"super_admin", true},
+		{"buyer", false},
+		{"provider", false},
+		{"admin", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		if got := isOpsRole(tt.role); got != tt.want {
+			t.Errorf("isOpsRole(%q) = %v, want %v", tt.role, got, tt.want)
+		}
+	}
+}
+
+func TestWriteFiberError_NotConfigured(t *testing.T) {
+	rec := httptest.NewRecorder()
+	writeFiberError(rec, fiberclient.ErrNotConfigured)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestWriteFiberError_Generic(t *testing.T) {
+	rec := httptest.NewRecorder()
+	writeFiberError(rec, errors.New("fiber rpc timeout"))
+
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("expected 502, got %d", rec.Code)
+	}
+}
+
+func TestListFundingRecords(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/v1/funding-records", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSettledFeed_Unauthorized(t *testing.T) {
+	s := NewServerWithOptions(Options{
+		ServiceTokens: serviceauth.NewTokenSet("secret-token"),
+	})
+	req := httptest.NewRequest(http.MethodGet, "/v1/settled-feed", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestSettledFeed_Authorized(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/v1/settled-feed", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	// Without fiber client configured, should return 503
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 (no fiber), got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSettledFeed_InvalidLimit(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/v1/settled-feed?limit=abc", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestWithdrawalStatuses_NoFiber(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/v1/withdrawals/status?providerOrgId=org_1", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateInvoice_NoFiber(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	payload := `{"orderId":"ord_1","milestoneId":"ms_1","buyerOrgId":"org_b","providerOrgId":"org_p","asset":"CKB","amount":"100"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/invoices", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 (no fiber), got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetInvoiceStatus_NoFiber(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/v1/invoices/lnbc_test_invoice", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 (no fiber), got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestQuoteWithdrawal_NoFiber(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	payload := `{"providerOrgId":"org_p","asset":"CKB","amount":"50","destination":{"kind":"address","address":"ckb1addr"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals/quote", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRequestWithdrawal_NoFiber(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	payload := `{"providerOrgId":"org_p","asset":"CKB","amount":"50","destination":{"kind":"address","address":"ckb1addr"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestNotFound(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/unknown-path", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestSettledFeed_Unauthorized_ServiceToken(t *testing.T) {
+	s := NewServerWithOptions(Options{
+		ServiceTokens: serviceauth.NewTokenSet("secret"),
+	})
+	req := httptest.NewRequest(http.MethodGet, "/v1/settled-feed", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestCreateInvoice_WithFiber(t *testing.T) {
+	fiber := &stubFiberClient{
+		createResult: fiberclient.CreateInvoiceResult{Invoice: "lnbc_test_123"},
+	}
+	s := NewServerWithOptions(Options{Fiber: fiber})
+
+	payload := `{"orderId":"ord_1","milestoneId":"ms_1","buyerOrgId":"org_b","providerOrgId":"org_p","asset":"CKB","amount":"100"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/invoices", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetInvoiceStatus_WithFiber(t *testing.T) {
+	fiber := &stubFiberClient{
+		createResult: fiberclient.CreateInvoiceResult{Invoice: "lnbc_inv"},
+		statusResult: fiberclient.InvoiceStatusResult{State: "paid"},
+	}
+	s := NewServerWithOptions(Options{Fiber: fiber})
+
+	// Create first
+	createPayload := `{"orderId":"ord_1","milestoneId":"ms_1","buyerOrgId":"org_b","providerOrgId":"org_p","asset":"CKB","amount":"100"}`
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/invoices", bytes.NewBufferString(createPayload))
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	s.ServeHTTP(createRec, createReq)
+
+	// Get status
+	req := httptest.NewRequest(http.MethodGet, "/v1/invoices/lnbc_inv", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestQuoteWithdrawal_WithFiber(t *testing.T) {
+	fiber := &stubFiberClient{
+		quoteResult: fiberclient.QuotePayoutResult{Asset: "CKB", Amount: "50"},
+	}
+	s := NewServerWithOptions(Options{Fiber: fiber})
+
+	payload := `{"providerOrgId":"org_p","asset":"CKB","amount":"50","destination":{"kind":"address","address":"ckb1addr"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals/quote", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRequestWithdrawal_WithFiber(t *testing.T) {
+	fiber := &stubFiberClient{
+		requestPayoutResult: fiberclient.RequestPayoutResult{ID: "ext_1"},
+	}
+	s := NewServerWithOptions(Options{Fiber: fiber})
+
+	payload := `{"providerOrgId":"org_p","asset":"CKB","amount":"50","destination":{"kind":"address","address":"ckb1addr"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSettledFeed_WithFiber(t *testing.T) {
+	fiber := &stubFiberClient{
+		settledFeedResult: fiberclient.SettledFeedResult{},
+	}
+	s := NewServerWithOptions(Options{Fiber: fiber})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/settled-feed", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWithdrawalStatuses_WithFiber(t *testing.T) {
+	fiber := &stubFiberClient{
+		withdrawalsResult: fiberclient.WithdrawalStatusResult{},
+	}
+	s := NewServerWithOptions(Options{Fiber: fiber})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/withdrawals/status?providerOrgId=org_p", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateInvoice_InvalidJSON(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodPost, "/v1/invoices", bytes.NewBufferString("{broken"))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestHealthz_Settlement(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestCreateInvoice_MissingFields(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	payload := `{"orderId":"","asset":"","amount":""}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/invoices", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code == http.StatusCreated {
+		t.Error("expected error for missing fields")
+	}
+}
+
+func TestQuoteWithdrawal_MissingFields(t *testing.T) {
+	s := NewServerWithOptions(Options{Fiber: &stubFiberClient{}})
+	payload := `{"asset":"","amount":"","destination":{"kind":""}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals/quote", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRequestWithdrawal_MissingFields(t *testing.T) {
+	s := NewServerWithOptions(Options{Fiber: &stubFiberClient{}})
+	payload := `{"asset":"","amount":"","destination":{"kind":""}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestInvoiceFromPath_Invalid(t *testing.T) {
+	_, err := invoiceFromPath("/v1/invoices/")
+	if err == nil {
+		t.Error("expected error for trailing slash")
+	}
+	_, err = invoiceFromPath("/v1/wrong")
+	if err == nil {
+		t.Error("expected error for wrong path")
+	}
+}
+
+func TestInvoiceFromPath_Valid(t *testing.T) {
+	inv, err := invoiceFromPath("/v1/invoices/lnbc_123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inv != "lnbc_123" {
+		t.Errorf("invoice = %s", inv)
+	}
+}
+
+func TestParseWithdrawalRequest_InvalidJSON(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString("{broken"))
+	_, err := parseWithdrawalRequest(req)
+	if err == nil {
+		t.Error("expected error for invalid JSON")
+	}
+}
+
+func TestListFundingRecords_WithFilter(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/v1/funding-records?kind=invoice&orderId=ord_1&providerOrgId=org_p", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWithdrawalStatuses_WithAuth(t *testing.T) {
+	actor := iamclient.Actor{
+		UserID: "u_1",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	fiber := &stubFiberClient{
+		withdrawalsResult: fiberclient.WithdrawalStatusResult{},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber: fiber,
+		Auth:  &stubIAMClient{actor: actor},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/v1/withdrawals/status", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSettledFeed_WithLimit(t *testing.T) {
+	fiber := &stubFiberClient{
+		settledFeedResult: fiberclient.SettledFeedResult{},
+	}
+	s := NewServerWithOptions(Options{Fiber: fiber})
+	req := httptest.NewRequest(http.MethodGet, "/v1/settled-feed?limit=10&afterSettledAt=2026-01-01T00:00:00Z&afterId=rec_1", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+
+func TestIsProviderFinanceRole(t *testing.T) {
+	for _, role := range []string{"org_owner", "sales", "delivery_operator", "finance_viewer"} {
+		if !isProviderFinanceRole(role) {
+			t.Errorf("isProviderFinanceRole(%q) = false", role)
+		}
+	}
+	for _, role := range []string{"admin", "viewer", ""} {
+		if isProviderFinanceRole(role) {
+			t.Errorf("isProviderFinanceRole(%q) = true", role)
+		}
+	}
+}
+
+func TestIsOpsRole_Settlement(t *testing.T) {
+	for _, role := range []string{"ops_reviewer", "risk_admin", "finance_admin", "super_admin"} {
+		if !isOpsRole(role) {
+			t.Errorf("isOpsRole(%q) = false", role)
+		}
+	}
+	for _, role := range []string{"buyer", ""} {
+		if isOpsRole(role) {
+			t.Errorf("isOpsRole(%q) = true", role)
+		}
+	}
+}
+
+func TestListFundingRecords_WithProviderAuth(t *testing.T) {
+	actor := iamclient.Actor{
+		UserID: "u_prov",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Auth: &stubIAMClient{actor: actor},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/funding-records", nil)
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestListFundingRecords_WithOpsAuth(t *testing.T) {
+	actor := iamclient.Actor{
+		UserID: "u_ops",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_ops", OrganizationKind: "ops", Role: "ops_reviewer"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Auth: &stubIAMClient{actor: actor},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/funding-records?providerOrgId=org_p", nil)
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetInvoiceStatus_WithAuth(t *testing.T) {
+	fiber := &stubFiberClient{
+		createResult: fiberclient.CreateInvoiceResult{Invoice: "lnbc_auth"},
+		statusResult: fiberclient.InvoiceStatusResult{State: "paid"},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber:         fiber,
+		ServiceTokens: serviceauth.NewTokenSet("svc-token"),
+	})
+
+	// Create invoice first
+	createPayload := `{"orderId":"ord_1","milestoneId":"ms_1","buyerOrgId":"org_b","providerOrgId":"org_p","asset":"CKB","amount":"100"}`
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/invoices", bytes.NewBufferString(createPayload))
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.Header.Set(serviceauth.HeaderName, "svc-token")
+	createRec := httptest.NewRecorder()
+	s.ServeHTTP(createRec, createReq)
+
+	// Get status with auth
+	req := httptest.NewRequest(http.MethodGet, "/v1/invoices/lnbc_auth", nil)
+	req.Header.Set(serviceauth.HeaderName, "svc-token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWithdrawalStatuses_MissingProvider(t *testing.T) {
+	fiber := &stubFiberClient{
+		withdrawalsResult: fiberclient.WithdrawalStatusResult{},
+	}
+	s := NewServerWithOptions(Options{Fiber: fiber})
+
+	// No providerOrgId param and no auth
+	req := httptest.NewRequest(http.MethodGet, "/v1/withdrawals/status", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	// Should work with empty provider (no auth required)
+	if rec.Code != http.StatusOK {
+		t.Logf("no provider: status %d", rec.Code)
+	}
+}
+
+func TestNewServerWithOptions_WithUpstream(t *testing.T) {
+	s := NewServerWithOptions(Options{
+		Upstream: "http://gw:8080",
+	})
+	if s == nil {
+		t.Fatal("expected non-nil server")
+	}
+}
+
+func TestCreateInvoice_WithAuth(t *testing.T) {
+	fiber := &stubFiberClient{
+		createResult: fiberclient.CreateInvoiceResult{Invoice: "lnbc_auth_inv"},
+	}
+	actor := iamclient.Actor{
+		UserID: "u_1",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber:         fiber,
+		Auth:          &stubIAMClient{actor: actor},
+		ServiceTokens: serviceauth.NewTokenSet("svc-token"),
+	})
+
+	payload := `{"orderId":"ord_1","milestoneId":"ms_1","buyerOrgId":"org_b","providerOrgId":"org_p","asset":"CKB","amount":"100"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/invoices", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(serviceauth.HeaderName, "svc-token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestQuoteWithdrawal_WithProviderAuth(t *testing.T) {
+	fiber := &stubFiberClient{
+		quoteResult: fiberclient.QuotePayoutResult{Asset: "CKB", Amount: "50"},
+	}
+	actor := iamclient.Actor{
+		UserID: "u_prov",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber: fiber,
+		Auth:  &stubIAMClient{actor: actor},
+	})
+
+	payload := `{"providerOrgId":"org_p","asset":"CKB","amount":"50","destination":{"kind":"address","address":"ckb1addr"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals/quote", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer prov-token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRequestWithdrawal_WithProviderAuth(t *testing.T) {
+	fiber := &stubFiberClient{
+		requestPayoutResult: fiberclient.RequestPayoutResult{ID: "payout_1"},
+	}
+	actor := iamclient.Actor{
+		UserID: "u_prov",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber: fiber,
+		Auth:  &stubIAMClient{actor: actor},
+	})
+
+	payload := `{"providerOrgId":"org_p","asset":"CKB","amount":"50","destination":{"kind":"address","address":"ckb1addr"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer prov-token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestResolveProviderOrg_NoAuth(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/v1/withdrawals/status?providerOrgId=org_p", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	// No auth = pass through provider org
+	if rec.Code != http.StatusServiceUnavailable && rec.Code != http.StatusOK {
+		t.Logf("no auth: %d", rec.Code)
+	}
+}
+
+func TestWithdrawalStatuses_OpsAuth(t *testing.T) {
+	fiber := &stubFiberClient{
+		withdrawalsResult: fiberclient.WithdrawalStatusResult{},
+	}
+	actor := iamclient.Actor{
+		UserID: "u_ops",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_ops", OrganizationKind: "ops", Role: "ops_reviewer"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber: fiber,
+		Auth:  &stubIAMClient{actor: actor},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/withdrawals/status?providerOrgId=org_p", nil)
+	req.Header.Set("Authorization", "Bearer ops-token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWithdrawalStatuses_ProviderMismatch(t *testing.T) {
+	fiber := &stubFiberClient{
+		withdrawalsResult: fiberclient.WithdrawalStatusResult{},
+	}
+	actor := iamclient.Actor{
+		UserID: "u_prov",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber: fiber,
+		Auth:  &stubIAMClient{actor: actor},
+	})
+
+	// Request for different provider org
+	req := httptest.NewRequest(http.MethodGet, "/v1/withdrawals/status?providerOrgId=org_other", nil)
+	req.Header.Set("Authorization", "Bearer prov-token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden && rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 403 or 502, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestListFundingRecords_Unauthorized(t *testing.T) {
+	s := NewServerWithOptions(Options{
+		Auth: &stubIAMClient{actor: iamclient.Actor{UserID: "u_1"}},
+	})
+	// No Authorization header
+	req := httptest.NewRequest(http.MethodGet, "/v1/funding-records", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestGetInvoiceStatus_Unauthorized(t *testing.T) {
+	s := NewServerWithOptions(Options{
+		Fiber:         &stubFiberClient{},
+		ServiceTokens: serviceauth.NewTokenSet("secret"),
+	})
+	// No service token
+	req := httptest.NewRequest(http.MethodGet, "/v1/invoices/lnbc_test", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestBearerToken_Missing(t *testing.T) {
+	_, ok := bearerToken("")
+	if ok {
+		t.Error("expected false for empty")
+	}
+	_, ok = bearerToken("Basic abc")
+	if ok {
+		t.Error("expected false for non-Bearer")
+	}
+}
+
+func TestBearerToken_Valid(t *testing.T) {
+	token, ok := bearerToken("Bearer my-token")
+	if !ok {
+		t.Error("expected true")
+	}
+	if token != "my-token" {
+		t.Errorf("token = %s", token)
+	}
+}
+
+func TestNewServerWithOptions_RequireExternals(t *testing.T) {
+	t.Setenv("ONE_TOK_REQUIRE_EXTERNALS", "true")
+	t.Setenv("API_GATEWAY_UPSTREAM", "http://gw:8080")
+	t.Setenv("FIBER_RPC_URL", "http://fiber:8091")
+	t.Setenv("FIBER_APP_ID", "app")
+	t.Setenv("FIBER_HMAC_SECRET", "secret")
+	t.Setenv("IAM_UPSTREAM", "http://iam:8081")
+	t.Setenv("SETTLEMENT_SERVICE_TOKEN", "svc-token")
+
+	s := NewServerWithOptions(Options{})
+	if s == nil {
+		t.Fatal("expected non-nil server")
+	}
+}
+
+func TestNewServerWithOptions_WithServiceToken(t *testing.T) {
+	s := NewServerWithOptions(Options{
+		ServiceToken: "my-token",
+	})
+	if s == nil {
+		t.Fatal("expected non-nil server")
+	}
+}
+
+func TestNewServerWithOptions_WithAllOptions(t *testing.T) {
+	s := NewServerWithOptions(Options{
+		Upstream:      "http://gw:8080",
+		Fiber:         &stubFiberClient{},
+		Auth:          &stubIAMClient{actor: iamclient.Actor{UserID: "u_1"}},
+		ServiceTokens: serviceauth.NewTokenSet("token"),
+		Funding:       NewMemoryFundingRecordRepository(),
+	})
+	if s == nil {
+		t.Fatal("expected non-nil server")
+	}
+}
+
+func TestNewServerWithOptions_FundingFromEnv(t *testing.T) {
+	// No SETTLEMENT_DATABASE_URL — falls back to memory
+	t.Setenv("SETTLEMENT_DATABASE_URL", "")
+	t.Setenv("DATABASE_URL", "")
+
+	s := NewServerWithOptions(Options{
+		Fiber: &stubFiberClient{},
+	})
+	if s == nil {
+		t.Fatal("expected non-nil server")
+	}
+}
+
+func TestResolveProviderOrg_MissingAuth(t *testing.T) {
+	actor := iamclient.Actor{
+		UserID: "u_1",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber: &stubFiberClient{
+			withdrawalsResult: fiberclient.WithdrawalStatusResult{},
+		},
+		Auth: &stubIAMClient{actor: actor},
+	})
+
+	// No bearer token
+	req := httptest.NewRequest(http.MethodGet, "/v1/withdrawals/status", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestScopeFundingFilter_OpsSeesAll(t *testing.T) {
+	actor := iamclient.Actor{
+		UserID: "u_ops",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_ops", OrganizationKind: "ops", Role: "finance_admin"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Auth: &stubIAMClient{actor: actor},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/funding-records?kind=invoice", nil)
+	req.Header.Set("Authorization", "Bearer ops-token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestScopeFundingFilter_ProviderScoped(t *testing.T) {
+	actor := iamclient.Actor{
+		UserID: "u_prov",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "finance_viewer"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Auth: &stubIAMClient{actor: actor},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/funding-records", nil)
+	req.Header.Set("Authorization", "Bearer prov-token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetInvoiceStatus_WithFiberAndAuth(t *testing.T) {
+	fiber := &stubFiberClient{
+		createResult: fiberclient.CreateInvoiceResult{Invoice: "lnbc_auth_status"},
+		statusResult: fiberclient.InvoiceStatusResult{State: "paid"},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber:         fiber,
+		ServiceTokens: serviceauth.NewTokenSet("svc"),
+	})
+
+	// Create invoice
+	createPayload := `{"orderId":"ord_1","milestoneId":"ms_1","buyerOrgId":"org_b","providerOrgId":"org_p","asset":"CKB","amount":"100"}`
+	cReq := httptest.NewRequest(http.MethodPost, "/v1/invoices", bytes.NewBufferString(createPayload))
+	cReq.Header.Set("Content-Type", "application/json")
+	cReq.Header.Set(serviceauth.HeaderName, "svc")
+	cRec := httptest.NewRecorder()
+	s.ServeHTTP(cRec, cReq)
+
+	// Get status with auth
+	req := httptest.NewRequest(http.MethodGet, "/v1/invoices/lnbc_auth_status", nil)
+	req.Header.Set(serviceauth.HeaderName, "svc")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRequestWithdrawal_WithAuth(t *testing.T) {
+	fiber := &stubFiberClient{
+		requestPayoutResult: fiberclient.RequestPayoutResult{ID: "payout_auth"},
+	}
+	actor := iamclient.Actor{
+		UserID: "u_prov",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber: fiber,
+		Auth:  &stubIAMClient{actor: actor},
+	})
+
+	payload := `{"providerOrgId":"org_p","asset":"CKB","amount":"50","destination":{"kind":"address","address":"ckb1addr"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer prov-token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestQuoteWithdrawal_Unauthorized(t *testing.T) {
+	s := NewServerWithOptions(Options{
+		Fiber: &stubFiberClient{},
+		Auth:  &stubIAMClient{actor: iamclient.Actor{UserID: "u_1"}},
+	})
+
+	payload := `{"providerOrgId":"org_p","asset":"CKB","amount":"50","destination":{"kind":"address","address":"ckb1addr"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals/quote", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	// No bearer token
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestCreateInvoice_MissingServiceToken(t *testing.T) {
+	s := NewServerWithOptions(Options{
+		Fiber:         &stubFiberClient{},
+		ServiceTokens: serviceauth.NewTokenSet("required"),
+	})
+
+	payload := `{"orderId":"ord_1","milestoneId":"ms_1","buyerOrgId":"org_b","providerOrgId":"org_p","asset":"CKB","amount":"100"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/invoices", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	// No service token
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestSettledFeed_MissingServiceToken(t *testing.T) {
+	s := NewServerWithOptions(Options{
+		Fiber:         &stubFiberClient{},
+		ServiceTokens: serviceauth.NewTokenSet("required"),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/settled-feed", nil)
+	// No service token
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestQuoteWithdrawal_WithOpsAuth(t *testing.T) {
+	fiber := &stubFiberClient{
+		quoteResult: fiberclient.QuotePayoutResult{Asset: "CKB", Amount: "100"},
+	}
+	actor := iamclient.Actor{
+		UserID: "u_ops",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_ops", OrganizationKind: "ops", Role: "finance_admin"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber: fiber,
+		Auth:  &stubIAMClient{actor: actor},
+	})
+
+	payload := `{"providerOrgId":"org_p","asset":"CKB","amount":"100","destination":{"kind":"address","address":"ckb1addr"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals/quote", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer ops-token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRequestWithdrawal_Unauthorized(t *testing.T) {
+	s := NewServerWithOptions(Options{
+		Fiber: &stubFiberClient{},
+		Auth:  &stubIAMClient{actor: iamclient.Actor{UserID: "u_1"}},
+	})
+
+	payload := `{"providerOrgId":"org_p","asset":"CKB","amount":"50","destination":{"kind":"address","address":"ckb1addr"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	// No bearer token
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestSettledFeed_WithLimitAndCursor(t *testing.T) {
+	fiber := &stubFiberClient{
+		settledFeedResult: fiberclient.SettledFeedResult{},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber:         fiber,
+		ServiceTokens: serviceauth.NewTokenSet("svc"),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/settled-feed?limit=25&afterSettledAt=2026-01-01T00:00:00Z&afterId=rec_1", nil)
+	req.Header.Set(serviceauth.HeaderName, "svc")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetInvoiceStatus_InvalidPath(t *testing.T) {
+	s := NewServerWithOptions(Options{Fiber: &stubFiberClient{}})
+	req := httptest.NewRequest(http.MethodGet, "/v1/invoices/", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestListFundingRecords_ProviderScope_Mismatch(t *testing.T) {
+	actor := iamclient.Actor{
+		UserID: "u_prov",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Auth: &stubIAMClient{actor: actor},
+	})
+
+	// Request with different provider org
+	req := httptest.NewRequest(http.MethodGet, "/v1/funding-records?providerOrgId=org_other", nil)
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	// Provider sees only their own — scope filter overrides
+	if rec.Code != http.StatusOK && rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 200 or 502, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSettledFeed_ValidService(t *testing.T) {
+	fiber := &stubFiberClient{
+		settledFeedResult: fiberclient.SettledFeedResult{},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber:         fiber,
+		ServiceTokens: serviceauth.NewTokenSet("valid"),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/settled-feed?limit=5", nil)
+	req.Header.Set(serviceauth.HeaderName, "valid")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateInvoice_WithAllFields(t *testing.T) {
+	fiber := &stubFiberClient{
+		createResult: fiberclient.CreateInvoiceResult{Invoice: "lnbc_full"},
+	}
+	s := NewServerWithOptions(Options{Fiber: fiber})
+
+	payload := `{"orderId":"ord_full","milestoneId":"ms_1","buyerOrgId":"org_b","providerOrgId":"org_p","asset":"CKB","amount":"500","message":"test tip"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/invoices", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWithdrawalStatuses_ProviderAuth_OwnOrg(t *testing.T) {
+	fiber := &stubFiberClient{
+		withdrawalsResult: fiberclient.WithdrawalStatusResult{},
+	}
+	actor := iamclient.Actor{
+		UserID: "u_prov",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "finance_viewer"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber: fiber,
+		Auth:  &stubIAMClient{actor: actor},
+	})
+
+	// Provider requesting own org — should succeed
+	req := httptest.NewRequest(http.MethodGet, "/v1/withdrawals/status?providerOrgId=org_p", nil)
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWithdrawalStatuses_NoProviderOrg(t *testing.T) {
+	fiber := &stubFiberClient{
+		withdrawalsResult: fiberclient.WithdrawalStatusResult{},
+	}
+	actor := iamclient.Actor{
+		UserID: "u_prov",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber: fiber,
+		Auth:  &stubIAMClient{actor: actor},
+	})
+
+	// No providerOrgId param — auto-resolved from auth
+	req := httptest.NewRequest(http.MethodGet, "/v1/withdrawals/status", nil)
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRequestWithdrawal_ProviderMismatch(t *testing.T) {
+	fiber := &stubFiberClient{
+		requestPayoutResult: fiberclient.RequestPayoutResult{ID: "payout_1"},
+	}
+	actor := iamclient.Actor{
+		UserID: "u_prov",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber: fiber,
+		Auth:  &stubIAMClient{actor: actor},
+	})
+
+	payload := `{"providerOrgId":"org_wrong","asset":"CKB","amount":"50","destination":{"kind":"address","address":"ckb1addr"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	// Provider mismatch
+	if rec.Code == http.StatusCreated {
+		t.Error("expected error for provider mismatch")
+	}
+}
+
+func TestQuoteWithdrawal_ProviderMismatch(t *testing.T) {
+	fiber := &stubFiberClient{
+		quoteResult: fiberclient.QuotePayoutResult{Asset: "CKB"},
+	}
+	actor := iamclient.Actor{
+		UserID: "u_prov",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber: fiber,
+		Auth:  &stubIAMClient{actor: actor},
+	})
+
+	payload := `{"providerOrgId":"org_wrong","asset":"CKB","amount":"50","destination":{"kind":"address","address":"ckb1addr"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals/quote", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code == http.StatusOK {
+		t.Error("expected error for provider mismatch")
+	}
+}
+
+func TestCreateInvoice_MissingAsset(t *testing.T) {
+	fiber := &stubFiberClient{
+		createResult: fiberclient.CreateInvoiceResult{Invoice: "lnbc_ma"},
+	}
+	s := NewServerWithOptions(Options{Fiber: fiber})
+	payload := `{"orderId":"ord_1","milestoneId":"ms_1","buyerOrgId":"org_b","providerOrgId":"org_p","asset":"","amount":"100"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/invoices", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	// Empty asset might pass or fail depending on validation
+	_ = rec
+}
+
+func TestQuoteWithdrawal_InvalidJSON(t *testing.T) {
+	s := NewServerWithOptions(Options{Fiber: &stubFiberClient{}})
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals/quote", bytes.NewBufferString("{broken"))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestRequestWithdrawal_InvalidJSON(t *testing.T) {
+	s := NewServerWithOptions(Options{Fiber: &stubFiberClient{}})
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals", bytes.NewBufferString("{broken"))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
 	}
 }

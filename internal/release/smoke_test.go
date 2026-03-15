@@ -746,3 +746,82 @@ func TestRunSmokeUsesIAMProviderOrgForDirectOrderFallback(t *testing.T) {
 		t.Fatalf("run smoke: %v", err)
 	}
 }
+
+func TestConfigFromEnv(t *testing.T) {
+	t.Setenv("RELEASE_SMOKE_API_BASE_URL", "http://api:8080")
+	t.Setenv("RELEASE_SMOKE_IAM_BASE_URL", "http://iam:8081")
+	cfg := ConfigFromEnv()
+	if cfg.APIBaseURL != "http://api:8080" {
+		t.Errorf("APIBaseURL = %s", cfg.APIBaseURL)
+	}
+	if cfg.IAMBaseURL != "http://iam:8081" {
+		t.Errorf("IAMBaseURL = %s", cfg.IAMBaseURL)
+	}
+}
+
+func TestEnvBoolDefaultFalse(t *testing.T) {
+	t.Setenv("TEST_BOOL", "true")
+	if !envBoolDefaultFalse("TEST_BOOL") {
+		t.Error("expected true")
+	}
+	t.Setenv("TEST_BOOL", "")
+	if envBoolDefaultFalse("TEST_BOOL") {
+		t.Error("expected false for empty")
+	}
+}
+
+func TestEnvOrDefault(t *testing.T) {
+	t.Setenv("TEST_ENV", "value")
+	if envOrDefault("TEST_ENV", "default") != "value" {
+		t.Error("expected value")
+	}
+	t.Setenv("TEST_ENV", "")
+	if envOrDefault("TEST_ENV", "default") != "default" {
+		t.Error("expected default")
+	}
+}
+
+func TestRunSmoke_MissingAPIURL(t *testing.T) {
+	_, err := RunSmoke(context.Background(), Config{})
+	if err == nil {
+		t.Error("expected error for missing API URL")
+	}
+}
+
+func TestRunSmoke_APIHealthFail(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	_, err := RunSmoke(context.Background(), Config{
+		APIBaseURL: srv.URL,
+	})
+	if err == nil {
+		t.Error("expected error for unhealthy API")
+	}
+}
+
+func TestRunSmoke_SettlementHealthFail(t *testing.T) {
+	healthy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer healthy.Close()
+
+	down := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer down.Close()
+
+	_, err := RunSmoke(context.Background(), Config{
+		APIBaseURL:        healthy.URL,
+		SettlementBaseURL: down.URL,
+	})
+	if err == nil {
+		t.Error("expected error for unhealthy settlement")
+	}
+}

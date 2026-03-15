@@ -79,12 +79,15 @@ type Milestone struct {
 	DisputeStatus  DisputeStatus  `json:"disputeStatus"`
 	UsageCharges   []UsageCharge  `json:"usageCharges"`
 	SettledAt      *time.Time     `json:"settledAt,omitempty"`
+	AnomalyFlags   []string       `json:"anomalyFlags,omitempty"`
 }
 
 type UsageCharge struct {
-	Kind        UsageChargeKind `json:"kind"`
-	AmountCents int64           `json:"amountCents"`
-	ProofRef    string          `json:"proofRef,omitempty"`
+	Kind           UsageChargeKind `json:"kind"`
+	AmountCents    int64           `json:"amountCents"`
+	ProofRef       string          `json:"proofRef,omitempty"`
+	ProofSignature string          `json:"proofSignature,omitempty"`
+	ProofTimestamp string          `json:"proofTimestamp,omitempty"`
 }
 
 type LedgerEntry struct {
@@ -104,10 +107,12 @@ type SettleMilestoneInput struct {
 }
 
 type RecordUsageChargeInput struct {
-	MilestoneID string
-	Kind        UsageChargeKind
-	AmountCents int64
-	ProofRef    string
+	MilestoneID    string
+	Kind           UsageChargeKind
+	AmountCents    int64
+	ProofRef       string
+	ProofSignature string
+	ProofTimestamp string
 }
 
 type OpenDisputeInput struct {
@@ -168,9 +173,11 @@ func (o *Order) RecordUsageCharge(input RecordUsageChargeInput) (UsageCharge, er
 	}
 
 	charge := UsageCharge{
-		Kind:        input.Kind,
-		AmountCents: input.AmountCents,
-		ProofRef:    input.ProofRef,
+		Kind:           input.Kind,
+		AmountCents:    input.AmountCents,
+		ProofRef:       input.ProofRef,
+		ProofSignature: input.ProofSignature,
+		ProofTimestamp: input.ProofTimestamp,
 	}
 	milestone.UsageCharges = append(milestone.UsageCharges, charge)
 
