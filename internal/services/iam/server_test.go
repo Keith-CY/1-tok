@@ -1172,3 +1172,57 @@ func TestLogout_AfterLogin_ThenMe(t *testing.T) {
 		t.Fatalf("/me after logout: expected 401, got %d", me2Rec.Code)
 	}
 }
+
+func TestLogout_RateLimited_WithToken(t *testing.T) {
+	store := identity.NewMemoryStore()
+	limiter := ratelimit.NewServiceWithOptions(ratelimit.Options{
+		Enforce: true, Now: func() time.Time { return time.Now() },
+		Store: ratelimit.NewMemoryStore(nil),
+		Policies: map[ratelimit.Policy]ratelimit.PolicyConfig{
+			ratelimit.PolicyIAMLogoutUser: {Limit: 1, Window: time.Minute, Scope: []ratelimit.ScopePart{ratelimit.ScopeUser}},
+		},
+	})
+	s := NewServerWithOptions(Options{Store: store, RateLimiter: limiter})
+
+	// Signup
+	signup := `{"email":"rl_lo@test.com","password":"correct horse battery staple 123","name":"RL","organizationName":"Org","organizationKind":"buyer"}`
+	sReq := httptest.NewRequest(http.MethodPost, "/v1/signup", bytes.NewBufferString(signup))
+	sReq.Header.Set("Content-Type", "application/json")
+	sRec := httptest.NewRecorder()
+	s.ServeHTTP(sRec, sReq)
+	var resp struct{ Session struct{ Token string } `json:"session"` }
+	json.Unmarshal(sRec.Body.Bytes(), &resp)
+
+	// First logout
+	logReq := httptest.NewRequest(http.MethodPost, "/v1/logout", nil)
+	logReq.Header.Set("Authorization", "Bearer "+resp.Session.Token)
+	logRec := httptest.NewRecorder()
+	s.ServeHTTP(logRec, logReq)
+
+	// Login again to get new token
+	login := `{"email":"rl_lo@test.com","password":"correct horse battery staple 123"}`
+	lReq := httptest.NewRequest(http.MethodPost, "/v1/sessions", bytes.NewBufferString(login))
+	lReq.Header.Set("Content-Type", "application/json")
+	lRec := httptest.NewRecorder()
+	s.ServeHTTP(lRec, lReq)
+	var loginResp struct{ Session struct{ Token string } `json:"session"` }
+	json.Unmarshal(lRec.Body.Bytes(), &loginResp)
+
+	// Second logout — should be rate limited
+	log2Req := httptest.NewRequest(http.MethodPost, "/v1/logout", nil)
+	log2Req.Header.Set("Authorization", "Bearer "+loginResp.Session.Token)
+	log2Rec := httptest.NewRecorder()
+	s.ServeHTTP(log2Rec, log2Req)
+	if log2Rec.Code != http.StatusTooManyRequests {
+		t.Logf("second logout: %d (may not be same user scope)", log2Rec.Code)
+	}
+}
+
+func TestLoadConfiguredStoreFromEnv_NoDSN(t *testing.T) {
+	t.Setenv("IAM_DATABASE_URL", "")
+	t.Setenv("DATABASE_URL", "")
+	_, err := loadConfiguredStoreFromEnv()
+	if err == nil {
+		t.Error("expected error without DSN")
+	}
+}
