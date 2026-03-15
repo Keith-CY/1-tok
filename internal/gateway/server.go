@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -722,9 +723,16 @@ func (s *Server) resolveOpsUser(r *http.Request) (string, error) {
 	return "", fmt.Errorf("ops membership is required: %w", platform.ErrMembershipRequired)
 }
 
+type actorContextKey struct{}
+
 func (s *Server) authenticatedActor(r *http.Request) (iamclient.Actor, error) {
 	if s.auth == nil || iamclient.IsNoop(s.auth) {
 		return iamclient.Actor{}, nil
+	}
+
+	// Return cached actor if available
+	if cached, ok := r.Context().Value(actorContextKey{}).(iamclient.Actor); ok {
+		return cached, nil
 	}
 
 	token, ok := bearerToken(r.Header.Get("Authorization"))
@@ -732,7 +740,16 @@ func (s *Server) authenticatedActor(r *http.Request) (iamclient.Actor, error) {
 		return iamclient.Actor{}, iamclient.ErrUnauthorized
 	}
 
-	return s.auth.GetActor(r.Context(), token)
+	actor, err := s.auth.GetActor(r.Context(), token)
+	if err != nil {
+		return iamclient.Actor{}, err
+	}
+
+	// Cache in context for subsequent calls in same request
+	ctx := context.WithValue(r.Context(), actorContextKey{}, actor)
+	*r = *r.WithContext(ctx)
+
+	return actor, nil
 }
 
 func (s *Server) handleSettleMilestone(w http.ResponseWriter, r *http.Request) {

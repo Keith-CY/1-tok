@@ -44,22 +44,31 @@ func NewServer() *Server {
 }
 
 func NewServerWithOptions(options Options) *Server {
+	s, err := NewServerWithOptionsE(options)
+	if err != nil {
+		panic(fmt.Sprintf("settlement: %v", err))
+	}
+	return s
+}
+
+// NewServerWithOptionsE is the error-returning variant of NewServerWithOptions.
+func NewServerWithOptionsE(options Options) (*Server, error) {
 	if options.Upstream == "" {
 		if runtimeconfig.RequireExternalDependencies() && strings.TrimSpace(os.Getenv("API_GATEWAY_UPSTREAM")) == "" {
-			panic("API_GATEWAY_UPSTREAM is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+			return nil, fmt.Errorf("API_GATEWAY_UPSTREAM is required when ONE_TOK_REQUIRE_EXTERNALS=true")
 		}
 		options.Upstream = runtimeconfig.APIGatewayUpstream()
 	}
 	if options.Fiber == nil {
 		if runtimeconfig.RequireExternalDependencies() {
 			if strings.TrimSpace(os.Getenv("FIBER_RPC_URL")) == "" {
-				panic("FIBER_RPC_URL is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+				return nil, fmt.Errorf("FIBER_RPC_URL is required when ONE_TOK_REQUIRE_EXTERNALS=true")
 			}
 			if strings.TrimSpace(os.Getenv("FIBER_APP_ID")) == "" {
-				panic("FIBER_APP_ID is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+				return nil, fmt.Errorf("FIBER_APP_ID is required when ONE_TOK_REQUIRE_EXTERNALS=true")
 			}
 			if strings.TrimSpace(os.Getenv("FIBER_HMAC_SECRET")) == "" {
-				panic("FIBER_HMAC_SECRET is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+				return nil, fmt.Errorf("FIBER_HMAC_SECRET is required when ONE_TOK_REQUIRE_EXTERNALS=true")
 			}
 		}
 		options.Fiber = fiberclient.NewClientFromEnv()
@@ -67,7 +76,7 @@ func NewServerWithOptions(options Options) *Server {
 	if options.Funding == nil {
 		funding, err := loadFundingRecordRepositoryE()
 		if err != nil {
-			panic(fmt.Sprintf("settlement: funding store: %v", err))
+			return nil, fmt.Errorf("funding store: %w", err)
 		}
 		options.Funding = funding
 	}
@@ -83,10 +92,10 @@ func NewServerWithOptions(options Options) *Server {
 	}
 	if runtimeconfig.RequireExternalDependencies() {
 		if options.Auth == nil || iamclient.IsNoop(options.Auth) {
-			panic("IAM_UPSTREAM is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+			return nil, fmt.Errorf("IAM_UPSTREAM is required when ONE_TOK_REQUIRE_EXTERNALS=true")
 		}
 		if options.ServiceTokens.Empty() {
-			panic("SETTLEMENT_SERVICE_TOKEN or SETTLEMENT_SERVICE_TOKENS is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+			return nil, fmt.Errorf("SETTLEMENT_SERVICE_TOKEN or SETTLEMENT_SERVICE_TOKENS is required when ONE_TOK_REQUIRE_EXTERNALS=true")
 		}
 	}
 
@@ -98,7 +107,7 @@ func NewServerWithOptions(options Options) *Server {
 		funding:       options.Funding,
 		auth:          options.Auth,
 		serviceTokens: options.ServiceTokens,
-	}
+	}, nil
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
