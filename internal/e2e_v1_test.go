@@ -40,16 +40,25 @@ func TestV1BusinessFlowE2E(t *testing.T) {
 	patch := func(path string, payload any) *httptest.ResponseRecorder { return gwRequest(t, gw, "PATCH", path, payload) }
 
 	extract := func(resp *httptest.ResponseRecorder, keys ...string) string {
+		t.Helper()
 		var m map[string]any
 		if err := json.Unmarshal(resp.Body.Bytes(), &m); err != nil {
-			t.Fatalf("json parse: %v (body=%s)", err, resp.Body.String())
+			t.Fatalf("extract: json parse: %v (body=%s)", err, resp.Body.String())
 		}
 		cur := m
 		for i, k := range keys {
 			if i == len(keys)-1 {
-				return fmt.Sprintf("%v", cur[k])
+				v, ok := cur[k]
+				if !ok {
+					t.Fatalf("extract: missing key %q in %v", k, cur)
+				}
+				return fmt.Sprintf("%v", v)
 			}
-			cur = cur[k].(map[string]any)
+			next, ok := cur[k].(map[string]any)
+			if !ok {
+				t.Fatalf("extract: key %q is not an object (got %T) in %v", k, cur[k], cur)
+			}
+			cur = next
 		}
 		return ""
 	}
@@ -57,7 +66,7 @@ func TestV1BusinessFlowE2E(t *testing.T) {
 	expect := func(resp *httptest.ResponseRecorder, code int) {
 		t.Helper()
 		if resp.Code != code {
-			t.Fatalf("[line %d] want %d got %d: %s", 0, code, resp.Code, resp.Body.String())
+			t.Fatalf("want %d got %d: %s", code, resp.Code, resp.Body.String())
 		}
 	}
 
