@@ -5141,3 +5141,216 @@ func TestRouteOrderSubResources(t *testing.T) {
 		}
 	}
 }
+
+func TestMarketplaceStats(t *testing.T) {
+	srv := NewServer()
+	req := httptest.NewRequest("GET", "/api/v1/stats", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+}
+
+func TestLeaderboard(t *testing.T) {
+	srv := NewServer()
+	req := httptest.NewRequest("GET", "/api/v1/leaderboard", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+}
+
+func TestGetProvider(t *testing.T) {
+	srv := NewServer()
+	req := httptest.NewRequest("GET", "/api/v1/providers/provider_1", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+}
+
+func TestGetListing(t *testing.T) {
+	srv := NewServer()
+	req := httptest.NewRequest("GET", "/api/v1/listings/listing_1", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+}
+
+func TestProviderRevenue(t *testing.T) {
+	srv := NewServer()
+	req := httptest.NewRequest("GET", "/api/v1/providers/provider_1/revenue", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+}
+
+func TestOrderBudget(t *testing.T) {
+	srv := NewServer()
+	// Create an order first
+	body := `{"buyerOrgId":"org_b","providerOrgId":"org_p","fundingMode":"prepaid","milestones":[{"id":"ms_1","title":"W","basePriceCents":5000,"budgetCents":5000}]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	orderID := resp["order"].(map[string]any)["id"].(string)
+
+	req = httptest.NewRequest("GET", "/api/v1/orders/"+orderID+"/budget", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+}
+
+func TestOrderTimeline(t *testing.T) {
+	srv := NewServer()
+	body := `{"buyerOrgId":"org_b","providerOrgId":"org_p","fundingMode":"prepaid","milestones":[{"id":"ms_1","title":"W","basePriceCents":5000,"budgetCents":5000}]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	orderID := resp["order"].(map[string]any)["id"].(string)
+
+	req = httptest.NewRequest("GET", "/api/v1/orders/"+orderID+"/timeline", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+}
+
+func TestBatchOrderStatus(t *testing.T) {
+	srv := NewServer()
+	body := `{"orderIds":["ord_1","ord_2"]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders/batch-status", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+}
+
+func TestExportOrders(t *testing.T) {
+	srv := NewServer()
+	req := httptest.NewRequest("GET", "/api/v1/export/orders", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	if w.Header().Get("Content-Type") != "text/csv" { t.Errorf("content-type = %s", w.Header().Get("Content-Type")) }
+}
+
+func TestExportDisputes(t *testing.T) {
+	srv := NewServer()
+	req := httptest.NewRequest("GET", "/api/v1/export/disputes", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+}
+
+func TestSystemInfo(t *testing.T) {
+	srv := NewServer()
+	req := httptest.NewRequest("GET", "/api/v1/system", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+}
+
+func TestProviderApplicationSubmit(t *testing.T) {
+	srv := NewServer()
+	body := `{"orgId":"org_new","name":"New Provider","capabilities":["gpu"]}`
+	req := httptest.NewRequest("POST", "/api/v1/provider-applications", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated { t.Errorf("status = %d", w.Code) }
+}
+
+func TestProviderApplicationList(t *testing.T) {
+	srv := NewServer()
+	req := httptest.NewRequest("GET", "/api/v1/provider-applications?status=pending", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+}
+
+func TestWebhookRegisterAndList(t *testing.T) {
+	srv := NewServer()
+	body := `{"target":"org_1","url":"https://test.example.com/hook"}`
+	req := httptest.NewRequest("POST", "/api/v1/webhooks", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated { t.Errorf("register status = %d", w.Code) }
+
+	req = httptest.NewRequest("GET", "/api/v1/webhooks", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("list status = %d", w.Code) }
+}
+
+func TestCarrierBindAndJobLifecycleGateway(t *testing.T) {
+	srv := NewServer()
+
+	// Bind
+	body := `{"carrierId":"c1","capabilities":["gpu"]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders/ord_1/milestones/ms_1/bind-carrier", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated { t.Fatalf("bind: %d %s", w.Code, w.Body.String()) }
+
+	var bindResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &bindResp)
+	bindID := bindResp["binding"].(map[string]any)["id"].(string)
+
+	// Get binding
+	req = httptest.NewRequest("GET", "/api/v1/orders/ord_1/milestones/ms_1/bind-carrier", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("get binding: %d", w.Code) }
+
+	// Create job
+	jobBody := fmt.Sprintf(`{"bindingId":"%s","input":"test"}`, bindID)
+	req = httptest.NewRequest("POST", "/api/v1/orders/ord_1/milestones/ms_1/jobs", strings.NewReader(jobBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated { t.Fatalf("job create: %d %s", w.Code, w.Body.String()) }
+
+	var jobResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &jobResp)
+	jobID := jobResp["job"].(map[string]any)["id"].(string)
+
+	// List jobs
+	req = httptest.NewRequest("GET", "/api/v1/orders/ord_1/milestones/ms_1/jobs", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("list jobs: %d", w.Code) }
+
+	// Start → complete
+	req = httptest.NewRequest("PATCH", "/api/v1/jobs/"+jobID+"/start", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("start: %d", w.Code) }
+
+	req = httptest.NewRequest("PATCH", "/api/v1/jobs/"+jobID+"/complete", strings.NewReader(`{"output":"done"}`))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("complete: %d", w.Code) }
+
+	// Evidence
+	evidenceBody := `{"summary":"done","artifacts":[{"name":"log","type":"log","url":"http://test/log"}]}`
+	req = httptest.NewRequest("POST", "/api/v1/jobs/"+jobID+"/evidence", strings.NewReader(evidenceBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated { t.Errorf("evidence submit: %d %s", w.Code, w.Body.String()) }
+
+	req = httptest.NewRequest("GET", "/api/v1/jobs/"+jobID+"/evidence", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("evidence get: %d", w.Code) }
+
+	// Cancel (new job)
+	req = httptest.NewRequest("POST", "/api/v1/orders/ord_1/milestones/ms_1/jobs", strings.NewReader(fmt.Sprintf(`{"bindingId":"%s","input":"cancel test"}`, bindID)))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var j2 map[string]any
+	json.Unmarshal(w.Body.Bytes(), &j2)
+	j2ID := j2["job"].(map[string]any)["id"].(string)
+
+	req = httptest.NewRequest("POST", "/api/v1/jobs/"+j2ID+"/cancel", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("cancel: %d %s", w.Code, w.Body.String()) }
+}
