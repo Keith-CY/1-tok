@@ -2043,3 +2043,64 @@ func TestCreateListing(t *testing.T) {
 		t.Errorf("title = %s", listing.Title)
 	}
 }
+
+func TestRegisterCarrierBinding(t *testing.T) {
+	app := NewAppWithMemory()
+	binding, err := app.RegisterCarrierBinding(ProviderCarrierBinding{
+		ProviderOrgID:  "org_p",
+		CarrierBaseURL: "https://carrier.example.com",
+		HostID:         "host_1",
+		AgentID:        "agent_1",
+		Backend:        "gpt-4",
+		WorkspaceRoot:  "/workspace",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if binding.Status != "pending_verification" {
+		t.Errorf("status = %s", binding.Status)
+	}
+}
+
+func TestVerifyCarrierBinding(t *testing.T) {
+	app := NewAppWithMemory()
+	binding, _ := app.RegisterCarrierBinding(ProviderCarrierBinding{
+		ProviderOrgID: "org_p", CarrierBaseURL: "https://carrier.example.com", HostID: "host_1",
+	})
+	verified, err := app.VerifyCarrierBinding(binding.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verified.Status != "active" {
+		t.Errorf("status = %s", verified.Status)
+	}
+}
+
+func TestSuspendCarrierBinding(t *testing.T) {
+	app := NewAppWithMemory()
+	binding, _ := app.RegisterCarrierBinding(ProviderCarrierBinding{
+		ProviderOrgID: "org_p", CarrierBaseURL: "https://carrier.example.com", HostID: "host_1",
+	})
+	suspended, err := app.SuspendCarrierBinding(binding.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if suspended.Status != "suspended" {
+		t.Errorf("status = %s", suspended.Status)
+	}
+}
+
+func TestRegisterCarrierBinding_Duplicate(t *testing.T) {
+	app := NewAppWithMemory()
+	app.RegisterCarrierBinding(ProviderCarrierBinding{
+		ProviderOrgID: "org_p", CarrierBaseURL: "https://carrier.example.com", HostID: "host_1",
+	})
+	// Verify first, then try duplicate
+	app.VerifyCarrierBinding("pcb_1")
+	_, err := app.RegisterCarrierBinding(ProviderCarrierBinding{
+		ProviderOrgID: "org_p", CarrierBaseURL: "https://carrier2.example.com", HostID: "host_2",
+	})
+	if err == nil {
+		t.Error("expected error for duplicate active binding")
+	}
+}

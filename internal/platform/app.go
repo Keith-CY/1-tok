@@ -196,6 +196,7 @@ type App struct {
 	ratings      []OrderRating
 	clock        Clock
 	providerApplications []ProviderApplication
+	carrierBindings      []ProviderCarrierBinding
 }
 
 // Notifier is an optional notification delivery interface.
@@ -1926,4 +1927,102 @@ func (a *App) TopUpMilestone(orderID string, input TopUpInput) (*core.Order, err
 	})
 
 	return a.orders.Get(orderID)
+}
+
+// ProviderCarrierBinding represents a provider's Carrier integration credentials.
+type ProviderCarrierBinding struct {
+	ID              string    `json:"id"`
+	ProviderOrgID   string    `json:"providerOrgId"`
+	CarrierBaseURL  string    `json:"carrierBaseUrl"`
+	IntegrationToken string   `json:"integrationToken,omitempty"`
+	HostID          string    `json:"hostId"`
+	AgentID         string    `json:"agentId"`
+	Backend         string    `json:"backend"`
+	WorkspaceRoot   string    `json:"workspaceRoot"`
+	CallbackSecret  string    `json:"callbackSecret,omitempty"`
+	Status          string    `json:"status"` // active, suspended, pending_verification
+	CreatedAt       time.Time `json:"createdAt"`
+	VerifiedAt      *time.Time `json:"verifiedAt,omitempty"`
+}
+
+// RegisterCarrierBinding registers a provider's Carrier integration.
+func (a *App) RegisterCarrierBinding(input ProviderCarrierBinding) (ProviderCarrierBinding, error) {
+	if input.ProviderOrgID == "" || input.CarrierBaseURL == "" || input.HostID == "" {
+		return ProviderCarrierBinding{}, ErrMissingRequiredFields
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	// Check for existing binding
+	for _, b := range a.carrierBindings {
+		if b.ProviderOrgID == input.ProviderOrgID && b.Status == "active" {
+			return ProviderCarrierBinding{}, fmt.Errorf("active binding already exists for provider %s", input.ProviderOrgID)
+		}
+	}
+
+	binding := ProviderCarrierBinding{
+		ID:               fmt.Sprintf("pcb_%d", len(a.carrierBindings)+1),
+		ProviderOrgID:    input.ProviderOrgID,
+		CarrierBaseURL:   input.CarrierBaseURL,
+		IntegrationToken: input.IntegrationToken,
+		HostID:           input.HostID,
+		AgentID:          input.AgentID,
+		Backend:          input.Backend,
+		WorkspaceRoot:    input.WorkspaceRoot,
+		CallbackSecret:   input.CallbackSecret,
+		Status:           "pending_verification",
+		CreatedAt:        a.now(),
+	}
+
+	a.carrierBindings = append(a.carrierBindings, binding)
+
+	a.notify("provider.carrier.binding.registered", input.ProviderOrgID, map[string]any{
+		"bindingId": binding.ID,
+	})
+
+	return binding, nil
+}
+
+// GetProviderCarrierBinding returns the carrier binding for a provider.
+func (a *App) GetProviderCarrierBinding(providerOrgID string) (ProviderCarrierBinding, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	for _, b := range a.carrierBindings {
+		if b.ProviderOrgID == providerOrgID {
+			return b, nil
+		}
+	}
+	return ProviderCarrierBinding{}, fmt.Errorf("no carrier binding for provider %s", providerOrgID)
+}
+
+// VerifyCarrierBinding marks a binding as verified after successful health check.
+func (a *App) VerifyCarrierBinding(bindingID string) (ProviderCarrierBinding, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	for i := range a.carrierBindings {
+		if a.carrierBindings[i].ID == bindingID {
+			now := a.now()
+			a.carrierBindings[i].Status = "active"
+			a.carrierBindings[i].VerifiedAt = &now
+			return a.carrierBindings[i], nil
+		}
+	}
+	return ProviderCarrierBinding{}, fmt.Errorf("binding not found: %s", bindingID)
+}
+
+// SuspendCarrierBinding suspends a binding (ops action).
+func (a *App) SuspendCarrierBinding(bindingID string) (ProviderCarrierBinding, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	for i := range a.carrierBindings {
+		if a.carrierBindings[i].ID == bindingID {
+			a.carrierBindings[i].Status = "suspended"
+			return a.carrierBindings[i], nil
+		}
+	}
+	return ProviderCarrierBinding{}, fmt.Errorf("binding not found: %s", bindingID)
 }

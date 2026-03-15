@@ -140,6 +140,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleListApplications(w, r)
 	case r.Method == http.MethodPost && isApplicationReviewPath(r.URL.Path):
 		s.handleReviewApplication(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/carrier-bindings":
+		s.handleRegisterCarrierBinding(w, r)
+	case r.Method == http.MethodGet && isCarrierBindingPath(r.URL.Path):
+		s.handleGetCarrierBinding(w, r)
+	case r.Method == http.MethodPost && isCarrierBindingVerifyPath(r.URL.Path):
+		s.handleVerifyCarrierBinding(w, r)
+	case r.Method == http.MethodPost && isCarrierBindingSuspendPath(r.URL.Path):
+		s.handleSuspendCarrierBinding(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/carrier/callback":
 		s.handleCarrierCallback(w, r)
 	case r.Method == http.MethodPost && isJobEvidencePath(r.URL.Path):
@@ -2099,4 +2107,77 @@ func (s *Server) handleTopUpMilestone(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"order": order})
+}
+
+func isCarrierBindingPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 4 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "carrier-bindings"
+}
+
+func isCarrierBindingVerifyPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 5 && parts[2] == "carrier-bindings" && parts[4] == "verify"
+}
+
+func isCarrierBindingSuspendPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 5 && parts[2] == "carrier-bindings" && parts[4] == "suspend"
+}
+
+func (s *Server) handleRegisterCarrierBinding(w http.ResponseWriter, r *http.Request) {
+	var input platform.ProviderCarrierBinding
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+
+	binding, err := s.app.RegisterCarrierBinding(input)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{"binding": binding})
+}
+
+func (s *Server) handleGetCarrierBinding(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	providerOrgID := parts[3]
+
+	binding, err := s.app.GetProviderCarrierBinding(providerOrgID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	// Don't expose secrets in GET response
+	binding.IntegrationToken = ""
+	binding.CallbackSecret = ""
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"binding": binding})
+}
+
+func (s *Server) handleVerifyCarrierBinding(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	bindingID := parts[3]
+
+	binding, err := s.app.VerifyCarrierBinding(bindingID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"binding": binding})
+}
+
+func (s *Server) handleSuspendCarrierBinding(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	bindingID := parts[3]
+
+	binding, err := s.app.SuspendCarrierBinding(bindingID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"binding": binding})
 }
