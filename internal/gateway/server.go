@@ -15,6 +15,7 @@ import (
 	iamclient "github.com/chenyu/1-tok/internal/integrations/iam"
 	"github.com/chenyu/1-tok/internal/observability"
 	"github.com/chenyu/1-tok/internal/carrier"
+	"github.com/chenyu/1-tok/internal/notifications"
 	"github.com/chenyu/1-tok/internal/platform"
 	"github.com/chenyu/1-tok/internal/ratelimit"
 	"github.com/chenyu/1-tok/internal/runtimeconfig"
@@ -33,6 +34,7 @@ type Server struct {
 	executionTokens serviceauth.TokenSet
 	rateLimiter     ratelimit.Limiter
 	carrier         *carrier.Service
+	webhooks        *notifications.Registry
 }
 
 func NewServer() *Server {
@@ -109,6 +111,7 @@ func NewServerWithOptionsE(options Options) (*Server, error) {
 		executionTokens: options.ExecutionTokens,
 		rateLimiter:     options.RateLimiter,
 		carrier:         carrierSvc,
+		webhooks:        notifications.NewRegistry(nil),
 	}, nil
 }
 
@@ -190,6 +193,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleJobHeartbeat(w, r)
 	case r.Method == http.MethodPost && isJobActionPath(r.URL.Path, "cancel"):
 		s.handleCancelJob(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/webhooks":
+		s.handleListWebhooks(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/webhooks":
+		s.handleRegisterWebhook(w, r)
+	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/api/v1/webhooks/"):
+		s.handleUnregisterWebhook(w, r)
 	default:
 		httputil.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "route not found"})
 	}
@@ -1517,4 +1526,37 @@ func (s *Server) handleGetOrderRating(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"rating": rating})
+}
+
+func (s *Server) handleListWebhooks(w http.ResponseWriter, r *http.Request) {
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"webhooks": s.webhooks.List()})
+}
+
+func (s *Server) handleRegisterWebhook(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		Target string `json:"target"`
+		URL    string `json:"url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	if payload.Target == "" || payload.URL == "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "target and url required"})
+		return
+	}
+
+	s.webhooks.Register(payload.Target, payload.URL)
+	httputil.WriteJSON(w, http.StatusCreated, map[string]string{"status": "registered"})
+}
+
+func (s *Server) handleUnregisterWebhook(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) < 4 {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid path"})
+		return
+	}
+	target := parts[3]
+	s.webhooks.Unregister(target)
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "unregistered"})
 }
