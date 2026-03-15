@@ -35,6 +35,7 @@ type Server struct {
 	carrier         *carrier.Service
 	webhooks        *notifications.Registry
 	evidence        *carrier.EvidenceStore
+	ledger          *carrier.EventLedger
 }
 func NewServer() *Server {
 	return NewServerWithOptions(Options{
@@ -110,6 +111,7 @@ func NewServerWithOptionsE(options Options) (*Server, error) {
 		carrier:         carrierSvc,
 		webhooks:        registry,
 		evidence:        carrier.NewEvidenceStore(),
+		ledger:          carrier.NewEventLedger(),
 	}, nil
 }
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -1890,6 +1892,30 @@ func (s *Server) handleCarrierCallback(w http.ResponseWriter, r *http.Request) {
 
 	// Normalize legacy snake_case event names to canonical dot-separated
 	event.Type = carrier.NormalizeEventName(event.Type)
+
+	// Ledger: check for replay/gap/reorder
+	eventID, _ := event.Payload["eventId"].(string)
+	sequence, _ := event.Payload["sequence"].(float64)
+	if eventID != "" {
+		ledgerEvent, replay, ledgerErr := s.ledger.Record(
+			event.JobID, eventID, int64(sequence),
+			event.Type, "", "", "",
+		)
+		if ledgerErr != nil {
+			// Gap or reorder — tell Carrier to redeliver
+			httputil.WriteJSON(w, http.StatusConflict, map[string]any{
+				"error": ledgerErr.Error(), "accepted": false,
+			})
+			return
+		}
+		if replay {
+			// Return previous decision
+			httputil.WriteJSON(w, http.StatusOK, map[string]any{
+				"accepted": true, "replay": true, "decision": ledgerEvent.DecisionJSON,
+			})
+			return
+		}
+	}
 
 	// Process callback based on type
 	switch event.Type {
