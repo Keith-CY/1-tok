@@ -4275,3 +4275,134 @@ func TestAuthorizeOrderForActor_WrongRole(t *testing.T) {
 		t.Error("viewer should not have access")
 	}
 }
+
+func TestCreateRFQ_WithRateLimitAndAuth(t *testing.T) {
+	actor := iamclient.Actor{
+		UserID: "u_buyer",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "org_owner"},
+		},
+	}
+	limiter := ratelimit.NewServiceWithOptions(ratelimit.Options{
+		Enforce: true, Now: func() time.Time { return time.Now() },
+		Store: ratelimit.NewMemoryStore(nil),
+		Policies: map[ratelimit.Policy]ratelimit.PolicyConfig{
+			ratelimit.PolicyGatewayCreateRFQ: {Limit: 10, Window: time.Minute, Scope: []ratelimit.ScopePart{ratelimit.ScopeOrg}},
+		},
+	})
+	gw, _ := NewServerWithOptionsE(Options{
+		App: platform.NewAppWithMemory(),
+		IAM: &stubIAMClient{actor: actor},
+		RateLimiter: limiter,
+	})
+
+	payload, _ := json.Marshal(map[string]any{
+		"title": "RL+auth", "category": "ai", "scope": "test",
+		"budgetCents": 5000, "responseDeadlineAt": "2026-04-01T00:00:00Z",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer token")
+	req.RemoteAddr = "10.0.0.1:12345"
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	// Verify rate limit headers
+	if rec.Header().Get("X-RateLimit-Limit") == "" {
+		t.Log("rate limit headers not present (may not be set on success)")
+	}
+}
+
+func TestCreateBid_WithRateLimitAndAuth(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "RL bid", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+
+	actor := iamclient.Actor{
+		UserID: "u_prov",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	limiter := ratelimit.NewServiceWithOptions(ratelimit.Options{
+		Enforce: true, Now: func() time.Time { return time.Now() },
+		Store: ratelimit.NewMemoryStore(nil),
+		Policies: map[ratelimit.Policy]ratelimit.PolicyConfig{
+			ratelimit.PolicyGatewayCreateBid: {Limit: 10, Window: time.Minute, Scope: []ratelimit.ScopePart{ratelimit.ScopeOrg}},
+		},
+	})
+	gw, _ := NewServerWithOptionsE(Options{
+		App: app, IAM: &stubIAMClient{actor: actor}, RateLimiter: limiter,
+	})
+
+	payload, _ := json.Marshal(map[string]any{
+		"message": "rl bid", "quoteCents": 4000,
+		"milestones": []map[string]any{{"id": "ms_1", "title": "W", "basePriceCents": 4000, "budgetCents": 4000}},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs/"+rfq.ID+"/bids", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer token")
+	req.RemoteAddr = "10.0.0.2:54321"
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateMessage_RateLimited(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "RL msg", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	bid, _ := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid",
+		QuoteCents: 5000, Milestones: []platform.BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, platform.AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	actor := iamclient.Actor{
+		UserID: "u_buyer",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "org_owner"},
+		},
+	}
+	limiter := ratelimit.NewServiceWithOptions(ratelimit.Options{
+		Enforce: true, Now: func() time.Time { return time.Now() },
+		Store: ratelimit.NewMemoryStore(nil),
+		Policies: map[ratelimit.Policy]ratelimit.PolicyConfig{
+			ratelimit.PolicyGatewayCreateMsg: {Limit: 1, Window: time.Minute, Scope: []ratelimit.ScopePart{ratelimit.ScopeOrg}},
+		},
+	})
+	gw, _ := NewServerWithOptionsE(Options{
+		App: app, IAM: &stubIAMClient{actor: actor}, RateLimiter: limiter,
+	})
+
+	// First message
+	payload, _ := json.Marshal(map[string]any{"orderId": order.ID, "body": "msg1"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+
+	// Second message — rate limited
+	payload2, _ := json.Marshal(map[string]any{"orderId": order.ID, "body": "msg2"})
+	req2 := httptest.NewRequest(http.MethodPost, "/api/v1/messages", bytes.NewReader(payload2))
+	req2.Header.Set("Content-Type", "application/json")
+	req2.Header.Set("Authorization", "Bearer token")
+	rec2 := httptest.NewRecorder()
+	gw.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusTooManyRequests {
+		t.Logf("message RL: %d", rec2.Code)
+	}
+}

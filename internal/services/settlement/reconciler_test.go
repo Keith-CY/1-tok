@@ -471,3 +471,95 @@ func TestNewReconciler_Defaults(t *testing.T) {
 		t.Fatal("expected non-nil reconciler")
 	}
 }
+
+func TestSync_WithdrawalEmptyProvider(t *testing.T) {
+	fiber := &stubFiberClient{
+		withdrawalsResult: fiberclient.WithdrawalStatusResult{},
+	}
+	funding := NewMemoryFundingRecordRepository()
+
+	id, _ := funding.NextID()
+	funding.Save(FundingRecord{
+		ID: id, Kind: FundingRecordKindWithdrawal,
+		ExternalID: "ext_empty", State: "pending",
+		Asset: "CKB", Amount: "50", ProviderOrgID: "", // Empty provider
+	})
+
+	r := NewReconciler(ReconcilerOptions{Fiber: fiber, Funding: funding})
+	summary, err := r.Sync(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.WithdrawalUpdates != 0 {
+		t.Errorf("expected 0 updates for empty provider, got %d", summary.WithdrawalUpdates)
+	}
+}
+
+func TestSync_WithdrawalMultipleProviders(t *testing.T) {
+	fiber := &countingFiberClient{
+		withdrawalsResult: fiberclient.WithdrawalStatusResult{
+			Withdrawals: []fiberclient.WithdrawalStatusItem{
+				{ID: "ext_a", State: "completed"},
+			},
+		},
+	}
+	funding := NewMemoryFundingRecordRepository()
+
+	id1, _ := funding.NextID()
+	funding.Save(FundingRecord{
+		ID: id1, Kind: FundingRecordKindWithdrawal,
+		ExternalID: "ext_a", State: "pending",
+		Asset: "CKB", Amount: "50", ProviderOrgID: "org_p1",
+	})
+	id2, _ := funding.NextID()
+	funding.Save(FundingRecord{
+		ID: id2, Kind: FundingRecordKindWithdrawal,
+		ExternalID: "ext_b", State: "pending",
+		Asset: "CKB", Amount: "30", ProviderOrgID: "org_p2",
+	})
+
+	r := NewReconciler(ReconcilerOptions{Fiber: fiber, Funding: funding})
+	summary, err := r.Sync(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.WithdrawalUpdates < 1 {
+		t.Errorf("expected at least 1 withdrawal update, got %d", summary.WithdrawalUpdates)
+	}
+}
+
+func TestSync_InvoiceEmptyState(t *testing.T) {
+	fiber := &stubFiberClient{
+		statusResult: fiberclient.InvoiceStatusResult{State: ""},
+	}
+	funding := NewMemoryFundingRecordRepository()
+
+	id, _ := funding.NextID()
+	funding.Save(FundingRecord{
+		ID: id, Kind: FundingRecordKindInvoice,
+		Invoice: "lnbc_empty_state", State: "pending",
+		Asset: "CKB", Amount: "100",
+	})
+
+	r := NewReconciler(ReconcilerOptions{Fiber: fiber, Funding: funding})
+	summary, err := r.Sync(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.InvoiceUpdates != 0 {
+		t.Errorf("expected 0 updates for empty state response, got %d", summary.InvoiceUpdates)
+	}
+}
+
+func TestIsTerminalWithdrawalState(t *testing.T) {
+	for _, state := range []string{"COMPLETED", "FAILED", "CANCELLED", "REJECTED"} {
+		if !isTerminalWithdrawalState(state) {
+			t.Errorf("isTerminalWithdrawalState(%q) = false", state)
+		}
+	}
+	for _, state := range []string{"pending", "processing", ""} {
+		if isTerminalWithdrawalState(state) {
+			t.Errorf("isTerminalWithdrawalState(%q) = true", state)
+		}
+	}
+}
