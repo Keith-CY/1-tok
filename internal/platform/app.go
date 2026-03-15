@@ -1243,3 +1243,8 @@ func (a *App) ListRFQMessages(rfqID string) ([]Message, error) {
 	}
 	return a.messages.ListByRFQ(rfqID)
 }
+
+// ListBids returns all bids for a given RFQ.
+func (a *App) ListBids(rfqID string) ([]Bid, error) {
+	return a.bids.ListByRFQ(rfqID)
+}
