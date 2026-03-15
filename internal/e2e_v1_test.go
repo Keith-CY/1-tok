@@ -32,6 +32,11 @@ func TestV1BusinessFlowE2E(t *testing.T) {
 	gw, err := gateway.NewServerWithOptionsE(gateway.Options{App: app})
 	if err != nil { t.Fatal(err) }
 
+	// Note: IAM signup is tested here to verify the IAM server works,
+	// but the gateway uses NoopClient (no IAM_UPSTREAM configured).
+	// Auth enforcement is covered by unit tests in gateway/server_test.go
+	// (TestRateOrder_RequiresAuth, TestCreateRFQMessage_RequiresAuth).
+	// This E2E test focuses on business logic correctness, not auth paths.
 	_ = signup(t, iam, `{"email":"v1b@test.com","password":"correct horse battery staple 123","name":"B","organizationName":"Buyers","organizationKind":"buyer"}`)
 	_ = signup(t, iam, `{"email":"v1p@test.com","password":"correct horse battery staple 123","name":"P","organizationName":"Providers","organizationKind":"provider"}`)
 
