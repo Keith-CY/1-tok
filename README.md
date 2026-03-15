@@ -42,7 +42,6 @@
 |--------|------|-------------|
 | GET | /api/v1/providers | List providers |
 | GET | /api/v1/providers/:id | Get provider with rating |
-| GET | /api/v1/listings | Search listings (q, category, tag, price) |
 | GET | /api/v1/listings/:id | Get listing |
 | GET | /api/v1/listings | Search listings (q, category, tag, minPrice, maxPrice) |
 | GET | /api/v1/rfqs | List RFQs |

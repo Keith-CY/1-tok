@@ -11,7 +11,7 @@
 - **Order Messaging**: Thread-based messaging on active orders
 - **Carrier Integration**: Async execution protocol with job state machine and heartbeat
 - **Notifications**: 8 event types with webhook delivery (HMAC-SHA256 signed)
-- **Discord Bot**: 7 slash commands (/listings, /rfq-status, /order-status, /bids, /stats, /rfq-create, /award)
+- **Discord Bot**: 8 slash commands (/listings, /rfq-status, /order-status, /bids, /stats, /rfq-create, /award, /leaderboard)
 - **CSV Export**: Download orders and disputes as CSV
 - **Marketplace Stats**: Aggregate statistics endpoint
 - **Order Timeline**: Chronological audit trail
