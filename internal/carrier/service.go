@@ -257,6 +257,10 @@ func (s *Service) transitionJob(jobID string, to JobState, output, errMsg string
 		return ExecutionJob{}, ErrJobNotFound
 	}
 	if !canTransition(job.State, to) {
+		// Idempotent: if already in target state, return current job (safe retry)
+		if job.State == to {
+			return job, nil
+		}
 		return ExecutionJob{}, fmt.Errorf("%w: %s → %s", ErrInvalidTransition, job.State, to)
 	}
 	now := time.Now().UTC()

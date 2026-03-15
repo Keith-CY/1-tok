@@ -361,10 +361,13 @@ func TestDuplicateCallback_CompleteTwice(t *testing.T) {
 	svc.StartJob(job.ID)
 	svc.CompleteJob(job.ID, "result")
 
-	// Duplicate complete should fail (already in terminal state)
-	_, err := svc.CompleteJob(job.ID, "result again")
-	if err == nil {
-		t.Error("expected error on duplicate complete")
+	// Duplicate complete is idempotent (safe retry)
+	j, err := svc.CompleteJob(job.ID, "result again")
+	if err != nil {
+		t.Errorf("idempotent complete should not error: %v", err)
+	}
+	if j.State != JobStateCompleted {
+		t.Errorf("state = %s", j.State)
 	}
 }
 
@@ -397,10 +400,13 @@ func TestDuplicateCallback_StartTwice(t *testing.T) {
 	job, _ := svc.CreateJob(b.ID, "ms_1", "input")
 	svc.StartJob(job.ID)
 
-	// Duplicate start should fail (already running)
-	_, err := svc.StartJob(job.ID)
-	if err == nil {
-		t.Error("expected error on duplicate start")
+	// Duplicate start is idempotent (safe retry)
+	j, err := svc.StartJob(job.ID)
+	if err != nil {
+		t.Errorf("idempotent start should not error: %v", err)
+	}
+	if j.State != JobStateRunning {
+		t.Errorf("state = %s", j.State)
 	}
 }
 
@@ -512,4 +518,37 @@ func TestCreateJobIdempotent_DifferentKeys(t *testing.T) {
 	job1, _, _ := svc.CreateJobIdempotent(b.ID, "ms_1", "input", "key_1")
 	job2, _, _ := svc.CreateJobIdempotent(b.ID, "ms_1", "input", "key_2")
 	if job1.ID == job2.ID { t.Error("different keys should create different jobs") }
+}
+
+func TestIdempotentCancel(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job, _ := svc.CreateJob(b.ID, "ms_1", "input")
+	svc.CancelJob(job.ID)
+
+	// Second cancel should be idempotent (no error)
+	j, err := svc.CancelJob(job.ID)
+	if err != nil {
+		t.Errorf("idempotent cancel should not error: %v", err)
+	}
+	if j.State != JobStateCancelled {
+		t.Errorf("state = %s", j.State)
+	}
+}
+
+func TestIdempotentComplete(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job, _ := svc.CreateJob(b.ID, "ms_1", "input")
+	svc.StartJob(job.ID)
+	svc.CompleteJob(job.ID, "result")
+
+	// Second complete should be idempotent
+	j, err := svc.CompleteJob(job.ID, "result")
+	if err != nil {
+		t.Errorf("idempotent complete should not error: %v", err)
+	}
+	if j.State != JobStateCompleted {
+		t.Errorf("state = %s", j.State)
+	}
 }
