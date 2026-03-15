@@ -879,16 +879,16 @@ func TestRFQRepository_SaveAndGet(t *testing.T) {
 	id, _ := repo.NextID()
 
 	rfq := platform.RFQ{
-		ID:                id,
-		BuyerOrgID:        "org_b_pg",
-		Title:             "PG test RFQ",
-		Category:          "ai",
-		Scope:             "test",
-		BudgetCents:       10000,
-		Status:            "open",
+		ID:                 id,
+		BuyerOrgID:         "org_b_pg",
+		Title:              "PG test RFQ",
+		Category:           "ai",
+		Scope:              "test",
+		BudgetCents:        10000,
+		Status:             "open",
 		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
-		CreatedAt:         time.Now(),
-		UpdatedAt:         time.Now(),
+		CreatedAt:          time.Now(),
+		UpdatedAt:          time.Now(),
 		DefaultMilestones: []platform.RFQMilestone{
 			{ID: "ms_1", Title: "Setup", BasePriceCents: 2000, BudgetCents: 2000},
 			{ID: "ms_2", Title: "Work", BasePriceCents: 8000, BudgetCents: 8000},
@@ -909,7 +909,6 @@ func TestRFQRepository_SaveAndGet(t *testing.T) {
 		t.Errorf("default milestones = %d, want 2", len(got.DefaultMilestones))
 	}
 }
-
 
 func TestDisputeRepositoryFullCycle(t *testing.T) {
 	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
@@ -983,9 +982,9 @@ func TestProviderRepositoryUpsert(t *testing.T) {
 
 	repo := NewProviderRepository(db)
 	provider := platform.ProviderProfile{
-		ID: fmt.Sprintf("prov_%d", time.Now().UnixNano()),
-		Name: "Test Provider",
-		Capabilities: []string{"ai", "coding"},
+		ID:             fmt.Sprintf("prov_%d", time.Now().UnixNano()),
+		Name:           "Test Provider",
+		Capabilities:   []string{"ai", "coding"},
 		ReputationTier: "gold",
 	}
 	if err := repo.Upsert(provider); err != nil {
@@ -1028,12 +1027,12 @@ func TestListingRepositoryUpsert(t *testing.T) {
 
 	repo := NewListingRepository(db)
 	listing := platform.Listing{
-		ID: fmt.Sprintf("list_%d", time.Now().UnixNano()),
-		ProviderOrgID: providers[0].ID,
-		Title: "Test Listing",
-		Category: "ai",
+		ID:             fmt.Sprintf("list_%d", time.Now().UnixNano()),
+		ProviderOrgID:  providers[0].ID,
+		Title:          "Test Listing",
+		Category:       "ai",
 		BasePriceCents: 5000,
-		Tags: []string{"agent", "fast"},
+		Tags:           []string{"agent", "fast"},
 	}
 	if err := repo.Upsert(listing); err != nil {
 		t.Fatal(err)

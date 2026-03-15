@@ -1,0 +1,70 @@
+package postgres
+
+import (
+	"database/sql"
+	"encoding/json"
+
+	"github.com/chenyu/1-tok/internal/platform"
+)
+
+type ListingRepository struct {
+	db *sql.DB
+}
+
+func NewListingRepository(db *sql.DB) *ListingRepository {
+	return &ListingRepository{db: db}
+}
+
+func (r *ListingRepository) List() ([]platform.Listing, error) {
+	rows, err := r.db.Query(`
+		SELECT id, provider_org_id, title, category, base_price_cents, tags
+		FROM listings
+		ORDER BY id ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	listings := make([]platform.Listing, 0)
+	for rows.Next() {
+		var listing platform.Listing
+		var tags []byte
+		if err := rows.Scan(
+			&listing.ID,
+			&listing.ProviderOrgID,
+			&listing.Title,
+			&listing.Category,
+			&listing.BasePriceCents,
+			&tags,
+		); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(tags, &listing.Tags); err != nil {
+			return nil, err
+		}
+		listings = append(listings, listing)
+	}
+
+	return listings, rows.Err()
+}
+
+func (r *ListingRepository) Upsert(listing platform.Listing) error {
+	tags, err := json.Marshal(listing.Tags)
+	if err != nil {
+		return err
+	}
+
+	_, err = r.db.Exec(`
+		INSERT INTO listings (id, provider_org_id, title, category, base_price_cents, tags, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+		ON CONFLICT (id) DO UPDATE SET
+			provider_org_id = EXCLUDED.provider_org_id,
+			title = EXCLUDED.title,
+			category = EXCLUDED.category,
+			base_price_cents = EXCLUDED.base_price_cents,
+			tags = EXCLUDED.tags,
+			updated_at = NOW()
+	`, listing.ID, listing.ProviderOrgID, listing.Title, listing.Category, listing.BasePriceCents, tags)
+	return err
+}
