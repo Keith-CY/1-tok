@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestRunAbuseSmokeTriggersRateLimitAndObservesSentryEvent(t *testing.T) {
@@ -148,5 +149,205 @@ func TestAbuseSmokeLoginRequestUsesForwardedIP(t *testing.T) {
 	}
 	if signupForwarded != loginForwarded {
 		t.Fatalf("expected signup and login to use same forwarded ip, got %q vs %q", signupForwarded, loginForwarded)
+	}
+}
+
+func TestAbuseConfigFromEnv(t *testing.T) {
+	t.Setenv("RELEASE_ABUSE_IAM_BASE_URL", "http://iam:8081")
+	t.Setenv("RELEASE_ABUSE_SENTRY_BASE_URL", "http://sentry:8092")
+	cfg := AbuseConfigFromEnv()
+	if cfg.IAMBaseURL != "http://iam:8081" {
+		t.Errorf("IAMBaseURL = %s", cfg.IAMBaseURL)
+	}
+}
+
+func TestHealthcheck_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	if err := healthcheck(context.Background(), client, srv.URL); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestHealthcheck_Failure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	if err := healthcheck(context.Background(), client, srv.URL); err == nil {
+		t.Error("expected error for unhealthy service")
+	}
+}
+
+func TestSentryEventCount_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"count":5,"events":[]}`))
+	}))
+	defer srv.Close()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	count, err := sentryEventCount(context.Background(), client, srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 5 {
+		t.Errorf("count = %d, want 5", count)
+	}
+}
+
+func TestSentryEventCount_Error(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	_, err := sentryEventCount(context.Background(), client, srv.URL)
+	if err == nil {
+		t.Error("expected error")
+	}
+}
+
+func TestWaitForSentryEvents_ImmediateSuccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"count":3,"events":[]}`))
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	count, err := waitForSentryEvents(ctx, client, srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 3 {
+		t.Errorf("count = %d, want 3", count)
+	}
+}
+
+func TestWaitForSentryEvents_Timeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"count":0,"events":[]}`))
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	_, err := waitForSentryEvents(ctx, client, srv.URL)
+	if err == nil {
+		t.Error("expected error on timeout")
+	}
+}
+
+func TestRunExternalDependencyPreflight_AllHealthy(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	cfg := ExternalDependencyConfig{
+		FiberRPCURL:           srv.URL,
+		CarrierGatewayURL:    srv.URL,
+		CarrierGatewayToken:  "test-token",
+	}
+	if err := RunExternalDependencyPreflight(context.Background(), cfg); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRunExternalDependencyPreflight_FiberDown(t *testing.T) {
+	healthySrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer healthySrv.Close()
+
+	downSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer downSrv.Close()
+
+	cfg := ExternalDependencyConfig{
+		FiberRPCURL:          downSrv.URL,
+		CarrierGatewayURL:   healthySrv.URL,
+		CarrierGatewayToken: "test-token",
+	}
+	if err := RunExternalDependencyPreflight(context.Background(), cfg); err == nil {
+		t.Error("expected error when fiber is down")
+	}
+}
+
+func TestRunExternalDependencyPreflight_CarrierDown(t *testing.T) {
+	healthySrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer healthySrv.Close()
+
+	downSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer downSrv.Close()
+
+	cfg := ExternalDependencyConfig{
+		FiberRPCURL:         healthySrv.URL,
+		CarrierGatewayURL:   downSrv.URL,
+		CarrierGatewayToken: "token",
+	}
+	if err := RunExternalDependencyPreflight(context.Background(), cfg); err == nil {
+		t.Error("expected error when carrier is down")
+	}
+}
+
+func TestRunExternalDependencyPreflight_BothDown(t *testing.T) {
+	downSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer downSrv.Close()
+
+	cfg := ExternalDependencyConfig{
+		FiberRPCURL:         downSrv.URL,
+		CarrierGatewayURL:   downSrv.URL,
+		CarrierGatewayToken: "token",
+	}
+	if err := RunExternalDependencyPreflight(context.Background(), cfg); err == nil {
+		t.Error("expected error when both are down")
+	}
+}
+
+func TestRunAbuseSmoke_EmptyURL(t *testing.T) {
+	_, err := RunAbuseSmoke(context.Background(), AbuseConfig{})
+	if err == nil {
+		t.Error("expected error for empty config")
+	}
+}
+
+func TestRunAbuseSmoke_IAMHealthFail(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	_, err := RunAbuseSmoke(context.Background(), AbuseConfig{
+		IAMBaseURL:    srv.URL,
+		SentryBaseURL: srv.URL,
+	})
+	if err == nil {
+		t.Error("expected error for unhealthy IAM")
 	}
 }

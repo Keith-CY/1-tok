@@ -183,3 +183,119 @@ func TestRunFNNAdapterSmokeCanRequestPaymentWhenEnabled(t *testing.T) {
 		t.Fatalf("expected request amount to match invoice amount, got %q", requestAmount)
 	}
 }
+
+func TestFNNAdapterSmokeConfigFromEnv(t *testing.T) {
+	t.Setenv("RELEASE_FNN_ADAPTER_BASE_URL", "http://adapter:8091")
+	t.Setenv("RELEASE_FNN_ADAPTER_APP_ID", "app_1")
+	t.Setenv("RELEASE_FNN_ADAPTER_HMAC_SECRET", "secret")
+	cfg := FNNAdapterSmokeConfigFromEnv()
+	if cfg.BaseURL != "http://adapter:8091" {
+		t.Errorf("BaseURL = %s", cfg.BaseURL)
+	}
+}
+
+func TestEnvBoolDefaultFalse_True(t *testing.T) {
+	t.Setenv("TEST_BOOL_DF", "true")
+	if !envBoolDefaultFalse("TEST_BOOL_DF") {
+		t.Error("expected true")
+	}
+}
+
+func TestEnvBoolDefaultFalse_False(t *testing.T) {
+	t.Setenv("TEST_BOOL_DF", "false")
+	if envBoolDefaultFalse("TEST_BOOL_DF") {
+		t.Error("expected false")
+	}
+}
+
+func TestEnvBoolDefaultFalse_One(t *testing.T) {
+	t.Setenv("TEST_BOOL_DF", "1")
+	if !envBoolDefaultFalse("TEST_BOOL_DF") {
+		t.Error("expected true for '1'")
+	}
+}
+
+func TestEnvBoolDefaultFalse_Invalid(t *testing.T) {
+	t.Setenv("TEST_BOOL_DF", "maybe")
+	if envBoolDefaultFalse("TEST_BOOL_DF") {
+		t.Error("expected false for invalid")
+	}
+}
+
+func TestRunFNNAdapterSmoke_EmptyURL(t *testing.T) {
+	_, err := RunFNNAdapterSmoke(context.Background(), FNNAdapterSmokeConfig{})
+	if err == nil {
+		t.Error("expected error for empty URL")
+	}
+}
+
+func TestRunFNNAdapterSmoke_HealthFail(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	_, err := RunFNNAdapterSmoke(context.Background(), FNNAdapterSmokeConfig{
+		BaseURL: srv.URL, AppID: "app", HMACSecret: "secret",
+	})
+	if err == nil {
+		t.Error("expected error for unhealthy adapter")
+	}
+}
+
+func TestRunFNNAdapterSmoke_Success(t *testing.T) {
+	callCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		callCount++
+		w.Header().Set("Content-Type", "application/json")
+
+		body, _ := io.ReadAll(r.Body)
+		var rpc struct{ Method string `json:"method"` }
+		json.Unmarshal(body, &rpc)
+
+		switch rpc.Method {
+		case "tip.create":
+			json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": "1",
+				"result": map[string]any{"invoice": "lnbc_smoke", "tipId": "tip_1"},
+			})
+		case "tip.status":
+			json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": "1",
+				"result": map[string]any{"state": "UNPAID"},
+			})
+		case "withdrawal.quote":
+			json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": "1",
+				"result": map[string]any{
+					"asset": "CKB", "amount": "12", "minimumAmount": "1",
+					"availableBalance": "100", "lockedBalance": "0",
+					"networkFee": "0", "receiveAmount": "12",
+					"destinationValid": true,
+				},
+			})
+		default:
+			json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": "1",
+				"result": map[string]any{},
+			})
+		}
+	}))
+	defer srv.Close()
+
+	summary, err := RunFNNAdapterSmoke(context.Background(), FNNAdapterSmokeConfig{
+		BaseURL:    srv.URL,
+		AppID:      "app_smoke",
+		HMACSecret: "secret_smoke",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Invoice == "" {
+		t.Error("expected invoice in summary")
+	}
+}

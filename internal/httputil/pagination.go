@@ -65,3 +65,30 @@ func intParam(r *http.Request, key string, fallback int) int {
 	}
 	return v
 }
+
+// PaginatedResponse is a standardized paginated response.
+type PaginatedResponse[T any] struct {
+	Data       []T            `json:"data"`
+	Pagination PaginationInfo `json:"pagination"`
+}
+
+// PaginationInfo holds pagination metadata.
+type PaginationInfo struct {
+	Total  int `json:"total"`
+	Limit  int `json:"limit"`
+	Offset int `json:"offset"`
+}
+
+// NewPaginatedResponse creates a paginated response from a slice and pagination params.
+func NewPaginatedResponse[T any](items []T, page Pagination) PaginatedResponse[T] {
+	total := len(items)
+	paged := Apply(items, page)
+	return PaginatedResponse[T]{
+		Data: paged,
+		Pagination: PaginationInfo{
+			Total:  total,
+			Limit:  page.Limit,
+			Offset: page.Offset,
+		},
+	}
+}

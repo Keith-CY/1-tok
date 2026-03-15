@@ -116,7 +116,8 @@ CREATE TABLE IF NOT EXISTS bids (
 
 CREATE TABLE IF NOT EXISTS messages (
   id TEXT PRIMARY KEY,
-  order_id TEXT NOT NULL,
+  order_id TEXT,
+  rfq_id TEXT,
   author TEXT NOT NULL,
   body TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL
@@ -162,3 +163,10 @@ CREATE INDEX IF NOT EXISTS idx_bids_provider_org_id ON bids (provider_org_id);
 CREATE INDEX IF NOT EXISTS idx_messages_order_id ON messages (order_id);
 CREATE INDEX IF NOT EXISTS idx_disputes_order_id ON disputes (order_id);
 CREATE INDEX IF NOT EXISTS idx_disputes_status ON disputes (status);
+
+ALTER TABLE IF EXISTS messages
+  ADD COLUMN IF NOT EXISTS rfq_id TEXT;
+
+ALTER TABLE IF EXISTS messages
+  ALTER COLUMN order_id DROP NOT NULL;
+

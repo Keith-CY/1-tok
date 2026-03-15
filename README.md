@@ -1,19 +1,79 @@
 # 1-tok
 
-`1-tok` is a monorepo for the Agent marketplace and settlement platform described in the approved plan. This first implementation pass establishes:
+**Agent Runtime Marketplace** — a platform for discovering, procuring, and managing agent execution services.
 
-- a shared Go domain model for orders, milestones, usage charges, disputes, and credit decisions
-- a JSON HTTP gateway that exposes the core marketplace and settlement flows
-- service entrypoints for `iam`, `marketplace`, `settlement`, `risk`, `execution`, and `notification`
-- Fiber JSON-RPC integration for invoice creation, invoice status, withdrawal quote, and withdrawal request
-- Carrier gateway integration for remote codeagent health, version, and run control-plane calls
-- Local `mock-carrier` support for release smoke and compose-based rehearsal
-- shared TypeScript contracts for the web portal
-- local container topology for Go services plus Postgres and NATS
-- Postgres-backed repositories for orders, providers, listings, messages, and disputes when `DATABASE_URL` is set
-- production Sentry instrumentation for long-lived Go services and the Next web runtime
-- Redis-backed protection for critical IAM and marketplace write routes
+## Features
 
+### Core Marketplace
+- **RFQ → Bid → Award → Order** lifecycle with milestone-based settlement
+- **Listing search** with query, category, tag, and price range filters
+- **Provider ratings** (1-5 stars) with duplicate prevention
+- **RFQ-level messaging** between buyers and providers during bid phase
+- **Credit decision engine** for funding mode selection
+
+### Anti-Fraud
+- **Layer 2: Usage Proof Signatures** — HMAC-SHA256 signed usage reports from Carriers
+- **Layer 3: Summary Reconciliation** — deviation detection on milestone settlement
+
+### Carrier Integration
+- **Async Execution Protocol** — binding, job state machine (pending → running → completed/failed/cancelled), heartbeat liveness
+- **8 HTTP endpoints** for carrier operations (bind, create job, start, complete, fail, progress, heartbeat)
+
+### Notifications
+- **8 event types** across the full lifecycle (order.created, milestone.settled, dispute.opened/resolved, rfq.awarded, order.completed, order.rated, budget_wall.hit)
+- **Webhook delivery** with HMAC-SHA256 signature verification
+
+### Discord Bot
+- Slash commands: `/listings`, `/order-status`, `/rfq-status`, `/bids`
+- Ed25519 signature verification
+- Color-coded order status embeds
+
+### Infrastructure
+- IAM with session hashing, role-based access, rate limiting
+- Postgres repositories with context propagation
+- NATS event publishing with infinite reconnect
+- `/livez` and `/readyz` health endpoints
+- Request timeout middleware, CORS, access logging
+
+
+## API Endpoints (34)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /api/v1/providers | List providers |
+| GET | /api/v1/providers/:id | Get provider with rating |
+| GET | /api/v1/listings | Search listings (q, category, tag, price) |
+| GET | /api/v1/listings/:id | Get listing |
+| GET | /api/v1/listings | Search listings (q, category, tag, minPrice, maxPrice) |
+| GET | /api/v1/rfqs | List RFQs |
+| GET | /api/v1/rfqs/:id | Get RFQ |
+| POST | /api/v1/rfqs | Create RFQ |
+| GET | /api/v1/rfqs/:id/bids | List bids on RFQ |
+| POST | /api/v1/rfqs/:id/bids | Create bid |
+| POST | /api/v1/rfqs/:id/award | Award RFQ |
+| GET | /api/v1/rfqs/:id/messages | List RFQ messages |
+| POST | /api/v1/rfqs/:id/messages | Create RFQ message |
+| GET | /api/v1/orders | List orders |
+| GET | /api/v1/orders/:id | Get order |
+| POST | /api/v1/orders | Create order |
+| POST | /api/v1/orders/:id/milestones/:mid/settle | Settle milestone |
+| POST | /api/v1/orders/:id/milestones/:mid/usage | Record usage charge |
+| POST | /api/v1/orders/:id/milestones/:mid/disputes | Open dispute |
+| POST | /api/v1/orders/:id/rating | Rate order |
+| GET | /api/v1/orders/:id/messages | List order messages |
+| POST | /api/v1/orders/:id/milestones/:mid/bind-carrier | Bind carrier |
+| POST | /api/v1/orders/:id/milestones/:mid/jobs | Create job |
+| GET | /api/v1/jobs/:id | Get job |
+| PATCH | /api/v1/jobs/:id/start | Start job |
+| PATCH | /api/v1/jobs/:id/complete | Complete job |
+| PATCH | /api/v1/jobs/:id/fail | Fail job |
+| POST | /api/v1/jobs/:id/progress | Update progress |
+| POST | /api/v1/jobs/:id/heartbeat | Carrier heartbeat |
+| GET | /api/v1/disputes | List disputes |
+| GET | /api/v1/disputes/:id | Get dispute |
+| POST | /api/v1/disputes/:id/resolve | Resolve dispute |
+| POST | /api/v1/credits/decision | Credit decision |
+| POST | /api/v1/messages | Create message |
 ## Layout
 
 - `cmd/*`: service binaries
@@ -422,3 +482,47 @@ When `IAM_UPSTREAM` is configured for `api-gateway` and `settlement`, the platfo
 - Internal service-token boundaries are enforced and can accept rotated comma-separated token sets for `api-gateway`, `execution`, and `settlement`.
 - Local release verification now covers service-only, portal-only, full local, full persisted local, compose, and external-dependency rehearsals, with persisted evidence artifacts and an aggregated `release-manifest.json`.
 - The primary remaining blocker to a real production release claim is a successful run of `bun run release:external-deps-smoke` against real external `Fiber` and `Carrier` environments using live credentials and endpoints.
+
+## Webhook Signature Verification
+
+Webhooks include an HMAC-SHA256 signature in the `X-1Tok-Signature` header.
+
+Verify with:
+
+```python
+import hmac, hashlib
+
+def verify(secret: str, body: bytes, signature: str) -> bool:
+    expected = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature)
+```
+
+```go
+mac := hmac.New(sha256.New, []byte(secret))
+mac.Write(body)
+expected := hex.EncodeToString(mac.Sum(nil))
+valid := hmac.Equal([]byte(expected), []byte(signature))
+```
+
+## Quick Start
+
+```bash
+# Start all services
+docker compose up -d
+
+# Create an RFQ
+curl -X POST http://localhost:8080/api/v1/rfqs \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Agent triage","category":"agent-ops","scope":"Investigate failures","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}'
+
+# Search listings
+curl "http://localhost:8080/api/v1/listings?q=agent&category=agent-ops"
+
+# Check marketplace stats
+curl http://localhost:8080/api/v1/stats
+
+# Register a webhook
+curl -X POST http://localhost:8080/api/v1/webhooks \
+  -H "Content-Type: application/json" \
+  -d '{"target":"org_buyer","url":"https://example.com/webhook"}'
+```

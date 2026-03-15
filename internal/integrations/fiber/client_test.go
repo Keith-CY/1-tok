@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -379,4 +380,183 @@ func signPayloadForTest(secret string, payload []byte, ts, nonce string) string 
 	_, _ = mac.Write([]byte("."))
 	_, _ = mac.Write(payload)
 	return hex.EncodeToString(mac.Sum(nil))
+}
+
+func TestNewClientFromEnv_Missing(t *testing.T) {
+	t.Setenv("FIBER_RPC_URL", "")
+	t.Setenv("FIBER_APP_ID", "")
+	t.Setenv("FIBER_HMAC_SECRET", "")
+
+	c := NewClientFromEnv()
+	_, err := c.CreateInvoice(context.Background(), CreateInvoiceInput{})
+	if !errors.Is(err, ErrNotConfigured) {
+		t.Errorf("expected ErrNotConfigured, got %v", err)
+	}
+}
+
+func TestNewClientFromEnv_Configured(t *testing.T) {
+	t.Setenv("FIBER_RPC_URL", "http://fiber:8091")
+	t.Setenv("FIBER_APP_ID", "app_1")
+	t.Setenv("FIBER_HMAC_SECRET", "secret")
+
+	c := NewClientFromEnv()
+	// Should be a real client, not missingClient
+	_, err := c.CreateInvoice(context.Background(), CreateInvoiceInput{})
+	// Will fail with connection error, not ErrNotConfigured
+	if errors.Is(err, ErrNotConfigured) {
+		t.Error("expected real client, got missingClient")
+	}
+}
+
+func TestMissingClient_AllMethods(t *testing.T) {
+	t.Setenv("FIBER_RPC_URL", "")
+	t.Setenv("FIBER_APP_ID", "")
+	t.Setenv("FIBER_HMAC_SECRET", "")
+	c := NewClientFromEnv()
+
+	if _, err := c.CreateInvoice(context.Background(), CreateInvoiceInput{}); !errors.Is(err, ErrNotConfigured) {
+		t.Errorf("CreateInvoice: %v", err)
+	}
+	if _, err := c.GetInvoiceStatus(context.Background(), "inv"); !errors.Is(err, ErrNotConfigured) {
+		t.Errorf("GetInvoiceStatus: %v", err)
+	}
+	if _, err := c.QuotePayout(context.Background(), QuotePayoutInput{}); !errors.Is(err, ErrNotConfigured) {
+		t.Errorf("QuotePayout: %v", err)
+	}
+	if _, err := c.RequestPayout(context.Background(), RequestPayoutInput{}); !errors.Is(err, ErrNotConfigured) {
+		t.Errorf("RequestPayout: %v", err)
+	}
+	if _, err := c.ListSettledFeed(context.Background(), SettledFeedInput{}); !errors.Is(err, ErrNotConfigured) {
+		t.Errorf("ListSettledFeed: %v", err)
+	}
+	if _, err := c.ListWithdrawalStatuses(context.Background(), "user"); !errors.Is(err, ErrNotConfigured) {
+		t.Errorf("ListWithdrawalStatuses: %v", err)
+	}
+}
+
+func TestClient_Call_RPCError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0", "id": "1",
+			"error": map[string]any{"code": -32600, "message": "bad request"},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "app", "secret")
+	_, err := c.GetInvoiceStatus(context.Background(), "inv_1")
+	if err == nil {
+		t.Error("expected error for RPC error response")
+	}
+}
+
+func TestClient_Call_HTTPError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("internal error"))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "app", "secret")
+	_, err := c.QuotePayout(context.Background(), QuotePayoutInput{
+		UserID: "u", Asset: "CKB", Amount: "100",
+		Destination: WithdrawalDestination{Kind: "address"},
+	})
+	if err == nil {
+		t.Error("expected error for HTTP 500")
+	}
+}
+
+func TestClient_Call_MalformedJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("{broken json"))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "app", "secret")
+	_, err := c.RequestPayout(context.Background(), RequestPayoutInput{
+		UserID: "u", Asset: "CKB", Amount: "100",
+		Destination: WithdrawalDestination{Kind: "address"},
+	})
+	if err == nil {
+		t.Error("expected error for malformed JSON")
+	}
+}
+
+func TestClient_Call_EmptyResult(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0", "id": "1",
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "app", "secret")
+	_, err := c.ListSettledFeed(context.Background(), SettledFeedInput{})
+	if err == nil {
+		t.Error("expected error for empty result")
+	}
+}
+
+func TestClient_ListWithdrawalStatuses_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0", "id": "1",
+			"result": map[string]any{"items": []any{}},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "app", "secret")
+	_, err := c.ListWithdrawalStatuses(context.Background(), "u_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestClient_Call_EmptyEndpoint(t *testing.T) {
+	c := NewClient("", "app", "secret")
+	_, err := c.CreateInvoice(context.Background(), CreateInvoiceInput{
+		PostID: "p", FromUserID: "u1", ToUserID: "u2", Asset: "CKB", Amount: "100",
+	})
+	if err == nil {
+		t.Error("expected error for empty endpoint")
+	}
+}
+
+func TestClient_ListWithdrawalStatuses_Error(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "app", "secret")
+	_, err := c.ListWithdrawalStatuses(context.Background(), "u_1")
+	if err == nil {
+		t.Error("expected error for 500 response")
+	}
+}
+
+func TestClient_GetInvoiceStatus_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0", "id": "1",
+			"result": map[string]any{"state": "paid", "amount": "100"},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "app", "secret")
+	result, err := c.GetInvoiceStatus(context.Background(), "inv_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.State != "paid" {
+		t.Errorf("state = %s", result.State)
+	}
 }

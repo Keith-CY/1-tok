@@ -1,7 +1,9 @@
 package observability
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -126,5 +128,261 @@ func TestConfigFromEnvReadsSentryVariables(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), "sha-123") {
 		t.Fatalf("expected release in config, got %s", string(raw))
+	}
+}
+
+func TestCaptureError_NilHub(t *testing.T) {
+	// Should not panic with nil context
+	CaptureError(context.Background(), errors.New("test error"))
+}
+
+func TestInitFromEnv(t *testing.T) {
+	t.Setenv("SENTRY_DSN", "")
+	flush, err := InitFromEnv("test-svc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	flush(0)
+}
+
+func TestEnvFloat(t *testing.T) {
+	t.Setenv("TEST_FLOAT", "0.5")
+	if got := envFloat("TEST_FLOAT", 1.0); got != 0.5 {
+		t.Errorf("envFloat = %f, want 0.5", got)
+	}
+}
+
+func TestEnvFloat_Default(t *testing.T) {
+	t.Setenv("TEST_FLOAT_MISSING", "")
+	if got := envFloat("TEST_FLOAT_MISSING", 0.75); got != 0.75 {
+		t.Errorf("envFloat = %f, want 0.75", got)
+	}
+}
+
+func TestEnvFloat_Invalid(t *testing.T) {
+	t.Setenv("TEST_FLOAT_BAD", "abc")
+	if got := envFloat("TEST_FLOAT_BAD", 0.5); got != 0.5 {
+		t.Errorf("envFloat = %f, want 0.5 (fallback)", got)
+	}
+}
+
+func TestFallback(t *testing.T) {
+	if got := fallback("hello", "default"); got != "hello" {
+		t.Errorf("fallback = %s, want hello", got)
+	}
+	if got := fallback("", "default"); got != "default" {
+		t.Errorf("fallback = %s, want default", got)
+	}
+}
+
+func TestWithRequestTags_AllFields(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req = WithRequestTags(req, RequestTags{
+		Route:   "/api/v1/orders",
+		OrgID:   "org_1",
+		UserID:  "u_1",
+		OrderID: "ord_1",
+		RFQID:   "rfq_1",
+		Subject: "test@example.com",
+	})
+
+	bag := requestTagsFromContext(req.Context())
+	if bag == nil {
+		t.Fatal("expected tags in context")
+	}
+	if bag.Route != "/api/v1/orders" {
+		t.Errorf("route = %s", bag.Route)
+	}
+	if bag.OrgID != "org_1" {
+		t.Errorf("org = %s", bag.OrgID)
+	}
+}
+
+func TestWrapHTTP_PanicRecovery(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		panic("test panic")
+	})
+
+	handler := WrapHTTP("test-svc", inner)
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	rec := httptest.NewRecorder()
+
+	// Should not propagate panic
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("panic was not recovered: %v", r)
+		}
+	}()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Logf("panic recovery status: %d", rec.Code)
+	}
+}
+
+func TestWrapHTTP_StatusRecording(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+		w.Write([]byte("accepted"))
+	})
+
+	handler := WrapHTTP("test-svc", inner)
+	req := httptest.NewRequest(http.MethodPost, "/api/test", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Errorf("expected 202, got %d", rec.Code)
+	}
+}
+
+func TestWrapHTTP_Default200(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("ok"))
+	})
+
+	handler := WrapHTTP("test-svc", inner)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestConfigFromEnv_Defaults(t *testing.T) {
+	t.Setenv("SENTRY_DSN", "")
+	t.Setenv("SENTRY_ENVIRONMENT", "test")
+	t.Setenv("SENTRY_RELEASE", "v1.0")
+	t.Setenv("SENTRY_TRACES_SAMPLE_RATE", "0.5")
+
+	cfg := ConfigFromEnv("test-svc")
+	if cfg.Service != "test-svc" {
+		t.Errorf("service = %s", cfg.Service)
+	}
+	if cfg.Environment != "test" {
+		t.Errorf("env = %s", cfg.Environment)
+	}
+	if cfg.TracesSampleRate != 0.5 {
+		t.Errorf("traces rate = %f", cfg.TracesSampleRate)
+	}
+}
+
+func TestFlush(t *testing.T) {
+	// Should not panic even without Sentry initialized
+	result := Flush(0)
+	_ = result
+}
+
+func TestWrapHTTP_WritesStatus(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	})
+
+	handler := WrapHTTP("test-svc", inner)
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestConfigFromEnv_WithDSN(t *testing.T) {
+	t.Setenv("SENTRY_DSN", "https://key@sentry.io/1")
+	t.Setenv("SENTRY_ENVIRONMENT", "production")
+	t.Setenv("SENTRY_RELEASE", "v2.0")
+	t.Setenv("SENTRY_SAMPLE_RATE", "0.8")
+
+	cfg := ConfigFromEnv("my-service")
+	if cfg.DSN != "https://key@sentry.io/1" {
+		t.Errorf("DSN = %s", cfg.DSN)
+	}
+	if cfg.SampleRate != 0.8 {
+		t.Errorf("sample rate = %f", cfg.SampleRate)
+	}
+}
+
+func TestCaptureMessage_NoHub(t *testing.T) {
+	// Should not panic
+	CaptureMessage(context.Background(), "test message")
+}
+
+func TestInit_WithDSN(t *testing.T) {
+	flush, err := Init(Config{
+		Service:     "test",
+		DSN:         "", // Empty DSN = no-op
+		Environment: "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	flush(0)
+}
+
+func TestInit_WithRealDSN(t *testing.T) {
+	// Use a dummy DSN that Sentry SDK accepts but doesn't actually send
+	flush, err := Init(Config{
+		Service:          "test",
+		DSN:              "https://key@o0.ingest.sentry.io/0",
+		Environment:      "test",
+		Release:          "v0.0.0",
+		SampleRate:       0.0,
+		TracesSampleRate: 0.0,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	flush(0)
+}
+
+func TestWithRequestTags_OverwriteExisting(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+
+	// Set tags twice — should overwrite
+	req = WithRequestTags(req, RequestTags{Route: "/first"})
+	req = WithRequestTags(req, RequestTags{Route: "/second", UserID: "u_1"})
+
+	bag := requestTagsFromContext(req.Context())
+	if bag.Route != "/second" {
+		t.Errorf("route = %s, want /second", bag.Route)
+	}
+	if bag.UserID != "u_1" {
+		t.Errorf("userId = %s", bag.UserID)
+	}
+}
+
+func TestWrapHTTP_WithTags(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r = WithRequestTags(r, RequestTags{
+			Route:   "/api/test",
+			OrgID:   "org_1",
+			UserID:  "u_1",
+			OrderID: "ord_1",
+		})
+		_ = r
+		w.WriteHeader(http.StatusOK)
+	})
+
+	handler := WrapHTTP("test-svc", inner)
+	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestConfigFromEnv_SampleRateDefault(t *testing.T) {
+	t.Setenv("SENTRY_DSN", "")
+	t.Setenv("SENTRY_SAMPLE_RATE", "")
+	t.Setenv("SENTRY_TRACES_SAMPLE_RATE", "")
+
+	cfg := ConfigFromEnv("default-svc")
+	if cfg.SampleRate != 1.0 {
+		t.Errorf("default sample rate = %f, want 1.0", cfg.SampleRate)
 	}
 }

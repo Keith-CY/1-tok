@@ -86,3 +86,21 @@ func TestAccessLog_FlusherPassthrough(t *testing.T) {
 		t.Fatal("expected Flusher to be available through responseCapture")
 	}
 }
+
+func TestAccessLog_UnwrapReturnsOriginal(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		rc, ok := w.(*responseCapture)
+		if !ok {
+			t.Fatal("expected responseCapture")
+		}
+		unwrapped := rc.Unwrap()
+		if unwrapped == nil {
+			t.Fatal("Unwrap returned nil")
+		}
+	})
+
+	handler := AccessLog("test-svc", inner)
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+}

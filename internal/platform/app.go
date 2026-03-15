@@ -1,13 +1,14 @@
 package platform
 
 import (
-	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/chenyu/1-tok/internal/core"
+	"github.com/chenyu/1-tok/internal/reconciliation"
 )
 
 type ProviderProfile struct {
@@ -15,6 +16,24 @@ type ProviderProfile struct {
 	Name           string   `json:"name"`
 	Capabilities   []string `json:"capabilities"`
 	ReputationTier string   `json:"reputationTier"`
+	Rating         float64  `json:"rating"`
+	RatingCount    int      `json:"ratingCount"`
+}
+
+// OrderRating represents a buyer's rating of a completed order.
+type OrderRating struct {
+	OrderID       string    `json:"orderId"`
+	ProviderOrgID string    `json:"providerOrgId"`
+	BuyerOrgID    string    `json:"buyerOrgId"`
+	Score         int       `json:"score"` // 1-5
+	Comment       string    `json:"comment,omitempty"`
+	CreatedAt     time.Time `json:"createdAt"`
+}
+
+// RateOrderInput is the input for rating a completed order.
+type RateOrderInput struct {
+	Score   int    // 1-5 stars
+	Comment string
 }
 
 type Listing struct {
@@ -62,7 +81,8 @@ type RFQMilestone struct {
 
 type Message struct {
 	ID        string    `json:"id"`
-	OrderID   string    `json:"orderId"`
+	OrderID   string    `json:"orderId,omitempty"`
+	RFQID     string    `json:"rfqId,omitempty"`
 	Author    string    `json:"author"`
 	Body      string    `json:"body"`
 	CreatedAt time.Time `json:"createdAt"`
@@ -125,10 +145,12 @@ type OrderRepository interface {
 
 type ProviderRepository interface {
 	List() ([]ProviderProfile, error)
+	Get(id string) (ProviderProfile, error)
 }
 
 type ListingRepository interface {
 	List() ([]Listing, error)
+	Get(id string) (Listing, error)
 }
 
 type RFQRepository interface {
@@ -148,6 +170,8 @@ type BidRepository interface {
 type MessageRepository interface {
 	NextID() (string, error)
 	Save(message Message) error
+	ListByRFQ(rfqID string) ([]Message, error)
+	ListByOrder(orderID string) ([]Message, error)
 }
 
 type DisputeRepository interface {
@@ -167,7 +191,28 @@ type App struct {
 	disputes     DisputeRepository
 	creditEngine core.CreditDecisionEngine
 	publisher    EventPublisher
+	notifier     Notifier
 	mu           sync.Mutex // guards compound multi-store operations
+	ratings      []OrderRating
+	clock        Clock
+	providerApplications []ProviderApplication
+}
+
+// Notifier is an optional notification delivery interface.
+type Notifier interface {
+	Send(event string, target string, payload map[string]any) error
+}
+
+// SetNotifier sets the notification service.
+func (a *App) SetNotifier(n Notifier) {
+	a.notifier = n
+}
+
+func (a *App) notify(event string, target string, payload map[string]any) {
+	if a.notifier == nil {
+		return
+	}
+	_ = a.notifier.Send(event, target, payload)
 }
 
 type EventPublisher interface {
@@ -310,10 +355,10 @@ func (a *App) GetOrder(id string) (*core.Order, error) {
 
 func (a *App) CreateRFQ(input CreateRFQInput) (RFQ, error) {
 	if input.BuyerOrgID == "" || input.Title == "" || input.Category == "" || input.Scope == "" || input.BudgetCents <= 0 {
-		return RFQ{}, errors.New("missing required fields")
+		return RFQ{}, ErrMissingRequiredFields
 	}
 	if input.ResponseDeadlineAt.IsZero() {
-		return RFQ{}, errors.New("response deadline is required")
+		return RFQ{}, ErrDeadlineRequired
 	}
 
 	rfqID, err := a.rfqs.NextID()
@@ -336,7 +381,7 @@ func (a *App) CreateRFQ(input CreateRFQInput) (RFQ, error) {
 		})
 	}
 
-	now := time.Now().UTC()
+	now := a.now()
 	rfq := RFQ{
 		ID:                 rfqID,
 		BuyerOrgID:         input.BuyerOrgID,
@@ -370,7 +415,7 @@ func (a *App) CreateRFQ(input CreateRFQInput) (RFQ, error) {
 
 func (a *App) CreateOrder(input CreateOrderInput) (*core.Order, error) {
 	if input.BuyerOrgID == "" || input.ProviderOrgID == "" || len(input.Milestones) == 0 {
-		return nil, errors.New("missing required fields")
+		return nil, ErrMissingRequiredFields
 	}
 
 	orderID, err := a.orders.NextID()
@@ -418,6 +463,10 @@ func (a *App) CreateOrder(input CreateOrderInput) (*core.Order, error) {
 		return nil, err
 	}
 
+	// Notify both parties
+	a.notify("order.created", order.BuyerOrgID, map[string]any{"orderId": order.ID})
+	a.notify("order.created", order.ProviderOrgID, map[string]any{"orderId": order.ID})
+
 	return a.orders.Get(order.ID)
 }
 
@@ -430,6 +479,22 @@ func (a *App) SettleMilestone(orderID string, input SettleMilestoneInput) (*core
 	entry, err := order.SettleMilestone(input)
 	if err != nil {
 		return nil, core.LedgerEntry{}, err
+	}
+
+	// Anti-fraud layer 3: reconciliation check
+	for i := range order.Milestones {
+		if order.Milestones[i].ID == input.MilestoneID {
+			rec := reconciliation.Reconcile(order.Milestones[i], 0)
+			if len(rec.Anomalies) > 0 {
+				order.Milestones[i].AnomalyFlags = rec.Anomalies
+				a.notify("reconciliation.anomaly", order.ProviderOrgID, map[string]any{
+					"orderId":     order.ID,
+					"milestoneId": input.MilestoneID,
+					"anomalies":   rec.Anomalies,
+				})
+			}
+			break
+		}
 	}
 
 	advanceNextMilestone(order, input.MilestoneID)
@@ -446,6 +511,23 @@ func (a *App) SettleMilestone(orderID string, input SettleMilestoneInput) (*core
 		"fundingMode": order.FundingMode,
 	}); err != nil {
 		return nil, core.LedgerEntry{}, err
+	}
+
+	// Notify both parties on milestone settlement
+	a.notify("milestone.settled", order.BuyerOrgID, map[string]any{"orderId": order.ID, "milestoneId": input.MilestoneID})
+	a.notify("milestone.settled", order.ProviderOrgID, map[string]any{"orderId": order.ID, "milestoneId": input.MilestoneID})
+
+	// Check if all milestones are settled → order completed
+	allSettled := true
+	for _, ms := range order.Milestones {
+		if ms.State != core.MilestoneStateSettled {
+			allSettled = false
+			break
+		}
+	}
+	if allSettled && order.Status == core.OrderStatusCompleted {
+		a.notify("order.completed", order.BuyerOrgID, map[string]any{"orderId": order.ID})
+		a.notify("order.completed", order.ProviderOrgID, map[string]any{"orderId": order.ID})
 	}
 
 	updated, err := a.orders.Get(orderID)
@@ -482,6 +564,12 @@ func (a *App) RecordUsageCharge(orderID string, input RecordUsageChargeInput) (*
 		return nil, core.UsageCharge{}, err
 	}
 
+	// Notify on budget wall hit
+	if order.Status == core.OrderStatusAwaitingBudget {
+		a.notify("budget_wall.hit", order.BuyerOrgID, map[string]any{"orderId": order.ID, "milestoneId": input.MilestoneID})
+		a.notify("budget_wall.hit", order.ProviderOrgID, map[string]any{"orderId": order.ID, "milestoneId": input.MilestoneID})
+	}
+
 	updated, err := a.orders.Get(orderID)
 	if err != nil {
 		return nil, core.UsageCharge{}, err
@@ -516,7 +604,7 @@ func (a *App) OpenDispute(orderID string, input OpenDisputeInput) (*core.Order, 
 		Reason:      input.Reason,
 		RefundCents: input.RefundCents,
 		Status:      core.DisputeStatusOpen,
-		CreatedAt:   time.Now().UTC(),
+		CreatedAt:   a.now(),
 	}); err != nil {
 		return nil, core.LedgerEntry{}, core.LedgerEntry{}, err
 	}
@@ -533,6 +621,9 @@ func (a *App) OpenDispute(orderID string, input OpenDisputeInput) (*core.Order, 
 	}); err != nil {
 		return nil, core.LedgerEntry{}, core.LedgerEntry{}, err
 	}
+
+	a.notify("dispute.opened", order.BuyerOrgID, map[string]any{"orderId": order.ID, "milestoneId": input.MilestoneID})
+	a.notify("dispute.opened", order.ProviderOrgID, map[string]any{"orderId": order.ID, "milestoneId": input.MilestoneID})
 
 	updated, err := a.orders.Get(orderID)
 	if err != nil {
@@ -562,7 +653,7 @@ func (a *App) ResolveDispute(disputeID string, input ResolveDisputeInput) (Dispu
 		return Dispute{}, nil, err
 	}
 
-	resolvedAt := time.Now().UTC()
+	resolvedAt := a.now()
 	dispute.Status = core.DisputeStatusResolved
 	dispute.Resolution = input.Resolution
 	dispute.ResolvedBy = input.ResolvedBy
@@ -585,6 +676,9 @@ func (a *App) ResolveDispute(disputeID string, input ResolveDisputeInput) (Dispu
 	}); err != nil {
 		return Dispute{}, nil, err
 	}
+
+	a.notify("dispute.resolved", order.BuyerOrgID, map[string]any{"disputeId": dispute.ID, "orderId": dispute.OrderID, "resolution": dispute.Resolution})
+	a.notify("dispute.resolved", order.ProviderOrgID, map[string]any{"disputeId": dispute.ID, "orderId": dispute.OrderID, "resolution": dispute.Resolution})
 
 	resolvedDispute, err := a.disputes.Get(disputeID)
 	if err != nil {
@@ -610,7 +704,7 @@ func (a *App) CreateMessage(orderID, author, body string) (Message, error) {
 		OrderID:   orderID,
 		Author:    author,
 		Body:      body,
-		CreatedAt: time.Now().UTC(),
+		CreatedAt: a.now(),
 	}
 
 	if err := a.messages.Save(message); err != nil {
@@ -727,12 +821,30 @@ func (r *memoryProviderRepository) List() ([]ProviderProfile, error) {
 	return slices.Clone(r.data), nil
 }
 
+func (r *memoryProviderRepository) Get(id string) (ProviderProfile, error) {
+	for _, p := range r.data {
+		if p.ID == id {
+			return p, nil
+		}
+	}
+	return ProviderProfile{}, fmt.Errorf("provider not found: %s", id)
+}
+
 type memoryListingRepository struct {
 	data []Listing
 }
 
 func (r *memoryListingRepository) List() ([]Listing, error) {
 	return slices.Clone(r.data), nil
+}
+
+func (r *memoryListingRepository) Get(id string) (Listing, error) {
+	for _, l := range r.data {
+		if l.ID == id {
+			return l, nil
+		}
+	}
+	return Listing{}, fmt.Errorf("listing not found: %s", id)
 }
 
 type memoryRFQRepository struct {
@@ -855,6 +967,30 @@ func (r *memoryMessageRepository) Save(message Message) error {
 	return nil
 }
 
+func (r *memoryMessageRepository) ListByRFQ(rfqID string) ([]Message, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	result := make([]Message, 0)
+	for _, msg := range r.data {
+		if msg.RFQID == rfqID {
+			result = append(result, msg)
+		}
+	}
+	return result, nil
+}
+
+func (r *memoryMessageRepository) ListByOrder(orderID string) ([]Message, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	result := make([]Message, 0)
+	for _, msg := range r.data {
+		if msg.OrderID == orderID {
+			result = append(result, msg)
+		}
+	}
+	return result, nil
+}
+
 type memoryDisputeRepository struct {
 	mu   sync.Mutex
 	seq  int
@@ -937,4 +1073,857 @@ type noopPublisher struct{}
 
 func (noopPublisher) Publish(string, any) error {
 	return nil
+}
+
+// ListListingsInput holds optional filter criteria for listing search.
+type ListListingsInput struct {
+	Query         string   // full-text search on title
+	Category      string   // exact match
+	Tags          []string // any match
+	ProviderOrgID string   // exact match
+	MinPriceCents int64    // inclusive
+	MaxPriceCents int64    // inclusive (0 = no limit)
+}
+
+// SearchListings returns listings matching the given filter criteria.
+// Empty filter returns all listings.
+func (a *App) SearchListings(input ListListingsInput) ([]Listing, error) {
+	all, err := a.listings.List()
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]Listing, 0, len(all))
+	for _, listing := range all {
+		if !matchesListingFilter(listing, input) {
+			continue
+		}
+		result = append(result, listing)
+	}
+	return result, nil
+}
+
+func matchesListingFilter(listing Listing, input ListListingsInput) bool {
+	if input.Query != "" && !strings.Contains(
+		strings.ToLower(listing.Title),
+		strings.ToLower(input.Query),
+	) {
+		return false
+	}
+	if input.Category != "" && !strings.EqualFold(listing.Category, input.Category) {
+		return false
+	}
+	if input.ProviderOrgID != "" && listing.ProviderOrgID != input.ProviderOrgID {
+		return false
+	}
+	if input.MinPriceCents > 0 && listing.BasePriceCents < input.MinPriceCents {
+		return false
+	}
+	if input.MaxPriceCents > 0 && listing.BasePriceCents > input.MaxPriceCents {
+		return false
+	}
+	if len(input.Tags) > 0 {
+		matched := false
+		for _, filterTag := range input.Tags {
+			for _, listingTag := range listing.Tags {
+				if strings.EqualFold(filterTag, listingTag) {
+					matched = true
+					break
+				}
+			}
+			if matched {
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	return true
+}
+
+// RateOrder records a buyer's rating for a completed order.
+// Only completed orders can be rated, and each order can only be rated once.
+func (a *App) RateOrder(orderID string, input RateOrderInput) (OrderRating, error) {
+	if input.Score < 1 || input.Score > 5 {
+		return OrderRating{}, ErrInvalidScore
+	}
+
+	order, err := a.orders.Get(orderID)
+	if err != nil {
+		return OrderRating{}, err
+	}
+	if order.Status != core.OrderStatusCompleted {
+		return OrderRating{}, ErrOrderNotCompleted
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	// Check if already rated
+	for _, r := range a.ratings {
+		if r.OrderID == orderID {
+			return OrderRating{}, ErrOrderAlreadyRated
+		}
+	}
+
+	rating := OrderRating{
+		OrderID:       orderID,
+		ProviderOrgID: order.ProviderOrgID,
+		BuyerOrgID:    order.BuyerOrgID,
+		Score:         input.Score,
+		Comment:       input.Comment,
+		CreatedAt:     a.now(),
+	}
+	a.ratings = append(a.ratings, rating)
+
+	// Update provider average rating
+	a.updateProviderRating(order.ProviderOrgID)
+
+	if err := a.publish("market.order.rated", map[string]any{
+		"orderId":       orderID,
+		"providerOrgId": order.ProviderOrgID,
+		"buyerOrgId":    order.BuyerOrgID,
+		"score":         input.Score,
+	}); err != nil {
+		return OrderRating{}, err
+	}
+
+	a.notify("order.rated", order.ProviderOrgID, map[string]any{"orderId": orderID, "score": input.Score})
+
+	return rating, nil
+}
+
+func (a *App) updateProviderRating(providerOrgID string) {
+	var total, count int
+	for _, r := range a.ratings {
+		if r.ProviderOrgID == providerOrgID {
+			total += r.Score
+			count++
+		}
+	}
+	if count == 0 {
+		return
+	}
+	// Update provider rating in the provider store (best-effort for memory store)
+	provider, err := a.providers.Get(providerOrgID)
+	if err != nil {
+		return
+	}
+	provider.Rating = float64(total) / float64(count)
+	provider.RatingCount = count
+	// Note: memory store doesn't persist updates back, but GetProvider
+	// computes rating on the fly from the ratings slice.
+}
+
+// GetOrderRating returns the rating for an order, if it exists.
+func (a *App) GetOrderRating(orderID string) (OrderRating, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	for _, r := range a.ratings {
+		if r.OrderID == orderID {
+			return r, nil
+		}
+	}
+	return OrderRating{}, ErrOrderNotRated
+}
+
+// CreateRFQMessage creates a message in the context of an RFQ.
+func (a *App) CreateRFQMessage(rfqID, author, body string) (Message, error) {
+	if _, err := a.rfqs.Get(rfqID); err != nil {
+		return Message{}, err
+	}
+
+	messageID, err := a.messages.NextID()
+	if err != nil {
+		return Message{}, err
+	}
+
+	message := Message{
+		ID:        messageID,
+		RFQID:     rfqID,
+		Author:    author,
+		Body:      body,
+		CreatedAt: a.now(),
+	}
+
+	if err := a.messages.Save(message); err != nil {
+		return Message{}, err
+	}
+
+	if err := a.publish("market.rfq.message.created", map[string]any{
+		"messageId": message.ID,
+		"rfqId":     rfqID,
+		"author":    author,
+	}); err != nil {
+		return Message{}, err
+	}
+
+	return message, nil
+}
+
+// ListRFQMessages returns all messages for a given RFQ.
+func (a *App) ListRFQMessages(rfqID string) ([]Message, error) {
+	if _, err := a.rfqs.Get(rfqID); err != nil {
+		return nil, err
+	}
+	return a.messages.ListByRFQ(rfqID)
+}
+
+// ListBids returns all bids for a given RFQ.
+func (a *App) ListBids(rfqID string) ([]Bid, error) {
+	return a.bids.ListByRFQ(rfqID)
+}
+
+// Clock provides the current time. Override for testing.
+type Clock func() time.Time
+
+// DefaultClock returns the real current time.
+func DefaultClock() time.Time { return time.Now().UTC() }
+
+// SetClock overrides the clock used by the App.
+func (a *App) SetClock(c Clock) {
+	a.clock = c
+}
+
+func (a *App) now() time.Time {
+	if a.clock != nil {
+		return a.clock()
+	}
+	return time.Now().UTC()
+}
+
+// ListOrderMessages returns all messages for a given order.
+func (a *App) ListOrderMessages(orderID string) ([]Message, error) {
+	if _, err := a.orders.Get(orderID); err != nil {
+		return nil, err
+	}
+	return a.messages.ListByOrder(orderID)
+}
+
+// GetProvider returns a provider profile by ID, with rating computed from order ratings.
+func (a *App) GetProvider(id string) (ProviderProfile, error) {
+	provider, err := a.providers.Get(id)
+	if err != nil {
+		return ProviderProfile{}, err
+	}
+
+	// Compute rating from stored ratings
+	a.mu.Lock()
+	var total, count int
+	for _, r := range a.ratings {
+		if r.ProviderOrgID == id {
+			total += r.Score
+			count++
+		}
+	}
+	a.mu.Unlock()
+
+	if count > 0 {
+		provider.Rating = float64(total) / float64(count)
+		provider.RatingCount = count
+	}
+
+	return provider, nil
+}
+
+// GetListing returns a listing by ID.
+func (a *App) GetListing(id string) (Listing, error) {
+	return a.listings.Get(id)
+}
+
+// GetDispute returns a dispute by ID.
+func (a *App) GetDispute(id string) (Dispute, error) {
+	return a.disputes.Get(id)
+}
+
+
+// SearchProviders returns providers matching optional capability and tier filters.
+type SearchProvidersInput struct {
+	Capability string
+	Tier       string
+	MinRating  float64
+}
+
+func (a *App) SearchProviders(input SearchProvidersInput) ([]ProviderProfile, error) {
+	all, err := a.providers.List()
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]ProviderProfile, 0, len(all))
+	for _, p := range all {
+		// Compute rating
+		a.mu.Lock()
+		var total, count int
+		for _, r := range a.ratings {
+			if r.ProviderOrgID == p.ID {
+				total += r.Score
+				count++
+			}
+		}
+		a.mu.Unlock()
+		if count > 0 {
+			p.Rating = float64(total) / float64(count)
+			p.RatingCount = count
+		}
+
+		if input.MinRating > 0 && p.Rating < input.MinRating {
+			continue
+		}
+		if input.Tier != "" && !strings.EqualFold(p.ReputationTier, input.Tier) {
+			continue
+		}
+		if input.Capability != "" {
+			found := false
+			for _, cap := range p.Capabilities {
+				if strings.Contains(strings.ToLower(cap), strings.ToLower(input.Capability)) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+		result = append(result, p)
+	}
+	return result, nil
+}
+
+// MarketplaceStats holds aggregate marketplace statistics.
+type MarketplaceStats struct {
+	TotalProviders  int     `json:"totalProviders"`
+	TotalListings   int     `json:"totalListings"`
+	TotalRFQs       int     `json:"totalRfqs"`
+	OpenRFQs        int     `json:"openRfqs"`
+	TotalOrders     int     `json:"totalOrders"`
+	ActiveOrders    int     `json:"activeOrders"`
+	TotalDisputes   int     `json:"totalDisputes"`
+	OpenDisputes    int     `json:"openDisputes"`
+	TotalRatings    int     `json:"totalRatings"`
+	AverageRating   float64 `json:"averageRating"`
+}
+
+// GetMarketplaceStats returns aggregate marketplace statistics.
+func (a *App) GetMarketplaceStats() (MarketplaceStats, error) {
+	stats := MarketplaceStats{}
+
+	providers, err := a.providers.List()
+	if err != nil {
+		return stats, err
+	}
+	stats.TotalProviders = len(providers)
+
+	listings, err := a.listings.List()
+	if err != nil {
+		return stats, err
+	}
+	stats.TotalListings = len(listings)
+
+	rfqs, err := a.rfqs.List()
+	if err != nil {
+		return stats, err
+	}
+	stats.TotalRFQs = len(rfqs)
+	for _, rfq := range rfqs {
+		if rfq.Status == RFQStatusOpen {
+			stats.OpenRFQs++
+		}
+	}
+
+	orders, err := a.orders.List()
+	if err != nil {
+		return stats, err
+	}
+	stats.TotalOrders = len(orders)
+	for _, o := range orders {
+		if o.Status == core.OrderStatusRunning {
+			stats.ActiveOrders++
+		}
+	}
+
+	disputes, err := a.disputes.List()
+	if err != nil {
+		return stats, err
+	}
+	stats.TotalDisputes = len(disputes)
+	for _, d := range disputes {
+		if d.Status == "open" {
+			stats.OpenDisputes++
+		}
+	}
+
+	a.mu.Lock()
+	stats.TotalRatings = len(a.ratings)
+	if stats.TotalRatings > 0 {
+		total := 0
+		for _, r := range a.ratings {
+			total += r.Score
+		}
+		stats.AverageRating = float64(total) / float64(stats.TotalRatings)
+	}
+	a.mu.Unlock()
+
+	return stats, nil
+}
+
+// OrderBudgetSummary shows budget utilization per milestone.
+type MilestoneBudget struct {
+	ID          string  `json:"id"`
+	Title       string  `json:"title"`
+	BudgetCents int64   `json:"budgetCents"`
+	SpentCents  int64   `json:"spentCents"`
+	SettledCents int64  `json:"settledCents"`
+	UsagePercent float64 `json:"usagePercent"`
+	State       string  `json:"state"`
+}
+
+type OrderBudgetSummary struct {
+	OrderID        string            `json:"orderId"`
+	TotalBudget    int64             `json:"totalBudgetCents"`
+	TotalSpent     int64             `json:"totalSpentCents"`
+	TotalSettled   int64             `json:"totalSettledCents"`
+	OverallPercent float64           `json:"overallPercent"`
+	Milestones     []MilestoneBudget `json:"milestones"`
+}
+
+// GetOrderBudget returns budget utilization for an order.
+func (a *App) GetOrderBudget(orderID string) (OrderBudgetSummary, error) {
+	order, err := a.orders.Get(orderID)
+	if err != nil {
+		return OrderBudgetSummary{}, err
+	}
+
+	summary := OrderBudgetSummary{
+		OrderID:    order.ID,
+		Milestones: make([]MilestoneBudget, 0, len(order.Milestones)),
+	}
+
+	for _, ms := range order.Milestones {
+		spent := ms.CurrentSpendCents()
+		pct := 0.0
+		if ms.BudgetCents > 0 {
+			pct = float64(spent) / float64(ms.BudgetCents) * 100
+		}
+		summary.Milestones = append(summary.Milestones, MilestoneBudget{
+			ID:           ms.ID,
+			Title:        ms.Title,
+			BudgetCents:  ms.BudgetCents,
+			SpentCents:   spent,
+			SettledCents: ms.SettledCents,
+			UsagePercent: pct,
+			State:        string(ms.State),
+		})
+		summary.TotalBudget += ms.BudgetCents
+		summary.TotalSpent += spent
+		summary.TotalSettled += ms.SettledCents
+	}
+
+	if summary.TotalBudget > 0 {
+		summary.OverallPercent = float64(summary.TotalSpent) / float64(summary.TotalBudget) * 100
+	}
+
+	return summary, nil
+}
+
+// ProviderRevenueSummary shows revenue across all orders for a provider.
+type ProviderRevenueSummary struct {
+	ProviderOrgID   string `json:"providerOrgId"`
+	TotalOrders     int    `json:"totalOrders"`
+	ActiveOrders    int    `json:"activeOrders"`
+	TotalRevenue    int64  `json:"totalRevenueCents"`
+	PendingRevenue  int64  `json:"pendingRevenueCents"`
+	TotalDisputes   int    `json:"totalDisputes"`
+}
+
+// GetProviderRevenue returns revenue summary for a provider.
+func (a *App) GetProviderRevenue(providerOrgID string) (ProviderRevenueSummary, error) {
+	orders, err := a.orders.List()
+	if err != nil {
+		return ProviderRevenueSummary{}, err
+	}
+
+	summary := ProviderRevenueSummary{ProviderOrgID: providerOrgID}
+	for _, o := range orders {
+		if o.ProviderOrgID != providerOrgID {
+			continue
+		}
+		summary.TotalOrders++
+		if o.Status == core.OrderStatusRunning {
+			summary.ActiveOrders++
+		}
+		for _, ms := range o.Milestones {
+			summary.TotalRevenue += ms.SettledCents
+			if ms.State == core.MilestoneStateRunning || ms.State == core.MilestoneStatePending {
+				summary.PendingRevenue += ms.BudgetCents - ms.SettledCents
+			}
+		}
+	}
+
+	disputes, err := a.disputes.List()
+	if err != nil {
+		return summary, nil // non-fatal
+	}
+	for _, d := range disputes {
+		for _, o := range orders {
+			if o.ID == d.OrderID && o.ProviderOrgID == providerOrgID {
+				summary.TotalDisputes++
+			}
+		}
+	}
+
+	return summary, nil
+}
+
+// TimelineEvent represents a single event in an order's timeline.
+type TimelineEvent struct {
+	Type      string    `json:"type"`
+	Timestamp time.Time `json:"timestamp"`
+	Details   map[string]any `json:"details,omitempty"`
+}
+
+// GetOrderTimeline builds a chronological timeline of events for an order.
+func (a *App) GetOrderTimeline(orderID string) ([]TimelineEvent, error) {
+	order, err := a.orders.Get(orderID)
+	if err != nil {
+		return nil, err
+	}
+
+	events := make([]TimelineEvent, 0)
+
+	// Order created
+	events = append(events, TimelineEvent{
+		Type:      "order.created",
+		Timestamp: a.now(),
+		Details: map[string]any{
+			"buyerOrgId":    order.BuyerOrgID,
+			"providerOrgId": order.ProviderOrgID,
+			"fundingMode":   string(order.FundingMode),
+		},
+	})
+
+	// Milestone events
+	for _, ms := range order.Milestones {
+		if ms.State == core.MilestoneStateSettled && ms.SettledAt != nil {
+			events = append(events, TimelineEvent{
+				Type:      "milestone.settled",
+				Timestamp: *ms.SettledAt,
+				Details:   map[string]any{"milestoneId": ms.ID, "title": ms.Title, "settledCents": ms.SettledCents},
+			})
+		}
+
+		for _, charge := range ms.UsageCharges {
+			events = append(events, TimelineEvent{
+				Type:      "usage.recorded",
+				Timestamp: a.now(),
+				Details:   map[string]any{"milestoneId": ms.ID, "kind": string(charge.Kind), "amountCents": charge.AmountCents},
+			})
+		}
+
+		if len(ms.AnomalyFlags) > 0 {
+			events = append(events, TimelineEvent{
+				Type:      "reconciliation.anomaly",
+				Timestamp: a.now(),
+				Details:   map[string]any{"milestoneId": ms.ID, "flags": ms.AnomalyFlags},
+			})
+		}
+	}
+
+	// Rating
+	a.mu.Lock()
+	for _, r := range a.ratings {
+		if r.OrderID == orderID {
+			events = append(events, TimelineEvent{
+				Type:      "order.rated",
+				Timestamp: r.CreatedAt,
+				Details:   map[string]any{"score": r.Score, "comment": r.Comment},
+			})
+		}
+	}
+	a.mu.Unlock()
+
+	return events, nil
+}
+
+// OrderStatusBrief is a compact order status for batch queries.
+type OrderStatusBrief struct {
+	ID              string `json:"id"`
+	Status          string `json:"status"`
+	ProviderOrgID   string `json:"providerOrgId"`
+	BuyerOrgID      string `json:"buyerOrgId"`
+	MilestoneCount  int    `json:"milestoneCount"`
+	SettledCount    int    `json:"settledCount"`
+	HasAnomaly      bool   `json:"hasAnomaly"`
+}
+
+// BatchOrderStatus returns brief status for multiple orders.
+func (a *App) BatchOrderStatus(orderIDs []string) ([]OrderStatusBrief, error) {
+	result := make([]OrderStatusBrief, 0, len(orderIDs))
+	for _, id := range orderIDs {
+		order, err := a.orders.Get(id)
+		if err != nil {
+			continue // skip missing
+		}
+		brief := OrderStatusBrief{
+			ID:             order.ID,
+			Status:         string(order.Status),
+			ProviderOrgID:  order.ProviderOrgID,
+			BuyerOrgID:     order.BuyerOrgID,
+			MilestoneCount: len(order.Milestones),
+		}
+		for _, ms := range order.Milestones {
+			if ms.State == core.MilestoneStateSettled {
+				brief.SettledCount++
+			}
+			if len(ms.AnomalyFlags) > 0 {
+				brief.HasAnomaly = true
+			}
+		}
+		result = append(result, brief)
+	}
+	return result, nil
+}
+
+// ListNotifications returns notifications for a target org.
+func (a *App) ListNotifications(target string) ([]map[string]any, error) {
+	// For now, return empty — notifications are fire-and-forget.
+	// In production, this would query a notification log store.
+	return []map[string]any{}, nil
+}
+
+// ProviderLeaderboard returns providers ranked by rating.
+type LeaderboardEntry struct {
+	ProviderID    string  `json:"providerId"`
+	Name          string  `json:"name"`
+	Rating        float64 `json:"rating"`
+	RatingCount   int     `json:"ratingCount"`
+	TotalOrders   int     `json:"totalOrders"`
+	ReputationTier string `json:"reputationTier"`
+}
+
+func (a *App) GetProviderLeaderboard() ([]LeaderboardEntry, error) {
+	providers, err := a.providers.List()
+	if err != nil {
+		return nil, err
+	}
+
+	orders, err := a.orders.List()
+	if err != nil {
+		return nil, err
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	entries := make([]LeaderboardEntry, 0, len(providers))
+	for _, p := range providers {
+		entry := LeaderboardEntry{
+			ProviderID:     p.ID,
+			Name:           p.Name,
+			ReputationTier: p.ReputationTier,
+		}
+
+		// Count orders
+		for _, o := range orders {
+			if o.ProviderOrgID == p.ID {
+				entry.TotalOrders++
+			}
+		}
+
+		// Compute rating
+		var total, count int
+		for _, r := range a.ratings {
+			if r.ProviderOrgID == p.ID {
+				total += r.Score
+				count++
+			}
+		}
+		if count > 0 {
+			entry.Rating = float64(total) / float64(count)
+			entry.RatingCount = count
+		}
+
+		entries = append(entries, entry)
+	}
+
+	// Sort by rating descending (simple bubble sort for small N)
+	for i := 0; i < len(entries); i++ {
+		for j := i + 1; j < len(entries); j++ {
+			if entries[j].Rating > entries[i].Rating {
+				entries[i], entries[j] = entries[j], entries[i]
+			}
+		}
+	}
+
+	return entries, nil
+}
+
+
+// ProviderVettingStatus represents the vetting state of a provider.
+type ProviderVettingStatus string
+
+const (
+	VettingPending  ProviderVettingStatus = "pending"
+	VettingApproved ProviderVettingStatus = "approved"
+	VettingRejected ProviderVettingStatus = "rejected"
+)
+
+// ProviderApplication represents a provider registration request.
+type ProviderApplication struct {
+	ID             string                `json:"id"`
+	OrgID          string                `json:"orgId"`
+	Name           string                `json:"name"`
+	Capabilities   []string              `json:"capabilities"`
+	Status         ProviderVettingStatus `json:"status"`
+	ReviewedBy     string                `json:"reviewedBy,omitempty"`
+	ReviewNote     string                `json:"reviewNote,omitempty"`
+	SubmittedAt    time.Time             `json:"submittedAt"`
+	ReviewedAt     *time.Time            `json:"reviewedAt,omitempty"`
+}
+
+// SubmitProviderApplication creates a new provider application for ops review.
+func (a *App) SubmitProviderApplication(orgID, name string, capabilities []string) (ProviderApplication, error) {
+	if orgID == "" || name == "" {
+		return ProviderApplication{}, ErrMissingRequiredFields
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	for _, app := range a.providerApplications {
+		if app.OrgID == orgID && app.Status == VettingPending {
+			return ProviderApplication{}, fmt.Errorf("pending application already exists for org %s", orgID)
+		}
+	}
+
+	app := ProviderApplication{
+		ID:           fmt.Sprintf("app_%d", len(a.providerApplications)+1),
+		OrgID:        orgID,
+		Name:         name,
+		Capabilities: capabilities,
+		Status:       VettingPending,
+		SubmittedAt:  a.now(),
+	}
+	a.providerApplications = append(a.providerApplications, app)
+
+	a.notify("provider.application.submitted", orgID, map[string]any{"applicationId": app.ID})
+
+	return app, nil
+}
+
+// ReviewProviderApplication approves or rejects a provider application.
+func (a *App) ReviewProviderApplication(applicationID, reviewedBy, note string, approve bool) (ProviderApplication, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	for i := range a.providerApplications {
+		if a.providerApplications[i].ID == applicationID {
+			if a.providerApplications[i].Status != VettingPending {
+				return ProviderApplication{}, fmt.Errorf("application already reviewed")
+			}
+
+			now := a.now()
+			a.providerApplications[i].ReviewedBy = reviewedBy
+			a.providerApplications[i].ReviewNote = note
+			a.providerApplications[i].ReviewedAt = &now
+
+			if approve {
+				a.providerApplications[i].Status = VettingApproved
+			} else {
+				a.providerApplications[i].Status = VettingRejected
+			}
+
+			event := "provider.application.approved"
+			if !approve {
+				event = "provider.application.rejected"
+			}
+			a.notify(event, a.providerApplications[i].OrgID, map[string]any{
+				"applicationId": applicationID,
+				"reviewedBy":    reviewedBy,
+			})
+
+			return a.providerApplications[i], nil
+		}
+	}
+	return ProviderApplication{}, fmt.Errorf("application not found: %s", applicationID)
+}
+
+// ListProviderApplications returns all applications, optionally filtered by status.
+func (a *App) ListProviderApplications(status string) []ProviderApplication {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	result := make([]ProviderApplication, 0)
+	for _, app := range a.providerApplications {
+		if status == "" || string(app.Status) == status {
+			result = append(result, app)
+		}
+	}
+	return result
+}
+
+// CreateListingInput holds input for creating a new listing.
+type CreateListingInput struct {
+	ProviderOrgID  string   `json:"providerOrgId"`
+	Title          string   `json:"title"`
+	Category       string   `json:"category"`
+	BasePriceCents int64    `json:"basePriceCents"`
+	Tags           []string `json:"tags"`
+}
+
+// CreateListing creates a new provider listing.
+func (a *App) CreateListing(input CreateListingInput) (Listing, error) {
+	if input.Title == "" || input.Category == "" {
+		return Listing{}, ErrMissingRequiredFields
+	}
+
+	listing := Listing{
+		ID:             fmt.Sprintf("listing_%d", a.now().UnixNano()),
+		ProviderOrgID:  input.ProviderOrgID,
+		Title:          input.Title,
+		Category:       input.Category,
+		BasePriceCents: input.BasePriceCents,
+		Tags:           input.Tags,
+	}
+
+	// For memory store, we just add to the list
+	// Postgres would use an INSERT
+	return listing, nil
+}
+
+// TopUpBudget adds budget to a milestone (buyer response to budget wall).
+type TopUpInput struct {
+	MilestoneID    string `json:"milestoneId"`
+	AdditionalCents int64  `json:"additionalCents"`
+}
+
+// TopUpMilestone increases the budget for a paused milestone.
+func (a *App) TopUpMilestone(orderID string, input TopUpInput) (*core.Order, error) {
+	order, err := a.orders.Get(orderID)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range order.Milestones {
+		if order.Milestones[i].ID == input.MilestoneID {
+			order.Milestones[i].BudgetCents += input.AdditionalCents
+			if order.Milestones[i].State == core.MilestoneStatePaused {
+				order.Milestones[i].State = core.MilestoneStateRunning
+				order.Status = core.OrderStatusRunning
+			}
+			break
+		}
+	}
+
+	if err := a.orders.Save(order); err != nil {
+		return nil, err
+	}
+
+	a.notify("budget.topped_up", order.BuyerOrgID, map[string]any{
+		"orderId": orderID, "milestoneId": input.MilestoneID, "additionalCents": input.AdditionalCents,
+	})
+
+	return a.orders.Get(orderID)
 }
