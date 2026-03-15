@@ -6367,3 +6367,122 @@ func TestCarrierBinding_GetNotFound(t *testing.T) {
 		t.Error("should not succeed for nonexistent binding")
 	}
 }
+
+func TestCreditLimit_SetAndGet(t *testing.T) {
+	srv := NewServer()
+	body := `{"buyerOrgId":"org_b","limitCents":100000,"setBy":"ops"}`
+	req := httptest.NewRequest("POST", "/api/v1/credit-limits", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("set: %d", w.Code) }
+
+	req = httptest.NewRequest("GET", "/api/v1/credit-limits/org_b", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("get: %d", w.Code) }
+
+	req = httptest.NewRequest("GET", "/api/v1/credit-limits/nonexistent", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound { t.Errorf("not found: %d", w.Code) }
+}
+
+func TestCarrierBinding_VerifyAndSuspend(t *testing.T) {
+	srv := NewServer()
+	body := `{"providerOrgId":"org_vs","carrierBaseUrl":"https://carrier.test","hostId":"h1"}`
+	req := httptest.NewRequest("POST", "/api/v1/carrier-bindings", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	bindingID := resp["binding"].(map[string]any)["id"].(string)
+
+	// Verify
+	req = httptest.NewRequest("POST", "/api/v1/carrier-bindings/"+bindingID+"/verify", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("verify: %d %s", w.Code, w.Body.String()) }
+
+	// Suspend
+	req = httptest.NewRequest("POST", "/api/v1/carrier-bindings/"+bindingID+"/suspend", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("suspend: %d %s", w.Code, w.Body.String()) }
+}
+
+func TestTopUp_Gateway(t *testing.T) {
+	srv := NewServer()
+	body := `{"buyerOrgId":"org_b","providerOrgId":"org_p","fundingMode":"prepaid","milestones":[{"id":"ms_1","title":"W","basePriceCents":1000,"budgetCents":1000}]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	orderID := resp["order"].(map[string]any)["id"].(string)
+
+	topUpBody := `{"milestoneId":"ms_1","additionalCents":2000}`
+	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/top-up", strings.NewReader(topUpBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("top-up: %d %s", w.Code, w.Body.String()) }
+}
+
+func TestApplicationReview_Gateway(t *testing.T) {
+	srv := NewServer()
+	// Submit
+	body := `{"orgId":"org_review","name":"Review Test","capabilities":["gpu"]}`
+	req := httptest.NewRequest("POST", "/api/v1/provider-applications", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	appID := resp["application"].(map[string]any)["id"].(string)
+
+	// Review
+	reviewBody := `{"reviewedBy":"ops","note":"looks good","approve":true}`
+	req = httptest.NewRequest("POST", "/api/v1/provider-applications/"+appID+"/review", strings.NewReader(reviewBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("review: %d %s", w.Code, w.Body.String()) }
+}
+
+func TestCreateListing_Gateway(t *testing.T) {
+	srv := NewServer()
+	body := `{"providerOrgId":"org_p","title":"GPU Agent","category":"compute","basePriceCents":1500,"tags":["gpu"]}`
+	req := httptest.NewRequest("POST", "/api/v1/listings", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated { t.Errorf("create listing: %d %s", w.Code, w.Body.String()) }
+}
+
+func TestRateLimitConfig(t *testing.T) {
+	srv := NewServer()
+	req := httptest.NewRequest("GET", "/api/v1/system/ratelimits", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+}
+
+func TestOrderMessages_CreateAndList(t *testing.T) {
+	srv := NewServer()
+	body := `{"buyerOrgId":"org_b","providerOrgId":"org_p","fundingMode":"prepaid","milestones":[{"id":"ms_1","title":"W","basePriceCents":1000,"budgetCents":1000}]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	orderID := resp["order"].(map[string]any)["id"].(string)
+
+	// Create message
+	msgBody := fmt.Sprintf(`{"orderId":"%s","author":"buyer","body":"update?"}`, orderID)
+	req = httptest.NewRequest("POST", "/api/v1/messages", strings.NewReader(msgBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated { t.Errorf("create: %d", w.Code) }
+
+	// List messages
+	req = httptest.NewRequest("GET", "/api/v1/orders/"+orderID+"/messages", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("list: %d", w.Code) }
+}
