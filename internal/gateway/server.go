@@ -249,7 +249,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/api/v1/webhooks/"):
 		s.handleUnregisterWebhook(w, r)
 	default:
-		httputil.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "route not found"})
+		httputil.WriteError(w, http.StatusNotFound, httputil.ErrCodeNotFound, "route not found")
 	}
 }
 func (s *Server) handleListProviders(w http.ResponseWriter, r *http.Request) {
@@ -1153,9 +1153,23 @@ func writeGatewayError(w http.ResponseWriter, err error) {
 		errors.Is(err, platform.ErrRFQNotFound),
 		errors.Is(err, platform.ErrBidNotFound),
 		errors.Is(err, platform.ErrDisputeNotFound):
-		httputil.WriteJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		httputil.WriteError(w, http.StatusNotFound, httputil.ErrCodeNotFound, err.Error())
+	case errors.Is(err, platform.ErrProviderSuspended):
+		httputil.WriteError(w, http.StatusForbidden, httputil.ErrCodeForbidden, err.Error())
+	case errors.Is(err, platform.ErrMissingRequiredFields),
+		errors.Is(err, platform.ErrInvalidScore),
+		errors.Is(err, platform.ErrBidIDRequired),
+		errors.Is(err, platform.ErrDeadlineRequired),
+		errors.Is(err, platform.ErrMilestonesRequired):
+		httputil.WriteError(w, http.StatusBadRequest, httputil.ErrCodeValidation, err.Error())
+	case errors.Is(err, platform.ErrRFQNotOpenForBids),
+		errors.Is(err, platform.ErrRFQNotOpenForAward),
+		errors.Is(err, platform.ErrBidNotBelongToRFQ),
+		errors.Is(err, platform.ErrOrderNotCompleted),
+		errors.Is(err, platform.ErrOrderAlreadyRated):
+		httputil.WriteError(w, http.StatusConflict, httputil.ErrCodeConflict, err.Error())
 	default:
-		httputil.WriteJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		httputil.WriteError(w, http.StatusConflict, httputil.ErrCodeConflict, err.Error())
 	}
 }
 func (s *Server) actorUserID(r *http.Request) string {
