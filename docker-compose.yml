@@ -5,9 +5,9 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: onetok
-      POSTGRES_USER: onetok
-      POSTGRES_PASSWORD: onetok
+      POSTGRES_DB: ${POSTGRES_DB:-onetok}
+      POSTGRES_USER: ${POSTGRES_USER:-onetok}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-onetok}
     ports:
       - "5432:5432"
     volumes:
@@ -34,7 +34,7 @@ services:
       context: .
       dockerfile: cmd/api-gateway/Dockerfile
     environment:
-      DATABASE_URL: postgres://onetok:onetok@postgres:5432/onetok?sslmode=disable
+      DATABASE_URL: postgres://${POSTGRES_USER:-onetok}:${POSTGRES_PASSWORD:-onetok}@postgres:5432/onetok?sslmode=disable
       NATS_URL: nats://nats:4222
       REDIS_URL: redis://redis:6379
       IAM_UPSTREAM: http://iam:8081
@@ -54,7 +54,7 @@ services:
       context: .
       dockerfile: cmd/iam/Dockerfile
     environment:
-      DATABASE_URL: postgres://onetok:onetok@postgres:5432/onetok?sslmode=disable
+      DATABASE_URL: postgres://${POSTGRES_USER:-onetok}:${POSTGRES_PASSWORD:-onetok}@postgres:5432/onetok?sslmode=disable
     ports:
       - "8081:8081"
     depends_on:
@@ -66,7 +66,7 @@ services:
       context: .
       dockerfile: cmd/settlement/Dockerfile
     environment:
-      DATABASE_URL: postgres://onetok:onetok@postgres:5432/onetok?sslmode=disable
+      DATABASE_URL: postgres://${POSTGRES_USER:-onetok}:${POSTGRES_PASSWORD:-onetok}@postgres:5432/onetok?sslmode=disable
       API_GATEWAY_UPSTREAM: http://api-gateway:8080
       NATS_URL: nats://nats:4222
     ports:

@@ -19,7 +19,7 @@ const demoOrder = {
 };
 
 export default async function OrderDetailPage({ params }: { params: { orderId: string } }) {
-  const { orderId } = await params;
+  const { orderId } = params;
   const order = demoOrder; // TODO: fetch from API
 
   return (
