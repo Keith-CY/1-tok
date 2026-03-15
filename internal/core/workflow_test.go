@@ -479,3 +479,70 @@ func TestIsLastMilestoneSettled_NotAll(t *testing.T) {
 		t.Error("expected false when not all milestones settled")
 	}
 }
+
+func TestSettleMilestone_FromPaused(t *testing.T) {
+	order := &Order{
+		ID:          "ord_1",
+		Status:      OrderStatusAwaitingBudget,
+		FundingMode: FundingModePrepaid,
+		Milestones: []Milestone{
+			{ID: "ms_1", Title: "W", BasePriceCents: 1000, BudgetCents: 1000, State: MilestoneStatePaused, DisputeStatus: DisputeStatusNone},
+		},
+	}
+	entry, err := order.SettleMilestone(SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry.Kind != LedgerEntryKindProviderPayout {
+		t.Errorf("kind = %s", entry.Kind)
+	}
+	if order.Status != OrderStatusCompleted {
+		t.Errorf("status = %s", order.Status)
+	}
+}
+
+func TestSettleMilestone_CreditMode(t *testing.T) {
+	order := &Order{
+		ID:          "ord_1",
+		Status:      OrderStatusRunning,
+		FundingMode: FundingModeCredit,
+		Milestones: []Milestone{
+			{ID: "ms_1", Title: "W", BasePriceCents: 1000, BudgetCents: 1000, State: MilestoneStateRunning, DisputeStatus: DisputeStatusNone},
+		},
+	}
+	entry, err := order.SettleMilestone(SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry.Kind != LedgerEntryKindPlatformExposure {
+		t.Errorf("kind = %s, want platform_exposure", entry.Kind)
+	}
+}
+
+func TestSettleMilestone_NotPayable(t *testing.T) {
+	order := &Order{
+		ID:     "ord_1",
+		Status: OrderStatusRunning,
+		Milestones: []Milestone{
+			{ID: "ms_1", Title: "W", State: MilestoneStatePending, DisputeStatus: DisputeStatusNone},
+		},
+	}
+	_, err := order.SettleMilestone(SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+	if err == nil {
+		t.Error("expected error for pending milestone")
+	}
+}
+
+func TestOpenDispute_MilestoneNotFound(t *testing.T) {
+	order := &Order{
+		ID:     "ord_1",
+		Status: OrderStatusRunning,
+		Milestones: []Milestone{
+			{ID: "ms_1", Title: "W", State: MilestoneStateSettled, DisputeStatus: DisputeStatusNone},
+		},
+	}
+	_, _, err := order.OpenDispute(OpenDisputeInput{MilestoneID: "ms_nonexistent", Reason: "bad", RefundCents: 100})
+	if err == nil {
+		t.Error("expected error for nonexistent milestone")
+	}
+}
