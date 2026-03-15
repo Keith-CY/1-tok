@@ -2,6 +2,7 @@ package ratelimit
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -479,5 +480,101 @@ func TestEnvInt_Default(t *testing.T) {
 	v := envInt("TEST_INT_EMPTY", 10)
 	if v != 10 {
 		t.Errorf("int = %d, want 10", v)
+	}
+}
+
+func TestRedisStore_Integration(t *testing.T) {
+	url := os.Getenv("ONE_TOK_TEST_REDIS_URL")
+	if url == "" {
+		t.Skip("ONE_TOK_TEST_REDIS_URL not set")
+	}
+
+	store := NewRedisStore(url)
+	if store == nil {
+		t.Fatal("expected non-nil Redis store")
+	}
+
+	now := time.Now().UTC()
+	decision, err := store.Allow(context.Background(), "test:key:1", 5, time.Minute, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !decision.Allowed {
+		t.Error("first request should be allowed")
+	}
+	if decision.Remaining != 4 {
+		t.Errorf("remaining = %d, want 4", decision.Remaining)
+	}
+}
+
+func TestRedisStore_ExceedLimit(t *testing.T) {
+	url := os.Getenv("ONE_TOK_TEST_REDIS_URL")
+	if url == "" {
+		t.Skip("ONE_TOK_TEST_REDIS_URL not set")
+	}
+
+	store := NewRedisStore(url)
+	now := time.Now().UTC()
+	key := fmt.Sprintf("test:exceed:%d", now.UnixNano())
+
+	for i := 0; i < 3; i++ {
+		store.Allow(context.Background(), key, 3, time.Minute, now)
+	}
+
+	decision, err := store.Allow(context.Background(), key, 3, time.Minute, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Allowed {
+		t.Error("4th request should be blocked")
+	}
+}
+
+func TestNewRedisStore_InvalidURL(t *testing.T) {
+	store := NewRedisStore("redis://127.0.0.1:1")
+	if store == nil {
+		t.Fatal("expected non-nil store even with bad URL")
+	}
+}
+
+func TestParseRedisAddr_URL(t *testing.T) {
+	addr := parseRedisAddr("redis://myhost:6380/0")
+	if addr != "myhost:6380" {
+		t.Errorf("addr = %s, want myhost:6380", addr)
+	}
+}
+
+func TestParseRedisAddr_Plain(t *testing.T) {
+	addr := parseRedisAddr("myhost:6380")
+	if addr != "myhost:6380" {
+		t.Errorf("addr = %s, want myhost:6380", addr)
+	}
+}
+
+func TestNewServiceFromEnv_RequireRedis(t *testing.T) {
+	t.Setenv("RATE_LIMIT_ENFORCE", "true")
+	t.Setenv("REDIS_URL", "")
+
+	_, err := NewServiceFromEnv()
+	if err == nil {
+		t.Error("expected error when enforce=true but no Redis")
+	}
+}
+
+func TestNewServiceFromEnv_WithRedis(t *testing.T) {
+	url := os.Getenv("ONE_TOK_TEST_REDIS_URL")
+	if url == "" {
+		t.Skip("ONE_TOK_TEST_REDIS_URL not set")
+	}
+
+	t.Setenv("RATE_LIMIT_ENFORCE", "true")
+	t.Setenv("REDIS_URL", url)
+
+	svc, err := NewServiceFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if svc == nil {
+		t.Fatal("expected non-nil service")
 	}
 }
