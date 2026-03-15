@@ -351,3 +351,19 @@ func TestRunAbuseSmoke_IAMHealthFail(t *testing.T) {
 		t.Error("expected error for unhealthy IAM")
 	}
 }
+
+func TestRunExternalDependencyPreflight_MissingFields(t *testing.T) {
+	err := RunExternalDependencyPreflight(context.Background(), ExternalDependencyConfig{})
+	if err == nil { t.Error("expected error for missing fields") }
+
+	err = RunExternalDependencyPreflight(context.Background(), ExternalDependencyConfig{
+		FiberRPCURL: "http://test",
+	})
+	if err == nil { t.Error("expected error for missing carrier URL") }
+
+	err = RunExternalDependencyPreflight(context.Background(), ExternalDependencyConfig{
+		FiberRPCURL:       "http://test",
+		CarrierGatewayURL: "http://test",
+	})
+	if err == nil { t.Error("expected error for missing token") }
+}
