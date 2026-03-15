@@ -190,7 +190,7 @@ func TestNewBot_WrongKeySize(t *testing.T) {
 
 func TestBuiltinCommands(t *testing.T) {
 	cmds := BuiltinCommands()
-	if len(cmds) != 7 {
+	if len(cmds) != 8 {
 		t.Errorf("expected 6 commands, got %d", len(cmds))
 	}
 }

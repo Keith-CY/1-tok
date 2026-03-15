@@ -29,6 +29,7 @@ func (mb *MarketplaceBot) registerCommands() {
 	mb.Register("rfq-status", mb.handleRFQStatus)
 	mb.Register("bids", mb.handleBids)
 	mb.Register("stats", mb.handleStats)
+	mb.Register("leaderboard", mb.handleLeaderboard)
 }
 
 func (mb *MarketplaceBot) handleListings(data InteractionData) InteractionResponse {
@@ -188,5 +189,43 @@ func (mb *MarketplaceBot) handleStats(data InteractionData) InteractionResponse 
 			{Name: "Disputes", Value: fmt.Sprintf("%d total / %d open", stats.TotalDisputes, stats.OpenDisputes), Inline: true},
 			{Name: "Avg Rating", Value: avgRating, Inline: true},
 		},
+	})
+}
+
+func (mb *MarketplaceBot) handleLeaderboard(data InteractionData) InteractionResponse {
+	entries, err := mb.app.GetProviderLeaderboard()
+	if err != nil {
+		return TextResponse(fmt.Sprintf("❌ Error: %s", err))
+	}
+
+	if len(entries) == 0 {
+		return TextResponse("No providers yet.")
+	}
+
+	fields := make([]EmbedField, 0, len(entries))
+	for i, e := range entries {
+		medal := ""
+		switch i {
+		case 0:
+			medal = "🥇 "
+		case 1:
+			medal = "🥈 "
+		case 2:
+			medal = "🥉 "
+		}
+		rating := "—"
+		if e.RatingCount > 0 {
+			rating = fmt.Sprintf("%.1f⭐ (%d)", e.Rating, e.RatingCount)
+		}
+		fields = append(fields, EmbedField{
+			Name:  fmt.Sprintf("%s%s", medal, e.Name),
+			Value: fmt.Sprintf("%s | %d orders | %s", rating, e.TotalOrders, e.ReputationTier),
+		})
+	}
+
+	return EmbedResponse(Embed{
+		Title:  "🏆 Provider Leaderboard",
+		Color:  0xFEE75C,
+		Fields: fields,
 	})
 }
