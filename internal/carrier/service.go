@@ -444,3 +444,65 @@ func (s *Service) CreateJobIdempotent(bindingID, milestoneID, input, idempotency
 
 	return job, false, nil
 }
+
+// FailureCategory represents the reason for an execution failure.
+type FailureCategory string
+
+const (
+	FailureCategoryProviderFault         FailureCategory = "provider_fault"
+	FailureCategoryPolicyDenied          FailureCategory = "policy_denied"
+	FailureCategoryInfraUnavailable      FailureCategory = "infra_unavailable"
+	FailureCategoryTimeout               FailureCategory = "timeout"
+	FailureCategoryInvalidInput          FailureCategory = "invalid_input"
+	FailureCategoryBuyerDependencyMissing FailureCategory = "buyer_dependency_missing"
+	FailureCategoryUnknown               FailureCategory = "unknown"
+)
+
+// ValidFailureCategories lists all accepted failure categories.
+var ValidFailureCategories = []FailureCategory{
+	FailureCategoryProviderFault,
+	FailureCategoryPolicyDenied,
+	FailureCategoryInfraUnavailable,
+	FailureCategoryTimeout,
+	FailureCategoryInvalidInput,
+	FailureCategoryBuyerDependencyMissing,
+	FailureCategoryUnknown,
+}
+
+// IsValidFailureCategory checks if a category is valid.
+func IsValidFailureCategory(category string) bool {
+	for _, c := range ValidFailureCategories {
+		if string(c) == category {
+			return true
+		}
+	}
+	return false
+}
+
+// FailJobTyped transitions a job to failed with a typed failure category.
+func (s *Service) FailJobTyped(jobID string, category FailureCategory, code, errMsg string) (ExecutionJob, error) {
+	job, err := s.FailJob(jobID, errMsg)
+	if err != nil {
+		return job, err
+	}
+
+	s.mu.Lock()
+	if j, ok := s.jobs[jobID]; ok {
+		// Store category in the attempt if available
+		if attempts, ok := s.attempts[jobID]; ok && len(attempts) > 0 {
+			last := &s.attempts[jobID][len(attempts)-1]
+			last.FailureCategory = string(category)
+			last.FailureCode = code
+			last.State = JobStateFailed
+			now := j.CompletedAt
+			last.EndedAt = now
+		}
+	}
+	s.mu.Unlock()
+
+	s.log("carrier.job.failed.typed", map[string]any{
+		"jobId": jobID, "category": string(category), "code": code,
+	})
+
+	return job, nil
+}

@@ -552,3 +552,31 @@ func TestIdempotentComplete(t *testing.T) {
 		t.Errorf("state = %s", j.State)
 	}
 }
+
+func TestIsValidFailureCategory(t *testing.T) {
+	if !IsValidFailureCategory("provider_fault") { t.Error("provider_fault should be valid") }
+	if !IsValidFailureCategory("timeout") { t.Error("timeout should be valid") }
+	if IsValidFailureCategory("made_up") { t.Error("made_up should be invalid") }
+}
+
+func TestFailJobTyped(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job, _ := svc.CreateJob(b.ID, "ms_1", "input")
+	svc.StartJob(job.ID)
+	svc.CreateAttempt(job.ID, "exec_1")
+
+	failed, err := svc.FailJobTyped(job.ID, FailureCategoryTimeout, "EXEC_TIMEOUT", "took too long")
+	if err != nil { t.Fatal(err) }
+	if failed.State != JobStateFailed { t.Errorf("state = %s", failed.State) }
+
+	attempts := svc.ListAttempts(job.ID)
+	if len(attempts) == 0 { t.Fatal("expected attempts") }
+	last := attempts[len(attempts)-1]
+	if last.FailureCategory != "timeout" { t.Errorf("category = %s", last.FailureCategory) }
+	if last.FailureCode != "EXEC_TIMEOUT" { t.Errorf("code = %s", last.FailureCode) }
+}
+
+func TestValidFailureCategories(t *testing.T) {
+	if len(ValidFailureCategories) != 7 { t.Errorf("expected 7, got %d", len(ValidFailureCategories)) }
+}
