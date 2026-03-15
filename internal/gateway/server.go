@@ -606,6 +606,14 @@ func (s *Server) handleCreateBid(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if verr := validation.New().
+		Required("message", payload.Message).
+		Positive("quoteCents", payload.QuoteCents).
+		Build(); verr != nil {
+		httputil.WriteErrorWithDetails(w, http.StatusBadRequest, httputil.ErrCodeValidation, "validation failed", verr.Fields)
+		return
+	}
+
 	providerOrgID, err := s.resolveProviderOrg(r, payload.ProviderOrgID)
 	if err != nil {
 		httputil.WriteAuthError(w, err)
@@ -1439,6 +1447,13 @@ func (s *Server) handleRateOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+
+	if verr := validation.New().
+		Range("score", int64(payload.Score), 1, 5).
+		Build(); verr != nil {
+		httputil.WriteErrorWithDetails(w, http.StatusBadRequest, httputil.ErrCodeValidation, "validation failed", verr.Fields)
 		return
 	}
 
