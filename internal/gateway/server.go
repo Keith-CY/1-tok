@@ -1577,7 +1577,19 @@ func rfqIDFromMessagesPath(path string) (string, error) {
 
 func (s *Server) handleListRFQMessages(w http.ResponseWriter, r *http.Request) {
 	if s.auth != nil && !iamclient.IsNoop(s.auth) {
-		if _, err := s.authenticatedActor(r); err != nil {
+		actor, err := s.authenticatedActor(r)
+		if err != nil {
+			httputil.WriteAuthError(w, err)
+			return
+		}
+		// Verify actor is RFQ participant (buyer or bidding provider)
+		rfqID, _ := rfqIDFromMessagesPath(r.URL.Path)
+		rfq, err := s.app.GetRFQ(rfqID)
+		if err != nil {
+			writeGatewayError(w, err)
+			return
+		}
+		if err := authorizeRFQForActor(rfq, actor); err != nil {
 			httputil.WriteAuthError(w, err)
 			return
 		}
@@ -1607,6 +1619,17 @@ func (s *Server) handleCreateRFQMessage(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		actorID = actor.UserID
+		// Verify actor is RFQ participant
+		rfqID, _ := rfqIDFromMessagesPath(r.URL.Path)
+		rfq, err := s.app.GetRFQ(rfqID)
+		if err != nil {
+			writeGatewayError(w, err)
+			return
+		}
+		if err := authorizeRFQForActor(rfq, actor); err != nil {
+			httputil.WriteAuthError(w, err)
+			return
+		}
 	}
 
 	rfqID, err := rfqIDFromMessagesPath(r.URL.Path)
@@ -1644,19 +1667,29 @@ func isOrderMessagesPath(path string) bool {
 }
 
 func (s *Server) handleListOrderMessages(w http.ResponseWriter, r *http.Request) {
-	if s.auth != nil && !iamclient.IsNoop(s.auth) {
-		if _, err := s.authenticatedActor(r); err != nil {
-			httputil.WriteAuthError(w, err)
-			return
-		}
-	}
-
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	if len(parts) < 4 {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid path"})
 		return
 	}
 	orderID := parts[3]
+
+	if s.auth != nil && !iamclient.IsNoop(s.auth) {
+		actor, err := s.authenticatedActor(r)
+		if err != nil {
+			httputil.WriteAuthError(w, err)
+			return
+		}
+		order, err := s.app.GetOrder(orderID)
+		if err != nil {
+			writeGatewayError(w, err)
+			return
+		}
+		if err := authorizeOrderForActor(order, actor); err != nil {
+			httputil.WriteAuthError(w, err)
+			return
+		}
+	}
 
 	messages, err := s.app.ListOrderMessages(orderID)
 	if err != nil {
@@ -1787,6 +1820,13 @@ func (s *Server) handleRegisterWebhook(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUnregisterWebhook(w http.ResponseWriter, r *http.Request) {
+	if s.auth != nil && !iamclient.IsNoop(s.auth) {
+		if _, err := s.authenticatedActor(r); err != nil {
+			httputil.WriteAuthError(w, err)
+			return
+		}
+	}
+
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	if len(parts) < 4 {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid path"})
@@ -1879,6 +1919,13 @@ func (s *Server) handleBatchOrderStatus(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleListNotifications(w http.ResponseWriter, r *http.Request) {
+	if s.auth != nil && !iamclient.IsNoop(s.auth) {
+		if _, err := s.authenticatedActor(r); err != nil {
+			httputil.WriteAuthError(w, err)
+			return
+		}
+	}
+
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	if len(parts) < 4 {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid path"})
@@ -2180,4 +2227,29 @@ func (s *Server) handleSuspendCarrierBinding(w http.ResponseWriter, r *http.Requ
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"binding": binding})
+}
+
+// authorizeRFQForActor verifies the actor is a participant in the RFQ (buyer or bidding provider).
+func authorizeRFQForActor(rfq platform.RFQ, actor iamclient.Actor) error {
+	// Ops roles can access all RFQs
+	for _, m := range actor.Memberships {
+		if m.Role == "ops_reviewer" || m.Role == "risk_admin" || m.Role == "super_admin" {
+			return nil
+		}
+	}
+	// Buyer org match
+	for _, m := range actor.Memberships {
+		if m.OrganizationID == rfq.BuyerOrgID {
+			return nil
+		}
+	}
+	// Awarded provider match
+	if rfq.AwardedProviderOrgID != "" {
+		for _, m := range actor.Memberships {
+			if m.OrganizationID == rfq.AwardedProviderOrgID {
+				return nil
+			}
+		}
+	}
+	return platform.ErrOrgMismatch
 }
