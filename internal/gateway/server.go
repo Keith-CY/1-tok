@@ -132,6 +132,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleRateLimitConfig(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/stats":
 		s.handleMarketplaceStats(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/leaderboard":
+		s.handleLeaderboard(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/export/orders":
 		s.handleExportOrders(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/export/disputes":
@@ -1869,4 +1871,13 @@ func (s *Server) handleRateLimitConfig(w http.ResponseWriter, r *http.Request) {
 		"enforcement": s.rateLimiter != nil,
 	}
 	httputil.WriteJSON(w, http.StatusOK, config)
+}
+
+func (s *Server) handleLeaderboard(w http.ResponseWriter, r *http.Request) {
+	entries, err := s.app.GetProviderLeaderboard()
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"leaderboard": entries})
 }

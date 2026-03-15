@@ -1929,3 +1929,19 @@ func TestGetOrderTimeline(t *testing.T) {
 		t.Errorf("first event = %s", timeline[0].Type)
 	}
 }
+
+func TestGetProviderLeaderboard(t *testing.T) {
+	app := NewAppWithMemory()
+	entries, err := app.GetProviderLeaderboard()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) == 0 {
+		t.Error("expected leaderboard entries")
+	}
+	for _, e := range entries {
+		if e.Name == "" {
+			t.Error("expected provider name")
+		}
+	}
+}

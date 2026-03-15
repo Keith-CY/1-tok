@@ -1691,3 +1691,70 @@ func (a *App) ListNotifications(target string) ([]map[string]any, error) {
 	// In production, this would query a notification log store.
 	return []map[string]any{}, nil
 }
+
+// ProviderLeaderboard returns providers ranked by rating.
+type LeaderboardEntry struct {
+	ProviderID    string  `json:"providerId"`
+	Name          string  `json:"name"`
+	Rating        float64 `json:"rating"`
+	RatingCount   int     `json:"ratingCount"`
+	TotalOrders   int     `json:"totalOrders"`
+	ReputationTier string `json:"reputationTier"`
+}
+
+func (a *App) GetProviderLeaderboard() ([]LeaderboardEntry, error) {
+	providers, err := a.providers.List()
+	if err != nil {
+		return nil, err
+	}
+
+	orders, err := a.orders.List()
+	if err != nil {
+		return nil, err
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	entries := make([]LeaderboardEntry, 0, len(providers))
+	for _, p := range providers {
+		entry := LeaderboardEntry{
+			ProviderID:     p.ID,
+			Name:           p.Name,
+			ReputationTier: p.ReputationTier,
+		}
+
+		// Count orders
+		for _, o := range orders {
+			if o.ProviderOrgID == p.ID {
+				entry.TotalOrders++
+			}
+		}
+
+		// Compute rating
+		var total, count int
+		for _, r := range a.ratings {
+			if r.ProviderOrgID == p.ID {
+				total += r.Score
+				count++
+			}
+		}
+		if count > 0 {
+			entry.Rating = float64(total) / float64(count)
+			entry.RatingCount = count
+		}
+
+		entries = append(entries, entry)
+	}
+
+	// Sort by rating descending (simple bubble sort for small N)
+	for i := 0; i < len(entries); i++ {
+		for j := i + 1; j < len(entries); j++ {
+			if entries[j].Rating > entries[i].Rating {
+				entries[i], entries[j] = entries[j], entries[i]
+			}
+		}
+	}
+
+	return entries, nil
+}
