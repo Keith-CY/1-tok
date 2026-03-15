@@ -168,6 +168,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleGetOrderRating(w, r)
 	case r.Method == http.MethodGet && isOrderMessagesPath(r.URL.Path):
 		s.handleListOrderMessages(w, r)
+	case r.Method == http.MethodGet && isBindCarrierPath(r.URL.Path):
+		s.handleGetBinding(w, r)
 	case r.Method == http.MethodPost && isBindCarrierPath(r.URL.Path):
 		s.handleBindCarrier(w, r)
 	case r.Method == http.MethodGet && isCreateJobPath(r.URL.Path):

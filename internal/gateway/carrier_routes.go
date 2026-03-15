@@ -251,3 +251,20 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"jobs": jobs})
 }
+
+func (s *Server) handleGetBinding(w http.ResponseWriter, r *http.Request) {
+	orderID, milestoneID, err := orderMilestoneFromBindPath(r.URL.Path)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	binding, err := s.carrier.GetBinding(orderID, milestoneID)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "no carrier bound"})
+		return
+	}
+
+	stale, _ := s.carrier.IsStale(binding.ID)
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"binding": binding, "stale": stale})
+}
