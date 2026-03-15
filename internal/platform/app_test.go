@@ -2415,3 +2415,87 @@ func TestCreditFundingMode(t *testing.T) {
 		t.Errorf("creditLineId = %s", order.CreditLineID)
 	}
 }
+
+func TestGetProvider(t *testing.T) {
+	app := NewAppWithMemory()
+	p, err := app.GetProvider("provider_1")
+	if err != nil { t.Fatal(err) }
+	if p.Name == "" { t.Error("expected name") }
+}
+
+func TestGetProvider_NotFound(t *testing.T) {
+	app := NewAppWithMemory()
+	_, err := app.GetProvider("nonexistent")
+	if err == nil { t.Error("expected error") }
+}
+
+func TestGetListing(t *testing.T) {
+	app := NewAppWithMemory()
+	l, err := app.GetListing("listing_1")
+	if err != nil { t.Fatal(err) }
+	if l.Title == "" { t.Error("expected title") }
+}
+
+func TestGetDispute_NotFound(t *testing.T) {
+	app := NewAppWithMemory()
+	_, err := app.GetDispute("nonexistent")
+	if err == nil { t.Error("expected error") }
+}
+
+func TestListOrderMessages(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Msg", Category: "ai",
+		Scope: "t", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_p", Message: "b", QuoteCents: 5000,
+		Milestones: []BidMilestoneInput{{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000}},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+	messages, err := app.ListOrderMessages(order.ID)
+	if err != nil { t.Fatal(err) }
+	_ = messages // may be empty
+}
+
+func TestBatchOrderStatus(t *testing.T) {
+	app := NewAppWithMemory()
+	statuses, _ := app.BatchOrderStatus([]string{"nonexistent"})
+	if len(statuses) != 0 { t.Errorf("expected 0, got %d", len(statuses)) }
+}
+
+func TestGetProviderRevenue(t *testing.T) {
+	app := NewAppWithMemory()
+	rev, err := app.GetProviderRevenue("provider_1")
+	if err != nil { t.Fatal(err) }
+	if rev.ProviderOrgID != "provider_1" { t.Errorf("provider = %s", rev.ProviderOrgID) }
+}
+
+func TestSetClock(t *testing.T) {
+	app := NewAppWithMemory()
+	fixed := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	app.SetClock(func() time.Time { return fixed })
+	if app.now() != fixed { t.Error("clock not set") }
+}
+
+func TestSetNotifier(t *testing.T) {
+	app := NewAppWithMemory()
+	called := false
+	app.SetNotifier(&testNotifier{onSend: func() { called = true }})
+	app.notify("test", "target", nil)
+	if !called { t.Error("notifier not called") }
+}
+
+type testNotifier struct{ onSend func() }
+func (n *testNotifier) Send(event, target string, payload map[string]any) error {
+	n.onSend()
+	return nil
+}
+
+func TestListNotifications(t *testing.T) {
+	app := NewAppWithMemory()
+	notifs, err := app.ListNotifications("org_1")
+	if err != nil { t.Fatal(err) }
+	_ = notifs
+}
