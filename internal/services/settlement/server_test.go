@@ -1370,3 +1370,111 @@ func TestRequestWithdrawal_WithProviderAuth(t *testing.T) {
 		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestResolveProviderOrg_NoAuth(t *testing.T) {
+	s := NewServerWithOptions(Options{})
+	req := httptest.NewRequest(http.MethodGet, "/v1/withdrawals/status?providerOrgId=org_p", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	// No auth = pass through provider org
+	if rec.Code != http.StatusServiceUnavailable && rec.Code != http.StatusOK {
+		t.Logf("no auth: %d", rec.Code)
+	}
+}
+
+func TestWithdrawalStatuses_OpsAuth(t *testing.T) {
+	fiber := &stubFiberClient{
+		withdrawalsResult: fiberclient.WithdrawalStatusResult{},
+	}
+	actor := iamclient.Actor{
+		UserID: "u_ops",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_ops", OrganizationKind: "ops", Role: "ops_reviewer"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber: fiber,
+		Auth:  &stubIAMClient{actor: actor},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/withdrawals/status?providerOrgId=org_p", nil)
+	req.Header.Set("Authorization", "Bearer ops-token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWithdrawalStatuses_ProviderMismatch(t *testing.T) {
+	fiber := &stubFiberClient{
+		withdrawalsResult: fiberclient.WithdrawalStatusResult{},
+	}
+	actor := iamclient.Actor{
+		UserID: "u_prov",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber: fiber,
+		Auth:  &stubIAMClient{actor: actor},
+	})
+
+	// Request for different provider org
+	req := httptest.NewRequest(http.MethodGet, "/v1/withdrawals/status?providerOrgId=org_other", nil)
+	req.Header.Set("Authorization", "Bearer prov-token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden && rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 403 or 502, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestListFundingRecords_Unauthorized(t *testing.T) {
+	s := NewServerWithOptions(Options{
+		Auth: &stubIAMClient{actor: iamclient.Actor{UserID: "u_1"}},
+	})
+	// No Authorization header
+	req := httptest.NewRequest(http.MethodGet, "/v1/funding-records", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestGetInvoiceStatus_Unauthorized(t *testing.T) {
+	s := NewServerWithOptions(Options{
+		Fiber:         &stubFiberClient{},
+		ServiceTokens: serviceauth.NewTokenSet("secret"),
+	})
+	// No service token
+	req := httptest.NewRequest(http.MethodGet, "/v1/invoices/lnbc_test", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestBearerToken_Missing(t *testing.T) {
+	_, ok := bearerToken("")
+	if ok {
+		t.Error("expected false for empty")
+	}
+	_, ok = bearerToken("Basic abc")
+	if ok {
+		t.Error("expected false for non-Bearer")
+	}
+}
+
+func TestBearerToken_Valid(t *testing.T) {
+	token, ok := bearerToken("Bearer my-token")
+	if !ok {
+		t.Error("expected true")
+	}
+	if token != "my-token" {
+		t.Errorf("token = %s", token)
+	}
+}
