@@ -2574,3 +2574,62 @@ func TestSearchListings_ByProviderOrgID(t *testing.T) {
 	listings, _ := app.SearchListings(ListListingsInput{ProviderOrgID: "nonexistent"})
 	if len(listings) != 0 { t.Errorf("expected 0, got %d", len(listings)) }
 }
+
+func TestAwardRFQ_WithActiveBinding_Succeeds(t *testing.T) {
+	app := NewAppWithMemory()
+	// Register and verify (not suspend) a binding
+	binding, _ := app.RegisterCarrierBinding(ProviderCarrierBinding{
+		ProviderOrgID: "org_p", CarrierBaseURL: "https://carrier.test", HostID: "h1",
+	})
+	app.VerifyCarrierBinding(binding.ID)
+
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Active binding", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid", QuoteCents: 5000,
+		Milestones: []BidMilestoneInput{{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000}},
+	})
+	_, order, err := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+	if err != nil {
+		t.Fatalf("expected success with active binding, got %v", err)
+	}
+	if order.ProviderOrgID != "org_p" {
+		t.Errorf("provider = %s", order.ProviderOrgID)
+	}
+}
+
+func TestGetLeaderboard(t *testing.T) {
+	app := NewAppWithMemory()
+	entries, err := app.GetProviderLeaderboard()
+	if err != nil { t.Fatal(err) }
+	if len(entries) < 1 { t.Errorf("expected at least 2, got %d", len(entries)) }
+}
+
+func TestExportDisputesCSV_Empty(t *testing.T) {
+	app := NewAppWithMemory()
+	csv, err := app.ExportDisputesCSV()
+	if err != nil { t.Fatal(err) }
+	if !strings.Contains(csv, "DisputeID") { t.Error("missing header") }
+}
+
+func TestGetMarketplaceStats_WithData(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Stats", Category: "ai",
+		Scope: "t", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_p", Message: "b", QuoteCents: 5000,
+		Milestones: []BidMilestoneInput{{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000}},
+	})
+	app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	stats, err := app.GetMarketplaceStats()
+	if err != nil { t.Fatal(err) }
+	if stats.TotalOrders == 0 { t.Error("expected orders") }
+	if stats.TotalRFQs == 0 { t.Error("expected RFQs") }
+}
