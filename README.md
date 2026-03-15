@@ -36,13 +36,17 @@
 - Request timeout middleware, CORS, access logging
 
 
-## API Endpoints (30)
+## API Endpoints (34)
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | /api/v1/providers | List providers |
+| GET | /api/v1/providers/:id | Get provider with rating |
+| GET | /api/v1/listings | Search listings (q, category, tag, price) |
+| GET | /api/v1/listings/:id | Get listing |
 | GET | /api/v1/listings | Search listings (q, category, tag, minPrice, maxPrice) |
 | GET | /api/v1/rfqs | List RFQs |
+| GET | /api/v1/rfqs/:id | Get RFQ |
 | POST | /api/v1/rfqs | Create RFQ |
 | GET | /api/v1/rfqs/:id/bids | List bids on RFQ |
 | POST | /api/v1/rfqs/:id/bids | Create bid |
@@ -66,6 +70,7 @@
 | POST | /api/v1/jobs/:id/progress | Update progress |
 | POST | /api/v1/jobs/:id/heartbeat | Carrier heartbeat |
 | GET | /api/v1/disputes | List disputes |
+| GET | /api/v1/disputes/:id | Get dispute |
 | POST | /api/v1/disputes/:id/resolve | Resolve dispute |
 | POST | /api/v1/credits/decision | Credit decision |
 | POST | /api/v1/messages | Create message |
