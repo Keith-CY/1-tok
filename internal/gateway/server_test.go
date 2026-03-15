@@ -5585,3 +5585,54 @@ func TestCallbackHandler_UnknownType(t *testing.T) {
 		t.Errorf("unknown type: expected 400, got %d", w.Code)
 	}
 }
+
+func TestRateOrder_InvalidJSON(t *testing.T) {
+	srv := NewServer()
+	req := httptest.NewRequest("POST", "/api/v1/orders/ord_1/rating", strings.NewReader("not json"))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest { t.Errorf("status = %d", w.Code) }
+}
+
+func TestGetOrder_NotFound(t *testing.T) {
+	srv := NewServer()
+	req := httptest.NewRequest("GET", "/api/v1/orders/nonexistent", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound { t.Errorf("status = %d", w.Code) }
+}
+
+func TestTopUp_OrderNotFound(t *testing.T) {
+	srv := NewServer()
+	body := `{"milestoneId":"ms_1","additionalCents":1000}`
+	req := httptest.NewRequest("POST", "/api/v1/orders/nonexistent/top-up", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound { t.Errorf("status = %d", w.Code) }
+}
+
+func TestWebhookRegister_InvalidJSON(t *testing.T) {
+	srv := NewServer()
+	req := httptest.NewRequest("POST", "/api/v1/webhooks", strings.NewReader("not json"))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest { t.Errorf("status = %d", w.Code) }
+}
+
+func TestWebhookRegister_MissingFields(t *testing.T) {
+	srv := NewServer()
+	req := httptest.NewRequest("POST", "/api/v1/webhooks", strings.NewReader(`{"target":""}`))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest { t.Errorf("status = %d", w.Code) }
+}
+
+func TestProviderApplicationReview_NotFound(t *testing.T) {
+	srv := NewServer()
+	body := `{"reviewedBy":"ops","note":"ok","approve":true}`
+	req := httptest.NewRequest("POST", "/api/v1/provider-applications/nonexistent/review", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	// Should return error (not found or conflict)
+	if w.Code == http.StatusOK { t.Error("expected error for nonexistent application") }
+}
