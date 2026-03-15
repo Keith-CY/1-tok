@@ -1874,3 +1874,31 @@ func TestGetMarketplaceStats(t *testing.T) {
 		t.Error("expected listings")
 	}
 }
+
+func TestGetOrderBudget(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Budget test", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid",
+		QuoteCents: 5000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "Work", BasePriceCents: 3000, BudgetCents: 3000},
+			{ID: "ms_2", Title: "Review", BasePriceCents: 2000, BudgetCents: 2000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	budget, err := app.GetOrderBudget(order.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if budget.TotalBudget != 5000 {
+		t.Errorf("totalBudget = %d", budget.TotalBudget)
+	}
+	if len(budget.Milestones) != 2 {
+		t.Errorf("milestones = %d", len(budget.Milestones))
+	}
+}

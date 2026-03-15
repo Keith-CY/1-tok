@@ -1461,3 +1461,62 @@ func (a *App) GetMarketplaceStats() (MarketplaceStats, error) {
 
 	return stats, nil
 }
+
+// OrderBudgetSummary shows budget utilization per milestone.
+type MilestoneBudget struct {
+	ID          string  `json:"id"`
+	Title       string  `json:"title"`
+	BudgetCents int64   `json:"budgetCents"`
+	SpentCents  int64   `json:"spentCents"`
+	SettledCents int64  `json:"settledCents"`
+	UsagePercent float64 `json:"usagePercent"`
+	State       string  `json:"state"`
+}
+
+type OrderBudgetSummary struct {
+	OrderID        string            `json:"orderId"`
+	TotalBudget    int64             `json:"totalBudgetCents"`
+	TotalSpent     int64             `json:"totalSpentCents"`
+	TotalSettled   int64             `json:"totalSettledCents"`
+	OverallPercent float64           `json:"overallPercent"`
+	Milestones     []MilestoneBudget `json:"milestones"`
+}
+
+// GetOrderBudget returns budget utilization for an order.
+func (a *App) GetOrderBudget(orderID string) (OrderBudgetSummary, error) {
+	order, err := a.orders.Get(orderID)
+	if err != nil {
+		return OrderBudgetSummary{}, err
+	}
+
+	summary := OrderBudgetSummary{
+		OrderID:    order.ID,
+		Milestones: make([]MilestoneBudget, 0, len(order.Milestones)),
+	}
+
+	for _, ms := range order.Milestones {
+		spent := ms.CurrentSpendCents()
+		pct := 0.0
+		if ms.BudgetCents > 0 {
+			pct = float64(spent) / float64(ms.BudgetCents) * 100
+		}
+		summary.Milestones = append(summary.Milestones, MilestoneBudget{
+			ID:           ms.ID,
+			Title:        ms.Title,
+			BudgetCents:  ms.BudgetCents,
+			SpentCents:   spent,
+			SettledCents: ms.SettledCents,
+			UsagePercent: pct,
+			State:        string(ms.State),
+		})
+		summary.TotalBudget += ms.BudgetCents
+		summary.TotalSpent += spent
+		summary.TotalSettled += ms.SettledCents
+	}
+
+	if summary.TotalBudget > 0 {
+		summary.OverallPercent = float64(summary.TotalSpent) / float64(summary.TotalBudget) * 100
+	}
+
+	return summary, nil
+}

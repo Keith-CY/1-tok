@@ -173,6 +173,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleGetOrderRating(w, r)
 	case r.Method == http.MethodGet && isOrderMessagesPath(r.URL.Path):
 		s.handleListOrderMessages(w, r)
+	case r.Method == http.MethodGet && isOrderBudgetPath(r.URL.Path):
+		s.handleOrderBudget(w, r)
 	case r.Method == http.MethodGet && isBindCarrierPath(r.URL.Path):
 		s.handleGetBinding(w, r)
 	case r.Method == http.MethodPost && isBindCarrierPath(r.URL.Path):
@@ -1614,4 +1616,22 @@ func (s *Server) handleMarketplaceStats(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, stats)
+}
+
+func isOrderBudgetPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 5 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "orders" && parts[4] == "budget"
+}
+
+func (s *Server) handleOrderBudget(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	orderID := parts[3]
+
+	budget, err := s.app.GetOrderBudget(orderID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, budget)
 }
