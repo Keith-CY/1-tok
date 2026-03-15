@@ -6133,3 +6133,91 @@ func TestCreateBid_WithProfileEnforcement(t *testing.T) {
 		t.Errorf("expected 201 with profile, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+func TestCarrierCallback_JobStarted(t *testing.T) {
+	srv := NewServer()
+	// First bind + create job
+	bindBody := `{"carrierId":"c1","capabilities":["gpu"]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders/ord_1/milestones/ms_1/bind-carrier", strings.NewReader(bindBody))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var bindResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &bindResp)
+	bindingID := bindResp["binding"].(map[string]any)["id"].(string)
+
+	jobBody := fmt.Sprintf(`{"bindingId":"%s","input":"test"}`, bindingID)
+	req = httptest.NewRequest("POST", "/api/v1/orders/ord_1/milestones/ms_1/jobs", strings.NewReader(jobBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var jobResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &jobResp)
+	jobID := jobResp["job"].(map[string]any)["id"].(string)
+
+	// Callback: job.started
+	cbBody := fmt.Sprintf(`{"type":"job.started","jobId":"%s","bindingId":"%s","timestamp":"2026-03-15T00:00:00Z","signature":"","payload":{}}`, jobID, bindingID)
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callback", strings.NewReader(cbBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("callback start: %d %s", w.Code, w.Body.String())
+	}
+
+	// Callback: job.completed
+	cbBody = fmt.Sprintf(`{"type":"job.completed","jobId":"%s","bindingId":"%s","timestamp":"2026-03-15T00:00:00Z","signature":"","payload":{"output":"done"}}`, jobID, bindingID)
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callback", strings.NewReader(cbBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("callback complete: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCarrierCallback_JobFailed(t *testing.T) {
+	srv := NewServer()
+	bindBody := `{"carrierId":"c1","capabilities":["gpu"]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders/ord_1/milestones/ms_1/bind-carrier", strings.NewReader(bindBody))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var bindResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &bindResp)
+	bindingID := bindResp["binding"].(map[string]any)["id"].(string)
+
+	jobBody := fmt.Sprintf(`{"bindingId":"%s","input":"test"}`, bindingID)
+	req = httptest.NewRequest("POST", "/api/v1/orders/ord_1/milestones/ms_1/jobs", strings.NewReader(jobBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var jobResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &jobResp)
+	jobID := jobResp["job"].(map[string]any)["id"].(string)
+
+	// Start then fail
+	cbBody := fmt.Sprintf(`{"type":"job.started","jobId":"%s","bindingId":"%s","timestamp":"2026-03-15T00:00:00Z","signature":"","payload":{}}`, jobID, bindingID)
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callback", strings.NewReader(cbBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	cbBody = fmt.Sprintf(`{"type":"job.failed","jobId":"%s","bindingId":"%s","timestamp":"2026-03-15T00:00:00Z","signature":"","payload":{"error":"oom"}}`, jobID, bindingID)
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callback", strings.NewReader(cbBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("callback fail: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestWebhookUnregister(t *testing.T) {
+	srv := NewServer()
+	// Register first
+	body := `{"target":"org_del","url":"http://test/hook"}`
+	req := httptest.NewRequest("POST", "/api/v1/webhooks", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	// Unregister
+	req = httptest.NewRequest("DELETE", "/api/v1/webhooks/org_del", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("unregister: %d", w.Code)
+	}
+}
