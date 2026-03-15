@@ -2499,3 +2499,78 @@ func TestListNotifications(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	_ = notifs
 }
+
+func TestGetProviderCarrierBinding(t *testing.T) {
+	app := NewAppWithMemory()
+	app.RegisterCarrierBinding(ProviderCarrierBinding{
+		ProviderOrgID: "org_p", CarrierBaseURL: "https://carrier.test", HostID: "h1",
+	})
+	binding, err := app.GetProviderCarrierBinding("org_p")
+	if err != nil { t.Fatal(err) }
+	if binding.HostID != "h1" { t.Errorf("hostId = %s", binding.HostID) }
+}
+
+func TestGetProviderCarrierBinding_NotFound(t *testing.T) {
+	app := NewAppWithMemory()
+	_, err := app.GetProviderCarrierBinding("nonexistent")
+	if err == nil { t.Error("expected error") }
+}
+
+func TestGetDisputeWithEvidence(t *testing.T) {
+	app := NewAppWithMemory()
+	// Create order with dispute
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Ev", Category: "ai",
+		Scope: "t", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_p", Message: "b", QuoteCents: 5000,
+		Milestones: []BidMilestoneInput{{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000}},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+	app.SettleMilestone(order.ID, core.SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+	app.OpenDispute(order.ID, OpenDisputeInput{MilestoneID: "ms_1", Reason: "bad", RefundCents: 100})
+
+	disputes, _ := app.ListDisputes()
+	if len(disputes) == 0 { t.Fatal("expected dispute") }
+
+	dwe, err := app.GetDisputeWithEvidence(disputes[0].ID)
+	if err != nil { t.Fatal(err) }
+	if dwe.Dispute.ID == "" { t.Error("expected dispute ID") }
+}
+
+func TestExportOrdersCSV_WithData(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Export", Category: "ai",
+		Scope: "t", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_p", Message: "b", QuoteCents: 5000,
+		Milestones: []BidMilestoneInput{{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000}},
+	})
+	app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	csv, err := app.ExportOrdersCSV()
+	if err != nil { t.Fatal(err) }
+	if !strings.Contains(csv, "org_b") { t.Error("missing buyer in CSV") }
+}
+
+func TestDefaultClock(t *testing.T) {
+	now := DefaultClock()
+	if now.IsZero() { t.Error("clock returned zero") }
+}
+
+func TestSearchProviders_ByMinRating(t *testing.T) {
+	app := NewAppWithMemory()
+	providers, _ := app.SearchProviders(SearchProvidersInput{MinRating: 99.0})
+	if len(providers) != 0 { t.Errorf("expected 0, got %d", len(providers)) }
+}
+
+func TestSearchListings_ByProviderOrgID(t *testing.T) {
+	app := NewAppWithMemory()
+	listings, _ := app.SearchListings(ListListingsInput{ProviderOrgID: "nonexistent"})
+	if len(listings) != 0 { t.Errorf("expected 0, got %d", len(listings)) }
+}
