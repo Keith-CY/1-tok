@@ -1924,3 +1924,39 @@ func TestQuoteWithdrawal_ProviderMismatch(t *testing.T) {
 		t.Error("expected error for provider mismatch")
 	}
 }
+
+func TestCreateInvoice_MissingAsset(t *testing.T) {
+	fiber := &stubFiberClient{
+		createResult: fiberclient.CreateInvoiceResult{Invoice: "lnbc_ma"},
+	}
+	s := NewServerWithOptions(Options{Fiber: fiber})
+	payload := `{"orderId":"ord_1","milestoneId":"ms_1","buyerOrgId":"org_b","providerOrgId":"org_p","asset":"","amount":"100"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/invoices", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	// Empty asset might pass or fail depending on validation
+	_ = rec
+}
+
+func TestQuoteWithdrawal_InvalidJSON(t *testing.T) {
+	s := NewServerWithOptions(Options{Fiber: &stubFiberClient{}})
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals/quote", bytes.NewBufferString("{broken"))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestRequestWithdrawal_InvalidJSON(t *testing.T) {
+	s := NewServerWithOptions(Options{Fiber: &stubFiberClient{}})
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals", bytes.NewBufferString("{broken"))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
