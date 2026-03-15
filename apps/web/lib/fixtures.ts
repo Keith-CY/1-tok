@@ -16,12 +16,16 @@ export const demoProviders: ProviderProfile[] = [
     name: "Atlas Ops",
     capabilities: ["Carrier lifecycle", "Token metering", "Fast dispute traces"],
     reputationTier: "gold",
+    rating: 4.8,
+    ratingCount: 23,
   },
   {
     id: "provider_2",
     name: "Kite Relay",
     capabilities: ["Provider pooling", "Usage proofs", "Milestone tuning"],
     reputationTier: "silver",
+    rating: 4.2,
+    ratingCount: 11,
   },
 ];
 
