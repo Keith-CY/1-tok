@@ -2789,3 +2789,73 @@ func TestGetFiberExposure_Empty(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	if exp.TotalExposureCents != 0 { t.Errorf("expected 0, got %d", exp.TotalExposureCents) }
 }
+
+func TestGetProviderLeaderboard_WithRatings(t *testing.T) {
+	app := NewAppWithMemory()
+
+	// Create completed order for rating
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "LB", Category: "ai",
+		Scope: "t", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "provider_1", Message: "b", QuoteCents: 5000,
+		Milestones: []BidMilestoneInput{{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000}},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+	app.SettleMilestone(order.ID, core.SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+	app.RateOrder(order.ID, RateOrderInput{Score: 5, Comment: "great"})
+
+	entries, err := app.GetProviderLeaderboard()
+	if err != nil { t.Fatal(err) }
+
+	// provider_1 should have a rating
+	found := false
+	for _, e := range entries {
+		if e.ProviderID == "provider_1" {
+			found = true
+			if e.Rating != 5.0 { t.Errorf("rating = %f", e.Rating) }
+			if e.RatingCount != 1 { t.Errorf("ratingCount = %d", e.RatingCount) }
+			if e.TotalOrders != 1 { t.Errorf("totalOrders = %d", e.TotalOrders) }
+		}
+	}
+	if !found { t.Error("provider_1 not in leaderboard") }
+}
+
+func TestSearchProviders_NoResults(t *testing.T) {
+	app := NewAppWithMemory()
+	providers, _ := app.SearchProviders(SearchProvidersInput{Capability: "quantum-computing"})
+	if len(providers) != 0 { t.Errorf("expected 0, got %d", len(providers)) }
+}
+
+func TestSearchProviders_ByTier_NoMatch(t *testing.T) {
+	app := NewAppWithMemory()
+	providers, _ := app.SearchProviders(SearchProvidersInput{Tier: "diamond"})
+	if len(providers) != 0 { t.Errorf("expected 0, got %d", len(providers)) }
+}
+
+func TestGetOrderTimeline_WithSettlement(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "TL", Category: "ai",
+		Scope: "t", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_p", Message: "b", QuoteCents: 5000,
+		Milestones: []BidMilestoneInput{{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000}},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+	app.SettleMilestone(order.ID, core.SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+	app.RateOrder(order.ID, RateOrderInput{Score: 4})
+
+	timeline, _ := app.GetOrderTimeline(order.ID)
+	// Should have: order.created + milestone.settled + order.rated
+	types := make(map[string]bool)
+	for _, ev := range timeline {
+		types[ev.Type] = true
+	}
+	if !types["order.created"] { t.Error("missing order.created") }
+	if !types["order.rated"] { t.Error("missing order.rated") }
+}
