@@ -1821,3 +1821,53 @@ func TestCreateInvoice_WithAllFields(t *testing.T) {
 		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestWithdrawalStatuses_ProviderAuth_OwnOrg(t *testing.T) {
+	fiber := &stubFiberClient{
+		withdrawalsResult: fiberclient.WithdrawalStatusResult{},
+	}
+	actor := iamclient.Actor{
+		UserID: "u_prov",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "finance_viewer"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber: fiber,
+		Auth:  &stubIAMClient{actor: actor},
+	})
+
+	// Provider requesting own org — should succeed
+	req := httptest.NewRequest(http.MethodGet, "/v1/withdrawals/status?providerOrgId=org_p", nil)
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWithdrawalStatuses_NoProviderOrg(t *testing.T) {
+	fiber := &stubFiberClient{
+		withdrawalsResult: fiberclient.WithdrawalStatusResult{},
+	}
+	actor := iamclient.Actor{
+		UserID: "u_prov",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber: fiber,
+		Auth:  &stubIAMClient{actor: actor},
+	})
+
+	// No providerOrgId param — auto-resolved from auth
+	req := httptest.NewRequest(http.MethodGet, "/v1/withdrawals/status", nil)
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
