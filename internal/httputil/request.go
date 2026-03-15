@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 )
 
 // DefaultMaxBodyBytes is the maximum request body size (1 MB).
@@ -30,4 +31,12 @@ func WriteJSON(w http.ResponseWriter, status int, payload any) {
 	if err := json.NewEncoder(w).Encode(payload); err != nil {
 		log.Printf("httputil.WriteJSON: encode error: %v", err)
 	}
+}
+
+// DefaultHTTPClient returns a shared http.Client with sensible defaults.
+var DefaultHTTPClient = &http.Client{Timeout: 10 * time.Second}
+
+// NewHTTPClient creates an http.Client with the given timeout.
+func NewHTTPClient(timeout time.Duration) *http.Client {
+	return &http.Client{Timeout: timeout}
 }

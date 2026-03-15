@@ -116,7 +116,7 @@ func (b *Bot) Register(name string, handler CommandHandler) {
 
 // HandleInteraction processes an HTTP interaction request.
 func (b *Bot) HandleInteraction(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20)) // 1MB max
 	if err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return

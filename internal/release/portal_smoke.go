@@ -257,7 +257,7 @@ func submitForm(ctx context.Context, client *http.Client, targetURL string, valu
 		return nil, fmt.Errorf("expected final path %s, got %v", expectedPath, res.Request.URL)
 	}
 
-	body, err := io.ReadAll(res.Body)
+	body, err := io.ReadAll(io.LimitReader(res.Body, 10<<20)) // 10MB max
 	if err != nil {
 		return nil, err
 	}

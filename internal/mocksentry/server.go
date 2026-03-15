@@ -33,7 +33,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		defer s.mu.Unlock()
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{"count": len(s.events), "events": append([]Event(nil), s.events...)})
 	case r.Method == http.MethodPost:
-		body, _ := io.ReadAll(r.Body)
+		body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20)) // 1MB max
 		s.mu.Lock()
 		s.events = append(s.events, Event{
 			Path:      r.URL.Path,
