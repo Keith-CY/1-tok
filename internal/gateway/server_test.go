@@ -5056,3 +5056,63 @@ type stubIAMErrorClient struct {
 func (s *stubIAMErrorClient) GetActor(_ context.Context, _ string) (iamclient.Actor, error) {
 	return iamclient.Actor{}, s.err
 }
+
+func TestCreateRFQ_ValidationError(t *testing.T) {
+	srv := NewServer()
+	body := `{"title":"","category":"","scope":"","budgetCents":0}`
+	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Code    string            `json:"code"`
+		Details map[string]string `json:"details"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp.Code != "VALIDATION_ERROR" {
+		t.Errorf("code = %s", resp.Code)
+	}
+	if len(resp.Details) == 0 {
+		t.Error("expected validation details")
+	}
+}
+
+func TestCreateBid_ValidationError(t *testing.T) {
+	srv := NewServer()
+	body := `{"message":"","quoteCents":0}`
+	req := httptest.NewRequest("POST", "/api/v1/rfqs/rfq_1/bids", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestCreateOrder_ValidationError_NoMilestones(t *testing.T) {
+	srv := NewServer()
+	body := `{"fundingMode":"prepaid","milestones":[]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestRateOrder_ValidationError(t *testing.T) {
+	srv := NewServer()
+	body := `{"score":10}`
+	req := httptest.NewRequest("POST", "/api/v1/orders/ord_1/rating", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
