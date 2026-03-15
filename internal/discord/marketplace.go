@@ -106,35 +106,29 @@ func (mb *MarketplaceBot) handleRFQStatus(data InteractionData) InteractionRespo
 		return TextResponse("❌ Please provide an rfq_id")
 	}
 
-	rfqs, err := mb.app.ListRFQs()
+	rfq, err := mb.app.GetRFQ(rfqID)
 	if err != nil {
-		return TextResponse(fmt.Sprintf("❌ Error: %s", err))
+		return TextResponse(fmt.Sprintf("❌ RFQ not found: %s", rfqID))
 	}
 
-	for _, rfq := range rfqs {
-		if rfq.ID == rfqID {
-			fields := []EmbedField{
-				{Name: "Title", Value: rfq.Title, Inline: true},
-				{Name: "Status", Value: string(rfq.Status), Inline: true},
-				{Name: "Category", Value: rfq.Category, Inline: true},
-				{Name: "Budget", Value: fmt.Sprintf("%d¢", rfq.BudgetCents), Inline: true},
-				{Name: "Buyer", Value: rfq.BuyerOrgID, Inline: true},
-			}
-			if rfq.AwardedBidID != "" {
-				fields = append(fields, EmbedField{
-					Name: "Awarded To", Value: rfq.AwardedProviderOrgID, Inline: true,
-				})
-			}
-
-			return EmbedResponse(Embed{
-				Title:  fmt.Sprintf("📋 RFQ %s", rfq.ID),
-				Color:  0x5865F2,
-				Fields: fields,
-			})
-		}
+	fields := []EmbedField{
+		{Name: "Title", Value: rfq.Title, Inline: true},
+		{Name: "Status", Value: string(rfq.Status), Inline: true},
+		{Name: "Category", Value: rfq.Category, Inline: true},
+		{Name: "Budget", Value: fmt.Sprintf("%d¢", rfq.BudgetCents), Inline: true},
+		{Name: "Buyer", Value: rfq.BuyerOrgID, Inline: true},
+	}
+	if rfq.AwardedBidID != "" {
+		fields = append(fields, EmbedField{
+			Name: "Awarded To", Value: rfq.AwardedProviderOrgID, Inline: true,
+		})
 	}
 
-	return TextResponse(fmt.Sprintf("❌ RFQ not found: %s", rfqID))
+	return EmbedResponse(Embed{
+		Title:  fmt.Sprintf("📋 RFQ %s", rfq.ID),
+		Color:  0x5865F2,
+		Fields: fields,
+	})
 }
 
 func (mb *MarketplaceBot) handleBids(data InteractionData) InteractionResponse {

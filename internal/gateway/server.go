@@ -1469,18 +1469,12 @@ func (s *Server) handleGetRFQ(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	rfqID := parts[3]
 
-	rfqs, err := s.app.ListRFQs()
+	rfq, err := s.app.GetRFQ(rfqID)
 	if err != nil {
 		writeGatewayError(w, err)
 		return
 	}
-	for _, rfq := range rfqs {
-		if rfq.ID == rfqID {
-			httputil.WriteJSON(w, http.StatusOK, map[string]any{"rfq": rfq})
-			return
-		}
-	}
-	httputil.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "rfq not found"})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"rfq": rfq})
 }
 
 func isDisputeDetailPath(path string) bool {
