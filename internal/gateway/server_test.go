@@ -6486,3 +6486,87 @@ func TestOrderMessages_CreateAndList(t *testing.T) {
 	srv.ServeHTTP(w, req)
 	if w.Code != http.StatusOK { t.Errorf("list: %d", w.Code) }
 }
+
+func TestNotifications_WithAuth(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	mockIAM := &stubIAMClient{actor: iamclient.Actor{
+		UserID: "user_1",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_mine", OrganizationKind: "buyer", Role: "org_owner"},
+		},
+	}}
+	srv := NewServerWithOptions(Options{App: app, IAM: mockIAM})
+
+	// Access own org notifications → 200
+	req := httptest.NewRequest("GET", "/api/v1/notifications/org_mine", nil)
+	req.Header.Set("Authorization", "Bearer valid")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("own org: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Access other org notifications → 403
+	req = httptest.NewRequest("GET", "/api/v1/notifications/org_other", nil)
+	req.Header.Set("Authorization", "Bearer valid")
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("other org: expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestWebhookUnregister_WithAuth(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	mockIAM := &stubIAMClient{actor: iamclient.Actor{
+		UserID: "user_1",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_mine", OrganizationKind: "buyer", Role: "org_owner"},
+		},
+	}}
+	srv := NewServerWithOptions(Options{App: app, IAM: mockIAM})
+
+	// Register webhook (no auth needed on register in this test)
+	noAuthSrv := NewServerWithOptions(Options{App: app})
+	body := `{"target":"org_mine","url":"http://test"}`
+	req := httptest.NewRequest("POST", "/api/v1/webhooks", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	noAuthSrv.ServeHTTP(w, req)
+
+	// Unregister own → 200
+	req = httptest.NewRequest("DELETE", "/api/v1/webhooks/org_mine", nil)
+	req.Header.Set("Authorization", "Bearer valid")
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("own: expected 200, got %d", w.Code)
+	}
+
+	// Unregister other → 403
+	req = httptest.NewRequest("DELETE", "/api/v1/webhooks/org_other", nil)
+	req.Header.Set("Authorization", "Bearer valid")
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("other: expected 403, got %d", w.Code)
+	}
+}
+
+func TestOpsCanAccessAnyNotification(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	mockIAM := &stubIAMClient{actor: iamclient.Actor{
+		UserID: "ops_1",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_ops", OrganizationKind: "ops", Role: "ops_reviewer"},
+		},
+	}}
+	srv := NewServerWithOptions(Options{App: app, IAM: mockIAM})
+
+	req := httptest.NewRequest("GET", "/api/v1/notifications/any_org", nil)
+	req.Header.Set("Authorization", "Bearer valid")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("ops should access any org, got %d", w.Code)
+	}
+}
