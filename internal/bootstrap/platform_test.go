@@ -192,3 +192,49 @@ func TestLoadPlatformApp_CleanupWorks(t *testing.T) {
 		t.Errorf("cleanup error: %v", err)
 	}
 }
+
+func TestLoadPlatformApp_WithPostgresAndRequireBootstrap(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL not set")
+	}
+
+	t.Setenv("DATABASE_URL", dsn)
+	t.Setenv("NATS_URL", "")
+	t.Setenv("ONE_TOK_REQUIRE_BOOTSTRAP", "true")
+
+	app, cleanup, err := LoadPlatformApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+
+	if app == nil {
+		t.Fatal("expected non-nil app")
+	}
+}
+
+func TestLoadPlatformApp_MemoryWithCleanup(t *testing.T) {
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("NATS_URL", "")
+	t.Setenv("ONE_TOK_REQUIRE_PERSISTENCE", "")
+
+	app, cleanup, err := LoadPlatformApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test cleanup
+	if err := cleanup(); err != nil {
+		t.Errorf("cleanup error: %v", err)
+	}
+
+	// App should still work after cleanup (memory store)
+	providers, err := app.ListProviders()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(providers) == 0 {
+		t.Error("expected providers")
+	}
+}
