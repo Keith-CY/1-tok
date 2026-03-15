@@ -909,3 +909,130 @@ func TestRFQRepository_SaveAndGet(t *testing.T) {
 		t.Errorf("default milestones = %d, want 2", len(got.DefaultMilestones))
 	}
 }
+
+
+func TestDisputeRepositoryFullCycle(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+	db, err := Open(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewDisputeRepository(db)
+	id, _ := repo.NextID()
+	dispute := platform.Dispute{
+		ID: id, OrderID: "ord_disp_rt", MilestoneID: "ms_1",
+		Reason: "quality issue", RefundCents: 500,
+		Status: "open", CreatedAt: time.Now(),
+	}
+	if err := repo.Save(dispute); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := repo.Get(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Reason != "quality issue" {
+		t.Errorf("reason = %s", got.Reason)
+	}
+
+	// Update to resolved
+	got.Status = "resolved"
+	got.Resolution = "refund approved"
+	got.ResolvedBy = "ops_admin"
+	if err := repo.Save(got); err != nil {
+		t.Fatal(err)
+	}
+
+	disputes, err := repo.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, d := range disputes {
+		if d.ID == id && d.Status == "resolved" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("resolved dispute not found")
+	}
+}
+
+func TestProviderRepositoryUpsert(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+	db, err := Open(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewProviderRepository(db)
+	provider := platform.ProviderProfile{
+		ID: fmt.Sprintf("prov_%d", time.Now().UnixNano()),
+		Name: "Test Provider",
+		Capabilities: []string{"ai", "coding"},
+		ReputationTier: "gold",
+	}
+	if err := repo.Upsert(provider); err != nil {
+		t.Fatal(err)
+	}
+
+	providers, err := repo.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(providers) == 0 {
+		t.Error("expected providers")
+	}
+}
+
+func TestListingRepositoryUpsert(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+	db, err := Open(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewListingRepository(db)
+	listing := platform.Listing{
+		ID: fmt.Sprintf("list_%d", time.Now().UnixNano()),
+		ProviderOrgID: "prov_1",
+		Title: "Test Listing",
+		Category: "ai",
+		BasePriceCents: 5000,
+		Tags: []string{"agent", "fast"},
+	}
+	if err := repo.Upsert(listing); err != nil {
+		t.Fatal(err)
+	}
+
+	listings, err := repo.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listings) == 0 {
+		t.Error("expected listings")
+	}
+}
