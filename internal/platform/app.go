@@ -81,7 +81,8 @@ type RFQMilestone struct {
 
 type Message struct {
 	ID        string    `json:"id"`
-	OrderID   string    `json:"orderId"`
+	OrderID   string    `json:"orderId,omitempty"`
+	RFQID     string    `json:"rfqId,omitempty"`
 	Author    string    `json:"author"`
 	Body      string    `json:"body"`
 	CreatedAt time.Time `json:"createdAt"`
@@ -167,6 +168,8 @@ type BidRepository interface {
 type MessageRepository interface {
 	NextID() (string, error)
 	Save(message Message) error
+	ListByRFQ(rfqID string) ([]Message, error)
+	ListByOrder(orderID string) ([]Message, error)
 }
 
 type DisputeRepository interface {
@@ -875,6 +878,30 @@ func (r *memoryMessageRepository) Save(message Message) error {
 	return nil
 }
 
+func (r *memoryMessageRepository) ListByRFQ(rfqID string) ([]Message, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	result := make([]Message, 0)
+	for _, msg := range r.data {
+		if msg.RFQID == rfqID {
+			result = append(result, msg)
+		}
+	}
+	return result, nil
+}
+
+func (r *memoryMessageRepository) ListByOrder(orderID string) ([]Message, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	result := make([]Message, 0)
+	for _, msg := range r.data {
+		if msg.OrderID == orderID {
+			result = append(result, msg)
+		}
+	}
+	return result, nil
+}
+
 type memoryDisputeRepository struct {
 	mu   sync.Mutex
 	seq  int
@@ -1103,4 +1130,46 @@ func (a *App) GetOrderRating(orderID string) (OrderRating, error) {
 		}
 	}
 	return OrderRating{}, errors.New("order not rated")
+}
+
+// CreateRFQMessage creates a message in the context of an RFQ.
+func (a *App) CreateRFQMessage(rfqID, author, body string) (Message, error) {
+	if _, err := a.rfqs.Get(rfqID); err != nil {
+		return Message{}, err
+	}
+
+	messageID, err := a.messages.NextID()
+	if err != nil {
+		return Message{}, err
+	}
+
+	message := Message{
+		ID:        messageID,
+		RFQID:     rfqID,
+		Author:    author,
+		Body:      body,
+		CreatedAt: time.Now().UTC(),
+	}
+
+	if err := a.messages.Save(message); err != nil {
+		return Message{}, err
+	}
+
+	if err := a.publish("market.rfq.message.created", map[string]any{
+		"messageId": message.ID,
+		"rfqId":     rfqID,
+		"author":    author,
+	}); err != nil {
+		return Message{}, err
+	}
+
+	return message, nil
+}
+
+// ListRFQMessages returns all messages for a given RFQ.
+func (a *App) ListRFQMessages(rfqID string) ([]Message, error) {
+	if _, err := a.rfqs.Get(rfqID); err != nil {
+		return nil, err
+	}
+	return a.messages.ListByRFQ(rfqID)
 }

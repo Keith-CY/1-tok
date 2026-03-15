@@ -124,6 +124,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleCreateBid(w, r)
 	case r.Method == http.MethodPost && isRFQAwardPath(r.URL.Path):
 		s.handleAwardRFQ(w, r)
+	case r.Method == http.MethodGet && isRFQMessagesPath(r.URL.Path):
+		s.handleListRFQMessages(w, r)
+	case r.Method == http.MethodPost && isRFQMessagesPath(r.URL.Path):
+		s.handleCreateRFQMessage(w, r)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/v1/orders/"):
 		s.handleGetOrder(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/orders":
@@ -1296,4 +1300,58 @@ func (s *Server) handleRateOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{"rating": rating})
+}
+
+func isRFQMessagesPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 5 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "rfqs" && parts[4] == "messages"
+}
+
+func rfqIDFromMessagesPath(path string) (string, error) {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) != 5 || parts[4] != "messages" {
+		return "", errors.New("invalid rfq messages path")
+	}
+	return parts[3], nil
+}
+
+func (s *Server) handleListRFQMessages(w http.ResponseWriter, r *http.Request) {
+	rfqID, err := rfqIDFromMessagesPath(r.URL.Path)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	messages, err := s.app.ListRFQMessages(rfqID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"messages": messages})
+}
+
+func (s *Server) handleCreateRFQMessage(w http.ResponseWriter, r *http.Request) {
+	rfqID, err := rfqIDFromMessagesPath(r.URL.Path)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	var payload struct {
+		Author string `json:"author"`
+		Body   string `json:"body"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+
+	message, err := s.app.CreateRFQMessage(rfqID, payload.Author, payload.Body)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{"message": message})
 }

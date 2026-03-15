@@ -1204,6 +1204,8 @@ func TestListRFQs_Error(t *testing.T) {
 type failingMessageRepo struct{}
 func (failingMessageRepo) NextID() (string, error) { return "", errors.New("broken") }
 func (failingMessageRepo) Save(Message) error { return errors.New("broken") }
+func (failingMessageRepo) ListByRFQ(string) ([]Message, error) { return nil, errors.New("broken") }
+func (failingMessageRepo) ListByOrder(string) ([]Message, error) { return nil, errors.New("broken") }
 
 func TestCreateMessage_NextIDError(t *testing.T) {
 	app := NewApp(nil, nil, nil, nil, nil, failingMessageRepo{}, nil)
@@ -1755,5 +1757,61 @@ func TestGetOrderRating_NotRated(t *testing.T) {
 	_, err := app.GetOrderRating("ord_1")
 	if err == nil {
 		t.Error("expected error for unrated order")
+	}
+}
+
+func TestCreateRFQMessage(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Msg RFQ", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+
+	msg, err := app.CreateRFQMessage(rfq.ID, "buyer", "Any questions about this RFQ?")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msg.RFQID != rfq.ID {
+		t.Errorf("rfqId = %s", msg.RFQID)
+	}
+	if msg.Body != "Any questions about this RFQ?" {
+		t.Errorf("body = %s", msg.Body)
+	}
+}
+
+func TestListRFQMessages(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "List msg", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+
+	app.CreateRFQMessage(rfq.ID, "buyer", "msg1")
+	app.CreateRFQMessage(rfq.ID, "provider", "msg2")
+
+	messages, err := app.ListRFQMessages(rfq.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 2 {
+		t.Errorf("expected 2 messages, got %d", len(messages))
+	}
+}
+
+func TestCreateRFQMessage_RFQNotFound(t *testing.T) {
+	app := NewAppWithMemory()
+	_, err := app.CreateRFQMessage("nonexistent", "buyer", "hello")
+	if err == nil {
+		t.Error("expected error for nonexistent RFQ")
+	}
+}
+
+func TestListRFQMessages_RFQNotFound(t *testing.T) {
+	app := NewAppWithMemory()
+	_, err := app.ListRFQMessages("nonexistent")
+	if err == nil {
+		t.Error("expected error for nonexistent RFQ")
 	}
 }
