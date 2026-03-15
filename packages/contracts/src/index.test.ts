@@ -58,3 +58,39 @@ describe("type guards", () => {
     expect(isJobState("nope")).toBe(false);
   });
 });
+
+import { assertFundingMode, assertOrderStatus, assertMilestoneState, assertUsageChargeKind } from ".";
+
+describe("assertion functions", () => {
+  it("passes for valid funding mode", () => {
+    expect(() => assertFundingMode("prepaid")).not.toThrow();
+  });
+
+  it("throws for invalid funding mode", () => {
+    expect(() => assertFundingMode("invalid")).toThrow("Invalid funding mode");
+  });
+
+  it("passes for valid order status", () => {
+    expect(() => assertOrderStatus("running")).not.toThrow();
+  });
+
+  it("throws for invalid order status", () => {
+    expect(() => assertOrderStatus("bogus")).toThrow("Invalid order status");
+  });
+
+  it("passes for valid milestone state", () => {
+    expect(() => assertMilestoneState("settled")).not.toThrow();
+  });
+
+  it("throws for invalid milestone state", () => {
+    expect(() => assertMilestoneState("bogus")).toThrow("Invalid milestone state");
+  });
+
+  it("passes for valid usage charge kind", () => {
+    expect(() => assertUsageChargeKind("token")).not.toThrow();
+  });
+
+  it("throws for invalid usage charge kind", () => {
+    expect(() => assertUsageChargeKind("bogus")).toThrow("Invalid usage charge kind");
+  });
+});
