@@ -5636,3 +5636,114 @@ func TestProviderApplicationReview_NotFound(t *testing.T) {
 	// Should return error (not found or conflict)
 	if w.Code == http.StatusOK { t.Error("expected error for nonexistent application") }
 }
+
+func TestFullOrderLifecycle(t *testing.T) {
+	srv := NewServer()
+
+	// Create order
+	orderBody := `{"buyerOrgId":"org_b","providerOrgId":"org_p","fundingMode":"prepaid","milestones":[{"id":"ms_1","title":"Work","basePriceCents":5000,"budgetCents":5000}]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(orderBody))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated { t.Fatalf("create: %d", w.Code) }
+	var orderResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &orderResp)
+	orderID := orderResp["order"].(map[string]any)["id"].(string)
+
+	// Usage charge
+	usageBody := `{"kind":"token","amountCents":1000}`
+	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/milestones/ms_1/usage", strings.NewReader(usageBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Fatalf("usage: %d %s", w.Code, w.Body.String()) }
+
+	// Settle
+	settleBody := `{"milestoneId":"ms_1","summary":"done"}`
+	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/milestones/ms_1/settle", strings.NewReader(settleBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Fatalf("settle: %d %s", w.Code, w.Body.String()) }
+
+	// Open dispute
+	disputeBody := `{"milestoneId":"ms_1","reason":"bad work","refundCents":500}`
+	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/disputes", strings.NewReader(disputeBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated { t.Fatalf("dispute: %d %s", w.Code, w.Body.String()) }
+
+	// List disputes
+	req = httptest.NewRequest("GET", "/api/v1/disputes", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Fatalf("list disputes: %d", w.Code) }
+
+	var disputeList map[string]any
+	json.Unmarshal(w.Body.Bytes(), &disputeList)
+	disputes := disputeList["disputes"].([]any)
+	if len(disputes) == 0 { t.Fatal("expected disputes") }
+	disputeID := disputes[0].(map[string]any)["id"].(string)
+
+	// Resolve dispute
+	resolveBody := fmt.Sprintf(`{"resolvedBy":"ops_admin","resolution":"refund approved","refundCents":500}`)
+	req = httptest.NewRequest("POST", "/api/v1/disputes/"+disputeID+"/resolve", strings.NewReader(resolveBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Fatalf("resolve: %d %s", w.Code, w.Body.String()) }
+
+	// Rate order (order should be completed after settlement)
+	rateBody := `{"score":3,"comment":"average"}`
+	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/rating", strings.NewReader(rateBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated { t.Fatalf("rate: %d %s", w.Code, w.Body.String()) }
+
+	// Get rating
+	req = httptest.NewRequest("GET", "/api/v1/orders/"+orderID+"/rating", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Fatalf("get rating: %d", w.Code) }
+}
+
+func TestListOrders_StatusFilter(t *testing.T) {
+	srv := NewServer()
+	// Create an order
+	body := `{"buyerOrgId":"org_b","providerOrgId":"org_p","fundingMode":"prepaid","milestones":[{"id":"ms_1","title":"W","basePriceCents":1000,"budgetCents":1000}]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	// Filter by running
+	req = httptest.NewRequest("GET", "/api/v1/orders?status=running", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+}
+
+func TestListRFQs_StatusFilter(t *testing.T) {
+	srv := NewServer()
+	body := `{"buyerOrgId":"org_b","title":"test","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	req = httptest.NewRequest("GET", "/api/v1/rfqs?status=open", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+}
+
+func TestListingSort(t *testing.T) {
+	srv := NewServer()
+	req := httptest.NewRequest("GET", "/api/v1/listings?sort=price_desc", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+}
+
+func TestProviderSearch(t *testing.T) {
+	srv := NewServer()
+	req := httptest.NewRequest("GET", "/api/v1/providers?tier=gold&minRating=0", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+}
