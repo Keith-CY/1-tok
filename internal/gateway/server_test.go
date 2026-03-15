@@ -6637,3 +6637,44 @@ func TestRFQMessages_NonParticipantDenied(t *testing.T) {
 		t.Errorf("non-participant should be denied, got %d", w.Code)
 	}
 }
+
+func TestCarrierCallback_ReplayReturnsPreviousDecision(t *testing.T) {
+	srv := NewServer()
+
+	// Bind + create job
+	bindBody := `{"carrierId":"c_replay","capabilities":["gpu"]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders/ord_r/milestones/ms_r/bind-carrier", strings.NewReader(bindBody))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	bindingID := resp["binding"].(map[string]any)["id"].(string)
+
+	jobBody := fmt.Sprintf(`{"bindingId":"%s","input":"test"}`, bindingID)
+	req = httptest.NewRequest("POST", "/api/v1/orders/ord_r/milestones/ms_r/jobs", strings.NewReader(jobBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	jobID := resp["job"].(map[string]any)["id"].(string)
+
+	// First callback with eventId + sequence
+	cb := fmt.Sprintf(`{"type":"job.started","jobId":"%s","bindingId":"%s","timestamp":"2026-03-15T00:00:00Z","signature":"","payload":{"eventId":"evt_1","sequence":1}}`, jobID, bindingID)
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callback", strings.NewReader(cb))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("first: %d %s", w.Code, w.Body.String())
+	}
+
+	// Replay same eventId
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callback", strings.NewReader(cb))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("replay: %d %s", w.Code, w.Body.String())
+	}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["replay"] != true {
+		t.Errorf("expected replay=true, got %v", resp["replay"])
+	}
+}
