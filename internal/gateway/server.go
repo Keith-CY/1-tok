@@ -734,9 +734,11 @@ func (s *Server) handleRecordUsage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var payload struct {
-		Kind        core.UsageChargeKind `json:"kind"`
-		AmountCents int64                `json:"amountCents"`
-		ProofRef    string               `json:"proofRef"`
+		Kind           core.UsageChargeKind `json:"kind"`
+		AmountCents    int64                `json:"amountCents"`
+		ProofRef       string               `json:"proofRef"`
+		ProofSignature string               `json:"proofSignature"`
+		ProofTimestamp string               `json:"proofTimestamp"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
@@ -744,10 +746,12 @@ func (s *Server) handleRecordUsage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	order, charge, err := s.app.RecordUsageCharge(orderID, platform.RecordUsageChargeInput{
-		MilestoneID: milestoneID,
-		Kind:        payload.Kind,
-		AmountCents: payload.AmountCents,
-		ProofRef:    payload.ProofRef,
+		MilestoneID:    milestoneID,
+		Kind:           payload.Kind,
+		AmountCents:    payload.AmountCents,
+		ProofRef:       payload.ProofRef,
+		ProofSignature: payload.ProofSignature,
+		ProofTimestamp: payload.ProofTimestamp,
 	})
 	if err != nil {
 		writeGatewayError(w, err)
