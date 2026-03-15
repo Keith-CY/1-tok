@@ -239,3 +239,39 @@ func TestMarketplaceBot_Bids_MissingID(t *testing.T) {
 		t.Errorf("content = %s", resp.Data.Content)
 	}
 }
+
+func TestMarketplaceBot_Stats(t *testing.T) {
+	mb := newTestBot()
+
+	body := `{"type":2,"data":{"name":"stats"}}`
+	req := httptest.NewRequest("POST", "/interactions", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	mb.HandleInteraction(w, req)
+
+	var resp InteractionResponse
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if len(resp.Data.Embeds) == 0 {
+		t.Fatal("expected embed")
+	}
+	if resp.Data.Embeds[0].Title != "📊 Marketplace Stats" {
+		t.Errorf("title = %s", resp.Data.Embeds[0].Title)
+	}
+}
+
+func TestMarketplaceBot_Leaderboard(t *testing.T) {
+	mb := newTestBot()
+
+	body := `{"type":2,"data":{"name":"leaderboard"}}`
+	req := httptest.NewRequest("POST", "/interactions", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	mb.HandleInteraction(w, req)
+
+	var resp InteractionResponse
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if len(resp.Data.Embeds) == 0 {
+		t.Fatal("expected embed")
+	}
+	if resp.Data.Embeds[0].Title != "🏆 Provider Leaderboard" {
+		t.Errorf("title = %s", resp.Data.Embeds[0].Title)
+	}
+}

@@ -5116,3 +5116,28 @@ func TestRateOrder_ValidationError(t *testing.T) {
 		t.Fatalf("expected 400, got %d", w.Code)
 	}
 }
+
+func TestRouteOrderSubResources(t *testing.T) {
+	srv := NewServer()
+
+	// These should NOT hit handleGetOrder (which would fail with "invalid order path")
+	paths := []struct {
+		method string
+		path   string
+		wantNot int
+	}{
+		{"GET", "/api/v1/orders/ord_1/budget", http.StatusBadRequest},
+		{"GET", "/api/v1/orders/ord_1/timeline", http.StatusBadRequest},
+		{"GET", "/api/v1/orders/ord_1/rating", http.StatusBadRequest},
+		{"GET", "/api/v1/orders/ord_1/messages", http.StatusBadRequest},
+	}
+
+	for _, tc := range paths {
+		req := httptest.NewRequest(tc.method, tc.path, nil)
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, req)
+		if w.Code == tc.wantNot {
+			t.Errorf("%s %s got %d (should not hit invalid order path)", tc.method, tc.path, w.Code)
+		}
+	}
+}
