@@ -214,6 +214,9 @@ func (a *App) AwardRFQ(rfqID string, input AwardRFQInput) (RFQ, *core.Order, err
 		return RFQ{}, nil, err
 	}
 
+	a.notify("rfq.awarded", rfq.BuyerOrgID, map[string]any{"rfqId": rfq.ID, "orderId": order.ID})
+	a.notify("rfq.awarded", bid.ProviderOrgID, map[string]any{"rfqId": rfq.ID, "orderId": order.ID})
+
 	return rfq, order, nil
 }
 

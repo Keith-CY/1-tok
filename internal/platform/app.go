@@ -510,6 +510,23 @@ func (a *App) SettleMilestone(orderID string, input SettleMilestoneInput) (*core
 		return nil, core.LedgerEntry{}, err
 	}
 
+	// Notify both parties on milestone settlement
+	a.notify("milestone.settled", order.BuyerOrgID, map[string]any{"orderId": order.ID, "milestoneId": input.MilestoneID})
+	a.notify("milestone.settled", order.ProviderOrgID, map[string]any{"orderId": order.ID, "milestoneId": input.MilestoneID})
+
+	// Check if all milestones are settled → order completed
+	allSettled := true
+	for _, ms := range order.Milestones {
+		if ms.State != core.MilestoneStateSettled {
+			allSettled = false
+			break
+		}
+	}
+	if allSettled && order.Status == core.OrderStatusCompleted {
+		a.notify("order.completed", order.BuyerOrgID, map[string]any{"orderId": order.ID})
+		a.notify("order.completed", order.ProviderOrgID, map[string]any{"orderId": order.ID})
+	}
+
 	updated, err := a.orders.Get(orderID)
 	if err != nil {
 		return nil, core.LedgerEntry{}, err
@@ -542,6 +559,12 @@ func (a *App) RecordUsageCharge(orderID string, input RecordUsageChargeInput) (*
 		"orderStatus": order.Status,
 	}); err != nil {
 		return nil, core.UsageCharge{}, err
+	}
+
+	// Notify on budget wall hit
+	if order.Status == core.OrderStatusAwaitingBudget {
+		a.notify("budget_wall.hit", order.BuyerOrgID, map[string]any{"orderId": order.ID, "milestoneId": input.MilestoneID})
+		a.notify("budget_wall.hit", order.ProviderOrgID, map[string]any{"orderId": order.ID, "milestoneId": input.MilestoneID})
 	}
 
 	updated, err := a.orders.Get(orderID)
@@ -596,6 +619,9 @@ func (a *App) OpenDispute(orderID string, input OpenDisputeInput) (*core.Order, 
 		return nil, core.LedgerEntry{}, core.LedgerEntry{}, err
 	}
 
+	a.notify("dispute.opened", order.BuyerOrgID, map[string]any{"orderId": order.ID, "milestoneId": input.MilestoneID})
+	a.notify("dispute.opened", order.ProviderOrgID, map[string]any{"orderId": order.ID, "milestoneId": input.MilestoneID})
+
 	updated, err := a.orders.Get(orderID)
 	if err != nil {
 		return nil, core.LedgerEntry{}, core.LedgerEntry{}, err
@@ -647,6 +673,9 @@ func (a *App) ResolveDispute(disputeID string, input ResolveDisputeInput) (Dispu
 	}); err != nil {
 		return Dispute{}, nil, err
 	}
+
+	a.notify("dispute.resolved", order.BuyerOrgID, map[string]any{"disputeId": dispute.ID, "orderId": dispute.OrderID, "resolution": dispute.Resolution})
+	a.notify("dispute.resolved", order.ProviderOrgID, map[string]any{"disputeId": dispute.ID, "orderId": dispute.OrderID, "resolution": dispute.Resolution})
 
 	resolvedDispute, err := a.disputes.Get(disputeID)
 	if err != nil {
@@ -1138,6 +1167,8 @@ func (a *App) RateOrder(orderID string, input RateOrderInput) (OrderRating, erro
 	}); err != nil {
 		return OrderRating{}, err
 	}
+
+	a.notify("order.rated", order.ProviderOrgID, map[string]any{"orderId": orderID, "score": input.Score})
 
 	return rating, nil
 }
