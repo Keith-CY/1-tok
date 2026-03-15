@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/chenyu/1-tok/internal/serviceauth"
 )
@@ -318,5 +320,44 @@ func TestRunPortalSmoke_EmptyURL(t *testing.T) {
 	_, err := RunPortalSmoke(context.Background(), PortalConfig{})
 	if err == nil {
 		t.Error("expected error for empty config")
+	}
+}
+
+func TestSubmitForm_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/expected" {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("success"))
+			return
+		}
+		http.Redirect(w, r, "/expected", http.StatusSeeOther)
+	}))
+	defer srv.Close()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	_, err := submitForm(context.Background(), client, srv.URL+"/login",
+		url.Values{"email": {"test@test.com"}, "password": {"pass"}},
+		"/expected", "success")
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSubmitForm_WrongRedirect(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/wrong", http.StatusSeeOther)
+	}))
+	defer srv.Close()
+
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	_, err := submitForm(context.Background(), client, srv.URL+"/login",
+		url.Values{"email": {"test@test.com"}},
+		"/expected", "")
+	if err == nil {
+		t.Error("expected error for wrong redirect")
 	}
 }
