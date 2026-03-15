@@ -154,7 +154,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCreateInvoice(w http.ResponseWriter, r *http.Request) {
 	if err := s.authorizeInternalRoute(r); err != nil {
-		writeAuthError(w, err)
+		httputil.WriteAuthError(w, err)
 		return
 	}
 
@@ -224,7 +224,7 @@ func (s *Server) handleCreateInvoice(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleGetInvoiceStatus(w http.ResponseWriter, r *http.Request) {
 	if err := s.authorizeInternalRoute(r); err != nil {
-		writeAuthError(w, err)
+		httputil.WriteAuthError(w, err)
 		return
 	}
 
@@ -258,7 +258,7 @@ func (s *Server) handleQuoteWithdrawal(w http.ResponseWriter, r *http.Request) {
 	}
 	input.ProviderOrgID, err = s.resolveProviderOrg(r, input.ProviderOrgID)
 	if err != nil {
-		writeAuthError(w, err)
+		httputil.WriteAuthError(w, err)
 		return
 	}
 
@@ -284,7 +284,7 @@ func (s *Server) handleRequestWithdrawal(w http.ResponseWriter, r *http.Request)
 	}
 	input.ProviderOrgID, err = s.resolveProviderOrg(r, input.ProviderOrgID)
 	if err != nil {
-		writeAuthError(w, err)
+		httputil.WriteAuthError(w, err)
 		return
 	}
 
@@ -340,7 +340,7 @@ func (s *Server) handleListFundingRecords(w http.ResponseWriter, r *http.Request
 		ProviderOrgID: r.URL.Query().Get("providerOrgId"),
 	}
 	if err := s.scopeFundingFilter(r, &filter); err != nil {
-		writeAuthError(w, err)
+		httputil.WriteAuthError(w, err)
 		return
 	}
 
@@ -354,7 +354,7 @@ func (s *Server) handleListFundingRecords(w http.ResponseWriter, r *http.Request
 
 func (s *Server) handleSettledFeed(w http.ResponseWriter, r *http.Request) {
 	if err := s.authorizeInternalRoute(r); err != nil {
-		writeAuthError(w, err)
+		httputil.WriteAuthError(w, err)
 		return
 	}
 
@@ -398,7 +398,7 @@ func (s *Server) handleSettledFeed(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleWithdrawalStatuses(w http.ResponseWriter, r *http.Request) {
 	userID, err := s.resolveProviderOrg(r, strings.TrimSpace(r.URL.Query().Get("providerOrgId")))
 	if err != nil {
-		writeAuthError(w, err)
+		httputil.WriteAuthError(w, err)
 		return
 	}
 	if userID == "" {
@@ -545,10 +545,6 @@ func writeFiberError(w http.ResponseWriter, err error) {
 		return
 	}
 	httputil.WriteJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
-}
-
-func writeAuthError(w http.ResponseWriter, err error) {
-	httputil.WriteAuthError(w, err)
 }
 
 func (s *Server) authorizeInternalRoute(r *http.Request) error {

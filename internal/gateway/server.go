@@ -226,13 +226,13 @@ func (s *Server) handleListRFQs(w http.ResponseWriter, r *http.Request) {
 	if s.auth != nil && !iamclient.IsNoop(s.auth) {
 		actor, err := s.authenticatedActor(r)
 		if err != nil {
-			writeAuthError(w, err)
+			httputil.WriteAuthError(w, err)
 			return
 		}
 
 		rfqs, err = filterRFQsForActor(rfqs, actor)
 		if err != nil {
-			writeAuthError(w, err)
+			httputil.WriteAuthError(w, err)
 			return
 		}
 	}
@@ -243,7 +243,7 @@ func (s *Server) handleListRFQs(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleListDisputes(w http.ResponseWriter, r *http.Request) {
 	if _, err := s.resolveOpsUser(r); err != nil {
-		writeAuthError(w, err)
+		httputil.WriteAuthError(w, err)
 		return
 	}
 
@@ -267,13 +267,13 @@ func (s *Server) handleListOrders(w http.ResponseWriter, r *http.Request) {
 	if s.auth != nil && !iamclient.IsNoop(s.auth) {
 		actor, err := s.authenticatedActor(r)
 		if err != nil {
-			writeAuthError(w, err)
+			httputil.WriteAuthError(w, err)
 			return
 		}
 
 		orders, err = filterOrdersForActor(orders, actor)
 		if err != nil {
-			writeAuthError(w, err)
+			httputil.WriteAuthError(w, err)
 			return
 		}
 	}
@@ -302,11 +302,11 @@ func (s *Server) handleGetOrder(w http.ResponseWriter, r *http.Request) {
 	if s.auth != nil && !iamclient.IsNoop(s.auth) {
 		actor, err := s.authenticatedActor(r)
 		if err != nil {
-			writeAuthError(w, err)
+			httputil.WriteAuthError(w, err)
 			return
 		}
 		if err := authorizeOrderForActor(order, actor); err != nil {
-			writeAuthError(w, err)
+			httputil.WriteAuthError(w, err)
 			return
 		}
 	}
@@ -335,7 +335,7 @@ func (s *Server) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 
 	buyerOrgID, err := s.resolveBuyerOrg(r, payload.BuyerOrgID)
 	if err != nil {
-		writeAuthError(w, err)
+		httputil.WriteAuthError(w, err)
 		return
 	}
 	actorUserID := s.actorUserID(r)
@@ -399,7 +399,7 @@ func (s *Server) handleCreateRFQ(w http.ResponseWriter, r *http.Request) {
 
 	buyerOrgID, err := s.resolveBuyerOrg(r, payload.BuyerOrgID)
 	if err != nil {
-		writeAuthError(w, err)
+		httputil.WriteAuthError(w, err)
 		return
 	}
 	actorUserID := s.actorUserID(r)
@@ -454,7 +454,7 @@ func (s *Server) handleListRFQBids(w http.ResponseWriter, r *http.Request) {
 	if s.auth != nil && !iamclient.IsNoop(s.auth) {
 		actor, err := s.authenticatedActor(r)
 		if err != nil {
-			writeAuthError(w, err)
+			httputil.WriteAuthError(w, err)
 			return
 		}
 
@@ -466,7 +466,7 @@ func (s *Server) handleListRFQBids(w http.ResponseWriter, r *http.Request) {
 
 		bids, err = filterBidsForActor(rfq, bids, actor)
 		if err != nil {
-			writeAuthError(w, err)
+			httputil.WriteAuthError(w, err)
 			return
 		}
 	}
@@ -500,7 +500,7 @@ func (s *Server) handleCreateBid(w http.ResponseWriter, r *http.Request) {
 
 	providerOrgID, err := s.resolveProviderOrg(r, payload.ProviderOrgID)
 	if err != nil {
-		writeAuthError(w, err)
+		httputil.WriteAuthError(w, err)
 		return
 	}
 	actorUserID := s.actorUserID(r)
@@ -567,7 +567,7 @@ func (s *Server) handleAwardRFQ(w http.ResponseWriter, r *http.Request) {
 
 	buyerOrgID, err := s.resolveBuyerOrg(r, rfq.BuyerOrgID)
 	if err != nil {
-		writeAuthError(w, err)
+		httputil.WriteAuthError(w, err)
 		return
 	}
 	if buyerOrgID != rfq.BuyerOrgID {
@@ -737,7 +737,7 @@ func (s *Server) authenticatedActor(r *http.Request) (iamclient.Actor, error) {
 
 func (s *Server) handleSettleMilestone(w http.ResponseWriter, r *http.Request) {
 	if err := s.authorizeExecutionMutation(r); err != nil {
-		writeAuthError(w, err)
+		httputil.WriteAuthError(w, err)
 		return
 	}
 
@@ -773,7 +773,7 @@ func (s *Server) handleSettleMilestone(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleRecordUsage(w http.ResponseWriter, r *http.Request) {
 	if err := s.authorizeExecutionMutation(r); err != nil {
-		writeAuthError(w, err)
+		httputil.WriteAuthError(w, err)
 		return
 	}
 
@@ -837,7 +837,7 @@ func (s *Server) handleCreateDispute(w http.ResponseWriter, r *http.Request) {
 
 		buyerOrgID, err := s.resolveBuyerOrg(r, order.BuyerOrgID)
 		if err != nil {
-			writeAuthError(w, err)
+			httputil.WriteAuthError(w, err)
 			return
 		}
 		if buyerOrgID != order.BuyerOrgID {
@@ -893,7 +893,7 @@ func (s *Server) handleResolveDispute(w http.ResponseWriter, r *http.Request) {
 
 	resolvedBy, err := s.resolveOpsUser(r)
 	if err != nil {
-		writeAuthError(w, err)
+		httputil.WriteAuthError(w, err)
 		return
 	}
 	r = observability.WithRequestTags(r, observability.RequestTags{
@@ -921,7 +921,7 @@ func (s *Server) handleResolveDispute(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCreditDecision(w http.ResponseWriter, r *http.Request) {
 	if _, err := s.resolveOpsUser(r); err != nil {
-		writeAuthError(w, err)
+		httputil.WriteAuthError(w, err)
 		return
 	}
 	actorUserID := s.actorUserID(r)
@@ -959,7 +959,7 @@ func (s *Server) handleCreateMessage(w http.ResponseWriter, r *http.Request) {
 	if s.auth != nil && !iamclient.IsNoop(s.auth) {
 		actor, err := s.authenticatedActor(r)
 		if err != nil {
-			writeAuthError(w, err)
+			httputil.WriteAuthError(w, err)
 			return
 		}
 		order, err := s.app.GetOrder(payload.OrderID)
@@ -968,7 +968,7 @@ func (s *Server) handleCreateMessage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := authorizeOrderForActor(order, actor); err != nil {
-			writeAuthError(w, err)
+			httputil.WriteAuthError(w, err)
 			return
 		}
 		payload.Author = actor.UserID
@@ -1070,10 +1070,6 @@ func writeGatewayError(w http.ResponseWriter, err error) {
 	default:
 		httputil.WriteJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 	}
-}
-
-func writeAuthError(w http.ResponseWriter, err error) {
-	httputil.WriteAuthError(w, err)
 }
 
 func (s *Server) actorUserID(r *http.Request) string {
