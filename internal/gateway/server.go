@@ -131,6 +131,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleSystemInfo(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/system/ratelimits":
 		s.handleRateLimitConfig(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/provider-applications":
+		s.handleSubmitApplication(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/provider-applications":
+		s.handleListApplications(w, r)
+	case r.Method == http.MethodPost && isApplicationReviewPath(r.URL.Path):
+		s.handleReviewApplication(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/stats":
 		s.handleMarketplaceStats(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/leaderboard":
@@ -1904,4 +1910,58 @@ func (s *Server) handleLeaderboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"leaderboard": entries})
+}
+
+func isApplicationReviewPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 5 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "provider-applications" && parts[4] == "review"
+}
+
+func (s *Server) handleSubmitApplication(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		OrgID        string   `json:"orgId"`
+		Name         string   `json:"name"`
+		Capabilities []string `json:"capabilities"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+
+	app, err := s.app.SubmitProviderApplication(payload.OrgID, payload.Name, payload.Capabilities)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{"application": app})
+}
+
+func (s *Server) handleListApplications(w http.ResponseWriter, r *http.Request) {
+	status := r.URL.Query().Get("status")
+	apps := s.app.ListProviderApplications(status)
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"applications": apps})
+}
+
+func (s *Server) handleReviewApplication(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	appID := parts[3]
+
+	var payload struct {
+		ReviewedBy string `json:"reviewedBy"`
+		Note       string `json:"note"`
+		Approve    bool   `json:"approve"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+
+	app, err := s.app.ReviewProviderApplication(appID, payload.ReviewedBy, payload.Note, payload.Approve)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"application": app})
 }

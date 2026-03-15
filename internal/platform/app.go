@@ -195,6 +195,7 @@ type App struct {
 	mu           sync.Mutex // guards compound multi-store operations
 	ratings      []OrderRating
 	clock        Clock
+	providerApplications []ProviderApplication
 }
 
 // Notifier is an optional notification delivery interface.
@@ -1757,4 +1758,108 @@ func (a *App) GetProviderLeaderboard() ([]LeaderboardEntry, error) {
 	}
 
 	return entries, nil
+}
+
+
+// ProviderVettingStatus represents the vetting state of a provider.
+type ProviderVettingStatus string
+
+const (
+	VettingPending  ProviderVettingStatus = "pending"
+	VettingApproved ProviderVettingStatus = "approved"
+	VettingRejected ProviderVettingStatus = "rejected"
+)
+
+// ProviderApplication represents a provider registration request.
+type ProviderApplication struct {
+	ID             string                `json:"id"`
+	OrgID          string                `json:"orgId"`
+	Name           string                `json:"name"`
+	Capabilities   []string              `json:"capabilities"`
+	Status         ProviderVettingStatus `json:"status"`
+	ReviewedBy     string                `json:"reviewedBy,omitempty"`
+	ReviewNote     string                `json:"reviewNote,omitempty"`
+	SubmittedAt    time.Time             `json:"submittedAt"`
+	ReviewedAt     *time.Time            `json:"reviewedAt,omitempty"`
+}
+
+// SubmitProviderApplication creates a new provider application for ops review.
+func (a *App) SubmitProviderApplication(orgID, name string, capabilities []string) (ProviderApplication, error) {
+	if orgID == "" || name == "" {
+		return ProviderApplication{}, ErrMissingRequiredFields
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	for _, app := range a.providerApplications {
+		if app.OrgID == orgID && app.Status == VettingPending {
+			return ProviderApplication{}, fmt.Errorf("pending application already exists for org %s", orgID)
+		}
+	}
+
+	app := ProviderApplication{
+		ID:           fmt.Sprintf("app_%d", len(a.providerApplications)+1),
+		OrgID:        orgID,
+		Name:         name,
+		Capabilities: capabilities,
+		Status:       VettingPending,
+		SubmittedAt:  a.now(),
+	}
+	a.providerApplications = append(a.providerApplications, app)
+
+	a.notify("provider.application.submitted", orgID, map[string]any{"applicationId": app.ID})
+
+	return app, nil
+}
+
+// ReviewProviderApplication approves or rejects a provider application.
+func (a *App) ReviewProviderApplication(applicationID, reviewedBy, note string, approve bool) (ProviderApplication, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	for i := range a.providerApplications {
+		if a.providerApplications[i].ID == applicationID {
+			if a.providerApplications[i].Status != VettingPending {
+				return ProviderApplication{}, fmt.Errorf("application already reviewed")
+			}
+
+			now := a.now()
+			a.providerApplications[i].ReviewedBy = reviewedBy
+			a.providerApplications[i].ReviewNote = note
+			a.providerApplications[i].ReviewedAt = &now
+
+			if approve {
+				a.providerApplications[i].Status = VettingApproved
+			} else {
+				a.providerApplications[i].Status = VettingRejected
+			}
+
+			event := "provider.application.approved"
+			if !approve {
+				event = "provider.application.rejected"
+			}
+			a.notify(event, a.providerApplications[i].OrgID, map[string]any{
+				"applicationId": applicationID,
+				"reviewedBy":    reviewedBy,
+			})
+
+			return a.providerApplications[i], nil
+		}
+	}
+	return ProviderApplication{}, fmt.Errorf("application not found: %s", applicationID)
+}
+
+// ListProviderApplications returns all applications, optionally filtered by status.
+func (a *App) ListProviderApplications(status string) []ProviderApplication {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	result := make([]ProviderApplication, 0)
+	for _, app := range a.providerApplications {
+		if status == "" || string(app.Status) == status {
+			result = append(result, app)
+		}
+	}
+	return result
 }

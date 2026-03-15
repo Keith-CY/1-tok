@@ -1945,3 +1945,63 @@ func TestGetProviderLeaderboard(t *testing.T) {
 		}
 	}
 }
+
+func TestProviderApplication_Submit(t *testing.T) {
+	app := NewAppWithMemory()
+	pa, err := app.SubmitProviderApplication("org_new", "New Provider", []string{"gpu", "inference"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pa.Status != VettingPending {
+		t.Errorf("status = %s", pa.Status)
+	}
+}
+
+func TestProviderApplication_Approve(t *testing.T) {
+	app := NewAppWithMemory()
+	pa, _ := app.SubmitProviderApplication("org_new", "New Provider", nil)
+	reviewed, err := app.ReviewProviderApplication(pa.ID, "ops_admin", "Looks good", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reviewed.Status != VettingApproved {
+		t.Errorf("status = %s", reviewed.Status)
+	}
+}
+
+func TestProviderApplication_Reject(t *testing.T) {
+	app := NewAppWithMemory()
+	pa, _ := app.SubmitProviderApplication("org_new", "New Provider", nil)
+	reviewed, err := app.ReviewProviderApplication(pa.ID, "ops_admin", "Insufficient docs", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reviewed.Status != VettingRejected {
+		t.Errorf("status = %s", reviewed.Status)
+	}
+}
+
+func TestProviderApplication_DuplicatePending(t *testing.T) {
+	app := NewAppWithMemory()
+	app.SubmitProviderApplication("org_new", "New Provider", nil)
+	_, err := app.SubmitProviderApplication("org_new", "New Provider", nil)
+	if err == nil {
+		t.Error("expected error for duplicate pending")
+	}
+}
+
+func TestProviderApplication_List(t *testing.T) {
+	app := NewAppWithMemory()
+	app.SubmitProviderApplication("org_1", "P1", nil)
+	app.SubmitProviderApplication("org_2", "P2", nil)
+
+	all := app.ListProviderApplications("")
+	if len(all) != 2 {
+		t.Errorf("expected 2, got %d", len(all))
+	}
+
+	pending := app.ListProviderApplications("pending")
+	if len(pending) != 2 {
+		t.Errorf("expected 2 pending, got %d", len(pending))
+	}
+}
