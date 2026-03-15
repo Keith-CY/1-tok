@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/chenyu/1-tok/internal/carrier"
 	"github.com/chenyu/1-tok/internal/httputil"
 )
 
@@ -283,4 +284,57 @@ func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"job": job})
+}
+
+func isJobEvidencePath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 5 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "jobs" && parts[4] == "evidence"
+}
+
+func (s *Server) handleSubmitEvidence(w http.ResponseWriter, r *http.Request) {
+	jobID, err := jobIDFromPath(r.URL.Path)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	job, err := s.carrier.GetJob(jobID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	var payload struct {
+		Summary   string             `json:"summary"`
+		Artifacts []carrier.Artifact `json:"artifacts"`
+		Usage     *carrier.UsageReport `json:"usageReport"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+
+	pkg, err := s.evidence.Submit(jobID, job.BindingID, payload.Summary, payload.Artifacts, payload.Usage)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{"evidence": pkg})
+}
+
+func (s *Server) handleGetEvidence(w http.ResponseWriter, r *http.Request) {
+	jobID, err := jobIDFromPath(r.URL.Path)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	pkg, err := s.evidence.Get(jobID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"evidence": pkg})
 }

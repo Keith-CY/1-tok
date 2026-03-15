@@ -38,6 +38,7 @@ type Server struct {
 	rateLimiter     ratelimit.Limiter
 	carrier         *carrier.Service
 	webhooks        *notifications.Registry
+	evidence        *carrier.EvidenceStore
 }
 
 func NewServer() *Server {
@@ -121,6 +122,7 @@ func NewServerWithOptionsE(options Options) (*Server, error) {
 		rateLimiter:     options.RateLimiter,
 		carrier:         carrierSvc,
 		webhooks:        registry,
+		evidence:        carrier.NewEvidenceStore(),
 	}, nil
 }
 
@@ -140,6 +142,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleReviewApplication(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/carrier/callback":
 		s.handleCarrierCallback(w, r)
+	case r.Method == http.MethodPost && isJobEvidencePath(r.URL.Path):
+		s.handleSubmitEvidence(w, r)
+	case r.Method == http.MethodGet && isJobEvidencePath(r.URL.Path):
+		s.handleGetEvidence(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/stats":
 		s.handleMarketplaceStats(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/leaderboard":
