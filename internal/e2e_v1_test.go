@@ -12,8 +12,6 @@ import (
 
 	"github.com/chenyu/1-tok/internal/bootstrap"
 	"github.com/chenyu/1-tok/internal/gateway"
-	iamserver "github.com/chenyu/1-tok/internal/services/iam"
-	"github.com/chenyu/1-tok/internal/identity"
 )
 
 func TestV1BusinessFlowE2E(t *testing.T) {
@@ -23,22 +21,18 @@ func TestV1BusinessFlowE2E(t *testing.T) {
 	}
 	t.Setenv("DATABASE_URL", dsn)
 	t.Setenv("NATS_URL", "")
+	t.Setenv("IAM_UPSTREAM", "")
+	t.Setenv("ONE_TOK_REQUIRE_EXTERNALS", "")
 
 	app, cleanup, err := bootstrap.LoadPlatformApp()
 	if err != nil { t.Fatal(err) }
 	defer cleanup()
 
-	iam := iamserver.NewServerWithOptions(iamserver.Options{Store: identity.NewMemoryStore()})
 	gw, err := gateway.NewServerWithOptionsE(gateway.Options{App: app})
 	if err != nil { t.Fatal(err) }
 
-	// Note: IAM signup is tested here to verify the IAM server works,
-	// but the gateway uses NoopClient (no IAM_UPSTREAM configured).
-	// Auth enforcement is covered by unit tests in gateway/server_test.go
-	// (TestRateOrder_RequiresAuth, TestCreateRFQMessage_RequiresAuth).
-	// This E2E test focuses on business logic correctness, not auth paths.
-	_ = signup(t, iam, `{"email":"v1b@test.com","password":"correct horse battery staple 123","name":"B","organizationName":"Buyers","organizationKind":"buyer"}`)
-	_ = signup(t, iam, `{"email":"v1p@test.com","password":"correct horse battery staple 123","name":"P","organizationName":"Providers","organizationKind":"provider"}`)
+	// Gateway uses NoopClient (IAM_UPSTREAM forced empty above).
+	// Auth enforcement tested separately in gateway/server_test.go.
 
 	get := func(path string) *httptest.ResponseRecorder { return gwRequest(t, gw, "GET", path, nil) }
 	post := func(path string, payload any) *httptest.ResponseRecorder { return gwRequest(t, gw, "POST", path, payload) }
