@@ -653,8 +653,8 @@ func TestOpenDispute_Success(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updatedOrder.Milestones[0].DisputeStatus != core.DisputeStatusOpen {
-		t.Errorf("dispute status = %s, want open", updatedOrder.Milestones[0].DisputeStatus)
+	if updatedOrder.Milestones[0].DisputeStatus != core.DisputeStatusFrozen {
+		t.Errorf("dispute status = %s, want frozen", updatedOrder.Milestones[0].DisputeStatus)
 	}
 }
 

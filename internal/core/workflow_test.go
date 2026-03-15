@@ -140,7 +140,7 @@ func TestDisputeCreatesRecoveryAgainstProvider(t *testing.T) {
 		t.Fatalf("expected provider recovery, got %s", recovery.Kind)
 	}
 
-	if order.Milestones[0].DisputeStatus != DisputeStatusOpen {
+	if order.Milestones[0].DisputeStatus != DisputeStatusFrozen {
 		t.Fatalf("expected open dispute, got %s", order.Milestones[0].DisputeStatus)
 	}
 }

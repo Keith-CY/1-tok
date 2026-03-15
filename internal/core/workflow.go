@@ -37,6 +37,7 @@ type DisputeStatus string
 const (
 	DisputeStatusNone     DisputeStatus = "none"
 	DisputeStatusOpen     DisputeStatus = "open"
+	DisputeStatusFrozen   DisputeStatus = "frozen"
 	DisputeStatusResolved DisputeStatus = "resolved"
 )
 
@@ -199,7 +200,8 @@ func (o *Order) OpenDispute(input OpenDisputeInput) (LedgerEntry, LedgerEntry, e
 		return LedgerEntry{}, LedgerEntry{}, errors.New("only settled milestones can be disputed")
 	}
 
-	milestone.DisputeStatus = DisputeStatusOpen
+	milestone.DisputeStatus = DisputeStatusFrozen
+	milestone.State = MilestoneStatePaused // Freeze: prevent further settlement
 
 	now := time.Now().UTC()
 	refund := LedgerEntry{
@@ -232,8 +234,8 @@ func (o *Order) ResolveDispute(input ResolveDisputeInput) error {
 		return err
 	}
 
-	if milestone.DisputeStatus != DisputeStatusOpen {
-		return errors.New("only open disputes can be resolved")
+	if milestone.DisputeStatus != DisputeStatusFrozen && milestone.DisputeStatus != DisputeStatusOpen {
+		return errors.New("only open or frozen disputes can be resolved")
 	}
 
 	milestone.DisputeStatus = DisputeStatusResolved
