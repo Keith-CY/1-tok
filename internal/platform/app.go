@@ -1325,3 +1325,8 @@ func (a *App) GetProvider(id string) (ProviderProfile, error) {
 func (a *App) GetListing(id string) (Listing, error) {
 	return a.listings.Get(id)
 }
+
+// GetDispute returns a dispute by ID.
+func (a *App) GetDispute(id string) (Dispute, error) {
+	return a.disputes.Get(id)
+}

@@ -126,8 +126,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleGetListing(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/rfqs":
 		s.handleListRFQs(w, r)
+	case r.Method == http.MethodGet && isRFQDetailPath(r.URL.Path):
+		s.handleGetRFQ(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/disputes":
 		s.handleListDisputes(w, r)
+	case r.Method == http.MethodGet && isDisputeDetailPath(r.URL.Path):
+		s.handleGetDispute(w, r)
 	case r.Method == http.MethodGet && isRFQBidsPath(r.URL.Path):
 		s.handleListRFQBids(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/orders":
@@ -1453,4 +1457,46 @@ func (s *Server) handleGetListing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"listing": listing})
+}
+
+func isRFQDetailPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	// /api/v1/rfqs/:id — exactly 4 parts, no sub-resources
+	return len(parts) == 4 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "rfqs"
+}
+
+func (s *Server) handleGetRFQ(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	rfqID := parts[3]
+
+	rfqs, err := s.app.ListRFQs()
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+	for _, rfq := range rfqs {
+		if rfq.ID == rfqID {
+			httputil.WriteJSON(w, http.StatusOK, map[string]any{"rfq": rfq})
+			return
+		}
+	}
+	httputil.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "rfq not found"})
+}
+
+func isDisputeDetailPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 4 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "disputes"
+}
+
+func (s *Server) handleGetDispute(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	disputeID := parts[3]
+
+	dispute, err := s.app.GetDispute(disputeID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"dispute": dispute})
 }
