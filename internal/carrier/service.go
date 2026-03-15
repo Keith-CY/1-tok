@@ -94,7 +94,8 @@ type Service struct {
 	bindingIdx  map[string]string             // "orderID|milestoneID" → binding id
 	jobs        map[string]ExecutionJob       // id → job
 	jobsByBinding map[string][]string         // binding id → job ids
-	attempts      map[string][]ExecutionAttempt // job id → attempts
+	attempts      map[string][]ExecutionAttempt
+	idempotencyKeys map[string]string // job id → attempts
 	logger      Logger
 }
 
@@ -402,4 +403,40 @@ func (s *Service) ListAttempts(jobID string) []ExecutionAttempt {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.attempts[jobID]
+}
+
+// CreateJobIdempotent creates a job with an idempotency key.
+// If the key was already used, returns the existing job.
+func (s *Service) CreateJobIdempotent(bindingID, milestoneID, input, idempotencyKey string) (ExecutionJob, bool, error) {
+	if idempotencyKey == "" {
+		job, err := s.CreateJob(bindingID, milestoneID, input)
+		return job, false, err
+	}
+
+	s.mu.Lock()
+	// Check if key was already used
+	if existingID, ok := s.idempotencyKeys[idempotencyKey]; ok {
+		job, exists := s.jobs[existingID]
+		s.mu.Unlock()
+		if exists {
+			return job, true, nil // replay
+		}
+	}
+	s.mu.Unlock()
+
+	// Create new job
+	job, err := s.CreateJob(bindingID, milestoneID, input)
+	if err != nil {
+		return ExecutionJob{}, false, err
+	}
+
+	// Store idempotency key
+	s.mu.Lock()
+	if s.idempotencyKeys == nil {
+		s.idempotencyKeys = make(map[string]string)
+	}
+	s.idempotencyKeys[idempotencyKey] = job.ID
+	s.mu.Unlock()
+
+	return job, false, nil
 }

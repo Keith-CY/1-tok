@@ -478,3 +478,38 @@ func TestListAttempts_Empty(t *testing.T) {
 		t.Errorf("expected nil, got %v", attempts)
 	}
 }
+
+func TestCreateJobIdempotent_NewKey(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job, replay, err := svc.CreateJobIdempotent(b.ID, "ms_1", "input", "key_1")
+	if err != nil { t.Fatal(err) }
+	if replay { t.Error("should not be replay") }
+	if job.ID == "" { t.Error("expected job ID") }
+}
+
+func TestCreateJobIdempotent_Replay(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job1, _, _ := svc.CreateJobIdempotent(b.ID, "ms_1", "input", "key_1")
+	job2, replay, err := svc.CreateJobIdempotent(b.ID, "ms_1", "input", "key_1")
+	if err != nil { t.Fatal(err) }
+	if !replay { t.Error("expected replay") }
+	if job2.ID != job1.ID { t.Errorf("expected same job, got %s vs %s", job1.ID, job2.ID) }
+}
+
+func TestCreateJobIdempotent_EmptyKey(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job1, _, _ := svc.CreateJobIdempotent(b.ID, "ms_1", "input", "")
+	job2, _, _ := svc.CreateJobIdempotent(b.ID, "ms_1", "input", "")
+	if job1.ID == job2.ID { t.Error("empty key should create separate jobs") }
+}
+
+func TestCreateJobIdempotent_DifferentKeys(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job1, _, _ := svc.CreateJobIdempotent(b.ID, "ms_1", "input", "key_1")
+	job2, _, _ := svc.CreateJobIdempotent(b.ID, "ms_1", "input", "key_2")
+	if job1.ID == job2.ID { t.Error("different keys should create different jobs") }
+}
