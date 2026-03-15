@@ -1499,17 +1499,27 @@ func orderIDFromRatingPath(path string) (string, error) {
 }
 
 func (s *Server) handleRateOrder(w http.ResponseWriter, r *http.Request) {
-	if s.auth != nil && !iamclient.IsNoop(s.auth) {
-		if _, err := s.authenticatedActor(r); err != nil {
-			httputil.WriteAuthError(w, err)
-			return
-		}
-	}
-
 	orderID, err := orderIDFromRatingPath(r.URL.Path)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
+	}
+
+	if s.auth != nil && !iamclient.IsNoop(s.auth) {
+		actor, err := s.authenticatedActor(r)
+		if err != nil {
+			httputil.WriteAuthError(w, err)
+			return
+		}
+		order, err := s.app.GetOrder(orderID)
+		if err != nil {
+			writeGatewayError(w, err)
+			return
+		}
+		if err := authorizeOrderForActor(order, actor); err != nil {
+			httputil.WriteAuthError(w, err)
+			return
+		}
 	}
 
 	var payload struct {
@@ -1554,6 +1564,13 @@ func rfqIDFromMessagesPath(path string) (string, error) {
 }
 
 func (s *Server) handleListRFQMessages(w http.ResponseWriter, r *http.Request) {
+	if s.auth != nil && !iamclient.IsNoop(s.auth) {
+		if _, err := s.authenticatedActor(r); err != nil {
+			httputil.WriteAuthError(w, err)
+			return
+		}
+	}
+
 	rfqID, err := rfqIDFromMessagesPath(r.URL.Path)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -1615,6 +1632,13 @@ func isOrderMessagesPath(path string) bool {
 }
 
 func (s *Server) handleListOrderMessages(w http.ResponseWriter, r *http.Request) {
+	if s.auth != nil && !iamclient.IsNoop(s.auth) {
+		if _, err := s.authenticatedActor(r); err != nil {
+			httputil.WriteAuthError(w, err)
+			return
+		}
+	}
+
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	if len(parts) < 4 {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid path"})
@@ -1717,10 +1741,22 @@ func (s *Server) handleGetOrderRating(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListWebhooks(w http.ResponseWriter, r *http.Request) {
+	if s.auth != nil && !iamclient.IsNoop(s.auth) {
+		if _, err := s.authenticatedActor(r); err != nil {
+			httputil.WriteAuthError(w, err)
+			return
+		}
+	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"webhooks": s.webhooks.List()})
 }
 
 func (s *Server) handleRegisterWebhook(w http.ResponseWriter, r *http.Request) {
+	if s.auth != nil && !iamclient.IsNoop(s.auth) {
+		if _, err := s.authenticatedActor(r); err != nil {
+			httputil.WriteAuthError(w, err)
+			return
+		}
+	}
 	var payload struct {
 		Target string `json:"target"`
 		URL    string `json:"url"`

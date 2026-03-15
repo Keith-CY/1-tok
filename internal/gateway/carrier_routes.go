@@ -54,6 +54,11 @@ func jobIDFromPath(path string) (string, error) {
 }
 
 func (s *Server) handleBindCarrier(w http.ResponseWriter, r *http.Request) {
+	if err := s.authorizeExecutionMutation(r); err != nil {
+		httputil.WriteAuthError(w, err)
+		return
+	}
+
 	orderID, milestoneID, err := orderMilestoneFromBindPath(r.URL.Path)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -79,6 +84,11 @@ func (s *Server) handleBindCarrier(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
+	if err := s.authorizeExecutionMutation(r); err != nil {
+		httputil.WriteAuthError(w, err)
+		return
+	}
+
 	_, milestoneID, err := orderMilestoneFromBindPath(r.URL.Path)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -120,6 +130,11 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleStartJob(w http.ResponseWriter, r *http.Request) {
+	if err := s.authorizeExecutionMutation(r); err != nil {
+		httputil.WriteAuthError(w, err)
+		return
+	}
+
 	jobID, err := jobIDFromPath(r.URL.Path)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -136,6 +151,11 @@ func (s *Server) handleStartJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCompleteJob(w http.ResponseWriter, r *http.Request) {
+	if err := s.authorizeExecutionMutation(r); err != nil {
+		httputil.WriteAuthError(w, err)
+		return
+	}
+
 	jobID, err := jobIDFromPath(r.URL.Path)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -160,6 +180,11 @@ func (s *Server) handleCompleteJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleFailJob(w http.ResponseWriter, r *http.Request) {
+	if err := s.authorizeExecutionMutation(r); err != nil {
+		httputil.WriteAuthError(w, err)
+		return
+	}
+
 	jobID, err := jobIDFromPath(r.URL.Path)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -184,6 +209,11 @@ func (s *Server) handleFailJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleJobProgress(w http.ResponseWriter, r *http.Request) {
+	if err := s.authorizeExecutionMutation(r); err != nil {
+		httputil.WriteAuthError(w, err)
+		return
+	}
+
 	jobID, err := jobIDFromPath(r.URL.Path)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -210,6 +240,11 @@ func (s *Server) handleJobProgress(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleJobHeartbeat(w http.ResponseWriter, r *http.Request) {
+	if err := s.authorizeExecutionMutation(r); err != nil {
+		httputil.WriteAuthError(w, err)
+		return
+	}
+
 	jobID, err := jobIDFromPath(r.URL.Path)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -271,6 +306,11 @@ func (s *Server) handleGetBinding(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
+	if err := s.authorizeExecutionMutation(r); err != nil {
+		httputil.WriteAuthError(w, err)
+		return
+	}
+
 	jobID, err := jobIDFromPath(r.URL.Path)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -292,6 +332,11 @@ func isJobEvidencePath(path string) bool {
 }
 
 func (s *Server) handleSubmitEvidence(w http.ResponseWriter, r *http.Request) {
+	if err := s.authorizeExecutionMutation(r); err != nil {
+		httputil.WriteAuthError(w, err)
+		return
+	}
+
 	jobID, err := jobIDFromPath(r.URL.Path)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
