@@ -3,6 +3,9 @@ package bootstrap
 import (
 	"os"
 	"testing"
+	"time"
+
+	"github.com/chenyu/1-tok/internal/platform"
 )
 
 func TestLoadPlatformAppRequiresPersistenceWhenConfigured(t *testing.T) {
@@ -237,4 +240,39 @@ func TestLoadPlatformApp_MemoryWithCleanup(t *testing.T) {
 	if len(providers) == 0 {
 		t.Error("expected providers")
 	}
+}
+
+func TestLoadPlatformApp_WithPostgres_Migrate(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL not set")
+	}
+
+	t.Setenv("DATABASE_URL", dsn)
+	t.Setenv("NATS_URL", "")
+	t.Setenv("ONE_TOK_REQUIRE_BOOTSTRAP", "")
+
+	app, cleanup, err := LoadPlatformApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+
+	// Verify app works with postgres
+	providers, err := app.ListProviders()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("providers: %d", len(providers))
+
+	// Create data through the app
+	rfq, err := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_boot", Title: "Bootstrap test",
+		Category: "ai", Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("created RFQ: %s", rfq.ID)
 }
