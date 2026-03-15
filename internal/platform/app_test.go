@@ -2928,3 +2928,85 @@ func TestRateOrder_DuplicateRating(t *testing.T) {
 		t.Errorf("expected ErrOrderAlreadyRated, got %v", err)
 	}
 }
+
+func TestCreateRFQ_MissingTitle(t *testing.T) {
+	app := NewAppWithMemory()
+	_, err := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	if err != ErrMissingRequiredFields {
+		t.Errorf("expected ErrMissingRequiredFields, got %v", err)
+	}
+}
+
+func TestCreateRFQ_NoDeadline(t *testing.T) {
+	app := NewAppWithMemory()
+	_, err := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "No deadline", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+	})
+	if err != ErrDeadlineRequired {
+		t.Errorf("expected ErrDeadlineRequired, got %v", err)
+	}
+}
+
+func TestResolveDispute_NotFound(t *testing.T) {
+	app := NewAppWithMemory()
+	_, _, err := app.ResolveDispute("nonexistent", ResolveDisputeInput{ResolvedBy: "ops", Resolution: "ok"})
+	if err == nil {
+		t.Error("expected error for nonexistent dispute")
+	}
+}
+
+func TestListBids_EmptyRFQ(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Empty", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bids, _ := app.ListBids(rfq.ID)
+	if len(bids) != 0 {
+		t.Errorf("expected 0 bids, got %d", len(bids))
+	}
+}
+
+func TestListRFQMessages_NotFound(t *testing.T) {
+	app := NewAppWithMemory()
+	_, err := app.ListRFQMessages("nonexistent")
+	if err == nil {
+		t.Error("expected error for nonexistent RFQ")
+	}
+}
+
+func TestCreateRFQMessage_Success(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Msg", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	msg, err := app.CreateRFQMessage(rfq.ID, "buyer", "hello provider")
+	if err != nil { t.Fatal(err) }
+	if msg.RFQID != rfq.ID { t.Errorf("rfqId = %s", msg.RFQID) }
+	if msg.Author != "buyer" { t.Errorf("author = %s", msg.Author) }
+	if msg.Body != "hello provider" { t.Errorf("body = %s", msg.Body) }
+}
+
+func TestListRFQMessages_Multiple(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Msgs", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	app.CreateRFQMessage(rfq.ID, "buyer", "msg1")
+	app.CreateRFQMessage(rfq.ID, "provider", "msg2")
+	app.CreateRFQMessage(rfq.ID, "buyer", "msg3")
+
+	msgs, err := app.ListRFQMessages(rfq.ID)
+	if err != nil { t.Fatal(err) }
+	if len(msgs) != 3 { t.Errorf("expected 3, got %d", len(msgs)) }
+}
