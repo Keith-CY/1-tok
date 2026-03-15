@@ -24,9 +24,10 @@
 - **Webhook delivery** with HMAC-SHA256 signature verification
 
 ### Discord Bot
-- Slash commands: `/listings`, `/order-status`, `/rfq-status`, `/bids`
+- Slash commands: `/listings`, `/order-status`, `/rfq-status`, `/bids`, `/stats`
 - Ed25519 signature verification
 - Color-coded order status embeds
+- Configure `DISCORD_PUBLIC_KEY` (Discord application public key, hex-encoded) to enable signature verification.
 
 ### Infrastructure
 - IAM with session hashing, role-based access, rate limiting
@@ -36,10 +37,11 @@
 - Request timeout middleware, CORS, access logging
 
 
-## API Endpoints (34)
+## API Endpoints (35)
 
 | Method | Path | Description |
 |--------|------|-------------|
+| POST | /api/v1/interactions | Discord interaction webhook |
 | GET | /api/v1/providers | List providers |
 | GET | /api/v1/providers/:id | Get provider with rating |
 | GET | /api/v1/listings | Search listings (q, category, tag, price) |

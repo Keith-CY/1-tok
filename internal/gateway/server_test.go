@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chenyu/1-tok/internal/discord"
 	"github.com/chenyu/1-tok/internal/core"
 	iamclient "github.com/chenyu/1-tok/internal/integrations/iam"
 	"github.com/chenyu/1-tok/internal/platform"
@@ -1543,6 +1544,25 @@ func TestHealthz(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestDiscordInteractionPing(t *testing.T) {
+	gw := NewServerWithApp(platform.NewAppWithMemory())
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/interactions", strings.NewReader(`{"type":1}`))
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var resp discord.InteractionResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Type != discord.ResponsePong {
+		t.Fatalf("expected response type %d, got %d", discord.ResponsePong, resp.Type)
 	}
 }
 

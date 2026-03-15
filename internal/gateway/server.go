@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/chenyu/1-tok/internal/core"
+	"github.com/chenyu/1-tok/internal/discord"
 	"github.com/chenyu/1-tok/internal/httputil"
 	iamclient "github.com/chenyu/1-tok/internal/integrations/iam"
 	"github.com/chenyu/1-tok/internal/observability"
@@ -26,6 +28,7 @@ import (
 var (
 	ErrIAMUpstreamRequired      = errors.New("IAM_UPSTREAM is required when ONE_TOK_REQUIRE_EXTERNALS=true")
 	ErrExecutionTokenRequired   = errors.New("API_GATEWAY_EXECUTION_TOKEN or API_GATEWAY_EXECUTION_TOKENS is required when ONE_TOK_REQUIRE_EXTERNALS=true")
+	ErrDiscordPublicKeyRequired = errors.New("invalid Discord public key configuration")
 )
 
 type Server struct {
@@ -35,6 +38,7 @@ type Server struct {
 	rateLimiter     ratelimit.Limiter
 	carrier         *carrier.Service
 	webhooks        *notifications.Registry
+	discordBot      *discord.MarketplaceBot
 }
 
 func NewServer() *Server {
@@ -58,6 +62,7 @@ type Options struct {
 	ExecutionTokens serviceauth.TokenSet
 	RateLimiter     ratelimit.Limiter
 	Carrier         *carrier.Service
+	DiscordPublicKey string
 }
 
 func NewServerWithOptions(options Options) *Server {
@@ -91,6 +96,12 @@ func NewServerWithOptionsE(options Options) (*Server, error) {
 			options.ExecutionTokens = serviceauth.FromEnv("API_GATEWAY_EXECUTION_TOKENS", "API_GATEWAY_EXECUTION_TOKEN")
 		}
 	}
+
+	discordBot, err := newDiscordBotWithConfig(options.App, options.DiscordPublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("discord bot: %w", err)
+	}
+
 	if runtimeconfig.RequireExternalDependencies() {
 		if options.IAM == nil || iamclient.IsNoop(options.IAM) {
 			return nil, ErrIAMUpstreamRequired
@@ -118,7 +129,23 @@ func NewServerWithOptionsE(options Options) (*Server, error) {
 		rateLimiter:     options.RateLimiter,
 		carrier:         carrierSvc,
 		webhooks:        registry,
+		discordBot:      discordBot,
 	}, nil
+}
+
+func newDiscordBotWithConfig(app *platform.App, publicKey string) (*discord.MarketplaceBot, error) {
+	key := strings.TrimSpace(publicKey)
+	if key == "" {
+		key = strings.TrimSpace(os.Getenv("DISCORD_PUBLIC_KEY"))
+	}
+	if key == "" {
+		return discord.NewMarketplaceBot(app), nil
+	}
+	bot, err := discord.NewMarketplaceBotWithPublicKey(app, key)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrDiscordPublicKeyRequired, err)
+	}
+	return bot, nil
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -127,6 +154,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/stats":
 		s.handleMarketplaceStats(w, r)
+	case r.Method == http.MethodPost && isDiscordInteractionPath(r.URL.Path):
+		if s.discordBot == nil {
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "discord bot not configured"})
+			return
+		}
+		s.discordBot.HandleInteraction(w, r)
+		return
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/orders/batch-status":
 		s.handleBatchOrderStatus(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/providers":
@@ -1357,6 +1391,10 @@ func filterBidsForActor(rfq platform.RFQ, bids []platform.Bid, actor iamclient.A
 
 // Route predicates — used in ServeHTTP to avoid fragile HasSuffix matching.
 // Each function validates that the path matches the expected structure.
+
+func isDiscordInteractionPath(path string) bool {
+	return path == "/api/v1/interactions" || path == "/interactions"
+}
 
 func isRFQBidsPath(path string) bool {
 	_, err := rfqIDFromBidsPath(path)

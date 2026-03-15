@@ -7,6 +7,7 @@
   },
   "paths": {
     "/api/v1/stats": {"get": {"summary": "Marketplace statistics", "tags": ["marketplace"]}},
+    "/api/v1/interactions": {"post": {"summary": "Discord interaction webhook", "tags": ["discord"]}},
     "/api/v1/providers": {"get": {"summary": "Search providers", "tags": ["providers"], "parameters": [
       {"name": "capability", "in": "query", "schema": {"type": "string"}},
       {"name": "tier", "in": "query", "schema": {"type": "string"}},

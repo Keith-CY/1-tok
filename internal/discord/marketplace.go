@@ -23,6 +23,22 @@ func NewMarketplaceBot(app *platform.App) *MarketplaceBot {
 	return mb
 }
 
+// NewMarketplaceBotWithPublicKey creates a Discord bot wired to the marketplace
+// platform and validates incoming interactions with the provided Ed25519 public key.
+func NewMarketplaceBotWithPublicKey(app *platform.App, publicKey string) (*MarketplaceBot, error) {
+	bot, err := NewBot(publicKey)
+	if err != nil {
+		return nil, err
+	}
+
+	mb := &MarketplaceBot{
+		Bot: bot,
+		app: app,
+	}
+	mb.registerCommands()
+	return mb, nil
+}
+
 func (mb *MarketplaceBot) registerCommands() {
 	mb.Register("listings", mb.handleListings)
 	mb.Register("order-status", mb.handleOrderStatus)
