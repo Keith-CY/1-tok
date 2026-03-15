@@ -28,6 +28,7 @@
 - Ed25519 signature verification
 - Color-coded order status embeds
 - Configure `DISCORD_PUBLIC_KEY` (Discord application public key, hex-encoded) to enable signature verification.
+- `POST /api/v1/interactions` is only enabled when `DISCORD_PUBLIC_KEY` is configured.
 
 ### Infrastructure
 - IAM with session hashing, role-based access, rate limiting
