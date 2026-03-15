@@ -2,7 +2,7 @@
 
 /**
  * Formats a numeric rating as stars.
- * @example formatStars(4.5) → "★★★★☆"
+ * @example formatStars(4) → "★★★★☆"
  */
 export function formatStars(rating: number, max = 5): string {
   const rounded = Math.round(rating);

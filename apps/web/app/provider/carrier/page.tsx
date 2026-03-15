@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { PortalShell } from "../../../components/portal-shell";
 import { StatusBadge, EmptyState } from "../../../components/ui";
 import { requirePortalViewer } from "../../../lib/viewer";
@@ -37,9 +38,9 @@ export default async function ProviderCarrierPage() {
               </div>
             </div>
             <div className="mt-4">
-              <a href="/provider/carrier/register" className="bg-blue-600 text-white px-4 py-2 rounded text-sm">
+              <Link href="/provider/carrier/register" className="bg-blue-600 text-white px-4 py-2 rounded text-sm">
                 Register Carrier
-              </a>
+              </Link>
             </div>
           </div>
         </section>

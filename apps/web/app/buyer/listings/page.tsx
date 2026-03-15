@@ -9,7 +9,7 @@ export default async function BuyerListingsPage({
 }: {
   searchParams: { q?: string; category?: string; tag?: string };
 }) {
-  const params = await searchParams;
+  const params = searchParams;
   let listings: any[] = [];
   let error = "";
 

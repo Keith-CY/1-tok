@@ -1,5 +1,7 @@
 package carrier
 
+import "sync"
+
 // ExecutionProfile is a reusable execution configuration for a Carrier.
 type ExecutionProfile struct {
 	ID          string            `json:"id"`
@@ -10,32 +12,35 @@ type ExecutionProfile struct {
 	Backend     string            `json:"backend"`
 	Workspace   string            `json:"workspace"`
 	Environment map[string]string `json:"environment,omitempty"`
-	MaxTimeout  string            `json:"maxTimeout,omitempty"` // e.g., "30m"
+	MaxTimeout  string            `json:"maxTimeout,omitempty"`
 }
 
 // ProfileRegistry manages execution profiles.
 type ProfileRegistry struct {
+	mu       sync.RWMutex
 	profiles map[string]ExecutionProfile
 }
 
-// NewProfileRegistry creates a new registry.
 func NewProfileRegistry() *ProfileRegistry {
 	return &ProfileRegistry{profiles: make(map[string]ExecutionProfile)}
 }
 
-// Register adds or updates a profile.
 func (r *ProfileRegistry) Register(profile ExecutionProfile) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.profiles[profile.ID] = profile
 }
 
-// Get returns a profile by ID.
 func (r *ProfileRegistry) Get(id string) (ExecutionProfile, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	p, ok := r.profiles[id]
 	return p, ok
 }
 
-// List returns all profiles for a carrier.
 func (r *ProfileRegistry) List(carrierID string) []ExecutionProfile {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	result := make([]ExecutionProfile, 0)
 	for _, p := range r.profiles {
 		if carrierID == "" || p.CarrierID == carrierID {
@@ -45,7 +50,8 @@ func (r *ProfileRegistry) List(carrierID string) []ExecutionProfile {
 	return result
 }
 
-// Delete removes a profile.
 func (r *ProfileRegistry) Delete(id string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	delete(r.profiles, id)
 }

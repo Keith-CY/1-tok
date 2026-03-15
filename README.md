@@ -36,7 +36,7 @@
 - Request timeout middleware, CORS, access logging
 
 
-## API Endpoints (34)
+## API Endpoints (64)
 
 | Method | Path | Description |
 |--------|------|-------------|
