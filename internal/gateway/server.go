@@ -125,6 +125,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleListProviders(w, r)
 	case r.Method == http.MethodGet && isProviderPath(r.URL.Path):
 		s.handleGetProvider(w, r)
+	case r.Method == http.MethodGet && isProviderRevenuePath(r.URL.Path):
+		s.handleProviderRevenue(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/listings":
 		s.handleListListings(w, r)
 	case r.Method == http.MethodGet && isListingPath(r.URL.Path):
@@ -1634,4 +1636,22 @@ func (s *Server) handleOrderBudget(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, budget)
+}
+
+func isProviderRevenuePath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 5 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "providers" && parts[4] == "revenue"
+}
+
+func (s *Server) handleProviderRevenue(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	providerID := parts[3]
+
+	revenue, err := s.app.GetProviderRevenue(providerID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, revenue)
 }

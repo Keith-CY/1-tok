@@ -1520,3 +1520,52 @@ func (a *App) GetOrderBudget(orderID string) (OrderBudgetSummary, error) {
 
 	return summary, nil
 }
+
+// ProviderRevenueSummary shows revenue across all orders for a provider.
+type ProviderRevenueSummary struct {
+	ProviderOrgID   string `json:"providerOrgId"`
+	TotalOrders     int    `json:"totalOrders"`
+	ActiveOrders    int    `json:"activeOrders"`
+	TotalRevenue    int64  `json:"totalRevenueCents"`
+	PendingRevenue  int64  `json:"pendingRevenueCents"`
+	TotalDisputes   int    `json:"totalDisputes"`
+}
+
+// GetProviderRevenue returns revenue summary for a provider.
+func (a *App) GetProviderRevenue(providerOrgID string) (ProviderRevenueSummary, error) {
+	orders, err := a.orders.List()
+	if err != nil {
+		return ProviderRevenueSummary{}, err
+	}
+
+	summary := ProviderRevenueSummary{ProviderOrgID: providerOrgID}
+	for _, o := range orders {
+		if o.ProviderOrgID != providerOrgID {
+			continue
+		}
+		summary.TotalOrders++
+		if o.Status == core.OrderStatusRunning {
+			summary.ActiveOrders++
+		}
+		for _, ms := range o.Milestones {
+			summary.TotalRevenue += ms.SettledCents
+			if ms.State == core.MilestoneStateRunning || ms.State == core.MilestoneStatePending {
+				summary.PendingRevenue += ms.BudgetCents - ms.SettledCents
+			}
+		}
+	}
+
+	disputes, err := a.disputes.List()
+	if err != nil {
+		return summary, nil // non-fatal
+	}
+	for _, d := range disputes {
+		for _, o := range orders {
+			if o.ID == d.OrderID && o.ProviderOrgID == providerOrgID {
+				summary.TotalDisputes++
+			}
+		}
+	}
+
+	return summary, nil
+}
