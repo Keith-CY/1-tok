@@ -1,18 +1,39 @@
 # 1-tok
 
-`1-tok` is a monorepo for the Agent marketplace and settlement platform described in the approved plan. This first implementation pass establishes:
+**Agent Runtime Marketplace** — a platform for discovering, procuring, and managing agent execution services.
 
-- a shared Go domain model for orders, milestones, usage charges, disputes, and credit decisions
-- a JSON HTTP gateway that exposes the core marketplace and settlement flows
-- service entrypoints for `iam`, `marketplace`, `settlement`, `risk`, `execution`, and `notification`
-- Fiber JSON-RPC integration for invoice creation, invoice status, withdrawal quote, and withdrawal request
-- Carrier gateway integration for remote codeagent health, version, and run control-plane calls
-- Local `mock-carrier` support for release smoke and compose-based rehearsal
-- shared TypeScript contracts for the web portal
-- local container topology for Go services plus Postgres and NATS
-- Postgres-backed repositories for orders, providers, listings, messages, and disputes when `DATABASE_URL` is set
-- production Sentry instrumentation for long-lived Go services and the Next web runtime
-- Redis-backed protection for critical IAM and marketplace write routes
+## Features
+
+### Core Marketplace
+- **RFQ → Bid → Award → Order** lifecycle with milestone-based settlement
+- **Listing search** with query, category, tag, and price range filters
+- **Provider ratings** (1-5 stars) with duplicate prevention
+- **RFQ-level messaging** between buyers and providers during bid phase
+- **Credit decision engine** for funding mode selection
+
+### Anti-Fraud
+- **Layer 2: Usage Proof Signatures** — HMAC-SHA256 signed usage reports from Carriers
+- **Layer 3: Summary Reconciliation** — deviation detection on milestone settlement
+
+### Carrier Integration
+- **Async Execution Protocol** — binding, job state machine (pending → running → completed/failed/cancelled), heartbeat liveness
+- **8 HTTP endpoints** for carrier operations (bind, create job, start, complete, fail, progress, heartbeat)
+
+### Notifications
+- **8 event types** across the full lifecycle (order.created, milestone.settled, dispute.opened/resolved, rfq.awarded, order.completed, order.rated, budget_wall.hit)
+- **Webhook delivery** with HMAC-SHA256 signature verification
+
+### Discord Bot
+- Slash commands: `/listings`, `/order-status`, `/rfq-status`, `/bids`
+- Ed25519 signature verification
+- Color-coded order status embeds
+
+### Infrastructure
+- IAM with session hashing, role-based access, rate limiting
+- Postgres repositories with context propagation
+- NATS event publishing with infinite reconnect
+- `/livez` and `/readyz` health endpoints
+- Request timeout middleware, CORS, access logging
 
 ## Layout
 
