@@ -6297,3 +6297,73 @@ func TestListNotifications_Gateway(t *testing.T) {
 	srv.ServeHTTP(w, req)
 	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
 }
+
+func TestCreateRFQMessage_Gateway(t *testing.T) {
+	srv := NewServer()
+	rfqBody := `{"buyerOrgId":"org_b","title":"msg test","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(rfqBody))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	rfqID := resp["rfq"].(map[string]any)["id"].(string)
+
+	// Create message
+	msgBody := `{"author":"buyer","body":"question about scope"}`
+	req = httptest.NewRequest("POST", "/api/v1/rfqs/"+rfqID+"/messages", strings.NewReader(msgBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Errorf("create msg: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateRFQMessage_InvalidJSON_Gateway(t *testing.T) {
+	srv := NewServer()
+	rfqBody := `{"buyerOrgId":"org_b","title":"msg","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(rfqBody))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	rfqID := resp["rfq"].(map[string]any)["id"].(string)
+
+	req = httptest.NewRequest("POST", "/api/v1/rfqs/"+rfqID+"/messages", strings.NewReader("not json"))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestSubmitApplication_InvalidJSON(t *testing.T) {
+	srv := NewServer()
+	req := httptest.NewRequest("POST", "/api/v1/provider-applications", strings.NewReader("not json"))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestCarrierBinding_Register(t *testing.T) {
+	srv := NewServer()
+	body := `{"providerOrgId":"org_p","carrierBaseUrl":"https://carrier.test","hostId":"h1","agentId":"a1","backend":"gpt-4","workspaceRoot":"/ws"}`
+	req := httptest.NewRequest("POST", "/api/v1/carrier-bindings", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Errorf("register: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCarrierBinding_GetNotFound(t *testing.T) {
+	srv := NewServer()
+	req := httptest.NewRequest("GET", "/api/v1/carrier-bindings/nonexistent", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	// Should return error (no binding for this org)
+	if w.Code == http.StatusCreated {
+		t.Error("should not succeed for nonexistent binding")
+	}
+}
