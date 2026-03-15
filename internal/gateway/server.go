@@ -205,7 +205,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListProviders(w http.ResponseWriter, r *http.Request) {
-	providers, err := s.app.ListProviders()
+	q := r.URL.Query()
+	input := platform.SearchProvidersInput{
+		Capability: q.Get("capability"),
+		Tier:       q.Get("tier"),
+	}
+	if v := q.Get("minRating"); v != "" {
+		if parsed, err := strconv.ParseFloat(v, 64); err == nil {
+			input.MinRating = parsed
+		}
+	}
+
+	providers, err := s.app.SearchProviders(input)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return

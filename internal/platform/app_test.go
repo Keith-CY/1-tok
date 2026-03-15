@@ -1817,3 +1817,46 @@ func TestListRFQMessages_RFQNotFound(t *testing.T) {
 		t.Error("expected error for nonexistent RFQ")
 	}
 }
+
+func TestSearchProviders_All(t *testing.T) {
+	app := NewAppWithMemory()
+	providers, err := app.SearchProviders(SearchProvidersInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(providers) == 0 {
+		t.Error("expected default providers")
+	}
+}
+
+func TestSearchProviders_ByCapability(t *testing.T) {
+	app := NewAppWithMemory()
+	providers, err := app.SearchProviders(SearchProvidersInput{Capability: "carrier"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range providers {
+		found := false
+		for _, cap := range p.Capabilities {
+			if strings.Contains(strings.ToLower(cap), "carrier") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("provider %s doesn't have carrier capability", p.ID)
+		}
+	}
+}
+
+func TestSearchProviders_ByTier(t *testing.T) {
+	app := NewAppWithMemory()
+	providers, err := app.SearchProviders(SearchProvidersInput{Tier: "gold"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range providers {
+		if !strings.EqualFold(p.ReputationTier, "gold") {
+			t.Errorf("expected gold tier, got %s", p.ReputationTier)
+		}
+	}
+}

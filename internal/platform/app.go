@@ -1331,3 +1331,56 @@ func (a *App) GetDispute(id string) (Dispute, error) {
 	return a.disputes.Get(id)
 }
 
+
+// SearchProviders returns providers matching optional capability and tier filters.
+type SearchProvidersInput struct {
+	Capability string
+	Tier       string
+	MinRating  float64
+}
+
+func (a *App) SearchProviders(input SearchProvidersInput) ([]ProviderProfile, error) {
+	all, err := a.providers.List()
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]ProviderProfile, 0, len(all))
+	for _, p := range all {
+		// Compute rating
+		a.mu.Lock()
+		var total, count int
+		for _, r := range a.ratings {
+			if r.ProviderOrgID == p.ID {
+				total += r.Score
+				count++
+			}
+		}
+		a.mu.Unlock()
+		if count > 0 {
+			p.Rating = float64(total) / float64(count)
+			p.RatingCount = count
+		}
+
+		if input.MinRating > 0 && p.Rating < input.MinRating {
+			continue
+		}
+		if input.Tier != "" && !strings.EqualFold(p.ReputationTier, input.Tier) {
+			continue
+		}
+		if input.Capability != "" {
+			found := false
+			for _, cap := range p.Capabilities {
+				if strings.Contains(strings.ToLower(cap), strings.ToLower(input.Capability)) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+		result = append(result, p)
+	}
+	return result, nil
+}
