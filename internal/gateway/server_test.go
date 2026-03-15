@@ -4707,3 +4707,113 @@ func TestCreateDispute_NoMembership(t *testing.T) {
 		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+type internalErrorOrderRepo struct{}
+func (internalErrorOrderRepo) NextID() (string, error) { return "", errors.New("broken") }
+func (internalErrorOrderRepo) Get(string) (*core.Order, error) { return nil, errors.New("internal error") }
+func (internalErrorOrderRepo) Save(*core.Order) error { return errors.New("broken") }
+func (internalErrorOrderRepo) List() ([]*core.Order, error) { return nil, errors.New("broken") }
+
+func TestGetOrder_InternalError(t *testing.T) {
+	app := platform.NewApp(internalErrorOrderRepo{}, nil, nil, nil, nil, nil, nil)
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/orders/ord_1", nil)
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
+	}
+}
+
+func TestCreateOrder_BuyerOrgMismatch(t *testing.T) {
+	actor := iamclient.Actor{
+		UserID: "u_buyer",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "org_owner"},
+		},
+	}
+	gw, _ := NewServerWithOptionsE(Options{
+		App: platform.NewAppWithMemory(),
+		IAM: &stubIAMClient{actor: actor},
+	})
+	payload, _ := json.Marshal(map[string]any{
+		"buyerOrgId": "org_wrong", "providerOrgId": "org_p",
+		"title": "Mismatch", "fundingMode": "prepaid",
+		"milestones": []map[string]any{{"id": "ms_1", "title": "W", "basePriceCents": 5000, "budgetCents": 5000}},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestOrderIDFromPath_Invalid(t *testing.T) {
+	_, err := orderIDFromPath("/api/v1/orders")
+	if err == nil {
+		t.Error("expected error for missing order ID")
+	}
+}
+
+func TestOrderIDFromPath_Valid(t *testing.T) {
+	id, err := orderIDFromPath("/api/v1/orders/ord_123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != "ord_123" {
+		t.Errorf("id = %s", id)
+	}
+}
+
+func TestSettleMilestone_MissingExecToken(t *testing.T) {
+	gw, _ := NewServerWithOptionsE(Options{
+		App:             platform.NewAppWithMemory(),
+		ExecutionTokens: serviceauth.NewTokenSet("required-token"),
+	})
+	payload, _ := json.Marshal(map[string]any{"summary": "done"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders/ord_1/milestones/ms_1/settle", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	// No execution token
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestAwardRFQ_MissingBuyerAuth(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Award no buyer", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	bid, _ := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid",
+		QuoteCents: 5000, Milestones: []platform.BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000},
+		},
+	})
+
+	actor := iamclient.Actor{
+		UserID: "u_prov",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	gw, _ := NewServerWithOptionsE(Options{App: app, IAM: &stubIAMClient{actor: actor}})
+
+	payload, _ := json.Marshal(map[string]any{"bidId": bid.ID, "fundingMode": "prepaid"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs/"+rfq.ID+"/award", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	// Provider trying to award — should fail
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
