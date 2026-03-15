@@ -353,3 +353,53 @@ func TestListJobs_ByBinding(t *testing.T) {
 		t.Errorf("expected 1 job for b2, got %d", len(jobs2))
 	}
 }
+
+func TestDuplicateCallback_CompleteTwice(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job, _ := svc.CreateJob(b.ID, "ms_1", "input")
+	svc.StartJob(job.ID)
+	svc.CompleteJob(job.ID, "result")
+
+	// Duplicate complete should fail (already in terminal state)
+	_, err := svc.CompleteJob(job.ID, "result again")
+	if err == nil {
+		t.Error("expected error on duplicate complete")
+	}
+}
+
+func TestOutOfOrder_CompleteBeforeStart(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job, _ := svc.CreateJob(b.ID, "ms_1", "input")
+
+	// Complete from pending state should fail
+	_, err := svc.CompleteJob(job.ID, "result")
+	if err == nil {
+		t.Error("expected error on complete before start")
+	}
+}
+
+func TestOutOfOrder_FailBeforeStart(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job, _ := svc.CreateJob(b.ID, "ms_1", "input")
+
+	_, err := svc.FailJob(job.ID, "error")
+	if err == nil {
+		t.Error("expected error on fail before start")
+	}
+}
+
+func TestDuplicateCallback_StartTwice(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job, _ := svc.CreateJob(b.ID, "ms_1", "input")
+	svc.StartJob(job.ID)
+
+	// Duplicate start should fail (already running)
+	_, err := svc.StartJob(job.ID)
+	if err == nil {
+		t.Error("expected error on duplicate start")
+	}
+}

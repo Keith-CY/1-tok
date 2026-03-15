@@ -2149,3 +2149,56 @@ func TestAwardRFQ_BlockedBySuspendedBinding(t *testing.T) {
 		t.Errorf("expected ErrProviderSuspended, got %v", err)
 	}
 }
+
+func TestBudgetWall_PauseAndResume(t *testing.T) {
+	app := NewAppWithMemory()
+
+	// Create order with tight budget
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Budget wall", Category: "ai",
+		Scope: "test", BudgetCents: 1000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid", QuoteCents: 1000,
+		Milestones: []BidMilestoneInput{{ID: "ms_1", Title: "W", BasePriceCents: 1000, BudgetCents: 1000}},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	// Record usage exceeding budget
+	app.RecordUsageCharge(order.ID, RecordUsageChargeInput{
+		MilestoneID: "ms_1", Kind: core.UsageChargeKindToken, AmountCents: 1100,
+	})
+
+	// Verify order is paused
+	updated, _ := app.GetOrder(order.ID)
+	if updated.Status != core.OrderStatusAwaitingBudget {
+		t.Fatalf("expected awaiting_budget, got %s", updated.Status)
+	}
+	for _, ms := range updated.Milestones {
+		if ms.ID == "ms_1" && ms.State != core.MilestoneStatePaused {
+			t.Fatalf("expected milestone paused, got %s", ms.State)
+		}
+	}
+
+	// Top up budget
+	resumed, err := app.TopUpMilestone(order.ID, TopUpInput{MilestoneID: "ms_1", AdditionalCents: 500})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify order is running again
+	if resumed.Status != core.OrderStatusRunning {
+		t.Errorf("expected running after top-up, got %s", resumed.Status)
+	}
+	for _, ms := range resumed.Milestones {
+		if ms.ID == "ms_1" {
+			if ms.State != core.MilestoneStateRunning {
+				t.Errorf("expected milestone running, got %s", ms.State)
+			}
+			if ms.BudgetCents != 1500 {
+				t.Errorf("budget = %d, want 1500", ms.BudgetCents)
+			}
+		}
+	}
+}
