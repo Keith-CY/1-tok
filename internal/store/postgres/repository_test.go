@@ -1014,11 +1014,22 @@ func TestListingRepositoryUpsert(t *testing.T) {
 	if err := Migrate(db); err != nil {
 		t.Fatal(err)
 	}
+	// Seed catalog creates default providers
+	if err := SeedCatalog(db); err != nil {
+		t.Fatal(err)
+	}
+
+	// Get an existing provider ID
+	provRepo := NewProviderRepository(db)
+	providers, _ := provRepo.List()
+	if len(providers) == 0 {
+		t.Skip("no providers in DB")
+	}
 
 	repo := NewListingRepository(db)
 	listing := platform.Listing{
 		ID: fmt.Sprintf("list_%d", time.Now().UnixNano()),
-		ProviderOrgID: "prov_1",
+		ProviderOrgID: providers[0].ID,
 		Title: "Test Listing",
 		Category: "ai",
 		BasePriceCents: 5000,
