@@ -98,6 +98,15 @@ func (a *App) CreateBid(rfqID string, input CreateBidInput) (Bid, error) {
 		return Bid{}, ErrMilestonesRequired
 	}
 
+	// Validate milestone budget total does not exceed RFQ budget
+	var totalBudget int64
+	for _, ms := range milestones {
+		totalBudget += ms.BudgetCents
+	}
+	if totalBudget > rfq.BudgetCents {
+		return Bid{}, ErrBidExceedsBudget
+	}
+
 	bidID, err := a.bids.NextID()
 	if err != nil {
 		return Bid{}, err

@@ -2698,3 +2698,39 @@ func TestSearchListings_ByMaxPrice(t *testing.T) {
 	}
 }
 
+
+func TestCreateBid_ExceedsBudget(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Budget check", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	_, err := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_p", Message: "expensive", QuoteCents: 10000,
+		Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 10000, BudgetCents: 10000},
+		},
+	})
+	if err != ErrBidExceedsBudget {
+		t.Errorf("expected ErrBidExceedsBudget, got %v", err)
+	}
+}
+
+func TestCreateBid_ExactBudget(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Exact", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	_, err := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_p", Message: "exact", QuoteCents: 5000,
+		Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000},
+		},
+	})
+	if err != nil {
+		t.Errorf("exact budget should succeed, got %v", err)
+	}
+}

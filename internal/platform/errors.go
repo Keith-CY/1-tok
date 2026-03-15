@@ -28,6 +28,9 @@ var (
 	// Provider errors
 	ErrProviderSuspended = errors.New("provider carrier binding is suspended")
 
+	// Bid errors
+	ErrBidExceedsBudget = errors.New("bid milestone totals exceed RFQ budget")
+
 	// Rating errors
 	ErrInvalidScore    = errors.New("score must be between 1 and 5")
 	ErrOrderNotCompleted = errors.New("only completed orders can be rated")
