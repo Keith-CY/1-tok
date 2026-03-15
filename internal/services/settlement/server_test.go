@@ -1478,3 +1478,116 @@ func TestBearerToken_Valid(t *testing.T) {
 		t.Errorf("token = %s", token)
 	}
 }
+
+func TestNewServerWithOptions_RequireExternals(t *testing.T) {
+	t.Setenv("ONE_TOK_REQUIRE_EXTERNALS", "true")
+	t.Setenv("API_GATEWAY_UPSTREAM", "http://gw:8080")
+	t.Setenv("FIBER_RPC_URL", "http://fiber:8091")
+	t.Setenv("FIBER_APP_ID", "app")
+	t.Setenv("FIBER_HMAC_SECRET", "secret")
+	t.Setenv("IAM_UPSTREAM", "http://iam:8081")
+	t.Setenv("SETTLEMENT_SERVICE_TOKEN", "svc-token")
+
+	s := NewServerWithOptions(Options{})
+	if s == nil {
+		t.Fatal("expected non-nil server")
+	}
+}
+
+func TestNewServerWithOptions_WithServiceToken(t *testing.T) {
+	s := NewServerWithOptions(Options{
+		ServiceToken: "my-token",
+	})
+	if s == nil {
+		t.Fatal("expected non-nil server")
+	}
+}
+
+func TestNewServerWithOptions_WithAllOptions(t *testing.T) {
+	s := NewServerWithOptions(Options{
+		Upstream:      "http://gw:8080",
+		Fiber:         &stubFiberClient{},
+		Auth:          &stubIAMClient{actor: iamclient.Actor{UserID: "u_1"}},
+		ServiceTokens: serviceauth.NewTokenSet("token"),
+		Funding:       NewMemoryFundingRecordRepository(),
+	})
+	if s == nil {
+		t.Fatal("expected non-nil server")
+	}
+}
+
+func TestNewServerWithOptions_FundingFromEnv(t *testing.T) {
+	// No SETTLEMENT_DATABASE_URL — falls back to memory
+	t.Setenv("SETTLEMENT_DATABASE_URL", "")
+	t.Setenv("DATABASE_URL", "")
+
+	s := NewServerWithOptions(Options{
+		Fiber: &stubFiberClient{},
+	})
+	if s == nil {
+		t.Fatal("expected non-nil server")
+	}
+}
+
+func TestResolveProviderOrg_MissingAuth(t *testing.T) {
+	actor := iamclient.Actor{
+		UserID: "u_1",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber: &stubFiberClient{
+			withdrawalsResult: fiberclient.WithdrawalStatusResult{},
+		},
+		Auth: &stubIAMClient{actor: actor},
+	})
+
+	// No bearer token
+	req := httptest.NewRequest(http.MethodGet, "/v1/withdrawals/status", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestScopeFundingFilter_OpsSeesAll(t *testing.T) {
+	actor := iamclient.Actor{
+		UserID: "u_ops",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_ops", OrganizationKind: "ops", Role: "finance_admin"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Auth: &stubIAMClient{actor: actor},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/funding-records?kind=invoice", nil)
+	req.Header.Set("Authorization", "Bearer ops-token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestScopeFundingFilter_ProviderScoped(t *testing.T) {
+	actor := iamclient.Actor{
+		UserID: "u_prov",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "finance_viewer"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Auth: &stubIAMClient{actor: actor},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/funding-records", nil)
+	req.Header.Set("Authorization", "Bearer prov-token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
