@@ -189,8 +189,26 @@ type App struct {
 	disputes     DisputeRepository
 	creditEngine core.CreditDecisionEngine
 	publisher    EventPublisher
+	notifier     Notifier
 	mu           sync.Mutex // guards compound multi-store operations
 	ratings      []OrderRating
+}
+
+// Notifier is an optional notification delivery interface.
+type Notifier interface {
+	Send(event string, target string, payload map[string]any) error
+}
+
+// SetNotifier sets the notification service.
+func (a *App) SetNotifier(n Notifier) {
+	a.notifier = n
+}
+
+func (a *App) notify(event string, target string, payload map[string]any) {
+	if a.notifier == nil {
+		return
+	}
+	_ = a.notifier.Send(event, target, payload)
 }
 
 type EventPublisher interface {
@@ -440,6 +458,10 @@ func (a *App) CreateOrder(input CreateOrderInput) (*core.Order, error) {
 	}); err != nil {
 		return nil, err
 	}
+
+	// Notify both parties
+	a.notify("order.created", order.BuyerOrgID, map[string]any{"orderId": order.ID})
+	a.notify("order.created", order.ProviderOrgID, map[string]any{"orderId": order.ID})
 
 	return a.orders.Get(order.ID)
 }
