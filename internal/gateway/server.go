@@ -1564,7 +1564,27 @@ func (s *Server) handleGetDispute(w http.ResponseWriter, r *http.Request) {
 		writeGatewayError(w, err)
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"dispute": dispute})
+
+	// Collect evidence for the disputed order's jobs
+	var evidence []any
+	order, orderErr := s.app.GetOrder(dispute.OrderID)
+	if orderErr == nil {
+		for _, ms := range order.Milestones {
+			if ms.ID == dispute.MilestoneID {
+				binding, bindErr := s.carrier.GetBinding(order.ID, ms.ID)
+				if bindErr == nil {
+					jobs, _ := s.carrier.ListJobs(binding.ID)
+					for _, job := range jobs {
+						if ev, evErr := s.evidence.Get(job.ID); evErr == nil {
+							evidence = append(evidence, ev)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"dispute": dispute, "evidence": evidence})
 }
 func (s *Server) handleGetOrderRating(w http.ResponseWriter, r *http.Request) {
 	orderID, err := orderIDFromRatingPath(r.URL.Path)

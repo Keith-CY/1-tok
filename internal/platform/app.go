@@ -99,6 +99,7 @@ type Dispute struct {
 	Resolution  string             `json:"resolution,omitempty"`
 	ResolvedBy  string             `json:"resolvedBy,omitempty"`
 	ResolvedAt  *time.Time         `json:"resolvedAt,omitempty"`
+	EvidenceIDs []string           `json:"evidenceIds,omitempty"`
 	CreatedAt   time.Time          `json:"createdAt"`
 }
 
@@ -2033,4 +2034,23 @@ func (a *App) SuspendCarrierBinding(bindingID string) (ProviderCarrierBinding, e
 		}
 	}
 	return ProviderCarrierBinding{}, fmt.Errorf("binding not found: %s", bindingID)
+}
+
+// DisputeWithEvidence combines a dispute with its associated carrier evidence.
+type DisputeWithEvidence struct {
+	Dispute   Dispute        `json:"dispute"`
+	Evidence  []any          `json:"evidence,omitempty"`
+}
+
+// GetDisputeWithEvidence returns a dispute along with any carrier evidence
+// associated with the disputed milestone's execution jobs.
+func (a *App) GetDisputeWithEvidence(disputeID string) (DisputeWithEvidence, error) {
+	dispute, err := a.disputes.Get(disputeID)
+	if err != nil {
+		return DisputeWithEvidence{}, err
+	}
+	return DisputeWithEvidence{
+		Dispute:  dispute,
+		Evidence: nil, // Evidence is retrieved from carrier.EvidenceStore in the gateway
+	}, nil
 }
