@@ -5747,3 +5747,107 @@ func TestProviderSearch(t *testing.T) {
 	srv.ServeHTTP(w, req)
 	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
 }
+
+func TestResolveBuyerOrg_Success(t *testing.T) {
+	mockIAM := &stubIAMClient{actor: iamclient.Actor{
+		UserID: "user_1",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_buyer", OrganizationKind: "buyer", Role: "org_owner"},
+		},
+	}}
+	srv := NewServerWithOptions(Options{App: platform.NewAppWithMemory(), IAM: mockIAM})
+
+	body := `{"buyerOrgId":"org_buyer","title":"test","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer valid")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Errorf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestResolveBuyerOrg_Mismatch(t *testing.T) {
+	mockIAM := &stubIAMClient{actor: iamclient.Actor{
+		UserID: "user_1",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_other", OrganizationKind: "buyer", Role: "org_owner"},
+		},
+	}}
+	srv := NewServerWithOptions(Options{App: platform.NewAppWithMemory(), IAM: mockIAM})
+
+	body := `{"buyerOrgId":"org_wrong","title":"test","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer valid")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestResolveProviderOrg_Success(t *testing.T) {
+	mockIAM := &stubIAMClient{actor: iamclient.Actor{
+		UserID: "user_1",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_prov", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}}
+	srv := NewServerWithOptions(Options{App: platform.NewAppWithMemory(), IAM: mockIAM})
+
+	// Create RFQ first (no auth needed for this)
+	noAuthSrv := NewServerWithOptions(Options{App: srv.app})
+	rfqBody := `{"buyerOrgId":"org_b","title":"test","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(rfqBody))
+	w := httptest.NewRecorder()
+	noAuthSrv.ServeHTTP(w, req)
+	var rfqResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &rfqResp)
+	rfqID := rfqResp["rfq"].(map[string]any)["id"].(string)
+
+	// Create bid with auth
+	bidBody := fmt.Sprintf(`{"providerOrgId":"org_prov","message":"bid","quoteCents":5000,"milestones":[{"id":"ms_1","title":"W","basePriceCents":5000,"budgetCents":5000}]}`)
+	req = httptest.NewRequest("POST", "/api/v1/rfqs/"+rfqID+"/bids", strings.NewReader(bidBody))
+	req.Header.Set("Authorization", "Bearer valid")
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Errorf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestResolveOpsUser_Success(t *testing.T) {
+	mockIAM := &stubIAMClient{actor: iamclient.Actor{
+		UserID: "user_ops",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_ops", OrganizationKind: "ops", Role: "ops_reviewer"},
+		},
+	}}
+	srv := NewServerWithOptions(Options{App: platform.NewAppWithMemory(), IAM: mockIAM})
+
+	req := httptest.NewRequest("GET", "/api/v1/disputes", nil)
+	req.Header.Set("Authorization", "Bearer valid")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestResolveOpsUser_NotOps(t *testing.T) {
+	mockIAM := &stubIAMClient{actor: iamclient.Actor{
+		UserID: "user_1",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_buyer", OrganizationKind: "buyer", Role: "org_owner"},
+		},
+	}}
+	srv := NewServerWithOptions(Options{App: platform.NewAppWithMemory(), IAM: mockIAM})
+
+	req := httptest.NewRequest("GET", "/api/v1/disputes", nil)
+	req.Header.Set("Authorization", "Bearer valid")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", w.Code)
+	}
+}
