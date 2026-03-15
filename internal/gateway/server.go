@@ -317,6 +317,18 @@ func (s *Server) handleListOrders(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Apply query filters
+	q := r.URL.Query()
+	if status := q.Get("status"); status != "" {
+		filtered := make([]*core.Order, 0)
+		for _, o := range orders {
+			if string(o.Status) == status {
+				filtered = append(filtered, o)
+			}
+		}
+		orders = filtered
+	}
+
 	page := httputil.ParsePagination(r)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"orders": httputil.Apply(orders, page), "pagination": map[string]any{"limit": page.Limit, "offset": page.Offset, "total": len(orders)}})
 }
