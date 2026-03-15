@@ -1569,3 +1569,73 @@ func (a *App) GetProviderRevenue(providerOrgID string) (ProviderRevenueSummary, 
 
 	return summary, nil
 }
+
+// TimelineEvent represents a single event in an order's timeline.
+type TimelineEvent struct {
+	Type      string    `json:"type"`
+	Timestamp time.Time `json:"timestamp"`
+	Details   map[string]any `json:"details,omitempty"`
+}
+
+// GetOrderTimeline builds a chronological timeline of events for an order.
+func (a *App) GetOrderTimeline(orderID string) ([]TimelineEvent, error) {
+	order, err := a.orders.Get(orderID)
+	if err != nil {
+		return nil, err
+	}
+
+	events := make([]TimelineEvent, 0)
+
+	// Order created
+	events = append(events, TimelineEvent{
+		Type:      "order.created",
+		Timestamp: a.now(),
+		Details: map[string]any{
+			"buyerOrgId":    order.BuyerOrgID,
+			"providerOrgId": order.ProviderOrgID,
+			"fundingMode":   string(order.FundingMode),
+		},
+	})
+
+	// Milestone events
+	for _, ms := range order.Milestones {
+		if ms.State == core.MilestoneStateSettled && ms.SettledAt != nil {
+			events = append(events, TimelineEvent{
+				Type:      "milestone.settled",
+				Timestamp: *ms.SettledAt,
+				Details:   map[string]any{"milestoneId": ms.ID, "title": ms.Title, "settledCents": ms.SettledCents},
+			})
+		}
+
+		for _, charge := range ms.UsageCharges {
+			events = append(events, TimelineEvent{
+				Type:      "usage.recorded",
+				Timestamp: a.now(),
+				Details:   map[string]any{"milestoneId": ms.ID, "kind": string(charge.Kind), "amountCents": charge.AmountCents},
+			})
+		}
+
+		if len(ms.AnomalyFlags) > 0 {
+			events = append(events, TimelineEvent{
+				Type:      "reconciliation.anomaly",
+				Timestamp: a.now(),
+				Details:   map[string]any{"milestoneId": ms.ID, "flags": ms.AnomalyFlags},
+			})
+		}
+	}
+
+	// Rating
+	a.mu.Lock()
+	for _, r := range a.ratings {
+		if r.OrderID == orderID {
+			events = append(events, TimelineEvent{
+				Type:      "order.rated",
+				Timestamp: r.CreatedAt,
+				Details:   map[string]any{"score": r.Score, "comment": r.Comment},
+			})
+		}
+	}
+	a.mu.Unlock()
+
+	return events, nil
+}

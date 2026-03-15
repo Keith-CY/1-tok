@@ -177,6 +177,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleListOrderMessages(w, r)
 	case r.Method == http.MethodGet && isOrderBudgetPath(r.URL.Path):
 		s.handleOrderBudget(w, r)
+	case r.Method == http.MethodGet && isOrderTimelinePath(r.URL.Path):
+		s.handleOrderTimeline(w, r)
 	case r.Method == http.MethodGet && isBindCarrierPath(r.URL.Path):
 		s.handleGetBinding(w, r)
 	case r.Method == http.MethodPost && isBindCarrierPath(r.URL.Path):
@@ -1654,4 +1656,22 @@ func (s *Server) handleProviderRevenue(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, revenue)
+}
+
+func isOrderTimelinePath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 5 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "orders" && parts[4] == "timeline"
+}
+
+func (s *Server) handleOrderTimeline(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	orderID := parts[3]
+
+	timeline, err := s.app.GetOrderTimeline(orderID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"timeline": timeline})
 }
