@@ -94,3 +94,35 @@ describe("assertion functions", () => {
     expect(() => assertUsageChargeKind("bogus")).toThrow("Invalid usage charge kind");
   });
 });
+
+import { notificationEvents, vettingStatuses, jobStates } from ".";
+
+describe("vetting statuses", () => {
+  it("has 3 statuses", () => {
+    expect(vettingStatuses).toEqual(["pending", "approved", "rejected"]);
+  });
+});
+
+describe("notification events", () => {
+  it("has 8 event types", () => {
+    expect(notificationEvents.length).toBe(8);
+  });
+
+  it("includes all lifecycle events", () => {
+    const events = [...notificationEvents];
+    expect(events).toContain("order.created");
+    expect(events).toContain("milestone.settled");
+    expect(events).toContain("dispute.opened");
+    expect(events).toContain("dispute.resolved");
+    expect(events).toContain("rfq.awarded");
+    expect(events).toContain("order.completed");
+    expect(events).toContain("order.rated");
+    expect(events).toContain("budget_wall.hit");
+  });
+});
+
+describe("job states", () => {
+  it("has 5 states", () => {
+    expect(jobStates.length).toBe(5);
+  });
+});
