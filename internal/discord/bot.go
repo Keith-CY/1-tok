@@ -231,6 +231,7 @@ func BuiltinCommands() []SlashCommandDef {
 		{Name: "bids", Description: "View bids on an RFQ", Type: 1},
 		{Name: "award", Description: "Award an RFQ to a bid", Type: 1},
 		{Name: "order-status", Description: "Check order status", Type: 1},
+		{Name: "stats", Description: "View marketplace statistics", Type: 1},
 	}
 }
 

@@ -28,6 +28,7 @@ func (mb *MarketplaceBot) registerCommands() {
 	mb.Register("order-status", mb.handleOrderStatus)
 	mb.Register("rfq-status", mb.handleRFQStatus)
 	mb.Register("bids", mb.handleBids)
+	mb.Register("stats", mb.handleStats)
 }
 
 func (mb *MarketplaceBot) handleListings(data InteractionData) InteractionResponse {
@@ -162,5 +163,30 @@ func (mb *MarketplaceBot) handleBids(data InteractionData) InteractionResponse {
 		Title:  fmt.Sprintf("📊 Bids on RFQ %s", rfqID),
 		Color:  0x5865F2,
 		Fields: fields,
+	})
+}
+
+func (mb *MarketplaceBot) handleStats(data InteractionData) InteractionResponse {
+	stats, err := mb.app.GetMarketplaceStats()
+	if err != nil {
+		return TextResponse(fmt.Sprintf("❌ Error: %s", err))
+	}
+
+	avgRating := "—"
+	if stats.TotalRatings > 0 {
+		avgRating = fmt.Sprintf("%.1f ⭐", stats.AverageRating)
+	}
+
+	return EmbedResponse(Embed{
+		Title: "📊 Marketplace Stats",
+		Color: 0x5865F2,
+		Fields: []EmbedField{
+			{Name: "Providers", Value: fmt.Sprintf("%d", stats.TotalProviders), Inline: true},
+			{Name: "Listings", Value: fmt.Sprintf("%d", stats.TotalListings), Inline: true},
+			{Name: "RFQs", Value: fmt.Sprintf("%d total / %d open", stats.TotalRFQs, stats.OpenRFQs), Inline: true},
+			{Name: "Orders", Value: fmt.Sprintf("%d total / %d active", stats.TotalOrders, stats.ActiveOrders), Inline: true},
+			{Name: "Disputes", Value: fmt.Sprintf("%d total / %d open", stats.TotalDisputes, stats.OpenDisputes), Inline: true},
+			{Name: "Avg Rating", Value: avgRating, Inline: true},
+		},
 	})
 }
