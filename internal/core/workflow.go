@@ -79,6 +79,7 @@ type Milestone struct {
 	DisputeStatus  DisputeStatus  `json:"disputeStatus"`
 	UsageCharges   []UsageCharge  `json:"usageCharges"`
 	SettledAt      *time.Time     `json:"settledAt,omitempty"`
+	AnomalyFlags   []string       `json:"anomalyFlags,omitempty"`
 }
 
 type UsageCharge struct {

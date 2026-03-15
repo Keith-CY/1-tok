@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/chenyu/1-tok/internal/core"
+	"github.com/chenyu/1-tok/internal/reconciliation"
 )
 
 type ProviderProfile struct {
@@ -475,6 +476,22 @@ func (a *App) SettleMilestone(orderID string, input SettleMilestoneInput) (*core
 	entry, err := order.SettleMilestone(input)
 	if err != nil {
 		return nil, core.LedgerEntry{}, err
+	}
+
+	// Anti-fraud layer 3: reconciliation check
+	for i := range order.Milestones {
+		if order.Milestones[i].ID == input.MilestoneID {
+			rec := reconciliation.Reconcile(order.Milestones[i], 0)
+			if len(rec.Anomalies) > 0 {
+				order.Milestones[i].AnomalyFlags = rec.Anomalies
+				a.notify("reconciliation.anomaly", order.ProviderOrgID, map[string]any{
+					"orderId":     order.ID,
+					"milestoneId": input.MilestoneID,
+					"anomalies":   rec.Anomalies,
+				})
+			}
+			break
+		}
 	}
 
 	advanceNextMilestone(order, input.MilestoneID)
