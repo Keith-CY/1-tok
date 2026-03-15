@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -879,7 +880,9 @@ func TestLogout_RateLimited(t *testing.T) {
 	sRec := httptest.NewRecorder()
 	s.ServeHTTP(sRec, sReq)
 
-	var resp struct{ Session struct{ Token string } `json:"session"` }
+	var resp struct {
+		Session struct{ Token string } `json:"session"`
+	}
 	json.Unmarshal(sRec.Body.Bytes(), &resp)
 
 	// First logout OK
@@ -894,7 +897,9 @@ func TestLogout_RateLimited(t *testing.T) {
 	loginReq.Header.Set("Content-Type", "application/json")
 	loginRec := httptest.NewRecorder()
 	s.ServeHTTP(loginRec, loginReq)
-	var loginResp struct{ Session struct{ Token string } `json:"session"` }
+	var loginResp struct {
+		Session struct{ Token string } `json:"session"`
+	}
 	json.Unmarshal(loginRec.Body.Bytes(), &loginResp)
 
 	// Second logout rate limited
@@ -918,7 +923,9 @@ func TestMe_RevokedSession(t *testing.T) {
 	sRec := httptest.NewRecorder()
 	s.ServeHTTP(sRec, sReq)
 
-	var resp struct{ Session struct{ Token string } `json:"session"` }
+	var resp struct {
+		Session struct{ Token string } `json:"session"`
+	}
 	json.Unmarshal(sRec.Body.Bytes(), &resp)
 
 	// Logout (revokes session)
@@ -951,7 +958,9 @@ func TestMe_ExpiredSession(t *testing.T) {
 	sRec := httptest.NewRecorder()
 	s.ServeHTTP(sRec, sReq)
 
-	var resp struct{ Session struct{ Token string } `json:"session"` }
+	var resp struct {
+		Session struct{ Token string } `json:"session"`
+	}
 	json.Unmarshal(sRec.Body.Bytes(), &resp)
 
 	// Wait for expiry
@@ -1144,7 +1153,9 @@ func TestLogout_AfterLogin_ThenMe(t *testing.T) {
 	sRec := httptest.NewRecorder()
 	s.ServeHTTP(sRec, sReq)
 
-	var resp struct{ Session struct{ Token string } `json:"session"` }
+	var resp struct {
+		Session struct{ Token string } `json:"session"`
+	}
 	json.Unmarshal(sRec.Body.Bytes(), &resp)
 	token := resp.Session.Token
 
@@ -1190,7 +1201,9 @@ func TestLogout_RateLimited_WithToken(t *testing.T) {
 	sReq.Header.Set("Content-Type", "application/json")
 	sRec := httptest.NewRecorder()
 	s.ServeHTTP(sRec, sReq)
-	var resp struct{ Session struct{ Token string } `json:"session"` }
+	var resp struct {
+		Session struct{ Token string } `json:"session"`
+	}
 	json.Unmarshal(sRec.Body.Bytes(), &resp)
 
 	// First logout
@@ -1205,7 +1218,9 @@ func TestLogout_RateLimited_WithToken(t *testing.T) {
 	lReq.Header.Set("Content-Type", "application/json")
 	lRec := httptest.NewRecorder()
 	s.ServeHTTP(lRec, lReq)
-	var loginResp struct{ Session struct{ Token string } `json:"session"` }
+	var loginResp struct {
+		Session struct{ Token string } `json:"session"`
+	}
 	json.Unmarshal(lRec.Body.Bytes(), &loginResp)
 
 	// Second logout — should be rate limited
@@ -1312,5 +1327,63 @@ func TestNewServer_FullDefaults(t *testing.T) {
 	s := NewServer()
 	if s == nil {
 		t.Fatal("expected non-nil server")
+	}
+}
+
+func TestCreateSession_InvalidJSON(t *testing.T) {
+	srv := NewServerWithOptions(Options{Store: identity.NewMemoryStore()})
+	req := httptest.NewRequest("POST", "/v1/sessions", strings.NewReader("not json"))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d", w.Code)
+	}
+}
+
+func TestLogout_NoToken(t *testing.T) {
+	srv := NewServerWithOptions(Options{Store: identity.NewMemoryStore()})
+	req := httptest.NewRequest("POST", "/v1/logout", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d", w.Code)
+	}
+}
+
+func TestMe_NoToken(t *testing.T) {
+	srv := NewServerWithOptions(Options{Store: identity.NewMemoryStore()})
+	req := httptest.NewRequest("GET", "/v1/me", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d", w.Code)
+	}
+}
+
+func TestCreateSession_WrongPassword(t *testing.T) {
+	srv := NewServerWithOptions(Options{Store: identity.NewMemoryStore()})
+	// Signup first
+	body := `{"email":"test@pw.com","password":"correct horse battery staple 123","name":"Test","organizationName":"Org","organizationKind":"buyer"}`
+	req := httptest.NewRequest("POST", "/v1/signup", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	// Login with wrong password
+	loginBody := `{"email":"test@pw.com","password":"wrong password here 123"}`
+	req = httptest.NewRequest("POST", "/v1/sessions", strings.NewReader(loginBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d", w.Code)
+	}
+}
+
+func TestRouteNotFound(t *testing.T) {
+	srv := NewServerWithOptions(Options{Store: identity.NewMemoryStore()})
+	req := httptest.NewRequest("GET", "/v1/nonexistent", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d", w.Code)
 	}
 }
