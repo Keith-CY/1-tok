@@ -127,6 +127,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/stats":
 		s.handleMarketplaceStats(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/export/orders":
+		s.handleExportOrders(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/export/disputes":
+		s.handleExportDisputes(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/orders/batch-status":
 		s.handleBatchOrderStatus(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/providers":
@@ -1750,4 +1754,26 @@ type webhookNotifierAdapter struct {
 
 func (a *webhookNotifierAdapter) Send(event string, target string, payload map[string]any) error {
 	return a.svc.Send(notifications.EventType(event), target, payload)
+}
+
+func (s *Server) handleExportOrders(w http.ResponseWriter, r *http.Request) {
+	csv, err := s.app.ExportOrdersCSV()
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", "attachment; filename=orders.csv")
+	w.Write([]byte(csv))
+}
+
+func (s *Server) handleExportDisputes(w http.ResponseWriter, r *http.Request) {
+	csv, err := s.app.ExportDisputesCSV()
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", "attachment; filename=disputes.csv")
+	w.Write([]byte(csv))
 }
