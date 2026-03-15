@@ -28,6 +28,13 @@ export default async function OrderDetailPage({ params }: { params: { orderId: s
       title={`Order ${orderId}`}
       copy="Track milestone progress, budget consumption, and carrier execution status."
       signal={order.status}
+      asideTitle="Order signal deck"
+      asideItems={[
+        { label: "Status", value: order.status, tone: order.status === "running" ? "mint" : "default" },
+        { label: "Funding", value: order.fundingMode },
+        { label: "Provider", value: order.providerOrgId },
+        { label: "Milestones", value: `${order.milestones.length}` },
+      ]}
     >
       <div className="space-y-6">
         {/* Order Header */}
