@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -137,6 +138,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleListApplications(w, r)
 	case r.Method == http.MethodPost && isApplicationReviewPath(r.URL.Path):
 		s.handleReviewApplication(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/carrier/callback":
+		s.handleCarrierCallback(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/stats":
 		s.handleMarketplaceStats(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/leaderboard":
@@ -1964,4 +1967,50 @@ func (s *Server) handleReviewApplication(w http.ResponseWriter, r *http.Request)
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"application": app})
+}
+
+func (s *Server) handleCarrierCallback(w http.ResponseWriter, r *http.Request) {
+	var event carrier.CallbackEvent
+	if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+
+	// Verify callback signature (secret from env or config)
+	callbackSecret := os.Getenv("CARRIER_CALLBACK_SECRET")
+	if err := carrier.VerifyCallback(callbackSecret, event); err != nil {
+		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error()})
+		return
+	}
+
+	// Process callback based on type
+	switch event.Type {
+	case "job.started":
+		if _, err := s.carrier.StartJob(event.JobID); err != nil {
+			writeGatewayError(w, err)
+			return
+		}
+	case "job.completed":
+		output, _ := event.Payload["output"].(string)
+		if _, err := s.carrier.CompleteJob(event.JobID, output); err != nil {
+			writeGatewayError(w, err)
+			return
+		}
+	case "job.failed":
+		errMsg, _ := event.Payload["error"].(string)
+		if _, err := s.carrier.FailJob(event.JobID, errMsg); err != nil {
+			writeGatewayError(w, err)
+			return
+		}
+	case "heartbeat":
+		if err := s.carrier.Heartbeat(event.BindingID); err != nil {
+			writeGatewayError(w, err)
+			return
+		}
+	default:
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown callback type"})
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "processed"})
 }
