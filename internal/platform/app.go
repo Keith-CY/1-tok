@@ -200,6 +200,8 @@ type App struct {
 	providerApplications []ProviderApplication
 	carrierBindings      []ProviderCarrierBinding
 	carrierBindingsByOrg map[string]int // providerOrgID → index in carrierBindings
+	requireExecProfile   bool
+	profileValidator     func(profileID string) bool
 }
 
 // Notifier is an optional notification delivery interface.
@@ -1883,6 +1885,9 @@ func (a *App) CreateListing(input CreateListingInput) (Listing, error) {
 	if input.Title == "" || input.Category == "" {
 		return Listing{}, ErrMissingRequiredFields
 	}
+	if err := a.validateExecutionProfile(input.ExecutionProfileID); err != nil {
+		return Listing{}, err
+	}
 
 	listing := Listing{
 		ID:                 fmt.Sprintf("listing_%d", a.now().UnixNano()),
@@ -2053,4 +2058,23 @@ func (a *App) GetDisputeWithEvidence(disputeID string) (DisputeWithEvidence, err
 		Dispute:  dispute,
 		Evidence: nil, // Evidence is retrieved from carrier.EvidenceStore in the gateway
 	}, nil
+}
+
+// SetRequireExecutionProfile enables execution profile enforcement.
+func (a *App) SetRequireExecutionProfile(validator func(profileID string) bool) {
+	a.requireExecProfile = true
+	a.profileValidator = validator
+}
+
+func (a *App) validateExecutionProfile(profileID string) error {
+	if !a.requireExecProfile {
+		return nil
+	}
+	if profileID == "" {
+		return fmt.Errorf("execution profile ID is required")
+	}
+	if a.profileValidator != nil && !a.profileValidator(profileID) {
+		return fmt.Errorf("execution profile %s not found or inactive", profileID)
+	}
+	return nil
 }

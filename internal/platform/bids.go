@@ -71,6 +71,9 @@ func (a *App) CreateBid(rfqID string, input CreateBidInput) (Bid, error) {
 	if input.ProviderOrgID == "" || input.Message == "" {
 		return Bid{}, ErrMissingRequiredFields
 	}
+	if err := a.validateExecutionProfile(input.ExecutionProfileID); err != nil {
+		return Bid{}, err
+	}
 
 	// Default to RFQ budget and milestones when the provider does not supply their own.
 	quoteCents := input.QuoteCents

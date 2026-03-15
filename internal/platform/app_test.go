@@ -2202,3 +2202,59 @@ func TestBudgetWall_PauseAndResume(t *testing.T) {
 		}
 	}
 }
+
+func TestCreateListing_RequiresProfile_WhenEnforced(t *testing.T) {
+	app := NewAppWithMemory()
+	app.SetRequireExecutionProfile(func(id string) bool { return id == "prof_valid" })
+
+	_, err := app.CreateListing(CreateListingInput{
+		ProviderOrgID: "org_p", Title: "Test", Category: "ai",
+	})
+	if err == nil {
+		t.Error("expected error for missing profile")
+	}
+
+	_, err = app.CreateListing(CreateListingInput{
+		ProviderOrgID: "org_p", Title: "Test", Category: "ai",
+		ExecutionProfileID: "prof_invalid",
+	})
+	if err == nil {
+		t.Error("expected error for invalid profile")
+	}
+
+	_, err = app.CreateListing(CreateListingInput{
+		ProviderOrgID: "org_p", Title: "Test", Category: "ai",
+		ExecutionProfileID: "prof_valid",
+	})
+	if err != nil {
+		t.Errorf("expected success, got %v", err)
+	}
+}
+
+func TestCreateBid_RequiresProfile_WhenEnforced(t *testing.T) {
+	app := NewAppWithMemory()
+	app.SetRequireExecutionProfile(func(id string) bool { return id == "prof_valid" })
+
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Profile bid", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+
+	_, err := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid", QuoteCents: 5000,
+		Milestones: []BidMilestoneInput{{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000}},
+	})
+	if err == nil {
+		t.Error("expected error for missing profile")
+	}
+
+	_, err = app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid", QuoteCents: 5000,
+		ExecutionProfileID: "prof_valid",
+		Milestones: []BidMilestoneInput{{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000}},
+	})
+	if err != nil {
+		t.Errorf("expected success, got %v", err)
+	}
+}
