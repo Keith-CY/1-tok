@@ -164,10 +164,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleCreateMessage(w, r)
 	case r.Method == http.MethodPost && isOrderRatingPath(r.URL.Path):
 		s.handleRateOrder(w, r)
+	case r.Method == http.MethodGet && isOrderRatingPath(r.URL.Path):
+		s.handleGetOrderRating(w, r)
 	case r.Method == http.MethodGet && isOrderMessagesPath(r.URL.Path):
 		s.handleListOrderMessages(w, r)
 	case r.Method == http.MethodPost && isBindCarrierPath(r.URL.Path):
 		s.handleBindCarrier(w, r)
+	case r.Method == http.MethodGet && isCreateJobPath(r.URL.Path):
+		s.handleListJobs(w, r)
 	case r.Method == http.MethodPost && isCreateJobPath(r.URL.Path):
 		s.handleCreateJob(w, r)
 	case r.Method == http.MethodGet && isJobPath(r.URL.Path):
@@ -1493,4 +1497,20 @@ func (s *Server) handleGetDispute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"dispute": dispute})
+}
+
+func (s *Server) handleGetOrderRating(w http.ResponseWriter, r *http.Request) {
+	orderID, err := orderIDFromRatingPath(r.URL.Path)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	rating, err := s.app.GetOrderRating(orderID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"rating": rating})
 }

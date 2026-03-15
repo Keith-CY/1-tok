@@ -1330,3 +1330,4 @@ func (a *App) GetListing(id string) (Listing, error) {
 func (a *App) GetDispute(id string) (Dispute, error) {
 	return a.disputes.Get(id)
 }
+

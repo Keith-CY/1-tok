@@ -229,3 +229,25 @@ func (s *Server) handleJobHeartbeat(w http.ResponseWriter, r *http.Request) {
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
+
+func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
+	orderID, milestoneID, err := orderMilestoneFromBindPath(r.URL.Path)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	binding, err := s.carrier.GetBinding(orderID, milestoneID)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{"jobs": []any{}})
+		return
+	}
+
+	jobs, err := s.carrier.ListJobs(binding.ID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"jobs": jobs})
+}
