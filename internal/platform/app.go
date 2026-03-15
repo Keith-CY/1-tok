@@ -1639,3 +1639,42 @@ func (a *App) GetOrderTimeline(orderID string) ([]TimelineEvent, error) {
 
 	return events, nil
 }
+
+// OrderStatusBrief is a compact order status for batch queries.
+type OrderStatusBrief struct {
+	ID              string `json:"id"`
+	Status          string `json:"status"`
+	ProviderOrgID   string `json:"providerOrgId"`
+	BuyerOrgID      string `json:"buyerOrgId"`
+	MilestoneCount  int    `json:"milestoneCount"`
+	SettledCount    int    `json:"settledCount"`
+	HasAnomaly      bool   `json:"hasAnomaly"`
+}
+
+// BatchOrderStatus returns brief status for multiple orders.
+func (a *App) BatchOrderStatus(orderIDs []string) ([]OrderStatusBrief, error) {
+	result := make([]OrderStatusBrief, 0, len(orderIDs))
+	for _, id := range orderIDs {
+		order, err := a.orders.Get(id)
+		if err != nil {
+			continue // skip missing
+		}
+		brief := OrderStatusBrief{
+			ID:             order.ID,
+			Status:         string(order.Status),
+			ProviderOrgID:  order.ProviderOrgID,
+			BuyerOrgID:     order.BuyerOrgID,
+			MilestoneCount: len(order.Milestones),
+		}
+		for _, ms := range order.Milestones {
+			if ms.State == core.MilestoneStateSettled {
+				brief.SettledCount++
+			}
+			if len(ms.AnomalyFlags) > 0 {
+				brief.HasAnomaly = true
+			}
+		}
+		result = append(result, brief)
+	}
+	return result, nil
+}

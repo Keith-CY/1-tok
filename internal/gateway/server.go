@@ -121,6 +121,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/stats":
 		s.handleMarketplaceStats(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/orders/batch-status":
+		s.handleBatchOrderStatus(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/providers":
 		s.handleListProviders(w, r)
 	case r.Method == http.MethodGet && isProviderPath(r.URL.Path):
@@ -1674,4 +1676,22 @@ func (s *Server) handleOrderTimeline(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"timeline": timeline})
+}
+
+func (s *Server) handleBatchOrderStatus(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		OrderIDs []string `json:"orderIds"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+
+	statuses, err := s.app.BatchOrderStatus(payload.OrderIDs)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"orders": statuses})
 }
