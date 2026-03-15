@@ -286,3 +286,41 @@ func (s *Service) ListJobs(bindingID string) ([]ExecutionJob, error) {
 	}
 	return result, nil
 }
+
+// StaleJobTimeout is the duration after which a running job with no heartbeat is considered stale.
+const StaleJobTimeout = 5 * time.Minute
+
+// StaleJob represents a job that missed its heartbeat window.
+type StaleJob struct {
+	Job           ExecutionJob `json:"job"`
+	BindingID     string       `json:"bindingId"`
+	LastHeartbeat time.Time    `json:"lastHeartbeat"`
+	StaleSince    time.Duration `json:"staleSince"`
+}
+
+// ReconcileStaleJobs finds running jobs whose binding heartbeat is stale.
+func (s *Service) ReconcileStaleJobs() []StaleJob {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var stale []StaleJob
+	for _, job := range s.jobs {
+		if job.State != JobStateRunning {
+			continue
+		}
+		binding, ok := s.bindings[job.BindingID]
+		if !ok {
+			continue
+		}
+		elapsed := time.Since(binding.LastHeartbeat)
+		if elapsed > StaleJobTimeout {
+			stale = append(stale, StaleJob{
+				Job:           job,
+				BindingID:     job.BindingID,
+				LastHeartbeat: binding.LastHeartbeat,
+				StaleSince:    elapsed,
+			})
+		}
+	}
+	return stale
+}

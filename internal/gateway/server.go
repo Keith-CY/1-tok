@@ -120,6 +120,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleSystemInfo(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/system/ratelimits":
 		s.handleRateLimitConfig(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/system/stale-jobs":
+		s.handleStaleJobs(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/provider-applications":
 		s.handleSubmitApplication(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/provider-applications":
@@ -2040,4 +2042,9 @@ func actorBelongsToOrg(actor iamclient.Actor, orgID string) bool {
 		}
 	}
 	return false
+}
+
+func (s *Server) handleStaleJobs(w http.ResponseWriter, r *http.Request) {
+	stale := s.carrier.ReconcileStaleJobs()
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"staleJobs": stale, "count": len(stale)})
 }

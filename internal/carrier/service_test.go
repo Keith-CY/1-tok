@@ -403,3 +403,28 @@ func TestDuplicateCallback_StartTwice(t *testing.T) {
 		t.Error("expected error on duplicate start")
 	}
 }
+
+func TestReconcileStaleJobs_NoStale(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job, _ := svc.CreateJob(b.ID, "ms_1", "input")
+	svc.StartJob(job.ID)
+
+	stale := svc.ReconcileStaleJobs()
+	if len(stale) != 0 {
+		t.Errorf("expected 0 stale, got %d", len(stale))
+	}
+}
+
+func TestReconcileStaleJobs_OnlyRunning(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job, _ := svc.CreateJob(b.ID, "ms_1", "input")
+
+	// Pending job should not appear as stale
+	_ = job
+	stale := svc.ReconcileStaleJobs()
+	if len(stale) != 0 {
+		t.Errorf("pending job should not be stale, got %d", len(stale))
+	}
+}
