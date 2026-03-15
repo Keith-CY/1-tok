@@ -5997,3 +5997,70 @@ func TestCarrierCallback_NormalizedEvent(t *testing.T) {
 	// Should normalize to job.started and process (may fail on missing job, but shouldn't 404)
 	if w.Code == http.StatusNotFound { t.Error("callback should be routable") }
 }
+
+func TestAwardRFQ_WithBuyerAuth(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	noAuth := NewServerWithOptions(Options{App: app})
+
+	// Create RFQ + bid without auth
+	rfqBody := `{"buyerOrgId":"org_b","title":"award auth","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(rfqBody))
+	w := httptest.NewRecorder()
+	noAuth.ServeHTTP(w, req)
+	var rfqResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &rfqResp)
+	rfqID := rfqResp["rfq"].(map[string]any)["id"].(string)
+
+	bidBody := `{"providerOrgId":"org_p","message":"b","quoteCents":5000,"milestones":[{"id":"ms_1","title":"W","basePriceCents":5000,"budgetCents":5000}]}`
+	req = httptest.NewRequest("POST", "/api/v1/rfqs/"+rfqID+"/bids", strings.NewReader(bidBody))
+	w = httptest.NewRecorder()
+	noAuth.ServeHTTP(w, req)
+	var bidResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &bidResp)
+	bidID := bidResp["bid"].(map[string]any)["id"].(string)
+
+	// Award with buyer auth
+	mockIAM := &stubIAMClient{actor: iamclient.Actor{
+		UserID: "user_b",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "org_owner"},
+		},
+	}}
+	authSrv := NewServerWithOptions(Options{App: app, IAM: mockIAM})
+
+	awardBody := fmt.Sprintf(`{"bidId":"%s","fundingMode":"prepaid"}`, bidID)
+	req = httptest.NewRequest("POST", "/api/v1/rfqs/"+rfqID+"/award", strings.NewReader(awardBody))
+	req.Header.Set("Authorization", "Bearer valid")
+	w = httptest.NewRecorder()
+	authSrv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSettleMilestone_WithExecToken(t *testing.T) {
+	srv := NewServerWithOptions(Options{
+		App:            platform.NewAppWithMemory(),
+		ExecutionToken: "exec-tok",
+	})
+
+	// Create order first (no token needed)
+	noTokenSrv := NewServerWithOptions(Options{App: srv.app})
+	body := `{"buyerOrgId":"org_b","providerOrgId":"org_p","fundingMode":"prepaid","milestones":[{"id":"ms_1","title":"W","basePriceCents":1000,"budgetCents":1000}]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	noTokenSrv.ServeHTTP(w, req)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	orderID := resp["order"].(map[string]any)["id"].(string)
+
+	// Settle with exec token
+	settleBody := `{"milestoneId":"ms_1","summary":"done"}`
+	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/milestones/ms_1/settle", strings.NewReader(settleBody))
+	req.Header.Set("X-One-Tok-Service-Token", "exec-tok")
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
