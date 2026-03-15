@@ -291,3 +291,119 @@ export interface Notification {
   createdAt: string;
   delivered: boolean;
 }
+
+// --- Carrier Callback Ledger ---
+
+export interface ExecutionEvent {
+  id: string;
+  executionId: string;
+  eventId: string;
+  sequence: number;
+  eventType: string;
+  attemptId?: string;
+  payloadJson?: string;
+  decisionJson?: string;
+  receivedAt: string;
+}
+
+// --- Provider Vetting ---
+
+export const vettingStatuses = ["pending", "approved", "rejected"] as const;
+export type VettingStatus = (typeof vettingStatuses)[number];
+
+export interface ProviderApplication {
+  id: string;
+  orgId: string;
+  name: string;
+  capabilities: string[];
+  status: VettingStatus;
+  reviewedBy?: string;
+  reviewNote?: string;
+  submittedAt: string;
+  reviewedAt?: string;
+}
+
+// --- Provider Carrier Binding ---
+
+export interface ProviderCarrierBinding {
+  id: string;
+  providerOrgId: string;
+  carrierBaseUrl: string;
+  hostId: string;
+  agentId: string;
+  backend: string;
+  workspaceRoot: string;
+  status: "pending_verification" | "active" | "suspended";
+  createdAt: string;
+  verifiedAt?: string;
+}
+
+// --- Order Budget ---
+
+export interface MilestoneBudget {
+  id: string;
+  title: string;
+  budgetCents: number;
+  spentCents: number;
+  settledCents: number;
+  usagePercent: number;
+  state: string;
+}
+
+export interface OrderBudgetSummary {
+  orderId: string;
+  totalBudgetCents: number;
+  totalSpentCents: number;
+  totalSettledCents: number;
+  overallPercent: number;
+  milestones: MilestoneBudget[];
+}
+
+// --- Marketplace Stats ---
+
+export interface MarketplaceStats {
+  totalProviders: number;
+  totalListings: number;
+  totalRfqs: number;
+  openRfqs: number;
+  totalOrders: number;
+  activeOrders: number;
+  totalDisputes: number;
+  openDisputes: number;
+  totalRatings: number;
+  averageRating: number;
+}
+
+// --- Dispute With Evidence ---
+
+export interface DisputeWithEvidence {
+  dispute: {
+    id: string;
+    orderId: string;
+    milestoneId: string;
+    reason: string;
+    refundCents: number;
+    status: string;
+    evidenceIds?: string[];
+  };
+  evidence?: unknown[];
+}
+
+// --- Timeline ---
+
+export interface TimelineEvent {
+  type: string;
+  timestamp: string;
+  details?: Record<string, unknown>;
+}
+
+// --- Leaderboard ---
+
+export interface LeaderboardEntry {
+  providerId: string;
+  name: string;
+  rating: number;
+  ratingCount: number;
+  totalOrders: number;
+  reputationTier: string;
+}
