@@ -1108,6 +1108,14 @@ func (s *Server) handleCreateMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if verr := validation.New().
+		Required("orderId", payload.OrderID).
+		Required("body", payload.Body).
+		Build(); verr != nil {
+		httputil.WriteErrorWithDetails(w, http.StatusBadRequest, httputil.ErrCodeValidation, "validation failed", verr.Fields)
+		return
+	}
+
 	if s.auth != nil && !iamclient.IsNoop(s.auth) {
 		actor, err := s.authenticatedActor(r)
 		if err != nil {
