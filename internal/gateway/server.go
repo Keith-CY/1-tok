@@ -125,6 +125,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Method == http.MethodGet && r.URL.Path == "/healthz":
 		httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/system":
+		s.handleSystemInfo(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/stats":
 		s.handleMarketplaceStats(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/export/orders":
@@ -1776,4 +1778,24 @@ func (s *Server) handleExportDisputes(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/csv")
 	w.Header().Set("Content-Disposition", "attachment; filename=disputes.csv")
 	w.Write([]byte(csv))
+}
+
+func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
+	info := map[string]any{
+		"version":   httputil.APIVersion,
+		"endpoints": 49,
+		"packages": map[string]string{
+			"carrier":        "async execution protocol",
+			"usageproof":     "HMAC usage proof verification",
+			"reconciliation": "settlement deviation detection",
+			"notifications":  "webhook + in-memory delivery",
+			"discord":        "bot command handler",
+		},
+		"middleware": []string{
+			"SecurityHeaders", "RequestID", "VersionHeader",
+			"CORS", "Gzip", "Timeout", "AccessLog",
+			"RateLimitHeaders", "LimitBody",
+		},
+	}
+	httputil.WriteJSON(w, http.StatusOK, info)
 }
