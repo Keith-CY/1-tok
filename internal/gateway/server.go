@@ -156,6 +156,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleCreateMessage(w, r)
 	case r.Method == http.MethodPost && isOrderRatingPath(r.URL.Path):
 		s.handleRateOrder(w, r)
+	case r.Method == http.MethodGet && isOrderMessagesPath(r.URL.Path):
+		s.handleListOrderMessages(w, r)
 	case r.Method == http.MethodPost && isBindCarrierPath(r.URL.Path):
 		s.handleBindCarrier(w, r)
 	case r.Method == http.MethodPost && isCreateJobPath(r.URL.Path):
@@ -1392,4 +1394,26 @@ func (s *Server) handleCreateRFQMessage(w http.ResponseWriter, r *http.Request) 
 	}
 
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{"message": message})
+}
+
+func isOrderMessagesPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 5 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "orders" && parts[4] == "messages"
+}
+
+func (s *Server) handleListOrderMessages(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) < 4 {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid path"})
+		return
+	}
+	orderID := parts[3]
+
+	messages, err := s.app.ListOrderMessages(orderID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"messages": messages})
 }

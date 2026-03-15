@@ -1266,3 +1266,11 @@ func (a *App) now() time.Time {
 	}
 	return time.Now().UTC()
 }
+
+// ListOrderMessages returns all messages for a given order.
+func (a *App) ListOrderMessages(orderID string) ([]Message, error) {
+	if _, err := a.orders.Get(orderID); err != nil {
+		return nil, err
+	}
+	return a.messages.ListByOrder(orderID)
+}
