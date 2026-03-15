@@ -15,80 +15,74 @@ func TestLogger_Info(t *testing.T) {
 	if err := json.Unmarshal(buf.Bytes(), &entry); err != nil {
 		t.Fatal(err)
 	}
-	if entry.Level != LevelInfo {
-		t.Errorf("level = %s", entry.Level)
-	}
-	if entry.Message != "hello" {
-		t.Errorf("msg = %s", entry.Message)
-	}
-	if entry.Fields["key"] != "value" {
-		t.Errorf("fields = %v", entry.Fields)
-	}
+	if entry.Level != LevelInfo { t.Errorf("level = %s", entry.Level) }
+	if entry.Message != "hello" { t.Errorf("msg = %s", entry.Message) }
+	if entry.Fields["key"] != "value" { t.Errorf("fields = %v", entry.Fields) }
 }
 
 func TestLogger_LevelFilter(t *testing.T) {
 	var buf bytes.Buffer
 	log := New(&buf, LevelWarn)
-	log.Debug("should not appear")
-	log.Info("should not appear")
-
-	if buf.Len() != 0 {
-		t.Errorf("expected no output, got %s", buf.String())
-	}
-
-	log.Warn("should appear")
-	if buf.Len() == 0 {
-		t.Error("expected warn output")
-	}
+	log.Debug("no"); log.Info("no")
+	if buf.Len() != 0 { t.Errorf("expected no output") }
+	log.Warn("yes")
+	if buf.Len() == 0 { t.Error("expected warn output") }
 }
 
 func TestLogger_Error(t *testing.T) {
 	var buf bytes.Buffer
 	log := New(&buf, LevelDebug)
-	log.Error("something broke", map[string]any{"code": 500})
-
+	log.Error("broke", map[string]any{"code": 500})
 	var entry Entry
 	json.Unmarshal(buf.Bytes(), &entry)
-	if entry.Level != LevelError {
-		t.Errorf("level = %s", entry.Level)
-	}
+	if entry.Level != LevelError { t.Errorf("level = %s", entry.Level) }
 }
 
 func TestLogger_Debug(t *testing.T) {
 	var buf bytes.Buffer
 	log := New(&buf, LevelDebug)
-	log.Debug("trace info")
-
-	if buf.Len() == 0 {
-		t.Error("expected debug output")
-	}
+	log.Debug("trace")
+	if buf.Len() == 0 { t.Error("expected debug output") }
 }
 
 func TestLogger_NoFields(t *testing.T) {
 	var buf bytes.Buffer
 	log := New(&buf, LevelInfo)
-	log.Info("plain message")
-
+	log.Info("plain")
 	var entry Entry
 	json.Unmarshal(buf.Bytes(), &entry)
-	if entry.Fields != nil {
-		t.Errorf("expected nil fields, got %v", entry.Fields)
-	}
+	if entry.Fields != nil { t.Errorf("expected nil fields") }
 }
 
 func TestLogger_NilOutput(t *testing.T) {
 	log := New(nil, LevelInfo)
-	// Should not panic
-	log.Info("test")
+	log.Info("test") // should not panic
 }
 
-func TestLogger_With(t *testing.T) {
+func TestLogger_With_InheritsFields(t *testing.T) {
 	var buf bytes.Buffer
 	log := New(&buf, LevelInfo)
 	child := log.With(map[string]any{"service": "gateway"})
-	child.Info("request")
+	child.Info("request", map[string]any{"path": "/api"})
 
-	if buf.Len() == 0 {
-		t.Error("expected output from child logger")
+	var entry Entry
+	json.Unmarshal(buf.Bytes(), &entry)
+	if entry.Fields["service"] != "gateway" {
+		t.Errorf("expected inherited field 'service', got %v", entry.Fields)
 	}
+	if entry.Fields["path"] != "/api" {
+		t.Errorf("expected call field 'path', got %v", entry.Fields)
+	}
+}
+
+func TestLogger_With_ChainedFields(t *testing.T) {
+	var buf bytes.Buffer
+	log := New(&buf, LevelInfo)
+	child := log.With(map[string]any{"a": 1}).With(map[string]any{"b": 2})
+	child.Info("test")
+
+	var entry Entry
+	json.Unmarshal(buf.Bytes(), &entry)
+	if entry.Fields["a"] != float64(1) { t.Errorf("missing field a") }
+	if entry.Fields["b"] != float64(2) { t.Errorf("missing field b") }
 }

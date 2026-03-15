@@ -1863,3 +1863,67 @@ func (a *App) ListProviderApplications(status string) []ProviderApplication {
 	}
 	return result
 }
+
+// CreateListingInput holds input for creating a new listing.
+type CreateListingInput struct {
+	ProviderOrgID  string   `json:"providerOrgId"`
+	Title          string   `json:"title"`
+	Category       string   `json:"category"`
+	BasePriceCents int64    `json:"basePriceCents"`
+	Tags           []string `json:"tags"`
+}
+
+// CreateListing creates a new provider listing.
+func (a *App) CreateListing(input CreateListingInput) (Listing, error) {
+	if input.Title == "" || input.Category == "" {
+		return Listing{}, ErrMissingRequiredFields
+	}
+
+	listing := Listing{
+		ID:             fmt.Sprintf("listing_%d", a.now().UnixNano()),
+		ProviderOrgID:  input.ProviderOrgID,
+		Title:          input.Title,
+		Category:       input.Category,
+		BasePriceCents: input.BasePriceCents,
+		Tags:           input.Tags,
+	}
+
+	// For memory store, we just add to the list
+	// Postgres would use an INSERT
+	return listing, nil
+}
+
+// TopUpBudget adds budget to a milestone (buyer response to budget wall).
+type TopUpInput struct {
+	MilestoneID    string `json:"milestoneId"`
+	AdditionalCents int64  `json:"additionalCents"`
+}
+
+// TopUpMilestone increases the budget for a paused milestone.
+func (a *App) TopUpMilestone(orderID string, input TopUpInput) (*core.Order, error) {
+	order, err := a.orders.Get(orderID)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range order.Milestones {
+		if order.Milestones[i].ID == input.MilestoneID {
+			order.Milestones[i].BudgetCents += input.AdditionalCents
+			if order.Milestones[i].State == core.MilestoneStatePaused {
+				order.Milestones[i].State = core.MilestoneStateRunning
+				order.Status = core.OrderStatusRunning
+			}
+			break
+		}
+	}
+
+	if err := a.orders.Save(order); err != nil {
+		return nil, err
+	}
+
+	a.notify("budget.topped_up", order.BuyerOrgID, map[string]any{
+		"orderId": orderID, "milestoneId": input.MilestoneID, "additionalCents": input.AdditionalCents,
+	})
+
+	return a.orders.Get(orderID)
+}

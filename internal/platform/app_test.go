@@ -2005,3 +2005,41 @@ func TestProviderApplication_List(t *testing.T) {
 		t.Errorf("expected 2 pending, got %d", len(pending))
 	}
 }
+
+func TestTopUpMilestone(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "TopUp", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid", QuoteCents: 5000,
+		Milestones: []BidMilestoneInput{{ID: "ms_1", Title: "Work", BasePriceCents: 5000, BudgetCents: 5000}},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	updated, err := app.TopUpMilestone(order.ID, TopUpInput{MilestoneID: "ms_1", AdditionalCents: 2000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ms := range updated.Milestones {
+		if ms.ID == "ms_1" && ms.BudgetCents != 7000 {
+			t.Errorf("budget = %d, want 7000", ms.BudgetCents)
+		}
+	}
+}
+
+func TestCreateListing(t *testing.T) {
+	app := NewAppWithMemory()
+	listing, err := app.CreateListing(CreateListingInput{
+		ProviderOrgID: "org_p", Title: "GPU Agent", Category: "compute",
+		BasePriceCents: 1500, Tags: []string{"gpu"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if listing.Title != "GPU Agent" {
+		t.Errorf("title = %s", listing.Title)
+	}
+}

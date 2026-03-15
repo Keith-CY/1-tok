@@ -156,6 +156,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleExportDisputes(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/orders/batch-status":
 		s.handleBatchOrderStatus(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/listings":
+		s.handleCreateListing(w, r)
+	case r.Method == http.MethodPost && isOrderTopUpPath(r.URL.Path):
+		s.handleTopUpMilestone(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/providers":
 		s.handleListProviders(w, r)
 	case r.Method == http.MethodGet && isProviderPath(r.URL.Path):
@@ -2055,4 +2059,44 @@ func (s *Server) handleCarrierCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "processed"})
+}
+
+func (s *Server) handleCreateListing(w http.ResponseWriter, r *http.Request) {
+	var payload platform.CreateListingInput
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+
+	listing, err := s.app.CreateListing(payload)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{"listing": listing})
+}
+
+func isOrderTopUpPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 5 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "orders" && parts[4] == "top-up"
+}
+
+func (s *Server) handleTopUpMilestone(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	orderID := parts[3]
+
+	var payload platform.TopUpInput
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+
+	order, err := s.app.TopUpMilestone(orderID, payload)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"order": order})
 }
