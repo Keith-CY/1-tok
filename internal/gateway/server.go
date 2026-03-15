@@ -613,9 +613,10 @@ func (s *Server) handleCreateBid(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload struct {
-		ProviderOrgID string `json:"providerOrgId"`
-		Message       string `json:"message"`
-		QuoteCents    int64  `json:"quoteCents"`
+		ProviderOrgID      string `json:"providerOrgId"`
+		Message            string `json:"message"`
+		QuoteCents         int64  `json:"quoteCents"`
+		ExecutionProfileID string `json:"executionProfileId"`
 		Milestones    []struct {
 			ID             string `json:"id"`
 			Title          string `json:"title"`
@@ -654,10 +655,11 @@ func (s *Server) handleCreateBid(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	input := platform.CreateBidInput{
-		ProviderOrgID: providerOrgID,
-		Message:       payload.Message,
-		QuoteCents:    payload.QuoteCents,
-		Milestones:    make([]platform.BidMilestoneInput, 0, len(payload.Milestones)),
+		ProviderOrgID:      providerOrgID,
+		Message:            payload.Message,
+		QuoteCents:         payload.QuoteCents,
+		ExecutionProfileID: payload.ExecutionProfileID,
+		Milestones:         make([]platform.BidMilestoneInput, 0, len(payload.Milestones)),
 	}
 	for _, milestone := range payload.Milestones {
 		input.Milestones = append(input.Milestones, platform.BidMilestoneInput{

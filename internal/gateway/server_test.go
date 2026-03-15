@@ -6064,3 +6064,72 @@ func TestSettleMilestone_WithExecToken(t *testing.T) {
 		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+func TestCreateListing_WithProfileEnforcement(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	app.SetRequireExecutionProfile(func(id string) bool { return id == "valid_profile" })
+	srv := NewServerWithOptions(Options{App: app})
+
+	// Without profile → rejected
+	body := `{"providerOrgId":"org_p","title":"No Profile","category":"ai","basePriceCents":1000}`
+	req := httptest.NewRequest("POST", "/api/v1/listings", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code == http.StatusCreated {
+		t.Error("should reject without execution profile")
+	}
+
+	// With invalid profile → rejected
+	body = `{"providerOrgId":"org_p","title":"Bad Profile","category":"ai","basePriceCents":1000,"executionProfileId":"invalid"}`
+	req = httptest.NewRequest("POST", "/api/v1/listings", strings.NewReader(body))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code == http.StatusCreated {
+		t.Error("should reject with invalid profile")
+	}
+
+	// With valid profile → accepted
+	body = `{"providerOrgId":"org_p","title":"Good Profile","category":"ai","basePriceCents":1000,"executionProfileId":"valid_profile"}`
+	req = httptest.NewRequest("POST", "/api/v1/listings", strings.NewReader(body))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Errorf("expected 201 with valid profile, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateBid_WithProfileEnforcement(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	app.SetRequireExecutionProfile(func(id string) bool { return id == "prof_ok" })
+	srv := NewServerWithOptions(Options{App: app})
+
+	// Create RFQ first (no profile enforcement on RFQs)
+	noEnforceSrv := NewServerWithOptions(Options{App: app})
+	_ = noEnforceSrv // RFQ creation uses the same app
+
+	rfqBody := `{"buyerOrgId":"org_b","title":"prof test","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(rfqBody))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var rfqResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &rfqResp)
+	rfqID := rfqResp["rfq"].(map[string]any)["id"].(string)
+
+	// Bid without profile → rejected
+	bidBody := `{"providerOrgId":"org_p","message":"no prof","quoteCents":5000,"milestones":[{"id":"ms_1","title":"W","basePriceCents":5000,"budgetCents":5000}]}`
+	req = httptest.NewRequest("POST", "/api/v1/rfqs/"+rfqID+"/bids", strings.NewReader(bidBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code == http.StatusCreated {
+		t.Error("should reject bid without profile")
+	}
+
+	// Bid with valid profile → accepted
+	bidBody = `{"providerOrgId":"org_p","message":"has prof","quoteCents":5000,"executionProfileId":"prof_ok","milestones":[{"id":"ms_1","title":"W","basePriceCents":5000,"budgetCents":5000}]}`
+	req = httptest.NewRequest("POST", "/api/v1/rfqs/"+rfqID+"/bids", strings.NewReader(bidBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Errorf("expected 201 with profile, got %d: %s", w.Code, w.Body.String())
+	}
+}
