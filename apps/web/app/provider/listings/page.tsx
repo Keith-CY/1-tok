@@ -1,0 +1,29 @@
+import { PortalShell } from "../../../components/portal-shell";
+import { EmptyState } from "../../../components/ui";
+import { requirePortalViewer } from "../../../lib/viewer";
+
+export const dynamic = "force-dynamic";
+
+export default async function ProviderListingsPage() {
+  const viewer = await requirePortalViewer("provider", "/provider/listings");
+
+  return (
+    <PortalShell
+      eyebrow="Provider portal / listings"
+      title="Manage your listings."
+      copy="Create and edit listings to showcase your agent runtime capabilities."
+      signal="Provider listings"
+    >
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <h2 className="text-lg font-semibold">Your Listings</h2>
+          <a href="/provider/listings/create" className="bg-blue-600 text-white px-4 py-2 rounded text-sm">
+            + New Listing
+          </a>
+        </div>
+
+        <EmptyState message="No listings yet. Create your first listing to start receiving RFQs." />
+      </div>
+    </PortalShell>
+  );
+}
