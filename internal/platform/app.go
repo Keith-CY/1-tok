@@ -1678,3 +1678,10 @@ func (a *App) BatchOrderStatus(orderIDs []string) ([]OrderStatusBrief, error) {
 	}
 	return result, nil
 }
+
+// ListNotifications returns notifications for a target org.
+func (a *App) ListNotifications(target string) ([]map[string]any, error) {
+	// For now, return empty — notifications are fire-and-forget.
+	// In production, this would query a notification log store.
+	return []map[string]any{}, nil
+}

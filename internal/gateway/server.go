@@ -207,6 +207,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleListWebhooks(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/webhooks":
 		s.handleRegisterWebhook(w, r)
+	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/v1/notifications/"):
+		s.handleListNotifications(w, r)
 	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/api/v1/webhooks/"):
 		s.handleUnregisterWebhook(w, r)
 	default:
@@ -1694,4 +1696,21 @@ func (s *Server) handleBatchOrderStatus(w http.ResponseWriter, r *http.Request) 
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"orders": statuses})
+}
+
+func (s *Server) handleListNotifications(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) < 4 {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid path"})
+		return
+	}
+	target := parts[3]
+
+	notifications, err := s.app.ListNotifications(target)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"notifications": notifications})
 }
