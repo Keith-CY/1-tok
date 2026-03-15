@@ -6570,3 +6570,70 @@ func TestOpsCanAccessAnyNotification(t *testing.T) {
 		t.Errorf("ops should access any org, got %d", w.Code)
 	}
 }
+
+func TestRFQMessages_BiddingProviderCanAccess(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	noAuth := NewServerWithOptions(Options{App: app})
+
+	// Create RFQ
+	rfqBody := `{"buyerOrgId":"org_buyer","title":"bidder access","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(rfqBody))
+	w := httptest.NewRecorder()
+	noAuth.ServeHTTP(w, req)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	rfqID := resp["rfq"].(map[string]any)["id"].(string)
+
+	// Create bid from provider_org
+	bidBody := `{"providerOrgId":"org_bidder","message":"bid","quoteCents":5000,"milestones":[{"id":"ms_1","title":"W","basePriceCents":5000,"budgetCents":5000}]}`
+	req = httptest.NewRequest("POST", "/api/v1/rfqs/"+rfqID+"/bids", strings.NewReader(bidBody))
+	w = httptest.NewRecorder()
+	noAuth.ServeHTTP(w, req)
+
+	// Bidding provider should access RFQ messages
+	mockIAM := &stubIAMClient{actor: iamclient.Actor{
+		UserID: "user_bidder",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_bidder", OrganizationKind: "provider", Role: "sales"},
+		},
+	}}
+	authSrv := NewServerWithOptions(Options{App: app, IAM: mockIAM})
+
+	req = httptest.NewRequest("GET", "/api/v1/rfqs/"+rfqID+"/messages", nil)
+	req.Header.Set("Authorization", "Bearer valid")
+	w = httptest.NewRecorder()
+	authSrv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("bidding provider should access, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestRFQMessages_NonParticipantDenied(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	noAuth := NewServerWithOptions(Options{App: app})
+
+	rfqBody := `{"buyerOrgId":"org_buyer","title":"deny","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(rfqBody))
+	w := httptest.NewRecorder()
+	noAuth.ServeHTTP(w, req)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	rfqID := resp["rfq"].(map[string]any)["id"].(string)
+
+	// Non-participant should be denied
+	mockIAM := &stubIAMClient{actor: iamclient.Actor{
+		UserID: "user_random",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_random", OrganizationKind: "provider", Role: "sales"},
+		},
+	}}
+	authSrv := NewServerWithOptions(Options{App: app, IAM: mockIAM})
+
+	req = httptest.NewRequest("GET", "/api/v1/rfqs/"+rfqID+"/messages", nil)
+	req.Header.Set("Authorization", "Bearer valid")
+	w = httptest.NewRecorder()
+	authSrv.ServeHTTP(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("non-participant should be denied, got %d", w.Code)
+	}
+}
