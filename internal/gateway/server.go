@@ -138,6 +138,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleSuspendCarrierBinding(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/carrier/callback":
 		s.handleCarrierCallback(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/credit-limits":
+		s.handleSetCreditLimit(w, r)
+	case r.Method == http.MethodGet && isGetCreditLimitPath(r.URL.Path):
+		s.handleGetCreditLimit(w, r)
 	case r.Method == http.MethodPost && isJobEvidencePath(r.URL.Path):
 		s.handleSubmitEvidence(w, r)
 	case r.Method == http.MethodGet && isJobEvidencePath(r.URL.Path):
@@ -2047,4 +2051,34 @@ func actorBelongsToOrg(actor iamclient.Actor, orgID string) bool {
 func (s *Server) handleStaleJobs(w http.ResponseWriter, r *http.Request) {
 	stale := s.carrier.ReconcileStaleJobs()
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"staleJobs": stale, "count": len(stale)})
+}
+
+func isGetCreditLimitPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 4 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "credit-limits"
+}
+
+func (s *Server) handleSetCreditLimit(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		BuyerOrgID string `json:"buyerOrgId"`
+		LimitCents int64  `json:"limitCents"`
+		SetBy      string `json:"setBy"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	limit := s.app.SetCreditLimit(payload.BuyerOrgID, payload.LimitCents, payload.SetBy)
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"creditLimit": limit})
+}
+
+func (s *Server) handleGetCreditLimit(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	buyerOrgID := parts[3]
+	limit, ok := s.app.GetCreditLimit(buyerOrgID)
+	if !ok {
+		httputil.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "no credit limit set"})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"creditLimit": limit})
 }

@@ -2284,3 +2284,34 @@ func TestIsProviderApproved(t *testing.T) {
 		t.Error("pending org_other should not be approved")
 	}
 }
+
+func TestSetCreditLimit(t *testing.T) {
+	app := NewAppWithMemory()
+	limit := app.SetCreditLimit("org_b", 100000, "ops_admin")
+	if limit.LimitCents != 100000 {
+		t.Errorf("limit = %d", limit.LimitCents)
+	}
+	if limit.SetBy != "ops_admin" {
+		t.Errorf("setBy = %s", limit.SetBy)
+	}
+}
+
+func TestGetCreditLimit(t *testing.T) {
+	app := NewAppWithMemory()
+	app.SetCreditLimit("org_b", 50000, "ops")
+	limit, ok := app.GetCreditLimit("org_b")
+	if !ok {
+		t.Fatal("expected credit limit")
+	}
+	if limit.AvailableCents != 50000 {
+		t.Errorf("available = %d", limit.AvailableCents)
+	}
+}
+
+func TestGetCreditLimit_NotSet(t *testing.T) {
+	app := NewAppWithMemory()
+	_, ok := app.GetCreditLimit("org_unknown")
+	if ok {
+		t.Error("expected not found")
+	}
+}

@@ -202,6 +202,7 @@ type App struct {
 	carrierBindingsByOrg map[string]int // providerOrgID → index in carrierBindings
 	requireExecProfile   bool
 	profileValidator     func(profileID string) bool
+	creditLimits         map[string]BuyerCreditLimit
 }
 
 // Notifier is an optional notification delivery interface.
@@ -2095,4 +2096,60 @@ func (a *App) IsProviderApproved(providerOrgID string) bool {
 		}
 	}
 	return false
+}
+
+// BuyerCreditLimit represents the credit limit for a buyer organization.
+type BuyerCreditLimit struct {
+	BuyerOrgID     string    `json:"buyerOrgId"`
+	LimitCents     int64     `json:"limitCents"`
+	UsedCents      int64     `json:"usedCents"`
+	AvailableCents int64     `json:"availableCents"`
+	SetBy          string    `json:"setBy"`
+	UpdatedAt      time.Time `json:"updatedAt"`
+}
+
+// SetCreditLimit sets or updates the credit limit for a buyer org (ops action).
+func (a *App) SetCreditLimit(buyerOrgID string, limitCents int64, setBy string) BuyerCreditLimit {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	// Calculate used credit from active credit-funded orders
+	var usedCents int64
+	orders, _ := a.orders.List()
+	for _, o := range orders {
+		if o.BuyerOrgID == buyerOrgID && o.FundingMode == "credit" &&
+			(o.Status == core.OrderStatusRunning || o.Status == core.OrderStatusAwaitingBudget) {
+			for _, ms := range o.Milestones {
+				usedCents += ms.BudgetCents
+			}
+		}
+	}
+
+	limit := BuyerCreditLimit{
+		BuyerOrgID:     buyerOrgID,
+		LimitCents:     limitCents,
+		UsedCents:      usedCents,
+		AvailableCents: limitCents - usedCents,
+		SetBy:          setBy,
+		UpdatedAt:      a.now(),
+	}
+
+	if a.creditLimits == nil {
+		a.creditLimits = make(map[string]BuyerCreditLimit)
+	}
+	a.creditLimits[buyerOrgID] = limit
+
+	a.notify("credit.limit.updated", buyerOrgID, map[string]any{
+		"limitCents": limitCents, "setBy": setBy,
+	})
+
+	return limit
+}
+
+// GetCreditLimit returns the credit limit for a buyer org.
+func (a *App) GetCreditLimit(buyerOrgID string) (BuyerCreditLimit, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	limit, ok := a.creditLimits[buyerOrgID]
+	return limit, ok
 }
