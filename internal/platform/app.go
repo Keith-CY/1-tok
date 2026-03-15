@@ -2153,3 +2153,37 @@ func (a *App) GetCreditLimit(buyerOrgID string) (BuyerCreditLimit, bool) {
 	limit, ok := a.creditLimits[buyerOrgID]
 	return limit, ok
 }
+
+// BudgetWallInfo provides details when an order hits the budget wall.
+type BudgetWallInfo struct {
+	MilestoneID    string `json:"milestoneId"`
+	MilestoneTitle string `json:"milestoneTitle"`
+	BudgetCents    int64  `json:"budgetCents"`
+	SpentCents     int64  `json:"spentCents"`
+	OverageCents   int64  `json:"overageCents"`
+}
+
+// GetBudgetWallInfo returns budget wall details for an order in awaiting_budget state.
+func (a *App) GetBudgetWallInfo(orderID string) (*BudgetWallInfo, error) {
+	order, err := a.orders.Get(orderID)
+	if err != nil {
+		return nil, err
+	}
+	if order.Status != core.OrderStatusAwaitingBudget {
+		return nil, nil // Not in budget wall
+	}
+
+	for _, ms := range order.Milestones {
+		if ms.State == core.MilestoneStatePaused {
+			spent := ms.CurrentSpendCents()
+			return &BudgetWallInfo{
+				MilestoneID:    ms.ID,
+				MilestoneTitle: ms.Title,
+				BudgetCents:    ms.BudgetCents,
+				SpentCents:     spent,
+				OverageCents:   spent - ms.BudgetCents,
+			}, nil
+		}
+	}
+	return nil, nil
+}

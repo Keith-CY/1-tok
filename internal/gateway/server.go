@@ -433,7 +433,12 @@ func (s *Server) handleGetOrder(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"order": order})
+
+	resp := map[string]any{"order": order}
+	if budgetWall, _ := s.app.GetBudgetWallInfo(order.ID); budgetWall != nil {
+		resp["budgetWall"] = budgetWall
+	}
+	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 func (s *Server) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 	var payload struct {

@@ -2734,3 +2734,31 @@ func TestCreateBid_ExactBudget(t *testing.T) {
 		t.Errorf("exact budget should succeed, got %v", err)
 	}
 }
+
+func TestGetBudgetWallInfo(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Wall", Category: "ai",
+		Scope: "t", BudgetCents: 1000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_p", Message: "b", QuoteCents: 1000,
+		Milestones: []BidMilestoneInput{{ID: "ms_1", Title: "W", BasePriceCents: 1000, BudgetCents: 1000}},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	// Before wall
+	info, _ := app.GetBudgetWallInfo(order.ID)
+	if info != nil { t.Error("should be nil before wall") }
+
+	// Hit wall
+	app.RecordUsageCharge(order.ID, RecordUsageChargeInput{
+		MilestoneID: "ms_1", Kind: core.UsageChargeKindToken, AmountCents: 1100,
+	})
+
+	info, _ = app.GetBudgetWallInfo(order.ID)
+	if info == nil { t.Fatal("expected budget wall info") }
+	if info.OverageCents != 1100 { t.Errorf("overage = %d", info.OverageCents) }
+	if info.MilestoneID != "ms_1" { t.Errorf("milestone = %s", info.MilestoneID) }
+}
