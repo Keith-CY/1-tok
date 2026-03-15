@@ -6678,3 +6678,80 @@ func TestCarrierCallback_ReplayReturnsPreviousDecision(t *testing.T) {
 		t.Errorf("expected replay=true, got %v", resp["replay"])
 	}
 }
+
+func TestCarrierCallback_HeartbeatUpdatesBinding(t *testing.T) {
+	srv := NewServer()
+	bindBody := `{"carrierId":"c_hb","capabilities":["gpu"]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders/ord_hb/milestones/ms_hb/bind-carrier", strings.NewReader(bindBody))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	bindingID := resp["binding"].(map[string]any)["id"].(string)
+
+	// Create job
+	jobBody := fmt.Sprintf(`{"bindingId":"%s","input":"test"}`, bindingID)
+	req = httptest.NewRequest("POST", "/api/v1/orders/ord_hb/milestones/ms_hb/jobs", strings.NewReader(jobBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	jobID := resp["job"].(map[string]any)["id"].(string)
+
+	// Heartbeat callback
+	cb := fmt.Sprintf(`{"type":"heartbeat","jobId":"%s","bindingId":"%s","timestamp":"2026-03-15T00:00:00Z","signature":"","payload":{}}`, jobID, bindingID)
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callback", strings.NewReader(cb))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("heartbeat: %d %s", w.Code, w.Body.String())
+	}
+
+	// Verify binding is not stale
+	req = httptest.NewRequest("GET", "/api/v1/orders/ord_hb/milestones/ms_hb/bind-carrier", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["stale"] == true {
+		t.Error("binding should not be stale after heartbeat")
+	}
+}
+
+func TestCarrierCallback_SequenceGapRejected(t *testing.T) {
+	srv := NewServer()
+	bindBody := `{"carrierId":"c_gap","capabilities":[]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders/ord_gap/milestones/ms_gap/bind-carrier", strings.NewReader(bindBody))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	bindingID := resp["binding"].(map[string]any)["id"].(string)
+
+	jobBody := fmt.Sprintf(`{"bindingId":"%s","input":"gap test"}`, bindingID)
+	req = httptest.NewRequest("POST", "/api/v1/orders/ord_gap/milestones/ms_gap/jobs", strings.NewReader(jobBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	jobID := resp["job"].(map[string]any)["id"].(string)
+
+	// First event: sequence 1
+	cb1 := fmt.Sprintf(`{"type":"job.started","jobId":"%s","bindingId":"%s","timestamp":"2026-03-15T00:00:00Z","signature":"","payload":{"eventId":"gap_evt_1","sequence":1}}`, jobID, bindingID)
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callback", strings.NewReader(cb1))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("seq 1: %d %s", w.Code, w.Body.String())
+	}
+
+	// Skip sequence 2 → sequence 3 should be rejected
+	cb3 := fmt.Sprintf(`{"type":"job.completed","jobId":"%s","bindingId":"%s","timestamp":"2026-03-15T00:00:00Z","signature":"","payload":{"eventId":"gap_evt_3","sequence":3,"output":"result"}}`, jobID, bindingID)
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callback", strings.NewReader(cb3))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusConflict {
+		t.Errorf("gap: expected 409, got %d %s", w.Code, w.Body.String())
+	}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["accepted"] != false {
+		t.Error("expected accepted=false for gap")
+	}
+}
