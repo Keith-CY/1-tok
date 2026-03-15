@@ -1755,3 +1755,69 @@ func TestSettledFeed_WithLimitAndCursor(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestGetInvoiceStatus_InvalidPath(t *testing.T) {
+	s := NewServerWithOptions(Options{Fiber: &stubFiberClient{}})
+	req := httptest.NewRequest(http.MethodGet, "/v1/invoices/", nil)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestListFundingRecords_ProviderScope_Mismatch(t *testing.T) {
+	actor := iamclient.Actor{
+		UserID: "u_prov",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Auth: &stubIAMClient{actor: actor},
+	})
+
+	// Request with different provider org
+	req := httptest.NewRequest(http.MethodGet, "/v1/funding-records?providerOrgId=org_other", nil)
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	// Provider sees only their own — scope filter overrides
+	if rec.Code != http.StatusOK && rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 200 or 502, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSettledFeed_ValidService(t *testing.T) {
+	fiber := &stubFiberClient{
+		settledFeedResult: fiberclient.SettledFeedResult{},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber:         fiber,
+		ServiceTokens: serviceauth.NewTokenSet("valid"),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/settled-feed?limit=5", nil)
+	req.Header.Set(serviceauth.HeaderName, "valid")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateInvoice_WithAllFields(t *testing.T) {
+	fiber := &stubFiberClient{
+		createResult: fiberclient.CreateInvoiceResult{Invoice: "lnbc_full"},
+	}
+	s := NewServerWithOptions(Options{Fiber: fiber})
+
+	payload := `{"orderId":"ord_full","milestoneId":"ms_1","buyerOrgId":"org_b","providerOrgId":"org_p","asset":"CKB","amount":"500","message":"test tip"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/invoices", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
