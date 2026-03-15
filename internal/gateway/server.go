@@ -1867,6 +1867,10 @@ func (s *Server) handleCarrierCallback(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error()})
 		return
 	}
+
+	// Normalize legacy snake_case event names to canonical dot-separated
+	event.Type = carrier.NormalizeEventName(event.Type)
+
 	// Process callback based on type
 	switch event.Type {
 	case "job.started":
