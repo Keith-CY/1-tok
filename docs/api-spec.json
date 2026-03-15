@@ -3,80 +3,447 @@
   "info": {
     "title": "1-tok Agent Runtime Marketplace API",
     "version": "1.0.0",
-    "description": "API for the Agent Runtime Marketplace — RFQ, Bid, Order, Carrier, and Settlement flows."
+    "description": "API for the Agent Runtime Marketplace \u2014 RFQ, Bid, Order, Carrier, and Settlement flows.\n\nConditional endpoints:\n- Discord Bot interactions are handled by the standalone discord package, not the gateway.\n- Carrier callback signature verification requires CARRIER_CALLBACK_SECRET env var.\n- Rate limiting requires Redis (REDIS_URL)."
   },
   "paths": {
-    "/api/v1/stats": {"get": {"summary": "Marketplace statistics", "tags": ["marketplace"]}},
-    "/api/v1/providers": {"get": {"summary": "Search providers", "tags": ["providers"], "parameters": [
-      {"name": "capability", "in": "query", "schema": {"type": "string"}},
-      {"name": "tier", "in": "query", "schema": {"type": "string"}},
-      {"name": "minRating", "in": "query", "schema": {"type": "number"}}
-    ]}},
-    "/api/v1/providers/{id}": {"get": {"summary": "Get provider with rating", "tags": ["providers"]}},
-    "/api/v1/providers/{id}/revenue": {"get": {"summary": "Provider revenue summary", "tags": ["providers"]}},
-    "/api/v1/listings": {"get": {"summary": "Search listings", "tags": ["listings"], "parameters": [
-      {"name": "q", "in": "query", "schema": {"type": "string"}},
-      {"name": "category", "in": "query", "schema": {"type": "string"}},
-      {"name": "tag", "in": "query", "schema": {"type": "string"}},
-      {"name": "minPrice", "in": "query", "schema": {"type": "integer"}},
-      {"name": "maxPrice", "in": "query", "schema": {"type": "integer"}}
-    ]}},
-    "/api/v1/listings/{id}": {"get": {"summary": "Get listing", "tags": ["listings"]}},
+    "/api/v1/stats": {
+      "get": {
+        "summary": "Marketplace statistics",
+        "tags": [
+          "marketplace"
+        ]
+      }
+    },
+    "/api/v1/providers": {
+      "get": {
+        "summary": "Search providers",
+        "tags": [
+          "providers"
+        ],
+        "parameters": [
+          {
+            "name": "capability",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tier",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "minRating",
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/providers/{id}": {
+      "get": {
+        "summary": "Get provider with rating",
+        "tags": [
+          "providers"
+        ]
+      }
+    },
+    "/api/v1/providers/{id}/revenue": {
+      "get": {
+        "summary": "Provider revenue summary",
+        "tags": [
+          "providers"
+        ]
+      }
+    },
+    "/api/v1/listings": {
+      "get": {
+        "summary": "Search listings",
+        "tags": [
+          "listings"
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "minPrice",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "maxPrice",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/listings/{id}": {
+      "get": {
+        "summary": "Get listing",
+        "tags": [
+          "listings"
+        ]
+      }
+    },
     "/api/v1/rfqs": {
-      "get": {"summary": "List RFQs", "tags": ["rfqs"], "parameters": [{"name": "status", "in": "query", "schema": {"type": "string"}}]},
-      "post": {"summary": "Create RFQ", "tags": ["rfqs"]}
+      "get": {
+        "summary": "List RFQs",
+        "tags": [
+          "rfqs"
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Create RFQ",
+        "tags": [
+          "rfqs"
+        ]
+      }
     },
-    "/api/v1/rfqs/{id}": {"get": {"summary": "Get RFQ", "tags": ["rfqs"]}},
+    "/api/v1/rfqs/{id}": {
+      "get": {
+        "summary": "Get RFQ",
+        "tags": [
+          "rfqs"
+        ]
+      }
+    },
     "/api/v1/rfqs/{id}/bids": {
-      "get": {"summary": "List bids", "tags": ["bids"]},
-      "post": {"summary": "Create bid", "tags": ["bids"]}
+      "get": {
+        "summary": "List bids",
+        "tags": [
+          "bids"
+        ]
+      },
+      "post": {
+        "summary": "Create bid",
+        "tags": [
+          "bids"
+        ]
+      }
     },
-    "/api/v1/rfqs/{id}/award": {"post": {"summary": "Award RFQ", "tags": ["rfqs"]}},
+    "/api/v1/rfqs/{id}/award": {
+      "post": {
+        "summary": "Award RFQ",
+        "tags": [
+          "rfqs"
+        ]
+      }
+    },
     "/api/v1/rfqs/{id}/messages": {
-      "get": {"summary": "List RFQ messages", "tags": ["messaging"]},
-      "post": {"summary": "Create RFQ message (auth required)", "tags": ["messaging"]}
+      "get": {
+        "summary": "List RFQ messages",
+        "tags": [
+          "messaging"
+        ]
+      },
+      "post": {
+        "summary": "Create RFQ message (auth required)",
+        "tags": [
+          "messaging"
+        ]
+      }
     },
     "/api/v1/orders": {
-      "get": {"summary": "List orders", "tags": ["orders"], "parameters": [{"name": "status", "in": "query", "schema": {"type": "string"}}]},
-      "post": {"summary": "Create order", "tags": ["orders"]}
+      "get": {
+        "summary": "List orders",
+        "tags": [
+          "orders"
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Create order",
+        "tags": [
+          "orders"
+        ]
+      }
     },
-    "/api/v1/orders/batch-status": {"post": {"summary": "Batch order status", "tags": ["orders"]}},
-    "/api/v1/orders/{id}": {"get": {"summary": "Get order", "tags": ["orders"]}},
-    "/api/v1/orders/{id}/budget": {"get": {"summary": "Order budget summary", "tags": ["orders"]}},
-    "/api/v1/orders/{id}/timeline": {"get": {"summary": "Order timeline", "tags": ["orders"]}},
+    "/api/v1/orders/batch-status": {
+      "post": {
+        "summary": "Batch order status",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/v1/orders/{id}": {
+      "get": {
+        "summary": "Get order",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/v1/orders/{id}/budget": {
+      "get": {
+        "summary": "Order budget summary",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/v1/orders/{id}/timeline": {
+      "get": {
+        "summary": "Order timeline",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
     "/api/v1/orders/{id}/rating": {
-      "get": {"summary": "Get order rating", "tags": ["ratings"]},
-      "post": {"summary": "Rate order (auth required)", "tags": ["ratings"]}
+      "get": {
+        "summary": "Get order rating",
+        "tags": [
+          "ratings"
+        ]
+      },
+      "post": {
+        "summary": "Rate order (auth required)",
+        "tags": [
+          "ratings"
+        ]
+      }
     },
-    "/api/v1/orders/{id}/messages": {"get": {"summary": "List order messages", "tags": ["messaging"]}},
-    "/api/v1/orders/{id}/milestones/{mid}/settle": {"post": {"summary": "Settle milestone", "tags": ["settlement"]}},
-    "/api/v1/orders/{id}/milestones/{mid}/usage": {"post": {"summary": "Record usage charge", "tags": ["settlement"]}},
-    "/api/v1/orders/{id}/milestones/{mid}/disputes": {"post": {"summary": "Open dispute", "tags": ["disputes"]}},
+    "/api/v1/orders/{id}/messages": {
+      "get": {
+        "summary": "List order messages",
+        "tags": [
+          "messaging"
+        ]
+      }
+    },
+    "/api/v1/orders/{id}/milestones/{mid}/settle": {
+      "post": {
+        "summary": "Settle milestone",
+        "tags": [
+          "settlement"
+        ]
+      }
+    },
+    "/api/v1/orders/{id}/milestones/{mid}/usage": {
+      "post": {
+        "summary": "Record usage charge",
+        "tags": [
+          "settlement"
+        ]
+      }
+    },
+    "/api/v1/orders/{id}/milestones/{mid}/disputes": {
+      "post": {
+        "summary": "Open dispute",
+        "tags": [
+          "disputes"
+        ]
+      }
+    },
     "/api/v1/orders/{id}/milestones/{mid}/bind-carrier": {
-      "get": {"summary": "Get carrier binding", "tags": ["carrier"]},
-      "post": {"summary": "Bind carrier", "tags": ["carrier"]}
+      "get": {
+        "summary": "Get carrier binding",
+        "tags": [
+          "carrier"
+        ]
+      },
+      "post": {
+        "summary": "Bind carrier",
+        "tags": [
+          "carrier"
+        ]
+      }
     },
     "/api/v1/orders/{id}/milestones/{mid}/jobs": {
-      "get": {"summary": "List jobs", "tags": ["carrier"]},
-      "post": {"summary": "Create job", "tags": ["carrier"]}
+      "get": {
+        "summary": "List jobs",
+        "tags": [
+          "carrier"
+        ]
+      },
+      "post": {
+        "summary": "Create job",
+        "tags": [
+          "carrier"
+        ]
+      }
     },
-    "/api/v1/jobs/{id}": {"get": {"summary": "Get job", "tags": ["carrier"]}},
-    "/api/v1/jobs/{id}/start": {"patch": {"summary": "Start job", "tags": ["carrier"]}},
-    "/api/v1/jobs/{id}/complete": {"patch": {"summary": "Complete job", "tags": ["carrier"]}},
-    "/api/v1/jobs/{id}/fail": {"patch": {"summary": "Fail job", "tags": ["carrier"]}},
-    "/api/v1/jobs/{id}/cancel": {"post": {"summary": "Cancel job", "tags": ["carrier"]}},
-    "/api/v1/jobs/{id}/progress": {"post": {"summary": "Update progress", "tags": ["carrier"]}},
-    "/api/v1/jobs/{id}/heartbeat": {"post": {"summary": "Carrier heartbeat", "tags": ["carrier"]}},
-    "/api/v1/disputes": {"get": {"summary": "List disputes", "tags": ["disputes"], "parameters": [{"name": "status", "in": "query", "schema": {"type": "string"}}]}},
-    "/api/v1/disputes/{id}": {"get": {"summary": "Get dispute", "tags": ["disputes"]}},
-    "/api/v1/disputes/{id}/resolve": {"post": {"summary": "Resolve dispute", "tags": ["disputes"]}},
-    "/api/v1/credits/decision": {"post": {"summary": "Credit decision", "tags": ["credits"]}},
-    "/api/v1/messages": {"post": {"summary": "Create message", "tags": ["messaging"]}},
+    "/api/v1/jobs/{id}": {
+      "get": {
+        "summary": "Get job",
+        "tags": [
+          "carrier"
+        ]
+      }
+    },
+    "/api/v1/jobs/{id}/start": {
+      "patch": {
+        "summary": "Start job",
+        "tags": [
+          "carrier"
+        ]
+      }
+    },
+    "/api/v1/jobs/{id}/complete": {
+      "patch": {
+        "summary": "Complete job",
+        "tags": [
+          "carrier"
+        ]
+      }
+    },
+    "/api/v1/jobs/{id}/fail": {
+      "patch": {
+        "summary": "Fail job",
+        "tags": [
+          "carrier"
+        ]
+      }
+    },
+    "/api/v1/jobs/{id}/cancel": {
+      "post": {
+        "summary": "Cancel job",
+        "tags": [
+          "carrier"
+        ]
+      }
+    },
+    "/api/v1/jobs/{id}/progress": {
+      "post": {
+        "summary": "Update progress",
+        "tags": [
+          "carrier"
+        ]
+      }
+    },
+    "/api/v1/jobs/{id}/heartbeat": {
+      "post": {
+        "summary": "Carrier heartbeat",
+        "tags": [
+          "carrier"
+        ]
+      }
+    },
+    "/api/v1/disputes": {
+      "get": {
+        "summary": "List disputes",
+        "tags": [
+          "disputes"
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/disputes/{id}": {
+      "get": {
+        "summary": "Get dispute",
+        "tags": [
+          "disputes"
+        ]
+      }
+    },
+    "/api/v1/disputes/{id}/resolve": {
+      "post": {
+        "summary": "Resolve dispute",
+        "tags": [
+          "disputes"
+        ]
+      }
+    },
+    "/api/v1/credits/decision": {
+      "post": {
+        "summary": "Credit decision",
+        "tags": [
+          "credits"
+        ]
+      }
+    },
+    "/api/v1/messages": {
+      "post": {
+        "summary": "Create message",
+        "tags": [
+          "messaging"
+        ]
+      }
+    },
     "/api/v1/webhooks": {
-      "get": {"summary": "List webhooks", "tags": ["webhooks"]},
-      "post": {"summary": "Register webhook", "tags": ["webhooks"]}
+      "get": {
+        "summary": "List webhooks",
+        "tags": [
+          "webhooks"
+        ]
+      },
+      "post": {
+        "summary": "Register webhook",
+        "tags": [
+          "webhooks"
+        ]
+      }
     },
-    "/api/v1/webhooks/{target}": {"delete": {"summary": "Unregister webhook", "tags": ["webhooks"]}},
-    "/api/v1/notifications/{target}": {"get": {"summary": "List notifications", "tags": ["notifications"]}}
+    "/api/v1/webhooks/{target}": {
+      "delete": {
+        "summary": "Unregister webhook",
+        "tags": [
+          "webhooks"
+        ]
+      }
+    },
+    "/api/v1/notifications/{target}": {
+      "get": {
+        "summary": "List notifications",
+        "tags": [
+          "notifications"
+        ]
+      }
+    }
   }
 }
