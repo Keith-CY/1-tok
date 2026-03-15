@@ -35,6 +35,40 @@
 - `/livez` and `/readyz` health endpoints
 - Request timeout middleware, CORS, access logging
 
+
+## API Endpoints (30)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /api/v1/providers | List providers |
+| GET | /api/v1/listings | Search listings (q, category, tag, minPrice, maxPrice) |
+| GET | /api/v1/rfqs | List RFQs |
+| POST | /api/v1/rfqs | Create RFQ |
+| GET | /api/v1/rfqs/:id/bids | List bids on RFQ |
+| POST | /api/v1/rfqs/:id/bids | Create bid |
+| POST | /api/v1/rfqs/:id/award | Award RFQ |
+| GET | /api/v1/rfqs/:id/messages | List RFQ messages |
+| POST | /api/v1/rfqs/:id/messages | Create RFQ message |
+| GET | /api/v1/orders | List orders |
+| GET | /api/v1/orders/:id | Get order |
+| POST | /api/v1/orders | Create order |
+| POST | /api/v1/orders/:id/milestones/:mid/settle | Settle milestone |
+| POST | /api/v1/orders/:id/milestones/:mid/usage | Record usage charge |
+| POST | /api/v1/orders/:id/milestones/:mid/disputes | Open dispute |
+| POST | /api/v1/orders/:id/rating | Rate order |
+| GET | /api/v1/orders/:id/messages | List order messages |
+| POST | /api/v1/orders/:id/milestones/:mid/bind-carrier | Bind carrier |
+| POST | /api/v1/orders/:id/milestones/:mid/jobs | Create job |
+| GET | /api/v1/jobs/:id | Get job |
+| PATCH | /api/v1/jobs/:id/start | Start job |
+| PATCH | /api/v1/jobs/:id/complete | Complete job |
+| PATCH | /api/v1/jobs/:id/fail | Fail job |
+| POST | /api/v1/jobs/:id/progress | Update progress |
+| POST | /api/v1/jobs/:id/heartbeat | Carrier heartbeat |
+| GET | /api/v1/disputes | List disputes |
+| POST | /api/v1/disputes/:id/resolve | Resolve dispute |
+| POST | /api/v1/credits/decision | Credit decision |
+| POST | /api/v1/messages | Create message |
 ## Layout
 
 - `cmd/*`: service binaries
