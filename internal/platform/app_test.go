@@ -1229,6 +1229,7 @@ func TestListProviders_Error(t *testing.T) {
 
 type failingListingRepo struct{}
 func (failingListingRepo) List() ([]Listing, error) { return nil, errors.New("broken") }
+func (failingListingRepo) Get(string) (Listing, error) { return Listing{}, errors.New("broken") }
 
 func TestListListings_Error(t *testing.T) {
 	app := NewApp(nil, nil, failingListingRepo{}, nil, nil, nil, nil)

@@ -3650,6 +3650,7 @@ func (failingProviderRepo) Get(string) (platform.ProviderProfile, error) { retur
 
 type failingListingRepo struct{}
 func (failingListingRepo) List() ([]platform.Listing, error) { return nil, errors.New("broken") }
+func (failingListingRepo) Get(string) (platform.Listing, error) { return platform.Listing{}, errors.New("broken") }
 
 func TestListProviders_AppError(t *testing.T) {
 	app := platform.NewApp(nil, failingProviderRepo{}, nil, nil, nil, nil, nil)

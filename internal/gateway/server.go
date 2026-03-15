@@ -122,6 +122,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleGetProvider(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/listings":
 		s.handleListListings(w, r)
+	case r.Method == http.MethodGet && isListingPath(r.URL.Path):
+		s.handleGetListing(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/rfqs":
 		s.handleListRFQs(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/disputes":
@@ -1436,4 +1438,19 @@ func (s *Server) handleGetProvider(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"provider": provider})
+}
+
+func isListingPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 4 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "listings"
+}
+
+func (s *Server) handleGetListing(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	listing, err := s.app.GetListing(parts[3])
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"listing": listing})
 }

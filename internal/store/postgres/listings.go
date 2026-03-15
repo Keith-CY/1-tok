@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 
 	"github.com/chenyu/1-tok/internal/platform"
 )
@@ -68,4 +69,20 @@ func (r *ListingRepository) Upsert(listing platform.Listing) error {
 			updated_at = NOW()
 	`, listing.ID, listing.ProviderOrgID, listing.Title, listing.Category, listing.BasePriceCents, tags)
 	return err
+}
+
+func (r *ListingRepository) Get(id string) (platform.Listing, error) {
+	var l platform.Listing
+	var tags string
+	err := r.db.QueryRowContext(context.TODO(), `
+		SELECT id, provider_org_id, title, category, base_price_cents, tags
+		FROM listings WHERE id = $1
+	`, id).Scan(&l.ID, &l.ProviderOrgID, &l.Title, &l.Category, &l.BasePriceCents, &tags)
+	if err != nil {
+		return platform.Listing{}, fmt.Errorf("listing not found: %s", id)
+	}
+	if err := json.Unmarshal([]byte(tags), &l.Tags); err != nil {
+		l.Tags = []string{}
+	}
+	return l, nil
 }

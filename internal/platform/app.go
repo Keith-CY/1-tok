@@ -150,6 +150,7 @@ type ProviderRepository interface {
 
 type ListingRepository interface {
 	List() ([]Listing, error)
+	Get(id string) (Listing, error)
 }
 
 type RFQRepository interface {
@@ -836,6 +837,15 @@ func (r *memoryListingRepository) List() ([]Listing, error) {
 	return slices.Clone(r.data), nil
 }
 
+func (r *memoryListingRepository) Get(id string) (Listing, error) {
+	for _, l := range r.data {
+		if l.ID == id {
+			return l, nil
+		}
+	}
+	return Listing{}, fmt.Errorf("listing not found: %s", id)
+}
+
 type memoryRFQRepository struct {
 	mu   sync.Mutex
 	seq  int
@@ -1309,4 +1319,9 @@ func (a *App) GetProvider(id string) (ProviderProfile, error) {
 	}
 
 	return provider, nil
+}
+
+// GetListing returns a listing by ID.
+func (a *App) GetListing(id string) (Listing, error) {
+	return a.listings.Get(id)
 }
