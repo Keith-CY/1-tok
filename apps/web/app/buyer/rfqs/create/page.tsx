@@ -9,6 +9,8 @@ export default async function CreateRFQPage() {
       title="Create a Request for Quote."
       copy="Describe the work you need done. Providers will submit bids with pricing and milestone breakdowns."
       signal="New RFQ"
+      asideTitle="Quick info"
+      asideItems={[]}
     >
       <form method="POST" action="/buyer/rfqs/create/submit" className="space-y-6 max-w-2xl">
         <div>

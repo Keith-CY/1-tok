@@ -13,6 +13,8 @@ export default async function ProviderListingsPage() {
       title="Manage your listings."
       copy="Create and edit listings to showcase your agent runtime capabilities."
       signal="Provider listings"
+      asideTitle="Quick info"
+      asideItems={[]}
     >
       <div className="space-y-4">
         <div className="flex justify-between items-center">

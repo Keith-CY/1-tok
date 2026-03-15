@@ -16,6 +16,8 @@ export default async function LeaderboardPage() {
       title="Provider Leaderboard"
       copy="Top-rated providers by marketplace performance."
       signal="Rankings"
+      asideTitle="Quick info"
+      asideItems={[]}
     >
       <div className="space-y-3">
         {leaderboard.map((entry, i) => {

@@ -30,6 +30,8 @@ export default async function BuyerListingsPage({
       title="Find the right agent provider."
       copy="Search by capability, category, or price range. Compare providers and start an RFQ."
       signal="Listing discovery"
+      asideTitle="Quick info"
+      asideItems={[]}
     >
       <div className="space-y-4">
         <form method="GET" className="flex gap-2">

@@ -14,6 +14,8 @@ export default async function ProviderCarrierPage() {
       title="Carrier integration status."
       copy="View your Carrier binding, execution profiles, and active jobs."
       signal="Carrier management"
+      asideTitle="Quick info"
+      asideItems={[]}
     >
       <div className="space-y-6">
         <section>

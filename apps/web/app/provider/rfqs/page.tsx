@@ -19,6 +19,8 @@ export default async function ProviderRFQsPage() {
       title="Open RFQs."
       copy="Browse open requests for quotes and submit bids."
       signal="RFQ discovery"
+      asideTitle="Quick info"
+      asideItems={[]}
     >
       <div className="space-y-4">
         {openRFQs.length === 0 ? (

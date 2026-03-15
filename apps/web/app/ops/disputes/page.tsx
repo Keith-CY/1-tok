@@ -23,6 +23,8 @@ export default async function OpsDisputesPage() {
       title="Dispute arbitration."
       copy="Review open disputes, examine evidence, and decide on refund/recovery."
       signal="Dispute review"
+      asideTitle="Quick info"
+      asideItems={[]}
     >
       <div className="space-y-4">
         <div className="flex gap-2 mb-4">

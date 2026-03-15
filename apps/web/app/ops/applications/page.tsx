@@ -14,6 +14,8 @@ export default async function OpsApplicationsPage() {
       title="Provider application review."
       copy="Review pending provider applications. Approve or reject with notes."
       signal="Provider vetting"
+      asideTitle="Quick info"
+      asideItems={[]}
     >
       <div className="space-y-4">
         <div className="flex gap-2 mb-4">
