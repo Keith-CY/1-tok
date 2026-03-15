@@ -185,3 +185,37 @@ export function formatMoney(cents: number): string {
     minimumFractionDigits: 2,
   }).format(cents / 100);
 }
+
+// Runtime validation guards
+
+export function isFundingMode(value: unknown): value is FundingMode {
+  return typeof value === "string" && (fundingModes as readonly string[]).includes(value);
+}
+
+export function isOrderStatus(value: unknown): value is OrderStatus {
+  return typeof value === "string" && (orderStatuses as readonly string[]).includes(value);
+}
+
+export function isMilestoneState(value: unknown): value is MilestoneState {
+  return typeof value === "string" && (milestoneStates as readonly string[]).includes(value);
+}
+
+export function isUsageChargeKind(value: unknown): value is UsageChargeKind {
+  return typeof value === "string" && (usageChargeKinds as readonly string[]).includes(value);
+}
+
+export function assertFundingMode(value: unknown): asserts value is FundingMode {
+  if (!isFundingMode(value)) throw new Error(`Invalid funding mode: ${value}`);
+}
+
+export function assertOrderStatus(value: unknown): asserts value is OrderStatus {
+  if (!isOrderStatus(value)) throw new Error(`Invalid order status: ${value}`);
+}
+
+export function assertMilestoneState(value: unknown): asserts value is MilestoneState {
+  if (!isMilestoneState(value)) throw new Error(`Invalid milestone state: ${value}`);
+}
+
+export function assertUsageChargeKind(value: unknown): asserts value is UsageChargeKind {
+  if (!isUsageChargeKind(value)) throw new Error(`Invalid usage charge kind: ${value}`);
+}
