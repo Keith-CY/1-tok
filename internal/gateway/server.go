@@ -1589,7 +1589,7 @@ func (s *Server) handleListRFQMessages(w http.ResponseWriter, r *http.Request) {
 			writeGatewayError(w, err)
 			return
 		}
-		if err := authorizeRFQForActor(rfq, actor); err != nil {
+		if err := s.authorizeRFQForActor(rfq, actor); err != nil {
 			httputil.WriteAuthError(w, err)
 			return
 		}
@@ -1626,7 +1626,7 @@ func (s *Server) handleCreateRFQMessage(w http.ResponseWriter, r *http.Request) 
 			writeGatewayError(w, err)
 			return
 		}
-		if err := authorizeRFQForActor(rfq, actor); err != nil {
+		if err := s.authorizeRFQForActor(rfq, actor); err != nil {
 			httputil.WriteAuthError(w, err)
 			return
 		}
@@ -1820,19 +1820,26 @@ func (s *Server) handleRegisterWebhook(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUnregisterWebhook(w http.ResponseWriter, r *http.Request) {
-	if s.auth != nil && !iamclient.IsNoop(s.auth) {
-		if _, err := s.authenticatedActor(r); err != nil {
-			httputil.WriteAuthError(w, err)
-			return
-		}
-	}
-
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	if len(parts) < 4 {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid path"})
 		return
 	}
 	target := parts[3]
+
+	if s.auth != nil && !iamclient.IsNoop(s.auth) {
+		actor, err := s.authenticatedActor(r)
+		if err != nil {
+			httputil.WriteAuthError(w, err)
+			return
+		}
+		// Only allow unregister if actor belongs to the target org
+		if !actorBelongsToOrg(actor, target) {
+			httputil.WriteJSON(w, http.StatusForbidden, map[string]string{"error": "not authorized for this target"})
+			return
+		}
+	}
+
 	s.webhooks.Unregister(target)
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "unregistered"})
 }
@@ -1919,19 +1926,25 @@ func (s *Server) handleBatchOrderStatus(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleListNotifications(w http.ResponseWriter, r *http.Request) {
-	if s.auth != nil && !iamclient.IsNoop(s.auth) {
-		if _, err := s.authenticatedActor(r); err != nil {
-			httputil.WriteAuthError(w, err)
-			return
-		}
-	}
-
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	if len(parts) < 4 {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid path"})
 		return
 	}
 	target := parts[3]
+
+	if s.auth != nil && !iamclient.IsNoop(s.auth) {
+		actor, err := s.authenticatedActor(r)
+		if err != nil {
+			httputil.WriteAuthError(w, err)
+			return
+		}
+		// Verify actor belongs to the target org
+		if !actorBelongsToOrg(actor, target) {
+			httputil.WriteJSON(w, http.StatusForbidden, map[string]string{"error": "not authorized for this target"})
+			return
+		}
+	}
 
 	notifications, err := s.app.ListNotifications(target)
 	if err != nil {
@@ -2229,27 +2242,54 @@ func (s *Server) handleSuspendCarrierBinding(w http.ResponseWriter, r *http.Requ
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"binding": binding})
 }
 
-// authorizeRFQForActor verifies the actor is a participant in the RFQ (buyer or bidding provider).
-func authorizeRFQForActor(rfq platform.RFQ, actor iamclient.Actor) error {
+// authorizeRFQForActor verifies the actor is a participant in the RFQ.
+// Participants: buyer org, awarded provider, bidding providers, or ops roles.
+func (s *Server) authorizeRFQForActor(rfq platform.RFQ, actor iamclient.Actor) error {
 	// Ops roles can access all RFQs
 	for _, m := range actor.Memberships {
-		if m.Role == "ops_reviewer" || m.Role == "risk_admin" || m.Role == "super_admin" {
+		if isOpsRole(m.Role) {
 			return nil
 		}
 	}
-	// Buyer org match
+	// Buyer org match (buyer roles)
 	for _, m := range actor.Memberships {
-		if m.OrganizationID == rfq.BuyerOrgID {
+		if m.OrganizationID == rfq.BuyerOrgID && isBuyerRole(m.Role) {
 			return nil
 		}
 	}
 	// Awarded provider match
 	if rfq.AwardedProviderOrgID != "" {
 		for _, m := range actor.Memberships {
-			if m.OrganizationID == rfq.AwardedProviderOrgID {
+			if m.OrganizationID == rfq.AwardedProviderOrgID && isProviderRole(m.Role) {
 				return nil
 			}
 		}
 	}
+	// Bidding providers — check if any of actor's orgs have submitted a bid
+	bids, err := s.app.ListBids(rfq.ID)
+	if err == nil {
+		for _, bid := range bids {
+			for _, m := range actor.Memberships {
+				if m.OrganizationID == bid.ProviderOrgID && isProviderRole(m.Role) {
+					return nil
+				}
+			}
+		}
+	}
 	return platform.ErrOrgMismatch
+}
+
+func actorBelongsToOrg(actor iamclient.Actor, orgID string) bool {
+	for _, m := range actor.Memberships {
+		if m.OrganizationID == orgID {
+			return true
+		}
+	}
+	// Ops can access any org
+	for _, m := range actor.Memberships {
+		if isOpsRole(m.Role) {
+			return true
+		}
+	}
+	return false
 }
