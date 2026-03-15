@@ -1694,3 +1694,64 @@ func TestSettledFeed_MissingServiceToken(t *testing.T) {
 		t.Fatalf("expected 401, got %d", rec.Code)
 	}
 }
+
+func TestQuoteWithdrawal_WithOpsAuth(t *testing.T) {
+	fiber := &stubFiberClient{
+		quoteResult: fiberclient.QuotePayoutResult{Asset: "CKB", Amount: "100"},
+	}
+	actor := iamclient.Actor{
+		UserID: "u_ops",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_ops", OrganizationKind: "ops", Role: "finance_admin"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber: fiber,
+		Auth:  &stubIAMClient{actor: actor},
+	})
+
+	payload := `{"providerOrgId":"org_p","asset":"CKB","amount":"100","destination":{"kind":"address","address":"ckb1addr"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals/quote", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer ops-token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRequestWithdrawal_Unauthorized(t *testing.T) {
+	s := NewServerWithOptions(Options{
+		Fiber: &stubFiberClient{},
+		Auth:  &stubIAMClient{actor: iamclient.Actor{UserID: "u_1"}},
+	})
+
+	payload := `{"providerOrgId":"org_p","asset":"CKB","amount":"50","destination":{"kind":"address","address":"ckb1addr"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	// No bearer token
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestSettledFeed_WithLimitAndCursor(t *testing.T) {
+	fiber := &stubFiberClient{
+		settledFeedResult: fiberclient.SettledFeedResult{},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber:         fiber,
+		ServiceTokens: serviceauth.NewTokenSet("svc"),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/settled-feed?limit=25&afterSettledAt=2026-01-01T00:00:00Z&afterId=rec_1", nil)
+	req.Header.Set(serviceauth.HeaderName, "svc")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
