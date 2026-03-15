@@ -128,6 +128,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/system":
 		s.handleSystemInfo(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/system/ratelimits":
+		s.handleRateLimitConfig(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/stats":
 		s.handleMarketplaceStats(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/export/orders":
@@ -1853,4 +1855,18 @@ func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 	httputil.WriteJSON(w, http.StatusOK, info)
+}
+
+func (s *Server) handleRateLimitConfig(w http.ResponseWriter, r *http.Request) {
+	config := map[string]any{
+		"policies": map[string]any{
+			"iam.login.ip":         map[string]any{"limit": 5, "window": "1m"},
+			"iam.signup.ip":        map[string]any{"limit": 3, "window": "1m"},
+			"gateway.create_rfq":   map[string]any{"limit": 10, "window": "1m"},
+			"gateway.create_bid":   map[string]any{"limit": 20, "window": "1m"},
+			"gateway.create_order": map[string]any{"limit": 10, "window": "1m"},
+		},
+		"enforcement": s.rateLimiter != nil,
+	}
+	httputil.WriteJSON(w, http.StatusOK, config)
 }
