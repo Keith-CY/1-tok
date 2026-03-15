@@ -90,13 +90,20 @@ type Service struct {
 	mu          sync.Mutex
 	bindingSeq  int
 	jobSeq      int
-	bindings    []Binding
-	jobs        []ExecutionJob
+	bindings    map[string]Binding            // id → binding
+	bindingIdx  map[string]string             // "orderID|milestoneID" → binding id
+	jobs        map[string]ExecutionJob       // id → job
+	jobsByBinding map[string][]string         // binding id → job ids
 }
 
 // NewService creates a new carrier service.
 func NewService() *Service {
-	return &Service{}
+	return &Service{
+		bindings:      make(map[string]Binding),
+		bindingIdx:    make(map[string]string),
+		jobs:          make(map[string]ExecutionJob),
+		jobsByBinding: make(map[string][]string),
+	}
 }
 
 // Bind creates a carrier binding for a milestone.
@@ -104,10 +111,9 @@ func (s *Service) Bind(orderID, milestoneID, carrierID string, capabilities []st
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for _, b := range s.bindings {
-		if b.OrderID == orderID && b.MilestoneID == milestoneID {
-			return Binding{}, ErrBindingExists
-		}
+	key := orderID + "|" + milestoneID
+	if _, exists := s.bindingIdx[key]; exists {
+		return Binding{}, ErrBindingExists
 	}
 
 	s.bindingSeq++
@@ -121,7 +127,8 @@ func (s *Service) Bind(orderID, milestoneID, carrierID string, capabilities []st
 		BoundAt:       now,
 		LastHeartbeat: now,
 	}
-	s.bindings = append(s.bindings, binding)
+	s.bindings[binding.ID] = binding
+	s.bindingIdx[key] = binding.ID
 	return binding, nil
 }
 
@@ -130,12 +137,12 @@ func (s *Service) GetBinding(orderID, milestoneID string) (Binding, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for _, b := range s.bindings {
-		if b.OrderID == orderID && b.MilestoneID == milestoneID {
-			return b, nil
-		}
+	key := orderID + "|" + milestoneID
+	id, ok := s.bindingIdx[key]
+	if !ok {
+		return Binding{}, ErrBindingNotFound
 	}
-	return Binding{}, ErrBindingNotFound
+	return s.bindings[id], nil
 }
 
 // Heartbeat updates the last heartbeat time for a binding.
@@ -143,13 +150,13 @@ func (s *Service) Heartbeat(bindingID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for i := range s.bindings {
-		if s.bindings[i].ID == bindingID {
-			s.bindings[i].LastHeartbeat = time.Now().UTC()
-			return nil
-		}
+	b, ok := s.bindings[bindingID]
+	if !ok {
+		return ErrBindingNotFound
 	}
-	return ErrBindingNotFound
+	b.LastHeartbeat = time.Now().UTC()
+	s.bindings[bindingID] = b
+	return nil
 }
 
 // IsStale checks if a binding's heartbeat is stale.
@@ -157,12 +164,11 @@ func (s *Service) IsStale(bindingID string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for _, b := range s.bindings {
-		if b.ID == bindingID {
-			return time.Since(b.LastHeartbeat) > HeartbeatTimeout, nil
-		}
+	b, ok := s.bindings[bindingID]
+	if !ok {
+		return false, ErrBindingNotFound
 	}
-	return false, ErrBindingNotFound
+	return time.Since(b.LastHeartbeat) > HeartbeatTimeout, nil
 }
 
 // CreateJob creates a new execution job.
@@ -170,15 +176,7 @@ func (s *Service) CreateJob(bindingID, milestoneID, input string) (ExecutionJob,
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Verify binding exists
-	found := false
-	for _, b := range s.bindings {
-		if b.ID == bindingID {
-			found = true
-			break
-		}
-	}
-	if !found {
+	if _, ok := s.bindings[bindingID]; !ok {
 		return ExecutionJob{}, ErrBindingNotFound
 	}
 
@@ -191,7 +189,8 @@ func (s *Service) CreateJob(bindingID, milestoneID, input string) (ExecutionJob,
 		Input:       input,
 		CreatedAt:   time.Now().UTC(),
 	}
-	s.jobs = append(s.jobs, job)
+	s.jobs[job.ID] = job
+	s.jobsByBinding[bindingID] = append(s.jobsByBinding[bindingID], job.ID)
 	return job, nil
 }
 
@@ -200,12 +199,11 @@ func (s *Service) GetJob(jobID string) (ExecutionJob, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for _, j := range s.jobs {
-		if j.ID == jobID {
-			return j, nil
-		}
+	job, ok := s.jobs[jobID]
+	if !ok {
+		return ExecutionJob{}, ErrJobNotFound
 	}
-	return ExecutionJob{}, ErrJobNotFound
+	return job, nil
 }
 
 // StartJob transitions a job from pending to running.
@@ -232,29 +230,29 @@ func (s *Service) transitionJob(jobID string, to JobState, output, errMsg string
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for i := range s.jobs {
-		if s.jobs[i].ID == jobID {
-			if !canTransition(s.jobs[i].State, to) {
-				return ExecutionJob{}, fmt.Errorf("%w: %s → %s", ErrInvalidTransition, s.jobs[i].State, to)
-			}
-			now := time.Now().UTC()
-			s.jobs[i].State = to
-			switch to {
-			case JobStateRunning:
-				s.jobs[i].StartedAt = &now
-			case JobStateCompleted:
-				s.jobs[i].CompletedAt = &now
-				s.jobs[i].Output = output
-			case JobStateFailed:
-				s.jobs[i].CompletedAt = &now
-				s.jobs[i].ErrorMessage = errMsg
-			case JobStateCancelled:
-				s.jobs[i].CompletedAt = &now
-			}
-			return s.jobs[i], nil
-		}
+	job, ok := s.jobs[jobID]
+	if !ok {
+		return ExecutionJob{}, ErrJobNotFound
 	}
-	return ExecutionJob{}, ErrJobNotFound
+	if !canTransition(job.State, to) {
+		return ExecutionJob{}, fmt.Errorf("%w: %s → %s", ErrInvalidTransition, job.State, to)
+	}
+	now := time.Now().UTC()
+	job.State = to
+	switch to {
+	case JobStateRunning:
+		job.StartedAt = &now
+	case JobStateCompleted:
+		job.CompletedAt = &now
+		job.Output = output
+	case JobStateFailed:
+		job.CompletedAt = &now
+		job.ErrorMessage = errMsg
+	case JobStateCancelled:
+		job.CompletedAt = &now
+	}
+	s.jobs[jobID] = job
+	return job, nil
 }
 
 // UpdateProgress updates the progress of a running job.
@@ -262,16 +260,16 @@ func (s *Service) UpdateProgress(jobID string, step, total int, message string) 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for i := range s.jobs {
-		if s.jobs[i].ID == jobID {
-			if s.jobs[i].State != JobStateRunning {
-				return ExecutionJob{}, fmt.Errorf("can only update progress on running jobs, current state: %s", s.jobs[i].State)
-			}
-			s.jobs[i].Progress = &Progress{Step: step, Total: total, Message: message}
-			return s.jobs[i], nil
-		}
+	job, ok := s.jobs[jobID]
+	if !ok {
+		return ExecutionJob{}, ErrJobNotFound
 	}
-	return ExecutionJob{}, ErrJobNotFound
+	if job.State != JobStateRunning {
+		return ExecutionJob{}, fmt.Errorf("can only update progress on running jobs, current state: %s", job.State)
+	}
+	job.Progress = &Progress{Step: step, Total: total, Message: message}
+	s.jobs[jobID] = job
+	return job, nil
 }
 
 // ListJobs returns all jobs for a binding.
@@ -279,10 +277,11 @@ func (s *Service) ListJobs(bindingID string) ([]ExecutionJob, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	result := make([]ExecutionJob, 0)
-	for _, j := range s.jobs {
-		if j.BindingID == bindingID {
-			result = append(result, j)
+	ids := s.jobsByBinding[bindingID]
+	result := make([]ExecutionJob, 0, len(ids))
+	for _, id := range ids {
+		if job, ok := s.jobs[id]; ok {
+			result = append(result, job)
 		}
 	}
 	return result, nil

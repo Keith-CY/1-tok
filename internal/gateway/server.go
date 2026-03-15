@@ -105,13 +105,19 @@ func NewServerWithOptionsE(options Options) (*Server, error) {
 		carrierSvc = carrier.NewService()
 	}
 
+	webhookSvc := notifications.NewWebhookService()
+	registry := notifications.NewRegistry(webhookSvc)
+
+	// Wire notifications to the app via adapter
+	options.App.SetNotifier(&webhookNotifierAdapter{svc: webhookSvc})
+
 	return &Server{
 		app:             options.App,
 		auth:            options.IAM,
 		executionTokens: options.ExecutionTokens,
 		rateLimiter:     options.RateLimiter,
 		carrier:         carrierSvc,
-		webhooks:        notifications.NewRegistry(nil),
+		webhooks:        registry,
 	}, nil
 }
 
@@ -1396,6 +1402,13 @@ func orderIDFromRatingPath(path string) (string, error) {
 }
 
 func (s *Server) handleRateOrder(w http.ResponseWriter, r *http.Request) {
+	if s.auth != nil && !iamclient.IsNoop(s.auth) {
+		if _, err := s.authenticatedActor(r); err != nil {
+			httputil.WriteAuthError(w, err)
+			return
+		}
+	}
+
 	orderID, err := orderIDFromRatingPath(r.URL.Path)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -1453,6 +1466,16 @@ func (s *Server) handleListRFQMessages(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateRFQMessage(w http.ResponseWriter, r *http.Request) {
+	var actorID string
+	if s.auth != nil && !iamclient.IsNoop(s.auth) {
+		actor, err := s.authenticatedActor(r)
+		if err != nil {
+			httputil.WriteAuthError(w, err)
+			return
+		}
+		actorID = actor.UserID
+	}
+
 	rfqID, err := rfqIDFromMessagesPath(r.URL.Path)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -1468,7 +1491,12 @@ func (s *Server) handleCreateRFQMessage(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	message, err := s.app.CreateRFQMessage(rfqID, payload.Author, payload.Body)
+	author := payload.Author
+	if actorID != "" {
+		author = actorID // Use authenticated actor instead of payload
+	}
+
+	message, err := s.app.CreateRFQMessage(rfqID, author, payload.Body)
 	if err != nil {
 		writeGatewayError(w, err)
 		return
@@ -1713,4 +1741,13 @@ func (s *Server) handleListNotifications(w http.ResponseWriter, r *http.Request)
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"notifications": notifications})
+}
+
+// webhookNotifierAdapter bridges platform.Notifier (string event) to notifications.WebhookService (EventType).
+type webhookNotifierAdapter struct {
+	svc *notifications.WebhookService
+}
+
+func (a *webhookNotifierAdapter) Send(event string, target string, payload map[string]any) error {
+	return a.svc.Send(notifications.EventType(event), target, payload)
 }

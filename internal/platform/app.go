@@ -1204,9 +1204,15 @@ func (a *App) updateProviderRating(providerOrgID string) {
 	if count == 0 {
 		return
 	}
-	// Note: this updates in-memory only. For postgres, would need a separate update.
-	_ = total
-	_ = count
+	// Update provider rating in the provider store (best-effort for memory store)
+	provider, err := a.providers.Get(providerOrgID)
+	if err != nil {
+		return
+	}
+	provider.Rating = float64(total) / float64(count)
+	provider.RatingCount = count
+	// Note: memory store doesn't persist updates back, but GetProvider
+	// computes rating on the fly from the ratings slice.
 }
 
 // GetOrderRating returns the rating for an order, if it exists.
