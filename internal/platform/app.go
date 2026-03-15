@@ -2187,3 +2187,45 @@ func (a *App) GetBudgetWallInfo(orderID string) (*BudgetWallInfo, error) {
 	}
 	return nil, nil
 }
+
+// FiberExposure summarizes outstanding settlement risk.
+type FiberExposure struct {
+	TotalPrepaidUnsettledCents int64 `json:"totalPrepaidUnsettledCents"`
+	TotalCreditUnsettledCents  int64 `json:"totalCreditUnsettledCents"`
+	TotalExposureCents         int64 `json:"totalExposureCents"`
+	ActiveOrderCount           int   `json:"activeOrderCount"`
+	PausedOrderCount           int   `json:"pausedOrderCount"`
+}
+
+// GetFiberExposure calculates total outstanding settlement risk.
+func (a *App) GetFiberExposure() (FiberExposure, error) {
+	orders, err := a.orders.List()
+	if err != nil {
+		return FiberExposure{}, err
+	}
+
+	var exp FiberExposure
+	for _, o := range orders {
+		if o.Status != core.OrderStatusRunning && o.Status != core.OrderStatusAwaitingBudget {
+			continue
+		}
+		if o.Status == core.OrderStatusRunning {
+			exp.ActiveOrderCount++
+		} else {
+			exp.PausedOrderCount++
+		}
+
+		for _, ms := range o.Milestones {
+			if ms.State == core.MilestoneStateRunning || ms.State == core.MilestoneStatePaused {
+				unsettled := ms.BudgetCents - ms.SettledCents
+				if o.FundingMode == "prepaid" {
+					exp.TotalPrepaidUnsettledCents += unsettled
+				} else {
+					exp.TotalCreditUnsettledCents += unsettled
+				}
+			}
+		}
+	}
+	exp.TotalExposureCents = exp.TotalPrepaidUnsettledCents + exp.TotalCreditUnsettledCents
+	return exp, nil
+}

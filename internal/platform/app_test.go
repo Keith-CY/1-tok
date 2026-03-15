@@ -2762,3 +2762,30 @@ func TestGetBudgetWallInfo(t *testing.T) {
 	if info.OverageCents != 1100 { t.Errorf("overage = %d", info.OverageCents) }
 	if info.MilestoneID != "ms_1" { t.Errorf("milestone = %s", info.MilestoneID) }
 }
+
+func TestGetFiberExposure(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Exp", Category: "ai",
+		Scope: "t", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_p", Message: "b", QuoteCents: 5000,
+		Milestones: []BidMilestoneInput{{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000}},
+	})
+	app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	exp, err := app.GetFiberExposure()
+	if err != nil { t.Fatal(err) }
+	if exp.ActiveOrderCount == 0 { t.Error("expected active orders") }
+	if exp.TotalPrepaidUnsettledCents == 0 { t.Error("expected prepaid exposure") }
+	if exp.TotalExposureCents == 0 { t.Error("expected total exposure") }
+}
+
+func TestGetFiberExposure_Empty(t *testing.T) {
+	app := NewAppWithMemory()
+	exp, err := app.GetFiberExposure()
+	if err != nil { t.Fatal(err) }
+	if exp.TotalExposureCents != 0 { t.Errorf("expected 0, got %d", exp.TotalExposureCents) }
+}

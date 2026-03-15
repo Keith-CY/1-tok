@@ -124,6 +124,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleRateLimitConfig(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/system/stale-jobs":
 		s.handleStaleJobs(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/system/exposure":
+		s.handleFiberExposure(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/provider-applications":
 		s.handleSubmitApplication(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/provider-applications":
@@ -2171,4 +2173,13 @@ func (s *Server) buildCallbackResponse(event carrier.CallbackEvent) CallbackResp
 	}
 
 	return resp
+}
+
+func (s *Server) handleFiberExposure(w http.ResponseWriter, r *http.Request) {
+	exposure, err := s.app.GetFiberExposure()
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, exposure)
 }
