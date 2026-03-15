@@ -2,6 +2,7 @@ package settlement
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"testing"
 	"time"
@@ -614,4 +615,119 @@ func TestRunReconcilerLoop_NilLogger(t *testing.T) {
 	if err != context.DeadlineExceeded {
 		t.Logf("nil logger: %v", err)
 	}
+}
+
+func TestRunReconcilerLoop_ExceedsMaxErrors(t *testing.T) {
+	// Fiber that always errors
+	fiber := &errorFiberClient{}
+	funding := NewMemoryFundingRecordRepository()
+
+	// Add a pending record so each sync hits fiber
+	for i := 0; i < 3; i++ {
+		id, _ := funding.NextID()
+		funding.Save(FundingRecord{
+			ID: id, Kind: FundingRecordKindInvoice,
+			Invoice: fmt.Sprintf("lnbc_max_%d", i), State: "pending",
+			Asset: "CKB", Amount: "100",
+		})
+	}
+
+	r := NewReconciler(ReconcilerOptions{Fiber: fiber, Funding: funding})
+
+	// RunReconcilerLoop — first sync fails, returns immediately
+	logger := log.New(log.Writer(), "max-err: ", 0)
+	err := RunReconcilerLoop(context.Background(), r, time.Millisecond, logger)
+	if err == nil {
+		t.Error("expected error from first sync failure")
+	}
+}
+
+func TestReconciler_SyncPendingInvoices_FiberError(t *testing.T) {
+	fiber := &errorFiberClient{}
+	funding := NewMemoryFundingRecordRepository()
+
+	id, _ := funding.NextID()
+	funding.Save(FundingRecord{
+		ID: id, Kind: FundingRecordKindInvoice,
+		Invoice: "lnbc_err_sync", State: "pending",
+		Asset: "CKB", Amount: "100",
+	})
+
+	r := NewReconciler(ReconcilerOptions{Fiber: fiber, Funding: funding})
+	_, err := r.Sync(context.Background())
+	if err == nil {
+		t.Error("expected error from fiber")
+	}
+}
+
+func TestReconciler_SyncPendingWithdrawals_FiberError(t *testing.T) {
+	fiber := &errorFiberClient{}
+	funding := NewMemoryFundingRecordRepository()
+
+	id, _ := funding.NextID()
+	funding.Save(FundingRecord{
+		ID: id, Kind: FundingRecordKindWithdrawal,
+		ExternalID: "ext_err", State: "pending",
+		Asset: "CKB", Amount: "50", ProviderOrgID: "org_p",
+	})
+
+	r := NewReconciler(ReconcilerOptions{Fiber: fiber, Funding: funding})
+	_, err := r.Sync(context.Background())
+	if err == nil {
+		t.Error("expected error from fiber")
+	}
+}
+
+type delayedErrorFiberClient struct {
+	callCount int
+	failAfter int
+}
+
+func (d *delayedErrorFiberClient) CreateInvoice(_ context.Context, _ fiberclient.CreateInvoiceInput) (fiberclient.CreateInvoiceResult, error) {
+	return fiberclient.CreateInvoiceResult{}, nil
+}
+func (d *delayedErrorFiberClient) GetInvoiceStatus(_ context.Context, _ string) (fiberclient.InvoiceStatusResult, error) {
+	d.callCount++
+	if d.callCount > d.failAfter {
+		return fiberclient.InvoiceStatusResult{}, fmt.Errorf("fiber down (call %d)", d.callCount)
+	}
+	return fiberclient.InvoiceStatusResult{State: "pending"}, nil
+}
+func (d *delayedErrorFiberClient) QuotePayout(_ context.Context, _ fiberclient.QuotePayoutInput) (fiberclient.QuotePayoutResult, error) {
+	return fiberclient.QuotePayoutResult{}, nil
+}
+func (d *delayedErrorFiberClient) RequestPayout(_ context.Context, _ fiberclient.RequestPayoutInput) (fiberclient.RequestPayoutResult, error) {
+	return fiberclient.RequestPayoutResult{}, nil
+}
+func (d *delayedErrorFiberClient) ListSettledFeed(_ context.Context, _ fiberclient.SettledFeedInput) (fiberclient.SettledFeedResult, error) {
+	return fiberclient.SettledFeedResult{}, nil
+}
+func (d *delayedErrorFiberClient) ListWithdrawalStatuses(_ context.Context, _ string) (fiberclient.WithdrawalStatusResult, error) {
+	return fiberclient.WithdrawalStatusResult{}, nil
+}
+
+func TestRunReconcilerLoop_TickerErrors(t *testing.T) {
+	// First sync succeeds (failAfter=1 means first call OK, second fails)
+	fiber := &delayedErrorFiberClient{failAfter: 1}
+	funding := NewMemoryFundingRecordRepository()
+
+	id, _ := funding.NextID()
+	funding.Save(FundingRecord{
+		ID: id, Kind: FundingRecordKindInvoice,
+		Invoice: "lnbc_ticker_err", State: "pending",
+		Asset: "CKB", Amount: "100",
+	})
+
+	r := NewReconciler(ReconcilerOptions{Fiber: fiber, Funding: funding})
+	logger := log.New(log.Writer(), "ticker-err: ", 0)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	err := RunReconcilerLoop(ctx, r, 20*time.Millisecond, logger)
+	// Should exit with either context deadline or max consecutive errors
+	if err == nil {
+		t.Error("expected error from loop")
+	}
+	t.Logf("loop exited: %v (fiber calls: %d)", err, fiber.callCount)
 }
