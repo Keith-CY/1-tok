@@ -1,7 +1,9 @@
 package mockfiber
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -265,4 +267,94 @@ func TestSettledFeed_WithData(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = result
+}
+
+func TestHandleCreate_InvalidParams(t *testing.T) {
+	srv := httptest.NewServer(NewServer())
+	defer srv.Close()
+
+	// Send RPC with invalid params (not a valid CreateInvoiceInput)
+	payload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "tip.create",
+		"params": "not-an-object",
+	})
+	req, _ := http.NewRequest(http.MethodPost, srv.URL, bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	// Should return RPC error
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleQuoteWithdrawal_InvalidParams(t *testing.T) {
+	srv := httptest.NewServer(NewServer())
+	defer srv.Close()
+
+	payload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "withdrawal.quote",
+		"params": "invalid",
+	})
+	req, _ := http.NewRequest(http.MethodPost, srv.URL, bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleRequestWithdrawal_InvalidParams(t *testing.T) {
+	srv := httptest.NewServer(NewServer())
+	defer srv.Close()
+
+	payload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "withdrawal.request",
+		"params": "invalid",
+	})
+	req, _ := http.NewRequest(http.MethodPost, srv.URL, bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleDashboardSummary_InvalidParams(t *testing.T) {
+	srv := httptest.NewServer(NewServer())
+	defer srv.Close()
+
+	payload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "dashboard.summary",
+		"params": "invalid",
+	})
+	req, _ := http.NewRequest(http.MethodPost, srv.URL, bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleSettledFeed_InvalidParams(t *testing.T) {
+	srv := httptest.NewServer(NewServer())
+	defer srv.Close()
+
+	payload, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "tip.settled_feed",
+		"params": "invalid",
+	})
+	req, _ := http.NewRequest(http.MethodPost, srv.URL, bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	resp, _ := http.DefaultClient.Do(req)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
 }
