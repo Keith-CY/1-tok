@@ -1945,7 +1945,9 @@ func (s *Server) handleCarrierCallback(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown callback type"})
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "processed"})
+
+	// Build callback response with recommendedAction
+	httputil.WriteJSON(w, http.StatusOK, s.buildCallbackResponse(event))
 }
 func (s *Server) handleCreateListing(w http.ResponseWriter, r *http.Request) {
 	var payload platform.CreateListingInput
@@ -2121,4 +2123,39 @@ func (s *Server) handleGetCreditLimit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"creditLimit": limit})
+}
+
+// CallbackResponse is the response sent back to Carrier after processing a callback.
+type CallbackResponse struct {
+	Accepted          bool              `json:"accepted"`
+	RecommendedAction RecommendedAction `json:"recommendedAction"`
+}
+
+type RecommendedAction struct {
+	Type   string `json:"type"` // continue, pause, cancel
+	Reason string `json:"reason,omitempty"`
+}
+
+func (s *Server) buildCallbackResponse(event carrier.CallbackEvent) CallbackResponse {
+	resp := CallbackResponse{
+		Accepted: true,
+		RecommendedAction: RecommendedAction{Type: "continue"},
+	}
+
+	if event.JobID == "" {
+		return resp
+	}
+
+	job, err := s.carrier.GetJob(event.JobID)
+	if err != nil || job.State == carrier.JobStateCompleted || job.State == carrier.JobStateFailed || job.State == carrier.JobStateCancelled {
+		return resp
+	}
+
+	// Check if binding is stale
+	stale, _ := s.carrier.IsStale(job.BindingID)
+	if stale {
+		resp.RecommendedAction = RecommendedAction{Type: "cancel", Reason: "carrier heartbeat stale"}
+	}
+
+	return resp
 }
