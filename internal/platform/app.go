@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -937,4 +938,71 @@ type noopPublisher struct{}
 
 func (noopPublisher) Publish(string, any) error {
 	return nil
+}
+
+// ListListingsInput holds optional filter criteria for listing search.
+type ListListingsInput struct {
+	Query         string   // full-text search on title
+	Category      string   // exact match
+	Tags          []string // any match
+	ProviderOrgID string   // exact match
+	MinPriceCents int64    // inclusive
+	MaxPriceCents int64    // inclusive (0 = no limit)
+}
+
+// SearchListings returns listings matching the given filter criteria.
+// Empty filter returns all listings.
+func (a *App) SearchListings(input ListListingsInput) ([]Listing, error) {
+	all, err := a.listings.List()
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]Listing, 0, len(all))
+	for _, listing := range all {
+		if !matchesListingFilter(listing, input) {
+			continue
+		}
+		result = append(result, listing)
+	}
+	return result, nil
+}
+
+func matchesListingFilter(listing Listing, input ListListingsInput) bool {
+	if input.Query != "" && !strings.Contains(
+		strings.ToLower(listing.Title),
+		strings.ToLower(input.Query),
+	) {
+		return false
+	}
+	if input.Category != "" && !strings.EqualFold(listing.Category, input.Category) {
+		return false
+	}
+	if input.ProviderOrgID != "" && listing.ProviderOrgID != input.ProviderOrgID {
+		return false
+	}
+	if input.MinPriceCents > 0 && listing.BasePriceCents < input.MinPriceCents {
+		return false
+	}
+	if input.MaxPriceCents > 0 && listing.BasePriceCents > input.MaxPriceCents {
+		return false
+	}
+	if len(input.Tags) > 0 {
+		matched := false
+		for _, filterTag := range input.Tags {
+			for _, listingTag := range listing.Tags {
+				if strings.EqualFold(filterTag, listingTag) {
+					matched = true
+					break
+				}
+			}
+			if matched {
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	return true
 }

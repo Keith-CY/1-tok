@@ -2,6 +2,7 @@ package platform
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -1585,5 +1586,85 @@ func TestListRFQs_WithData(t *testing.T) {
 	}
 	if len(rfqs) < 2 {
 		t.Errorf("expected at least 2 RFQs, got %d", len(rfqs))
+	}
+}
+
+func TestSearchListings_All(t *testing.T) {
+	app := NewAppWithMemory()
+	listings, err := app.SearchListings(ListListingsInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listings) == 0 {
+		t.Error("expected default listings")
+	}
+}
+
+func TestSearchListings_ByCategory(t *testing.T) {
+	app := NewAppWithMemory()
+	listings, err := app.SearchListings(ListListingsInput{Category: "agent-ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range listings {
+		if !strings.EqualFold(l.Category, "agent-ops") {
+			t.Errorf("expected category agent-ops, got %s", l.Category)
+		}
+	}
+}
+
+func TestSearchListings_ByQuery(t *testing.T) {
+	app := NewAppWithMemory()
+	listings, err := app.SearchListings(ListListingsInput{Query: "carrier"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range listings {
+		if !strings.Contains(strings.ToLower(l.Title), "carrier") {
+			t.Errorf("title %q doesn't match query 'carrier'", l.Title)
+		}
+	}
+}
+
+func TestSearchListings_ByTag(t *testing.T) {
+	app := NewAppWithMemory()
+	listings, err := app.SearchListings(ListListingsInput{Tags: []string{"carrier-compatible"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range listings {
+		found := false
+		for _, tag := range l.Tags {
+			if strings.EqualFold(tag, "carrier-compatible") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("listing %s doesn't have tag carrier-compatible", l.ID)
+		}
+	}
+}
+
+func TestSearchListings_ByPriceRange(t *testing.T) {
+	app := NewAppWithMemory()
+	listings, err := app.SearchListings(ListListingsInput{MinPriceCents: 1000, MaxPriceCents: 50000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range listings {
+		if l.BasePriceCents < 1000 || l.BasePriceCents > 50000 {
+			t.Errorf("price %d outside range 1000-50000", l.BasePriceCents)
+		}
+	}
+}
+
+func TestSearchListings_NoMatch(t *testing.T) {
+	app := NewAppWithMemory()
+	listings, err := app.SearchListings(ListListingsInput{Query: "nonexistent-listing-xyz"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listings) != 0 {
+		t.Errorf("expected 0 results, got %d", len(listings))
 	}
 }

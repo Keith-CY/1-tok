@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -156,7 +157,25 @@ func (s *Server) handleListProviders(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListListings(w http.ResponseWriter, r *http.Request) {
-	listings, err := s.app.ListListings()
+	q := r.URL.Query()
+	input := platform.ListListingsInput{
+		Query:         q.Get("q"),
+		Category:      q.Get("category"),
+		Tags:          q["tag"],
+		ProviderOrgID: q.Get("providerOrgId"),
+	}
+	if v := q.Get("minPrice"); v != "" {
+		if parsed, err := strconv.ParseInt(v, 10, 64); err == nil {
+			input.MinPriceCents = parsed
+		}
+	}
+	if v := q.Get("maxPrice"); v != "" {
+		if parsed, err := strconv.ParseInt(v, 10, 64); err == nil {
+			input.MaxPriceCents = parsed
+		}
+	}
+
+	listings, err := s.app.SearchListings(input)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
