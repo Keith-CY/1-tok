@@ -139,7 +139,7 @@ func newDiscordBotWithConfig(app *platform.App, publicKey string) (*discord.Mark
 		key = strings.TrimSpace(os.Getenv("DISCORD_PUBLIC_KEY"))
 	}
 	if key == "" {
-		return discord.NewMarketplaceBot(app), nil
+		return nil, nil
 	}
 	bot, err := discord.NewMarketplaceBotWithPublicKey(app, key)
 	if err != nil {
@@ -156,7 +156,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleMarketplaceStats(w, r)
 	case r.Method == http.MethodPost && isDiscordInteractionPath(r.URL.Path):
 		if s.discordBot == nil {
-			httputil.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "discord bot not configured"})
+			httputil.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "route not found"})
 			return
 		}
 		s.discordBot.HandleInteraction(w, r)

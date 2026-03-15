@@ -2,7 +2,10 @@ package gateway
 
 import (
 	"bytes"
+	"crypto/ed25519"
+	"crypto/rand"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1547,9 +1550,38 @@ func TestHealthz(t *testing.T) {
 	}
 }
 
-func TestDiscordInteractionPing(t *testing.T) {
+func TestDiscordInteractionRouteDisabledWithoutPublicKey(t *testing.T) {
 	gw := NewServerWithApp(platform.NewAppWithMemory())
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/interactions", strings.NewReader(`{"type":1}`))
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestDiscordInteractionPingWithPublicKey(t *testing.T) {
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+
+	gw, err := NewServerWithOptionsE(Options{
+		App:            platform.NewAppWithMemory(),
+		DiscordPublicKey: hex.EncodeToString(publicKey),
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	body := []byte(`{"type":1}`)
+	timestamp := "1731628800"
+	signature := hex.EncodeToString(ed25519.Sign(privateKey, append([]byte(timestamp), body...)))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/interactions", bytes.NewReader(body))
+	req.Header.Set("X-Signature-Ed25519", signature)
+	req.Header.Set("X-Signature-Timestamp", timestamp)
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
 
