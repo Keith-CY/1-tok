@@ -143,3 +143,52 @@ func TestLoadPlatformApp_WithPostgresAndNATS(t *testing.T) {
 		t.Error("expected providers")
 	}
 }
+
+func TestLoadPlatformApp_RequirePersistence_NoDSN(t *testing.T) {
+	t.Setenv("ONE_TOK_REQUIRE_PERSISTENCE", "true")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("NATS_URL", "")
+
+	_, _, err := LoadPlatformApp()
+	if err == nil {
+		t.Error("expected error when persistence required but no DSN")
+	}
+}
+
+func TestLoadPlatformApp_InvalidDSN(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://invalid:invalid@127.0.0.1:1/invalid")
+	t.Setenv("NATS_URL", "")
+	t.Setenv("ONE_TOK_REQUIRE_PERSISTENCE", "")
+	t.Setenv("ONE_TOK_REQUIRE_BOOTSTRAP", "")
+
+	_, _, err := LoadPlatformApp()
+	if err == nil {
+		t.Error("expected error for invalid DSN")
+	}
+}
+
+func TestLoadPlatformApp_InvalidNATS(t *testing.T) {
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("NATS_URL", "nats://127.0.0.1:1")
+
+	_, _, err := LoadPlatformApp()
+	if err == nil {
+		t.Error("expected error for unreachable NATS")
+	}
+}
+
+func TestLoadPlatformApp_CleanupWorks(t *testing.T) {
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("NATS_URL", "")
+
+	app, cleanup, err := LoadPlatformApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if app == nil {
+		t.Fatal("expected non-nil app")
+	}
+	if err := cleanup(); err != nil {
+		t.Errorf("cleanup error: %v", err)
+	}
+}
