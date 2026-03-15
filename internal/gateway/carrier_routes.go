@@ -268,3 +268,19 @@ func (s *Server) handleGetBinding(w http.ResponseWriter, r *http.Request) {
 	stale, _ := s.carrier.IsStale(binding.ID)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"binding": binding, "stale": stale})
 }
+
+func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
+	jobID, err := jobIDFromPath(r.URL.Path)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	job, err := s.carrier.CancelJob(jobID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"job": job})
+}

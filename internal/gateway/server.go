@@ -188,6 +188,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleJobProgress(w, r)
 	case r.Method == http.MethodPost && isJobActionPath(r.URL.Path, "heartbeat"):
 		s.handleJobHeartbeat(w, r)
+	case r.Method == http.MethodPost && isJobActionPath(r.URL.Path, "cancel"):
+		s.handleCancelJob(w, r)
 	default:
 		httputil.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "route not found"})
 	}
