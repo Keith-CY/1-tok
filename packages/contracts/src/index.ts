@@ -29,6 +29,8 @@ export interface UsageCharge {
   kind: UsageChargeKind;
   amountCents: number;
   proofRef?: string;
+  proofSignature?: string;
+  proofTimestamp?: string;
 }
 
 export interface Milestone {
@@ -41,6 +43,7 @@ export interface Milestone {
   state: MilestoneState;
   disputeStatus: "none" | "open" | "resolved";
   usageCharges: UsageCharge[];
+  anomalyFlags?: string[];
 }
 
 export interface Order {
@@ -86,6 +89,8 @@ export interface ProviderProfile {
   name: string;
   capabilities: string[];
   reputationTier: string;
+  rating?: number;
+  ratingCount?: number;
 }
 
 export interface Listing {
@@ -218,4 +223,71 @@ export function assertMilestoneState(value: unknown): asserts value is Milestone
 
 export function assertUsageChargeKind(value: unknown): asserts value is UsageChargeKind {
   if (!isUsageChargeKind(value)) throw new Error(`Invalid usage charge kind: ${value}`);
+}
+
+// --- Rating ---
+
+export interface OrderRating {
+  orderId: string;
+  providerOrgId: string;
+  buyerOrgId: string;
+  score: number; // 1-5
+  comment?: string;
+  createdAt: string;
+}
+
+// --- Carrier ---
+
+export const jobStates = ["pending", "running", "completed", "failed", "cancelled"] as const;
+export type JobState = (typeof jobStates)[number];
+
+export interface CarrierBinding {
+  id: string;
+  carrierId: string;
+  orderId: string;
+  milestoneId: string;
+  capabilities: string[];
+  boundAt: string;
+  lastHeartbeat: string;
+}
+
+export interface ExecutionJob {
+  id: string;
+  bindingId: string;
+  milestoneId: string;
+  state: JobState;
+  input?: string;
+  output?: string;
+  errorMessage?: string;
+  progress?: { step: number; total: number; message: string };
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
+export function isJobState(value: unknown): value is JobState {
+  return typeof value === "string" && (jobStates as readonly string[]).includes(value);
+}
+
+// --- Notifications ---
+
+export const notificationEvents = [
+  "order.created",
+  "milestone.settled",
+  "dispute.opened",
+  "dispute.resolved",
+  "rfq.awarded",
+  "order.completed",
+  "order.rated",
+  "budget_wall.hit",
+] as const;
+export type NotificationEvent = (typeof notificationEvents)[number];
+
+export interface Notification {
+  id: string;
+  event: NotificationEvent;
+  target: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+  delivered: boolean;
 }
