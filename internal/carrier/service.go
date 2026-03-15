@@ -94,6 +94,25 @@ type Service struct {
 	bindingIdx  map[string]string             // "orderID|milestoneID" → binding id
 	jobs        map[string]ExecutionJob       // id → job
 	jobsByBinding map[string][]string         // binding id → job ids
+	logger      Logger
+}
+
+// Logger is an optional structured logger for carrier operations.
+type Logger interface {
+	Info(msg string, fields ...map[string]any)
+	Warn(msg string, fields ...map[string]any)
+	Error(msg string, fields ...map[string]any)
+}
+
+// SetLogger configures the carrier service logger.
+func (s *Service) SetLogger(l Logger) {
+	s.logger = l
+}
+
+func (s *Service) log(msg string, fields map[string]any) {
+	if s.logger != nil {
+		s.logger.Info(msg, fields)
+	}
 }
 
 // NewService creates a new carrier service.
@@ -129,6 +148,7 @@ func (s *Service) Bind(orderID, milestoneID, carrierID string, capabilities []st
 	}
 	s.bindings[binding.ID] = binding
 	s.bindingIdx[key] = binding.ID
+	s.log("carrier.bind", map[string]any{"bindingId": binding.ID, "carrierId": carrierID, "orderId": orderID})
 	return binding, nil
 }
 
@@ -252,6 +272,7 @@ func (s *Service) transitionJob(jobID string, to JobState, output, errMsg string
 		job.CompletedAt = &now
 	}
 	s.jobs[jobID] = job
+	s.log("carrier.job.transition", map[string]any{"jobId": jobID, "to": string(to)})
 	return job, nil
 }
 
