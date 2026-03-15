@@ -18,6 +18,14 @@ const demoOrder = {
   ],
 };
 
+const orderStatusTone: Record<string, "default" | "mint" | "warning" | "danger"> = {
+  draft: "default",
+  running: "mint",
+  awaiting_budget: "warning",
+  completed: "mint",
+  failed: "danger",
+};
+
 export default async function OrderDetailPage({ params }: { params: { orderId: string } }) {
   const { orderId } = params;
   const order = demoOrder; // TODO: fetch from API
@@ -30,7 +38,7 @@ export default async function OrderDetailPage({ params }: { params: { orderId: s
       signal={order.status}
       asideTitle="Order signal deck"
       asideItems={[
-        { label: "Status", value: order.status, tone: order.status === "running" ? "mint" : "default" },
+        { label: "Status", value: order.status, tone: orderStatusTone[order.status] ?? "default" },
         { label: "Funding", value: order.fundingMode },
         { label: "Provider", value: order.providerOrgId },
         { label: "Milestones", value: `${order.milestones.length}` },
