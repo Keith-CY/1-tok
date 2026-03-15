@@ -1871,3 +1871,56 @@ func TestWithdrawalStatuses_NoProviderOrg(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestRequestWithdrawal_ProviderMismatch(t *testing.T) {
+	fiber := &stubFiberClient{
+		requestPayoutResult: fiberclient.RequestPayoutResult{ID: "payout_1"},
+	}
+	actor := iamclient.Actor{
+		UserID: "u_prov",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber: fiber,
+		Auth:  &stubIAMClient{actor: actor},
+	})
+
+	payload := `{"providerOrgId":"org_wrong","asset":"CKB","amount":"50","destination":{"kind":"address","address":"ckb1addr"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	// Provider mismatch
+	if rec.Code == http.StatusCreated {
+		t.Error("expected error for provider mismatch")
+	}
+}
+
+func TestQuoteWithdrawal_ProviderMismatch(t *testing.T) {
+	fiber := &stubFiberClient{
+		quoteResult: fiberclient.QuotePayoutResult{Asset: "CKB"},
+	}
+	actor := iamclient.Actor{
+		UserID: "u_prov",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_p", OrganizationKind: "provider", Role: "org_owner"},
+		},
+	}
+	s := NewServerWithOptions(Options{
+		Fiber: fiber,
+		Auth:  &stubIAMClient{actor: actor},
+	})
+
+	payload := `{"providerOrgId":"org_wrong","asset":"CKB","amount":"50","destination":{"kind":"address","address":"ckb1addr"}}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/withdrawals/quote", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code == http.StatusOK {
+		t.Error("expected error for provider mismatch")
+	}
+}

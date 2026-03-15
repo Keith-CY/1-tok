@@ -361,3 +361,56 @@ func TestSubmitForm_WrongRedirect(t *testing.T) {
 		t.Error("expected error for wrong redirect")
 	}
 }
+
+func TestRunPortalSmoke_MissingURL(t *testing.T) {
+	_, err := RunPortalSmoke(context.Background(), PortalConfig{
+		WebBaseURL: "http://web", APIBaseURL: "http://api",
+		// Missing IAM and execution
+	})
+	if err == nil {
+		t.Error("expected error for missing URLs")
+	}
+}
+
+func TestRunPortalSmoke_HealthFail(t *testing.T) {
+	down := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer down.Close()
+
+	_, err := RunPortalSmoke(context.Background(), PortalConfig{
+		WebBaseURL:       down.URL,
+		APIBaseURL:       down.URL,
+		IAMBaseURL:       down.URL,
+		ExecutionBaseURL: down.URL,
+	})
+	if err == nil {
+		t.Error("expected error for unhealthy service")
+	}
+}
+
+func TestRunPortalSmoke_IAMHealthFail(t *testing.T) {
+	healthy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer healthy.Close()
+
+	down := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer down.Close()
+
+	_, err := RunPortalSmoke(context.Background(), PortalConfig{
+		WebBaseURL:       healthy.URL,
+		APIBaseURL:       healthy.URL,
+		IAMBaseURL:       down.URL,
+		ExecutionBaseURL: healthy.URL,
+	})
+	if err == nil {
+		t.Error("expected error for unhealthy IAM")
+	}
+}
