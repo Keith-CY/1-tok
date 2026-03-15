@@ -5851,3 +5851,98 @@ func TestResolveOpsUser_NotOps(t *testing.T) {
 		t.Errorf("expected 403, got %d", w.Code)
 	}
 }
+
+func TestCreateOrder_WithBuyerAuth(t *testing.T) {
+	mockIAM := &stubIAMClient{actor: iamclient.Actor{
+		UserID: "user_b",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "procurement"},
+		},
+	}}
+	srv := NewServerWithOptions(Options{App: platform.NewAppWithMemory(), IAM: mockIAM})
+
+	body := `{"buyerOrgId":"org_b","providerOrgId":"org_p","fundingMode":"prepaid","milestones":[{"id":"ms_1","title":"W","basePriceCents":5000,"budgetCents":5000}]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer valid")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Errorf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGetOrder_WithAuth(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	noAuth := NewServerWithOptions(Options{App: app})
+	body := `{"buyerOrgId":"org_b","providerOrgId":"org_p","fundingMode":"prepaid","milestones":[{"id":"ms_1","title":"W","basePriceCents":5000,"budgetCents":5000}]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	noAuth.ServeHTTP(w, req)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	orderID := resp["order"].(map[string]any)["id"].(string)
+
+	// Get with buyer auth
+	mockIAM := &stubIAMClient{actor: iamclient.Actor{
+		UserID: "user_b",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "org_owner"},
+		},
+	}}
+	authSrv := NewServerWithOptions(Options{App: app, IAM: mockIAM})
+
+	req = httptest.NewRequest("GET", "/api/v1/orders/"+orderID, nil)
+	req.Header.Set("Authorization", "Bearer valid")
+	w = httptest.NewRecorder()
+	authSrv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDisputeResolve_WithOps(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	noAuth := NewServerWithOptions(Options{App: app})
+
+	// Create order + settle + dispute
+	body := `{"buyerOrgId":"org_b","providerOrgId":"org_p","fundingMode":"prepaid","milestones":[{"id":"ms_1","title":"W","basePriceCents":5000,"budgetCents":5000}]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	noAuth.ServeHTTP(w, req)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	orderID := resp["order"].(map[string]any)["id"].(string)
+
+	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/milestones/ms_1/settle", strings.NewReader(`{"milestoneId":"ms_1","summary":"done"}`))
+	w = httptest.NewRecorder()
+	noAuth.ServeHTTP(w, req)
+
+	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/disputes", strings.NewReader(`{"milestoneId":"ms_1","reason":"bad","refundCents":100}`))
+	w = httptest.NewRecorder()
+	noAuth.ServeHTTP(w, req)
+
+	// Get dispute ID
+	req = httptest.NewRequest("GET", "/api/v1/disputes", nil)
+	w = httptest.NewRecorder()
+	noAuth.ServeHTTP(w, req)
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	disputes := resp["disputes"].([]any)
+	disputeID := disputes[len(disputes)-1].(map[string]any)["id"].(string)
+
+	// Resolve with ops auth
+	mockIAM := &stubIAMClient{actor: iamclient.Actor{
+		UserID: "user_ops",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_ops", OrganizationKind: "ops", Role: "ops_reviewer"},
+		},
+	}}
+	authSrv := NewServerWithOptions(Options{App: app, IAM: mockIAM})
+
+	req = httptest.NewRequest("POST", "/api/v1/disputes/"+disputeID+"/resolve", strings.NewReader(`{"resolvedBy":"ops_reviewer","resolution":"approved"}`))
+	req.Header.Set("Authorization", "Bearer valid")
+	w = httptest.NewRecorder()
+	authSrv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
