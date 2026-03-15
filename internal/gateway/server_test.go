@@ -4590,3 +4590,61 @@ func TestCreateDispute_WithBuyerAuthAndRateLimit(t *testing.T) {
 		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestListRFQs_NoMembership(t *testing.T) {
+	actor := iamclient.Actor{
+		UserID:      "u_empty",
+		Memberships: nil,
+	}
+	gw, _ := NewServerWithOptionsE(Options{
+		App: platform.NewAppWithMemory(),
+		IAM: &stubIAMClient{actor: actor},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/rfqs", nil)
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestListOrders_NoMembership(t *testing.T) {
+	actor := iamclient.Actor{
+		UserID:      "u_empty",
+		Memberships: nil,
+	}
+	gw, _ := NewServerWithOptionsE(Options{
+		App: platform.NewAppWithMemory(),
+		IAM: &stubIAMClient{actor: actor},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/orders", nil)
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestListRFQBids_NoMembership(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "No mem", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+
+	actor := iamclient.Actor{UserID: "u_empty", Memberships: nil}
+	gw, _ := NewServerWithOptionsE(Options{App: app, IAM: &stubIAMClient{actor: actor}})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/rfqs/"+rfq.ID+"/bids", nil)
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
