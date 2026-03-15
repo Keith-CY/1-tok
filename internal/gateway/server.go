@@ -13,6 +13,7 @@ import (
 	"github.com/chenyu/1-tok/internal/httputil"
 	iamclient "github.com/chenyu/1-tok/internal/integrations/iam"
 	"github.com/chenyu/1-tok/internal/observability"
+	"github.com/chenyu/1-tok/internal/carrier"
 	"github.com/chenyu/1-tok/internal/platform"
 	"github.com/chenyu/1-tok/internal/ratelimit"
 	"github.com/chenyu/1-tok/internal/runtimeconfig"
@@ -30,6 +31,7 @@ type Server struct {
 	auth            iamclient.Client
 	executionTokens serviceauth.TokenSet
 	rateLimiter     ratelimit.Limiter
+	carrier         *carrier.Service
 }
 
 func NewServer() *Server {
@@ -52,6 +54,7 @@ type Options struct {
 	ExecutionToken  string
 	ExecutionTokens serviceauth.TokenSet
 	RateLimiter     ratelimit.Limiter
+	Carrier         *carrier.Service
 }
 
 func NewServerWithOptions(options Options) *Server {
@@ -94,11 +97,17 @@ func NewServerWithOptionsE(options Options) (*Server, error) {
 		}
 	}
 
+	carrierSvc := options.Carrier
+	if carrierSvc == nil {
+		carrierSvc = carrier.NewService()
+	}
+
 	return &Server{
 		app:             options.App,
 		auth:            options.IAM,
 		executionTokens: options.ExecutionTokens,
 		rateLimiter:     options.RateLimiter,
+		carrier:         carrierSvc,
 	}, nil
 }
 
@@ -146,6 +155,22 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleCreateMessage(w, r)
 	case r.Method == http.MethodPost && isOrderRatingPath(r.URL.Path):
 		s.handleRateOrder(w, r)
+	case r.Method == http.MethodPost && isBindCarrierPath(r.URL.Path):
+		s.handleBindCarrier(w, r)
+	case r.Method == http.MethodPost && isCreateJobPath(r.URL.Path):
+		s.handleCreateJob(w, r)
+	case r.Method == http.MethodGet && isJobPath(r.URL.Path):
+		s.handleGetJob(w, r)
+	case r.Method == http.MethodPatch && isJobActionPath(r.URL.Path, "start"):
+		s.handleStartJob(w, r)
+	case r.Method == http.MethodPatch && isJobActionPath(r.URL.Path, "complete"):
+		s.handleCompleteJob(w, r)
+	case r.Method == http.MethodPatch && isJobActionPath(r.URL.Path, "fail"):
+		s.handleFailJob(w, r)
+	case r.Method == http.MethodPost && isJobActionPath(r.URL.Path, "progress"):
+		s.handleJobProgress(w, r)
+	case r.Method == http.MethodPost && isJobActionPath(r.URL.Path, "heartbeat"):
+		s.handleJobHeartbeat(w, r)
 	default:
 		httputil.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "route not found"})
 	}
@@ -1354,4 +1379,224 @@ func (s *Server) handleCreateRFQMessage(w http.ResponseWriter, r *http.Request) 
 	}
 
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{"message": message})
+}
+
+// --- Carrier routes ---
+
+// /api/v1/orders/:id/milestones/:mid/bind-carrier
+func isBindCarrierPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 7 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "orders" && parts[4] == "milestones" && parts[6] == "bind-carrier"
+}
+
+// /api/v1/orders/:id/milestones/:mid/jobs
+func isCreateJobPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 7 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "orders" && parts[4] == "milestones" && parts[6] == "jobs"
+}
+
+// /api/v1/jobs/:id
+func isJobPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 4 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "jobs"
+}
+
+// /api/v1/jobs/:id/:action
+func isJobActionPath(path string, action string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 5 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "jobs" && parts[4] == action
+}
+
+func orderMilestoneFromBindPath(path string) (string, string, error) {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) < 6 {
+		return "", "", errors.New("invalid bind path")
+	}
+	return parts[3], parts[5], nil
+}
+
+func jobIDFromPath(path string) (string, error) {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) < 4 || parts[2] != "jobs" {
+		return "", errors.New("invalid job path")
+	}
+	return parts[3], nil
+}
+
+func (s *Server) handleBindCarrier(w http.ResponseWriter, r *http.Request) {
+	orderID, milestoneID, err := orderMilestoneFromBindPath(r.URL.Path)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	var payload struct {
+		CarrierID    string   `json:"carrierId"`
+		Capabilities []string `json:"capabilities"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+
+	binding, err := s.carrier.Bind(orderID, milestoneID, payload.CarrierID, payload.Capabilities)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{"binding": binding})
+}
+
+func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
+	_, milestoneID, err := orderMilestoneFromBindPath(r.URL.Path)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	var payload struct {
+		BindingID string `json:"bindingId"`
+		Input     string `json:"input"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+
+	job, err := s.carrier.CreateJob(payload.BindingID, milestoneID, payload.Input)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{"job": job})
+}
+
+func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
+	jobID, err := jobIDFromPath(r.URL.Path)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	job, err := s.carrier.GetJob(jobID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"job": job})
+}
+
+func (s *Server) handleStartJob(w http.ResponseWriter, r *http.Request) {
+	jobID, err := jobIDFromPath(r.URL.Path)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	job, err := s.carrier.StartJob(jobID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"job": job})
+}
+
+func (s *Server) handleCompleteJob(w http.ResponseWriter, r *http.Request) {
+	jobID, err := jobIDFromPath(r.URL.Path)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	var payload struct {
+		Output string `json:"output"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+
+	job, err := s.carrier.CompleteJob(jobID, payload.Output)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"job": job})
+}
+
+func (s *Server) handleFailJob(w http.ResponseWriter, r *http.Request) {
+	jobID, err := jobIDFromPath(r.URL.Path)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	var payload struct {
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+
+	job, err := s.carrier.FailJob(jobID, payload.Error)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"job": job})
+}
+
+func (s *Server) handleJobProgress(w http.ResponseWriter, r *http.Request) {
+	jobID, err := jobIDFromPath(r.URL.Path)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	var payload struct {
+		Step    int    `json:"step"`
+		Total   int    `json:"total"`
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+
+	job, err := s.carrier.UpdateProgress(jobID, payload.Step, payload.Total, payload.Message)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"job": job})
+}
+
+func (s *Server) handleJobHeartbeat(w http.ResponseWriter, r *http.Request) {
+	jobID, err := jobIDFromPath(r.URL.Path)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	// Get job to find binding
+	job, err := s.carrier.GetJob(jobID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	if err := s.carrier.Heartbeat(job.BindingID); err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

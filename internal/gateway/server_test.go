@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -4881,5 +4883,134 @@ func TestListRFQBids_NoAuthHeader(t *testing.T) {
 	gw.ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCarrierBindAndJobLifecycle(t *testing.T) {
+	srv := NewServer()
+
+	// Bind carrier
+	body := `{"carrierId":"carrier_a","capabilities":["gpu","inference"]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders/ord_1/milestones/ms_1/bind-carrier", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("bind: status = %d, body = %s", w.Code, w.Body.String())
+	}
+
+	// Extract binding ID
+	var bindResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &bindResp)
+	binding := bindResp["binding"].(map[string]any)
+	bindingID := binding["id"].(string)
+
+	// Create job
+	jobBody := fmt.Sprintf(`{"bindingId":"%s","input":"test input"}`, bindingID)
+	req = httptest.NewRequest("POST", "/api/v1/orders/ord_1/milestones/ms_1/jobs", strings.NewReader(jobBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create job: status = %d, body = %s", w.Code, w.Body.String())
+	}
+
+	var jobResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &jobResp)
+	job := jobResp["job"].(map[string]any)
+	jobID := job["id"].(string)
+
+	// Get job
+	req = httptest.NewRequest("GET", "/api/v1/jobs/"+jobID, nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("get job: status = %d", w.Code)
+	}
+
+	// Start job
+	req = httptest.NewRequest("PATCH", "/api/v1/jobs/"+jobID+"/start", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("start job: status = %d, body = %s", w.Code, w.Body.String())
+	}
+
+	// Progress
+	progBody := `{"step":5,"total":10,"message":"halfway"}`
+	req = httptest.NewRequest("POST", "/api/v1/jobs/"+jobID+"/progress", strings.NewReader(progBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("progress: status = %d, body = %s", w.Code, w.Body.String())
+	}
+
+	// Heartbeat
+	req = httptest.NewRequest("POST", "/api/v1/jobs/"+jobID+"/heartbeat", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("heartbeat: status = %d", w.Code)
+	}
+
+	// Complete
+	completeBody := `{"output":"result data"}`
+	req = httptest.NewRequest("PATCH", "/api/v1/jobs/"+jobID+"/complete", strings.NewReader(completeBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("complete: status = %d, body = %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCarrierJobFail(t *testing.T) {
+	srv := NewServer()
+
+	body := `{"carrierId":"carrier_a"}`
+	req := httptest.NewRequest("POST", "/api/v1/orders/ord_1/milestones/ms_1/bind-carrier", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	var bindResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &bindResp)
+	bindingID := bindResp["binding"].(map[string]any)["id"].(string)
+
+	jobBody := fmt.Sprintf(`{"bindingId":"%s","input":"test"}`, bindingID)
+	req = httptest.NewRequest("POST", "/api/v1/orders/ord_1/milestones/ms_1/jobs", strings.NewReader(jobBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	var jobResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &jobResp)
+	jobID := jobResp["job"].(map[string]any)["id"].(string)
+
+	// Start then fail
+	req = httptest.NewRequest("PATCH", "/api/v1/jobs/"+jobID+"/start", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	failBody := `{"error":"out of memory"}`
+	req = httptest.NewRequest("PATCH", "/api/v1/jobs/"+jobID+"/fail", strings.NewReader(failBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("fail: status = %d", w.Code)
+	}
+}
+
+func TestCarrierDuplicateBind(t *testing.T) {
+	srv := NewServer()
+
+	body := `{"carrierId":"carrier_a"}`
+	req := httptest.NewRequest("POST", "/api/v1/orders/ord_1/milestones/ms_1/bind-carrier", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("first bind: status = %d", w.Code)
+	}
+
+	req = httptest.NewRequest("POST", "/api/v1/orders/ord_1/milestones/ms_1/bind-carrier", strings.NewReader(body))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code == http.StatusCreated {
+		t.Error("duplicate bind should fail")
 	}
 }
