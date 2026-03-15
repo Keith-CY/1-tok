@@ -482,3 +482,47 @@ When `IAM_UPSTREAM` is configured for `api-gateway` and `settlement`, the platfo
 - Internal service-token boundaries are enforced and can accept rotated comma-separated token sets for `api-gateway`, `execution`, and `settlement`.
 - Local release verification now covers service-only, portal-only, full local, full persisted local, compose, and external-dependency rehearsals, with persisted evidence artifacts and an aggregated `release-manifest.json`.
 - The primary remaining blocker to a real production release claim is a successful run of `bun run release:external-deps-smoke` against real external `Fiber` and `Carrier` environments using live credentials and endpoints.
+
+## Webhook Signature Verification
+
+Webhooks include an HMAC-SHA256 signature in the `X-1Tok-Signature` header.
+
+Verify with:
+
+```python
+import hmac, hashlib
+
+def verify(secret: str, body: bytes, signature: str) -> bool:
+    expected = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature)
+```
+
+```go
+mac := hmac.New(sha256.New, []byte(secret))
+mac.Write(body)
+expected := hex.EncodeToString(mac.Sum(nil))
+valid := hmac.Equal([]byte(expected), []byte(signature))
+```
+
+## Quick Start
+
+```bash
+# Start all services
+docker compose up -d
+
+# Create an RFQ
+curl -X POST http://localhost:8080/api/v1/rfqs \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Agent triage","category":"agent-ops","scope":"Investigate failures","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}'
+
+# Search listings
+curl "http://localhost:8080/api/v1/listings?q=agent&category=agent-ops"
+
+# Check marketplace stats
+curl http://localhost:8080/api/v1/stats
+
+# Register a webhook
+curl -X POST http://localhost:8080/api/v1/webhooks \
+  -H "Content-Type: application/json" \
+  -d '{"target":"org_buyer","url":"https://example.com/webhook"}'
+```
