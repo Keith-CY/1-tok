@@ -198,6 +198,7 @@ type App struct {
 	clock        Clock
 	providerApplications []ProviderApplication
 	carrierBindings      []ProviderCarrierBinding
+	carrierBindingsByOrg map[string]int // providerOrgID → index in carrierBindings
 }
 
 // Notifier is an optional notification delivery interface.
@@ -1979,6 +1980,10 @@ func (a *App) RegisterCarrierBinding(input ProviderCarrierBinding) (ProviderCarr
 	}
 
 	a.carrierBindings = append(a.carrierBindings, binding)
+	if a.carrierBindingsByOrg == nil {
+		a.carrierBindingsByOrg = make(map[string]int)
+	}
+	a.carrierBindingsByOrg[input.ProviderOrgID] = len(a.carrierBindings) - 1
 
 	a.notify("provider.carrier.binding.registered", input.ProviderOrgID, map[string]any{
 		"bindingId": binding.ID,

@@ -160,8 +160,8 @@ func (a *App) AwardRFQ(rfqID string, input AwardRFQInput) (RFQ, *core.Order, err
 
 	// Check if provider's carrier binding is suspended
 	a.mu.Lock()
-	for _, binding := range a.carrierBindings {
-		if binding.ProviderOrgID == bid.ProviderOrgID && binding.Status == "suspended" {
+	if idx, ok := a.carrierBindingsByOrg[bid.ProviderOrgID]; ok {
+		if a.carrierBindings[idx].Status == "suspended" {
 			a.mu.Unlock()
 			return RFQ{}, nil, ErrProviderSuspended
 		}
