@@ -5425,3 +5425,82 @@ func TestStaleJobs(t *testing.T) {
 	srv.ServeHTTP(w, req)
 	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
 }
+
+func TestAuthRequired_Endpoints(t *testing.T) {
+	mockIAM := &stubIAMErrorClient{err: iamclient.ErrUnauthorized}
+	srv := NewServerWithOptions(Options{
+		App: platform.NewAppWithMemory(),
+		IAM: mockIAM,
+	})
+
+	authEndpoints := []struct {
+		method string
+		path   string
+	}{
+		// Messages
+		{"GET", "/api/v1/rfqs/rfq_1/messages"},
+		{"POST", "/api/v1/rfqs/rfq_1/messages"},
+		{"GET", "/api/v1/orders/ord_1/messages"},
+		// Rating
+		{"POST", "/api/v1/orders/ord_1/rating"},
+		// Webhooks
+		{"GET", "/api/v1/webhooks"},
+		{"POST", "/api/v1/webhooks"},
+		{"DELETE", "/api/v1/webhooks/org_1"},
+		// Notifications
+		{"GET", "/api/v1/notifications/org_1"},
+		// Orders (with auth)
+		{"GET", "/api/v1/orders"},
+		{"GET", "/api/v1/rfqs"},
+	}
+
+	for _, tc := range authEndpoints {
+		var body *strings.Reader
+		if tc.method == "POST" {
+			body = strings.NewReader(`{"target":"org_1","url":"http://test"}`)
+		} else {
+			body = strings.NewReader("")
+		}
+		req := httptest.NewRequest(tc.method, tc.path, body)
+		req.Header.Set("Authorization", "Bearer invalid_token")
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, req)
+
+		if w.Code != http.StatusUnauthorized && w.Code != http.StatusBadGateway {
+			t.Errorf("%s %s: expected 401/502, got %d", tc.method, tc.path, w.Code)
+		}
+	}
+}
+
+func TestRFQMessagesAuth_Forbidden(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	// Create RFQ without auth (using default server)
+	noAuthSrv := NewServerWithOptions(Options{App: app})
+	rfqBody := `{"buyerOrgId":"org_buyer","title":"auth test","category":"ai","scope":"test","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(rfqBody))
+	w := httptest.NewRecorder()
+	noAuthSrv.ServeHTTP(w, req)
+	var rfqResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &rfqResp)
+	rfqID := rfqResp["rfq"].(map[string]any)["id"].(string)
+
+	// Now test with auth — actor has wrong org
+	mockIAM := &stubIAMClient{
+		actor: iamclient.Actor{
+			UserID: "user_1",
+			Memberships: []iamclient.ActorMembership{
+				{OrganizationID: "org_wrong", Role: "org_owner"},
+			},
+		},
+	}
+	authSrv := NewServerWithOptions(Options{App: app, IAM: mockIAM})
+
+	req = httptest.NewRequest("GET", "/api/v1/rfqs/"+rfqID+"/messages", nil)
+	req.Header.Set("Authorization", "Bearer token")
+	w = httptest.NewRecorder()
+	authSrv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
