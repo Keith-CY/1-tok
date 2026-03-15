@@ -6221,3 +6221,79 @@ func TestWebhookUnregister(t *testing.T) {
 		t.Errorf("unregister: %d", w.Code)
 	}
 }
+
+func TestGetDispute_WithEvidence(t *testing.T) {
+	srv := NewServer()
+	// Create order → settle → dispute
+	body := `{"buyerOrgId":"org_b","providerOrgId":"org_p","fundingMode":"prepaid","milestones":[{"id":"ms_1","title":"W","basePriceCents":5000,"budgetCents":5000}]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	orderID := resp["order"].(map[string]any)["id"].(string)
+
+	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/milestones/ms_1/settle", strings.NewReader(`{"milestoneId":"ms_1","summary":"done"}`))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/disputes", strings.NewReader(`{"milestoneId":"ms_1","reason":"bad","refundCents":100}`))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	// Get disputes list
+	req = httptest.NewRequest("GET", "/api/v1/disputes", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	disputes := resp["disputes"].([]any)
+	disputeID := disputes[len(disputes)-1].(map[string]any)["id"].(string)
+
+	// Get dispute detail with evidence
+	req = httptest.NewRequest("GET", "/api/v1/disputes/"+disputeID, nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("get dispute: %d %s", w.Code, w.Body.String())
+	}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if _, ok := resp["dispute"]; !ok {
+		t.Error("missing dispute field")
+	}
+}
+
+func TestBatchOrderStatus_WithOrders(t *testing.T) {
+	srv := NewServer()
+	// Create two orders
+	body := `{"buyerOrgId":"org_b","providerOrgId":"org_p","fundingMode":"prepaid","milestones":[{"id":"ms_1","title":"W","basePriceCents":1000,"budgetCents":1000}]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	id1 := resp["order"].(map[string]any)["id"].(string)
+
+	req = httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(body))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	id2 := resp["order"].(map[string]any)["id"].(string)
+
+	// Batch status
+	batchBody := fmt.Sprintf(`{"orderIds":["%s","%s"]}`, id1, id2)
+	req = httptest.NewRequest("POST", "/api/v1/orders/batch-status", strings.NewReader(batchBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	orders := resp["orders"].([]any)
+	if len(orders) != 2 { t.Errorf("expected 2, got %d", len(orders)) }
+}
+
+func TestListNotifications_Gateway(t *testing.T) {
+	srv := NewServer()
+	req := httptest.NewRequest("GET", "/api/v1/notifications/org_1", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+}
