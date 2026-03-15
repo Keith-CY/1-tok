@@ -2258,3 +2258,29 @@ func TestCreateBid_RequiresProfile_WhenEnforced(t *testing.T) {
 		t.Errorf("expected success, got %v", err)
 	}
 }
+
+func TestIsProviderApproved(t *testing.T) {
+	app := NewAppWithMemory()
+
+	// No applications → approved (backward compatible)
+	if !app.IsProviderApproved("org_p") {
+		t.Error("expected approved when no applications exist")
+	}
+
+	// Submit + approve
+	pa, _ := app.SubmitProviderApplication("org_p", "P", nil)
+	if app.IsProviderApproved("org_p") {
+		t.Error("pending should not be approved")
+	}
+
+	app.ReviewProviderApplication(pa.ID, "ops", "ok", true)
+	if !app.IsProviderApproved("org_p") {
+		t.Error("approved application should pass")
+	}
+
+	// Different org still not approved
+	app.SubmitProviderApplication("org_other", "O", nil)
+	if app.IsProviderApproved("org_other") {
+		t.Error("pending org_other should not be approved")
+	}
+}

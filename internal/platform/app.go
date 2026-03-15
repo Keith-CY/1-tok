@@ -2078,3 +2078,21 @@ func (a *App) validateExecutionProfile(profileID string) error {
 	}
 	return nil
 }
+
+// IsProviderApproved checks if a provider org has an approved application.
+// Returns true if no application system is configured (backward compatible).
+func (a *App) IsProviderApproved(providerOrgID string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if len(a.providerApplications) == 0 {
+		return true // No applications submitted yet — backward compatible
+	}
+
+	for _, app := range a.providerApplications {
+		if app.OrgID == providerOrgID && app.Status == VettingApproved {
+			return true
+		}
+	}
+	return false
+}
