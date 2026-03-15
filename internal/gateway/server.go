@@ -17,6 +17,7 @@ import (
 	"github.com/chenyu/1-tok/internal/carrier"
 	"github.com/chenyu/1-tok/internal/notifications"
 	"github.com/chenyu/1-tok/internal/platform"
+	"github.com/chenyu/1-tok/internal/validation"
 	"github.com/chenyu/1-tok/internal/ratelimit"
 	"github.com/chenyu/1-tok/internal/runtimeconfig"
 	"github.com/chenyu/1-tok/internal/serviceauth"
@@ -490,6 +491,17 @@ func (s *Server) handleCreateRFQ(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+
+	if verr := validation.New().
+		Required("title", payload.Title).
+		Required("category", payload.Category).
+		Required("scope", payload.Scope).
+		Positive("budgetCents", payload.BudgetCents).
+		Required("responseDeadlineAt", payload.ResponseDeadlineAt).
+		Build(); verr != nil {
+		httputil.WriteErrorWithDetails(w, http.StatusBadRequest, httputil.ErrCodeValidation, "validation failed", verr.Fields)
 		return
 	}
 
