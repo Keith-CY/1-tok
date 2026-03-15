@@ -204,14 +204,3 @@ export const demoBids: Bid[] = [
     updatedAt: "2026-03-12T00:00:00Z",
   },
 ];
-
-export async function getProviders(options?: CollectionRequestOptions): Promise<ProviderProfile[]> {
-  return readCollection("/api/v1/providers", "providers", demoProviders, options);
-}
-
-export async function getListings(options?: CollectionRequestOptions): Promise<Listing[]> {
-  return readCollection("/api/v1/listings", "listings", demoListings, options);
-}
-
-export async function getOrders(options?: CollectionRequestOptions): Promise<Order[]> {
-  return readCollection("/api/v1/orders", "orders", demoOrders, options);
