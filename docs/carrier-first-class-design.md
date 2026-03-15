@@ -1,6 +1,6 @@
 # Carrier First-Class Agent Provider Design
 
-Last updated: `2026-03-13`
+Last updated: `2026-03-15`
 
 This document is the authoritative design for making `Carrier-backed provider` a first-class provider type in `1-tok`.
 
@@ -178,6 +178,37 @@ The platform must add `ExecutionJob` and `ExecutionAttempt`.
 | `endedAt`          | Attempt end time                               |
 | `resultSummary`    | Summary of the attempt's outcome               |
 
+The platform must also persist `ExecutionEvent` as the append-only callback ledger. Required fields:
+
+| Field | Meaning |
+| --- | --- |
+| `id` | platform identifier |
+| `executionJobId` | owning execution job |
+| `eventId` | unique Carrier event id |
+| `sequence` | monotonic sequence for the execution |
+| `eventType` | canonical event name |
+| `attemptId` | Carrier attempt id if present |
+| `payloadJSON` | normalized payload snapshot |
+| `receivedAt` | platform receive time |
+| `decisionJSON` | callback response returned to Carrier |
+
+Ledger rules:
+
+- replaying the same `eventId` must return the previous `decisionJSON` without mutating job state
+- a different `eventId` with `sequence <= lastSequence` is rejected as replay or reordering
+- a gap where `sequence > lastSequence + 1` is rejected so Carrier redelivers the missing event first
+- ledger persistence and derived `ExecutionJob` mutation happen in one transaction
+
+Execution lifecycle rules are fixed:
+
+1. Awarding or resuming an executable milestone creates or resumes one `ExecutionJob` and snapshots the resolved binding/profile target onto the attempt.
+2. The platform calls Carrier create with an idempotency key derived from `executionJobId` and `attemptNo`; retries reuse that same key until Carrier returns the same `carrierExecutionId`.
+3. The synchronous create response only confirms acceptance; callbacks and status fetch remain the authoritative runtime truth.
+4. `execution.accepted`, `execution.started`, and `execution.heartbeat` advance derived runtime state and refresh `lastHeartbeatAt`.
+5. `usage.reported` can change budget state and may cause the callback response to request `pause`.
+6. `milestone.ready` hands evidence into settlement; `execution.completed` only closes execution bookkeeping.
+7. Retries create a new `ExecutionAttempt` but stay inside the same `ExecutionJob`.
+
 ### 4. Settlement, Risk, And Dispute Integration
 
 Platform rules are fixed:
@@ -268,6 +299,39 @@ Callback behavior is fixed:
 - callbacks are signed with the binding-specific HMAC secret
 - Carrier treats non-2xx or `accepted=false` as delivery failure
 - Carrier retries with exponential backoff for at least 15 minutes
+
+### 5. What The Carrier Project Must Deliver
+
+For Carrier maintainers, the requirement is not "be generally compatible". The requirement is to expose a narrow contract that `1-tok` can treat as stable product infrastructure.
+
+Carrier must deliver all of the following:
+
+- a provider-facing way to mint and rotate a provider-scoped integration token for `1-tok`
+- one stable integration base URL for staging and one for production
+- one stable execution API namespace matching this document, instead of asking `1-tok` to target ad hoc internal routes
+- durable `carrierExecutionId`, `attemptId`, `eventId`, and artifact references that survive retries and process restarts
+- explicit translation from Carrier internal runtime states into the canonical states and failure categories in this document
+- callback signing and replay-safe retry behavior
+- artifact and usage-proof retention strong enough for settlement review and disputes
+- pause, resume, and cancel semantics that are safe even when delivered more than once
+
+Carrier should assume that `1-tok` will build platform logic directly against this contract. If Carrier needs additional fields, looser guarantees, or different state semantics, that mismatch must be resolved in the design before implementation ships.
+
+### 6. Joint Integration Requirements
+
+Carrier and `1-tok` have separate ownership, so successful rollout also requires explicit coordination artifacts from the Carrier side.
+
+Carrier must provide:
+
+- one named maintainer or team owning the `1-tok` integration contract
+- one staging tenant or account that `1-tok` can use for end-to-end testing
+- one sample provider-scoped token for staging, or a documented self-serve token issuance flow
+- one verified `(hostId, agentId, backend, workspaceRoot)` tuple that remains stable during integration
+- one callback signing key flow that supports initial setup and later rotation
+- example success, pause, failure, artifact, and usage-proof payloads for local and CI fixtures
+- a changelog policy for contract changes affecting `1-tok`
+
+The integration should not be considered ready for rollout until both teams can run the same happy-path and failure-path scenarios against Carrier staging without relying on undocumented internal knowledge.
 
 ## Interface Contract
 
@@ -456,6 +520,24 @@ Their role is restricted to:
 
 They are not the authoritative marketplace execution path anymore.
 
+## Platform Compatibility Bridge
+
+`origin/main` already ships a platform-side execution-service bridge. The canonical Carrier contract in this document must coexist with that bridge until migration completes.
+
+| Current platform route | Current behavior | Canonical contract |
+| --- | --- | --- |
+| `GET /v1/carrier/codeagent/health` | platform proxy for health verification | Carrier `GET /api/v1/remote/hosts/:hostId/instances/:agentId/codeagent/health` |
+| `GET /v1/carrier/codeagent/version` | platform proxy for backend/version inspection | Carrier `GET /api/v1/remote/hosts/:hostId/instances/:agentId/codeagent/version` |
+| `POST /v1/carrier/codeagent/run` | platform proxy for emergency probe execution | Carrier `POST /api/v1/remote/hosts/:hostId/instances/:agentId/codeagent/run` |
+| `POST /v1/carrier/events` | legacy callback ingress using snake_case event names | Platform `POST /v1/carrier/callbacks/events` using canonical dot-separated event names |
+
+Bridge rules:
+
+- Carrier upstream work targets the canonical endpoints, not the legacy bridge names
+- the platform bridge may temporarily accept snake_case aliases such as `usage_reported`, `budget_low`, and `milestone_ready`, but it normalizes them to canonical names before persistence
+- new smoke tests, docs, and operator runbooks must prefer `/v1/carrier/callbacks/events` and canonical dot-separated event names
+- the legacy callback alias is removable only after ops tooling and smoke coverage no longer depend on it
+
 ## State Mapping
 
 Carrier-to-platform state mapping is fixed:
@@ -498,13 +580,14 @@ Retention defaults:
 
 Implementation order is fixed:
 
-1. Add `CarrierBinding` and `ExecutionProfile` to the platform.
-2. Implement provider-scoped binding verification.
-3. Add async execution endpoints in Carrier.
-4. Add `ExecutionJob`, callback verification, and reconciliation in the platform.
-5. Move listings and bids to reference `executionProfileId`.
-6. Keep existing probe endpoints for diagnostics and fallback.
-7. Rewrite smoke tests so formal marketplace execution uses the async path.
+1. Add `CarrierBinding`, `ExecutionProfile`, `ExecutionJob`, `ExecutionAttempt`, and `ExecutionEvent` to the platform.
+2. Keep the execution-service bridge in place, but add the canonical callback path and dot-separated event normalization.
+3. Implement provider-scoped binding verification.
+4. Add async execution endpoints in Carrier.
+5. Add callback verification, ledger persistence, and stale-job reconciliation in the platform.
+6. Move listings and bids to reference `executionProfileId`.
+7. Rewrite smoke tests and operator tooling so formal marketplace execution uses the canonical async path and callback names.
+8. Remove the legacy callback alias only after the migration is complete.
 
 ## Acceptance Criteria
 
@@ -513,8 +596,10 @@ The integration is ready when all of these are true:
 - a provider can bind Carrier resources without ops editing database rows
 - a listing or bid cannot be published without an active execution profile
 - an awarded order creates an execution job and receives signed Carrier callbacks
+- execution callbacks are durably ledgered and gap or replay handling is deterministic
 - duplicate and out-of-order callbacks do not corrupt job state
 - a budget overrun pauses execution and later resumes after budget extension
 - a dispute case can show artifact refs and usage proofs from Carrier
 - binding suspension blocks new awards but does not break already-running orders
+- smoke tests and ops tooling no longer depend on `/v1/carrier/events` or snake_case callback names before that alias is removed
 - the upstream Carrier PR can be described entirely by the checklist in [carrier-pr-support.md](./carrier-pr-support.md)
