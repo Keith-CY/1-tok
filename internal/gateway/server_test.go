@@ -5504,3 +5504,84 @@ func TestRFQMessagesAuth_Forbidden(t *testing.T) {
 		t.Errorf("expected 403, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+func TestCarrierRoutes_WithExecutionToken(t *testing.T) {
+	srv := NewServerWithOptions(Options{
+		App:            platform.NewAppWithMemory(),
+		ExecutionToken: "test-exec-token",
+	})
+
+	// Without token → should fail
+	req := httptest.NewRequest("POST", "/api/v1/orders/ord_1/milestones/ms_1/bind-carrier", strings.NewReader(`{"carrierId":"c"}`))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code == http.StatusCreated {
+		t.Error("should reject without execution token")
+	}
+
+	// With token → should succeed
+	req = httptest.NewRequest("POST", "/api/v1/orders/ord_1/milestones/ms_1/bind-carrier", strings.NewReader(`{"carrierId":"c","capabilities":["gpu"]}`))
+	req.Header.Set("X-One-Tok-Service-Token", "test-exec-token")
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Errorf("with token: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCarrierRoutes_AllMutationsRequireToken(t *testing.T) {
+	srv := NewServerWithOptions(Options{
+		App:            platform.NewAppWithMemory(),
+		ExecutionToken: "tok",
+	})
+
+	mutations := []struct {
+		method string
+		path   string
+		body   string
+	}{
+		{"POST", "/api/v1/orders/ord_1/milestones/ms_1/bind-carrier", `{"carrierId":"c"}`},
+		{"POST", "/api/v1/orders/ord_1/milestones/ms_1/jobs", `{"bindingId":"b","input":"{}"}`},
+		{"PATCH", "/api/v1/jobs/job_1/start", ""},
+		{"PATCH", "/api/v1/jobs/job_1/complete", `{"output":"r"}`},
+		{"PATCH", "/api/v1/jobs/job_1/fail", `{"error":"e"}`},
+		{"POST", "/api/v1/jobs/job_1/progress", `{"step":1,"total":10}`},
+		{"POST", "/api/v1/jobs/job_1/heartbeat", ""},
+		{"POST", "/api/v1/jobs/job_1/cancel", ""},
+		{"POST", "/api/v1/jobs/job_1/evidence", `{"summary":"s"}`},
+	}
+
+	for _, tc := range mutations {
+		body := strings.NewReader(tc.body)
+		req := httptest.NewRequest(tc.method, tc.path, body)
+		// No Authorization header
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, req)
+		if w.Code == http.StatusOK || w.Code == http.StatusCreated {
+			t.Errorf("%s %s: should reject without token, got %d", tc.method, tc.path, w.Code)
+		}
+	}
+}
+
+func TestCallbackHandler(t *testing.T) {
+	srv := NewServer()
+	body := `{"type":"heartbeat","jobId":"","bindingId":"","timestamp":"2026-03-15T00:00:00Z","signature":"","payload":{}}`
+	req := httptest.NewRequest("POST", "/api/v1/carrier/callback", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	// May fail on heartbeat (no binding) but should not be 404
+	if w.Code == http.StatusNotFound {
+		t.Errorf("callback should be routable, got 404")
+	}
+}
+
+func TestCallbackHandler_UnknownType(t *testing.T) {
+	srv := NewServer()
+	body := `{"type":"unknown_event","jobId":"","bindingId":"","timestamp":"2026-03-15T00:00:00Z","signature":""}`
+	req := httptest.NewRequest("POST", "/api/v1/carrier/callback", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("unknown type: expected 400, got %d", w.Code)
+	}
+}
