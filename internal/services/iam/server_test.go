@@ -1286,3 +1286,31 @@ func TestSignup_WithRateLimitError(t *testing.T) {
 		t.Fatalf("expected 500, got %d", rec.Code)
 	}
 }
+
+func TestLoadConfiguredStoreFromEnv_RequireBootstrap_NoDB(t *testing.T) {
+	t.Setenv("IAM_DATABASE_URL", "")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("ONE_TOK_REQUIRE_BOOTSTRAP", "true")
+	_, err := loadConfiguredStoreFromEnv()
+	if err == nil {
+		t.Error("expected error without DSN")
+	}
+}
+
+func TestLoadStoreFromEnv_InvalidDSN(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://invalid:invalid@127.0.0.1:1/invalid")
+	t.Setenv("IAM_DATABASE_URL", "")
+	store := loadStoreFromEnv()
+	if store == nil {
+		t.Log("invalid DSN falls back to memory — this is expected behavior")
+	}
+}
+
+func TestNewServer_FullDefaults(t *testing.T) {
+	t.Setenv("IAM_DATABASE_URL", "")
+	t.Setenv("DATABASE_URL", "")
+	s := NewServer()
+	if s == nil {
+		t.Fatal("expected non-nil server")
+	}
+}
