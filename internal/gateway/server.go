@@ -276,6 +276,17 @@ func (s *Server) handleListRFQs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Apply query filters
+	if status := r.URL.Query().Get("status"); status != "" {
+		filtered := make([]platform.RFQ, 0)
+		for _, rfq := range rfqs {
+			if string(rfq.Status) == status {
+				filtered = append(filtered, rfq)
+			}
+		}
+		rfqs = filtered
+	}
+
 	page := httputil.ParsePagination(r)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"rfqs": httputil.Apply(rfqs, page), "pagination": map[string]any{"limit": page.Limit, "offset": page.Offset, "total": len(rfqs)}})
 }
