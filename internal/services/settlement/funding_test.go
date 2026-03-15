@@ -153,3 +153,66 @@ func TestLoadFundingRecordRepository_Postgres(t *testing.T) {
 		t.Fatal("expected non-nil repo")
 	}
 }
+
+func TestLoadConfiguredFundingRecordRepository_NoDSN(t *testing.T) {
+	t.Setenv("SETTLEMENT_DATABASE_URL", "")
+	t.Setenv("DATABASE_URL", "")
+	_, err := loadConfiguredFundingRecordRepository()
+	if err == nil {
+		t.Error("expected error without DSN")
+	}
+}
+
+func TestLoadConfiguredFundingRecordRepository_InvalidDSN(t *testing.T) {
+	t.Setenv("SETTLEMENT_DATABASE_URL", "postgres://invalid:invalid@127.0.0.1:1/invalid")
+	_, err := loadConfiguredFundingRecordRepository()
+	if err == nil {
+		t.Error("expected error for invalid DSN")
+	}
+}
+
+func TestLoadConfiguredFundingRecordRepository_WithDSN(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL not set")
+	}
+	t.Setenv("SETTLEMENT_DATABASE_URL", dsn)
+	repo, err := loadConfiguredFundingRecordRepository()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repo == nil {
+		t.Fatal("expected non-nil repo")
+	}
+}
+
+func TestLoadConfiguredFundingRecordRepository_RequireBootstrap(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL not set")
+	}
+	t.Setenv("SETTLEMENT_DATABASE_URL", dsn)
+	t.Setenv("ONE_TOK_REQUIRE_BOOTSTRAP", "true")
+	repo, err := loadConfiguredFundingRecordRepository()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repo == nil {
+		t.Fatal("expected non-nil repo")
+	}
+}
+
+func TestLoadFundingRecordRepositoryE_SettlementDSN(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL not set")
+	}
+	t.Setenv("SETTLEMENT_DATABASE_URL", dsn)
+	repo, err := loadFundingRecordRepositoryE()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repo == nil {
+		t.Fatal("expected non-nil repo")
+	}
+}
