@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"context"
 	"database/sql"
 
 	"github.com/chenyu/1-tok/internal/platform"
@@ -19,7 +20,7 @@ func (r *MessageRepository) NextID() (string, error) {
 }
 
 func (r *MessageRepository) Save(message platform.Message) error {
-	_, err := r.db.Exec(`
+	_, err := r.db.ExecContext(context.TODO(), `
 		INSERT INTO messages (id, order_id, rfq_id, author, body, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6)
 	`, message.ID, sql.NullString{String: message.OrderID, Valid: message.OrderID != ""}, sql.NullString{String: message.RFQID, Valid: message.RFQID != ""}, message.Author, message.Body, message.CreatedAt)
@@ -27,7 +28,7 @@ func (r *MessageRepository) Save(message platform.Message) error {
 }
 
 func (r *MessageRepository) ListByRFQ(rfqID string) ([]platform.Message, error) {
-	rows, err := r.db.Query(`SELECT id, COALESCE(order_id, ''), COALESCE(rfq_id, ''), author, body, created_at FROM messages WHERE rfq_id = $1 ORDER BY created_at ASC`, rfqID)
+	rows, err := r.db.QueryContext(context.TODO(), `SELECT id, COALESCE(order_id, ''), COALESCE(rfq_id, ''), author, body, created_at FROM messages WHERE rfq_id = $1 ORDER BY created_at ASC`, rfqID)
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +45,7 @@ func (r *MessageRepository) ListByRFQ(rfqID string) ([]platform.Message, error) 
 }
 
 func (r *MessageRepository) ListByOrder(orderID string) ([]platform.Message, error) {
-	rows, err := r.db.Query(`SELECT id, COALESCE(order_id, ''), COALESCE(rfq_id, ''), author, body, created_at FROM messages WHERE order_id = $1 ORDER BY created_at ASC`, orderID)
+	rows, err := r.db.QueryContext(context.TODO(), `SELECT id, COALESCE(order_id, ''), COALESCE(rfq_id, ''), author, body, created_at FROM messages WHERE order_id = $1 ORDER BY created_at ASC`, orderID)
 	if err != nil {
 		return nil, err
 	}

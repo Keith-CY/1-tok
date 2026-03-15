@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 
@@ -16,7 +17,7 @@ func NewListingRepository(db *sql.DB) *ListingRepository {
 }
 
 func (r *ListingRepository) List() ([]platform.Listing, error) {
-	rows, err := r.db.Query(`
+	rows, err := r.db.QueryContext(context.TODO(), `
 		SELECT id, provider_org_id, title, category, base_price_cents, tags
 		FROM listings
 		ORDER BY id ASC
@@ -55,7 +56,7 @@ func (r *ListingRepository) Upsert(listing platform.Listing) error {
 		return err
 	}
 
-	_, err = r.db.Exec(`
+	_, err = r.db.ExecContext(context.TODO(), `
 		INSERT INTO listings (id, provider_org_id, title, category, base_price_cents, tags, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
 		ON CONFLICT (id) DO UPDATE SET

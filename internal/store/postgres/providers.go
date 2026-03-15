@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 
@@ -16,7 +17,7 @@ func NewProviderRepository(db *sql.DB) *ProviderRepository {
 }
 
 func (r *ProviderRepository) List() ([]platform.ProviderProfile, error) {
-	rows, err := r.db.Query(`
+	rows, err := r.db.QueryContext(context.TODO(), `
 		SELECT id, name, capabilities, reputation_tier
 		FROM providers
 		ORDER BY id ASC
@@ -48,7 +49,7 @@ func (r *ProviderRepository) Upsert(provider platform.ProviderProfile) error {
 		return err
 	}
 
-	_, err = r.db.Exec(`
+	_, err = r.db.ExecContext(context.TODO(), `
 		INSERT INTO providers (id, name, capabilities, reputation_tier, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, NOW(), NOW())
 		ON CONFLICT (id) DO UPDATE SET

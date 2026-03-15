@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -23,7 +24,7 @@ func (r *DisputeRepository) NextID() (string, error) {
 }
 
 func (r *DisputeRepository) Get(id string) (platform.Dispute, error) {
-	row := r.db.QueryRow(`
+	row := r.db.QueryRowContext(context.TODO(), `
 		SELECT id, order_id, milestone_id, reason, refund_cents, status, resolution, resolved_by, resolved_at, created_at
 		FROM disputes
 		WHERE id = $1
@@ -32,7 +33,7 @@ func (r *DisputeRepository) Get(id string) (platform.Dispute, error) {
 }
 
 func (r *DisputeRepository) Save(dispute platform.Dispute) error {
-	_, err := r.db.Exec(`
+	_, err := r.db.ExecContext(context.TODO(), `
 		INSERT INTO disputes (
 			id, order_id, milestone_id, reason, refund_cents, status, resolution, resolved_by, resolved_at, created_at
 		)
@@ -51,7 +52,7 @@ func (r *DisputeRepository) Save(dispute platform.Dispute) error {
 }
 
 func (r *DisputeRepository) List() ([]platform.Dispute, error) {
-	rows, err := r.db.Query(`
+	rows, err := r.db.QueryContext(context.TODO(), `
 		SELECT id, order_id, milestone_id, reason, refund_cents, status, resolution, resolved_by, resolved_at, created_at
 		FROM disputes
 		ORDER BY created_at ASC, id ASC

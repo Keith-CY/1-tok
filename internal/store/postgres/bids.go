@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -21,7 +22,7 @@ func (r *BidRepository) NextID() (string, error) {
 }
 
 func (r *BidRepository) Get(id string) (platform.Bid, error) {
-	row := r.db.QueryRow(`
+	row := r.db.QueryRowContext(context.TODO(), `
 		SELECT id, rfq_id, provider_org_id, message, quote_cents, status, milestones, created_at, updated_at
 		FROM bids
 		WHERE id = $1
@@ -35,7 +36,7 @@ func (r *BidRepository) Save(bid platform.Bid) error {
 		return err
 	}
 
-	_, err = r.db.Exec(`
+	_, err = r.db.ExecContext(context.TODO(), `
 		INSERT INTO bids (
 			id, rfq_id, provider_org_id, message, quote_cents, status, milestones, created_at, updated_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -52,7 +53,7 @@ func (r *BidRepository) Save(bid platform.Bid) error {
 }
 
 func (r *BidRepository) ListByRFQ(rfqID string) ([]platform.Bid, error) {
-	rows, err := r.db.Query(`
+	rows, err := r.db.QueryContext(context.TODO(), `
 		SELECT id, rfq_id, provider_org_id, message, quote_cents, status, milestones, created_at, updated_at
 		FROM bids
 		WHERE rfq_id = $1

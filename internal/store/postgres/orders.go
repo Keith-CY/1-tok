@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -26,7 +27,7 @@ func (r *OrderRepository) Save(order *core.Order) error {
 		return err
 	}
 
-	_, err = r.db.Exec(`
+	_, err = r.db.ExecContext(context.TODO(), `
 		INSERT INTO orders (
 			id, buyer_org_id, provider_org_id, funding_mode, status, payload, created_at, updated_at
 		) VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
@@ -43,7 +44,7 @@ func (r *OrderRepository) Save(order *core.Order) error {
 
 func (r *OrderRepository) Get(id string) (*core.Order, error) {
 	var payload []byte
-	err := r.db.QueryRow(`SELECT payload FROM orders WHERE id = $1`, id).Scan(&payload)
+	err := r.db.QueryRowContext(context.TODO(), `SELECT payload FROM orders WHERE id = $1`, id).Scan(&payload)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, core.ErrOrderNotFound
 	}
@@ -55,7 +56,7 @@ func (r *OrderRepository) Get(id string) (*core.Order, error) {
 }
 
 func (r *OrderRepository) List() ([]*core.Order, error) {
-	rows, err := r.db.Query(`SELECT payload FROM orders ORDER BY created_at ASC, id ASC`)
+	rows, err := r.db.QueryContext(context.TODO(), `SELECT payload FROM orders ORDER BY created_at ASC, id ASC`)
 	if err != nil {
 		return nil, err
 	}

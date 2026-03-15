@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -21,7 +22,7 @@ func (r *RFQRepository) NextID() (string, error) {
 }
 
 func (r *RFQRepository) Get(id string) (platform.RFQ, error) {
-	row := r.db.QueryRow(`
+	row := r.db.QueryRowContext(context.TODO(), `
 		SELECT id, buyer_org_id, title, category, scope, budget_cents, COALESCE(default_milestones, '[]'::jsonb), status, COALESCE(awarded_bid_id, ''), COALESCE(awarded_provider_org_id, ''), COALESCE(order_id, ''), response_deadline_at, created_at, updated_at
 		FROM rfqs
 		WHERE id = $1
@@ -34,7 +35,7 @@ func (r *RFQRepository) Save(rfq platform.RFQ) error {
 	if err != nil {
 		return err
 	}
-	_, err = r.db.Exec(`
+	_, err = r.db.ExecContext(context.TODO(), `
 		INSERT INTO rfqs (
 			id, buyer_org_id, title, category, scope, budget_cents, default_milestones, status, awarded_bid_id, awarded_provider_org_id, order_id, response_deadline_at, created_at, updated_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
@@ -56,7 +57,7 @@ func (r *RFQRepository) Save(rfq platform.RFQ) error {
 }
 
 func (r *RFQRepository) List() ([]platform.RFQ, error) {
-	rows, err := r.db.Query(`
+	rows, err := r.db.QueryContext(context.TODO(), `
 		SELECT id, buyer_org_id, title, category, scope, budget_cents, COALESCE(default_milestones, '[]'::jsonb), status, COALESCE(awarded_bid_id, ''), COALESCE(awarded_provider_org_id, ''), COALESCE(order_id, ''), response_deadline_at, created_at, updated_at
 		FROM rfqs
 		ORDER BY created_at ASC, id ASC
