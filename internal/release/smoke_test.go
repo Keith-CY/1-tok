@@ -780,3 +780,48 @@ func TestEnvOrDefault(t *testing.T) {
 		t.Error("expected default")
 	}
 }
+
+func TestRunSmoke_MissingAPIURL(t *testing.T) {
+	_, err := RunSmoke(context.Background(), Config{})
+	if err == nil {
+		t.Error("expected error for missing API URL")
+	}
+}
+
+func TestRunSmoke_APIHealthFail(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	_, err := RunSmoke(context.Background(), Config{
+		APIBaseURL: srv.URL,
+	})
+	if err == nil {
+		t.Error("expected error for unhealthy API")
+	}
+}
+
+func TestRunSmoke_SettlementHealthFail(t *testing.T) {
+	healthy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer healthy.Close()
+
+	down := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer down.Close()
+
+	_, err := RunSmoke(context.Background(), Config{
+		APIBaseURL:        healthy.URL,
+		SettlementBaseURL: down.URL,
+	})
+	if err == nil {
+		t.Error("expected error for unhealthy settlement")
+	}
+}
