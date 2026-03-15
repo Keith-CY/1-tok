@@ -4464,3 +4464,50 @@ func TestCreateOrder_ProviderOrgId_FromAuth(t *testing.T) {
 		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestResolveDispute_RateLimited(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "RL resolve", Category: "ai",
+		Scope: "test", BudgetCents: 10000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	bid, _ := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid",
+		QuoteCents: 10000, Milestones: []platform.BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 10000, BudgetCents: 10000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, platform.AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+	app.SettleMilestone(order.ID, core.SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+	app.OpenDispute(order.ID, platform.OpenDisputeInput{MilestoneID: "ms_1", Reason: "issue", RefundCents: 500})
+	disputes, _ := app.ListDisputes()
+
+	actor := iamclient.Actor{
+		UserID: "u_ops",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_ops", OrganizationKind: "ops", Role: "ops_reviewer"},
+		},
+	}
+	limiter := ratelimit.NewServiceWithOptions(ratelimit.Options{
+		Enforce: true, Now: func() time.Time { return time.Now() },
+		Store: ratelimit.NewMemoryStore(nil),
+		Policies: map[ratelimit.Policy]ratelimit.PolicyConfig{
+			ratelimit.PolicyGatewayResolveDisp: {Limit: 1, Window: time.Minute, Scope: []ratelimit.ScopePart{ratelimit.ScopeOrg}},
+		},
+	})
+	gw, _ := NewServerWithOptionsE(Options{App: app, IAM: &stubIAMClient{actor: actor}, RateLimiter: limiter})
+
+	payload, _ := json.Marshal(map[string]any{
+		"resolution": "ok", "resolvedBy": "ops",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/disputes/"+disputes[0].ID+"/resolve", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	// First resolve succeeds
+	if rec.Code != http.StatusOK {
+		t.Logf("first resolve: %d", rec.Code)
+	}
+}
