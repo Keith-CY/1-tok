@@ -2104,3 +2104,20 @@ func TestRegisterCarrierBinding_Duplicate(t *testing.T) {
 		t.Error("expected error for duplicate active binding")
 	}
 }
+
+func TestCreateListing_WithProfile(t *testing.T) {
+	app := NewAppWithMemory()
+	listing, err := app.CreateListing(CreateListingInput{
+		ProviderOrgID:      "org_p",
+		Title:              "GPU Agent",
+		Category:           "compute",
+		BasePriceCents:     1500,
+		ExecutionProfileID: "prof_1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if listing.ExecutionProfileID != "prof_1" {
+		t.Errorf("profileID = %s", listing.ExecutionProfileID)
+	}
+}

@@ -37,12 +37,13 @@ type RateOrderInput struct {
 }
 
 type Listing struct {
-	ID             string   `json:"id"`
-	ProviderOrgID  string   `json:"providerOrgId"`
-	Title          string   `json:"title"`
-	Category       string   `json:"category"`
-	BasePriceCents int64    `json:"basePriceCents"`
-	Tags           []string `json:"tags"`
+	ID                 string   `json:"id"`
+	ProviderOrgID      string   `json:"providerOrgId"`
+	Title              string   `json:"title"`
+	Category           string   `json:"category"`
+	BasePriceCents     int64    `json:"basePriceCents"`
+	Tags               []string `json:"tags"`
+	ExecutionProfileID string   `json:"executionProfileId,omitempty"`
 }
 
 type RFQStatus string
@@ -1867,11 +1868,12 @@ func (a *App) ListProviderApplications(status string) []ProviderApplication {
 
 // CreateListingInput holds input for creating a new listing.
 type CreateListingInput struct {
-	ProviderOrgID  string   `json:"providerOrgId"`
-	Title          string   `json:"title"`
-	Category       string   `json:"category"`
-	BasePriceCents int64    `json:"basePriceCents"`
-	Tags           []string `json:"tags"`
+	ProviderOrgID      string   `json:"providerOrgId"`
+	Title              string   `json:"title"`
+	Category           string   `json:"category"`
+	BasePriceCents     int64    `json:"basePriceCents"`
+	Tags               []string `json:"tags"`
+	ExecutionProfileID string   `json:"executionProfileId"`
 }
 
 // CreateListing creates a new provider listing.
@@ -1881,12 +1883,13 @@ func (a *App) CreateListing(input CreateListingInput) (Listing, error) {
 	}
 
 	listing := Listing{
-		ID:             fmt.Sprintf("listing_%d", a.now().UnixNano()),
-		ProviderOrgID:  input.ProviderOrgID,
-		Title:          input.Title,
-		Category:       input.Category,
-		BasePriceCents: input.BasePriceCents,
-		Tags:           input.Tags,
+		ID:                 fmt.Sprintf("listing_%d", a.now().UnixNano()),
+		ProviderOrgID:      input.ProviderOrgID,
+		Title:              input.Title,
+		Category:           input.Category,
+		BasePriceCents:     input.BasePriceCents,
+		Tags:               input.Tags,
+		ExecutionProfileID: input.ExecutionProfileID,
 	}
 
 	// For memory store, we just add to the list
