@@ -4406,3 +4406,61 @@ func TestCreateMessage_RateLimited(t *testing.T) {
 		t.Logf("message RL: %d", rec2.Code)
 	}
 }
+
+func TestResolveProviderOrg_NoProviderMembership(t *testing.T) {
+	actor := iamclient.Actor{
+		UserID: "u_buyer",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "org_owner"},
+		},
+	}
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "No prov", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+
+	gw, _ := NewServerWithOptionsE(Options{App: app, IAM: &stubIAMClient{actor: actor}})
+	payload, _ := json.Marshal(map[string]any{
+		"message": "bid from buyer", "quoteCents": 4000,
+		"milestones": []map[string]any{{"id": "ms_1", "title": "W", "basePriceCents": 4000, "budgetCents": 4000}},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs/"+rfq.ID+"/bids", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	// Buyer trying to create bid — should fail with membership error
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateOrder_ProviderOrgId_FromAuth(t *testing.T) {
+	actor := iamclient.Actor{
+		UserID: "u_buyer",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "org_owner"},
+		},
+	}
+	gw, _ := NewServerWithOptionsE(Options{
+		App: platform.NewAppWithMemory(),
+		IAM: &stubIAMClient{actor: actor},
+	})
+
+	// Create order with buyerOrgId matching auth
+	payload, _ := json.Marshal(map[string]any{
+		"buyerOrgId": "org_b", "providerOrgId": "org_p",
+		"title": "Auth order", "fundingMode": "prepaid",
+		"milestones": []map[string]any{{"id": "ms_1", "title": "W", "basePriceCents": 5000, "budgetCents": 5000}},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+}

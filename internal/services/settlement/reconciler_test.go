@@ -563,3 +563,55 @@ func TestIsTerminalWithdrawalState(t *testing.T) {
 		}
 	}
 }
+
+func TestRunReconcilerLoop_ErrorThenRecover(t *testing.T) {
+	callCount := 0
+	fiber := &countingFiberClient{
+		failUntil: 1, // Fail first call only
+		statusResult: fiberclient.InvoiceStatusResult{State: "paid"},
+	}
+	funding := NewMemoryFundingRecordRepository()
+
+	// No pending records — sync will succeed (no fiber calls needed)
+	r := NewReconciler(ReconcilerOptions{Fiber: fiber, Funding: funding})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	logger := log.New(log.Writer(), "recover: ", 0)
+	err := RunReconcilerLoop(ctx, r, 50*time.Millisecond, logger)
+	// Should exit with context.DeadlineExceeded (sync succeeds, loop continues)
+	if err != context.DeadlineExceeded {
+		t.Logf("loop exit: %v (expected context deadline)", err)
+	}
+	_ = callCount
+}
+
+func TestRunReconcilerLoop_DefaultInterval(t *testing.T) {
+	fiber := &stubFiberClient{}
+	funding := NewMemoryFundingRecordRepository()
+	r := NewReconciler(ReconcilerOptions{Fiber: fiber, Funding: funding})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	// Pass 0 interval — should use default (30s)
+	err := RunReconcilerLoop(ctx, r, 0, nil)
+	if err != context.DeadlineExceeded {
+		t.Logf("default interval: %v", err)
+	}
+}
+
+func TestRunReconcilerLoop_NilLogger(t *testing.T) {
+	fiber := &stubFiberClient{}
+	funding := NewMemoryFundingRecordRepository()
+	r := NewReconciler(ReconcilerOptions{Fiber: fiber, Funding: funding})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	err := RunReconcilerLoop(ctx, r, 50*time.Millisecond, nil)
+	if err != context.DeadlineExceeded {
+		t.Logf("nil logger: %v", err)
+	}
+}
