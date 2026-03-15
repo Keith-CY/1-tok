@@ -5354,3 +5354,74 @@ func TestCarrierBindAndJobLifecycleGateway(t *testing.T) {
 	srv.ServeHTTP(w, req)
 	if w.Code != http.StatusOK { t.Errorf("cancel: %d %s", w.Code, w.Body.String()) }
 }
+
+func TestGetRFQ(t *testing.T) {
+	srv := NewServer()
+	// Create RFQ first
+	body := `{"buyerOrgId":"org_b","title":"test","category":"ai","scope":"test","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	rfqID := resp["rfq"].(map[string]any)["id"].(string)
+
+	req = httptest.NewRequest("GET", "/api/v1/rfqs/"+rfqID, nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+}
+
+func TestGetDispute(t *testing.T) {
+	srv := NewServer()
+	req := httptest.NewRequest("GET", "/api/v1/disputes/nonexistent", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound { t.Errorf("status = %d", w.Code) }
+}
+
+func TestRFQMessages(t *testing.T) {
+	srv := NewServer()
+	body := `{"buyerOrgId":"org_b","title":"msg test","category":"ai","scope":"test","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	rfqID := resp["rfq"].(map[string]any)["id"].(string)
+
+	// Create message
+	msgBody := `{"author":"buyer","body":"hello"}`
+	req = httptest.NewRequest("POST", "/api/v1/rfqs/"+rfqID+"/messages", strings.NewReader(msgBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated { t.Errorf("create msg: %d %s", w.Code, w.Body.String()) }
+
+	// List messages
+	req = httptest.NewRequest("GET", "/api/v1/rfqs/"+rfqID+"/messages", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("list msg: %d", w.Code) }
+}
+
+func TestCreditLimit(t *testing.T) {
+	srv := NewServer()
+	body := `{"buyerOrgId":"org_b","limitCents":100000,"setBy":"ops"}`
+	req := httptest.NewRequest("POST", "/api/v1/credit-limits", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("set: %d", w.Code) }
+
+	req = httptest.NewRequest("GET", "/api/v1/credit-limits/org_b", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("get: %d", w.Code) }
+}
+
+func TestStaleJobs(t *testing.T) {
+	srv := NewServer()
+	req := httptest.NewRequest("GET", "/api/v1/system/stale-jobs", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+}
