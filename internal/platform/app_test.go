@@ -1668,3 +1668,92 @@ func TestSearchListings_NoMatch(t *testing.T) {
 		t.Errorf("expected 0 results, got %d", len(listings))
 	}
 }
+
+func TestRateOrder_Success(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Rate test", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid",
+		QuoteCents: 5000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+	app.SettleMilestone(order.ID, core.SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+
+	rating, err := app.RateOrder(order.ID, RateOrderInput{Score: 5, Comment: "Excellent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rating.Score != 5 {
+		t.Errorf("score = %d", rating.Score)
+	}
+}
+
+func TestRateOrder_InvalidScore(t *testing.T) {
+	app := NewAppWithMemory()
+	_, err := app.RateOrder("ord_1", RateOrderInput{Score: 0})
+	if err == nil {
+		t.Error("expected error for score 0")
+	}
+	_, err = app.RateOrder("ord_1", RateOrderInput{Score: 6})
+	if err == nil {
+		t.Error("expected error for score 6")
+	}
+}
+
+func TestRateOrder_NotCompleted(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Not done", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid",
+		QuoteCents: 5000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	_, err := app.RateOrder(order.ID, RateOrderInput{Score: 4})
+	if err == nil {
+		t.Error("expected error for non-completed order")
+	}
+}
+
+func TestRateOrder_AlreadyRated(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Double rate", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid",
+		QuoteCents: 5000, Milestones: []BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+	app.SettleMilestone(order.ID, core.SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+
+	app.RateOrder(order.ID, RateOrderInput{Score: 5})
+	_, err := app.RateOrder(order.ID, RateOrderInput{Score: 3})
+	if err == nil {
+		t.Error("expected error for double rating")
+	}
+}
+
+func TestGetOrderRating_NotRated(t *testing.T) {
+	app := NewAppWithMemory()
+	_, err := app.GetOrderRating("ord_1")
+	if err == nil {
+		t.Error("expected error for unrated order")
+	}
+}

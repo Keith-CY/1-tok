@@ -140,6 +140,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleCreditDecision(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/messages":
 		s.handleCreateMessage(w, r)
+	case r.Method == http.MethodPost && isOrderRatingPath(r.URL.Path):
+		s.handleRateOrder(w, r)
 	default:
 		httputil.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "route not found"})
 	}
@@ -1253,4 +1255,45 @@ func isOrderDisputesPath(path string) bool {
 func isDisputeResolvePath(path string) bool {
 	_, err := disputeIDFromResolvePath(path)
 	return err == nil
+}
+
+func isOrderRatingPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 5 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "orders" && parts[4] == "rating"
+}
+
+func orderIDFromRatingPath(path string) (string, error) {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) != 5 || parts[4] != "rating" {
+		return "", errors.New("invalid rating path")
+	}
+	return parts[3], nil
+}
+
+func (s *Server) handleRateOrder(w http.ResponseWriter, r *http.Request) {
+	orderID, err := orderIDFromRatingPath(r.URL.Path)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	var payload struct {
+		Score   int    `json:"score"`
+		Comment string `json:"comment"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+
+	rating, err := s.app.RateOrder(orderID, platform.RateOrderInput{
+		Score:   payload.Score,
+		Comment: payload.Comment,
+	})
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{"rating": rating})
 }
