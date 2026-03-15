@@ -1047,3 +1047,90 @@ func TestListingRepositoryUpsert(t *testing.T) {
 		t.Error("expected listings")
 	}
 }
+
+func TestOrderRepositoryGet_NotFound(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+	db, err := Open(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewOrderRepository(db)
+	_, err = repo.Get("nonexistent_order")
+	if err == nil {
+		t.Error("expected error for nonexistent order")
+	}
+}
+
+func TestRFQRepository_NextID(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+	db, err := Open(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRFQRepository(db)
+	id1, _ := repo.NextID()
+	id2, _ := repo.NextID()
+	if id1 == id2 {
+		t.Error("expected unique IDs")
+	}
+}
+
+func TestBidRepository_NextID(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+	db, err := Open(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewBidRepository(db)
+	id1, _ := repo.NextID()
+	id2, _ := repo.NextID()
+	if id1 == id2 {
+		t.Error("expected unique IDs")
+	}
+}
+
+func TestDisputeRepository_NextID(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+	db, err := Open(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewDisputeRepository(db)
+	id1, _ := repo.NextID()
+	id2, _ := repo.NextID()
+	if id1 == id2 {
+		t.Error("expected unique IDs")
+	}
+}
