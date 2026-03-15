@@ -313,3 +313,10 @@ func TestPortalConfigFromEnv(t *testing.T) {
 		t.Errorf("WebBaseURL = %s", cfg.WebBaseURL)
 	}
 }
+
+func TestRunPortalSmoke_EmptyURL(t *testing.T) {
+	_, err := RunPortalSmoke(context.Background(), PortalConfig{})
+	if err == nil {
+		t.Error("expected error for empty config")
+	}
+}

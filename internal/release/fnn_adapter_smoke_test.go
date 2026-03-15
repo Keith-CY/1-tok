@@ -221,3 +221,24 @@ func TestEnvBoolDefaultFalse_Invalid(t *testing.T) {
 		t.Error("expected false for invalid")
 	}
 }
+
+func TestRunFNNAdapterSmoke_EmptyURL(t *testing.T) {
+	_, err := RunFNNAdapterSmoke(context.Background(), FNNAdapterSmokeConfig{})
+	if err == nil {
+		t.Error("expected error for empty URL")
+	}
+}
+
+func TestRunFNNAdapterSmoke_HealthFail(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	_, err := RunFNNAdapterSmoke(context.Background(), FNNAdapterSmokeConfig{
+		BaseURL: srv.URL, AppID: "app", HMACSecret: "secret",
+	})
+	if err == nil {
+		t.Error("expected error for unhealthy adapter")
+	}
+}

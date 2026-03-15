@@ -329,3 +329,25 @@ func TestRunExternalDependencyPreflight_BothDown(t *testing.T) {
 		t.Error("expected error when both are down")
 	}
 }
+
+func TestRunAbuseSmoke_EmptyURL(t *testing.T) {
+	_, err := RunAbuseSmoke(context.Background(), AbuseConfig{})
+	if err == nil {
+		t.Error("expected error for empty config")
+	}
+}
+
+func TestRunAbuseSmoke_IAMHealthFail(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	_, err := RunAbuseSmoke(context.Background(), AbuseConfig{
+		IAMBaseURL:    srv.URL,
+		SentryBaseURL: srv.URL,
+	})
+	if err == nil {
+		t.Error("expected error for unhealthy IAM")
+	}
+}
