@@ -43,9 +43,13 @@
 - CI: Postgres + NATS + Redis containers
 
 ### Metrics
-- 255 commits
-- 14.7k lines Go code
-- 25.3k lines Go tests
+- 264 commits
+- 15.0k lines Go code
+- 25.5k lines Go tests (1.7:1 test ratio)
 - 2.2k lines TypeScript
+- 52 API endpoints
+- 8 Discord commands
+- 27 Go packages (5 at 100% coverage)
+- 16 httputil middleware modules (97.8% coverage)
 - 87.7% CI statement coverage
 - 99.38% function coverage
