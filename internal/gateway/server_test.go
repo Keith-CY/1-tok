@@ -5016,3 +5016,43 @@ func TestCarrierDuplicateBind(t *testing.T) {
 		t.Error("duplicate bind should fail")
 	}
 }
+
+func TestRateOrder_RequiresAuth(t *testing.T) {
+	srv := NewServerWithOptions(Options{
+		App: platform.NewAppWithMemory(),
+		IAM: &stubIAMErrorClient{err: iamclient.ErrUnauthorized},
+	})
+
+	body := `{"score":5,"comment":"great"}`
+	req := httptest.NewRequest("POST", "/api/v1/orders/ord_1/rating", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestCreateRFQMessage_RequiresAuth(t *testing.T) {
+	srv := NewServerWithOptions(Options{
+		App: platform.NewAppWithMemory(),
+		IAM: &stubIAMErrorClient{err: iamclient.ErrUnauthorized},
+	})
+
+	body := `{"author":"spoofed","body":"hello"}`
+	req := httptest.NewRequest("POST", "/api/v1/rfqs/rfq_1/messages", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+type stubIAMErrorClient struct {
+	err error
+}
+
+func (s *stubIAMErrorClient) GetActor(_ context.Context, _ string) (iamclient.Actor, error) {
+	return iamclient.Actor{}, s.err
+}

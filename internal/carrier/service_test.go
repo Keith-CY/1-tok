@@ -315,3 +315,41 @@ func TestGetJob_Found(t *testing.T) {
 		t.Errorf("input = %s", got.Input)
 	}
 }
+
+func TestBind_MultipleOrders(t *testing.T) {
+	svc := NewService()
+	b1, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	b2, _ := svc.Bind("ord_2", "ms_1", "carrier_b", nil)
+	if b1.ID == b2.ID {
+		t.Error("expected different binding IDs")
+	}
+
+	// Verify O(1) lookup
+	got1, err := svc.GetBinding("ord_1", "ms_1")
+	if err != nil || got1.CarrierID != "carrier_a" {
+		t.Errorf("got1 = %v, err = %v", got1, err)
+	}
+	got2, err := svc.GetBinding("ord_2", "ms_1")
+	if err != nil || got2.CarrierID != "carrier_b" {
+		t.Errorf("got2 = %v, err = %v", got2, err)
+	}
+}
+
+func TestListJobs_ByBinding(t *testing.T) {
+	svc := NewService()
+	b1, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	b2, _ := svc.Bind("ord_2", "ms_1", "carrier_b", nil)
+
+	svc.CreateJob(b1.ID, "ms_1", "input1")
+	svc.CreateJob(b1.ID, "ms_1", "input2")
+	svc.CreateJob(b2.ID, "ms_1", "input3")
+
+	jobs1, _ := svc.ListJobs(b1.ID)
+	if len(jobs1) != 2 {
+		t.Errorf("expected 2 jobs for b1, got %d", len(jobs1))
+	}
+	jobs2, _ := svc.ListJobs(b2.ID)
+	if len(jobs2) != 1 {
+		t.Errorf("expected 1 job for b2, got %d", len(jobs2))
+	}
+}
