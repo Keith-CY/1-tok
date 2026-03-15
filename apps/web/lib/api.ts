@@ -344,3 +344,109 @@ function resolveBaseUrl(kind: "api" | "settlement"): string | null {
   }
   return process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? null;
 }
+
+// --- New v1 API functions ---
+
+export async function rateOrder(
+  orderId: string,
+  score: number,
+  comment: string,
+  options?: { authToken?: string }
+): Promise<{ rating: { orderId: string; score: number; comment: string } }> {
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (options?.authToken) headers["Authorization"] = `Bearer ${options.authToken}`;
+
+  const res = await fetch(`${baseUrl}/api/v1/orders/${orderId}/rating`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ score, comment }),
+  });
+  if (!res.ok) throw new Error(`rate order: ${res.status}`);
+  return res.json();
+}
+
+export async function searchListings(params: {
+  q?: string;
+  category?: string;
+  tag?: string;
+  minPrice?: number;
+  maxPrice?: number;
+}): Promise<{ listings: Listing[]; pagination: { total: number } }> {
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+  const query = new URLSearchParams();
+  if (params.q) query.set("q", params.q);
+  if (params.category) query.set("category", params.category);
+  if (params.tag) query.set("tag", params.tag);
+  if (params.minPrice) query.set("minPrice", String(params.minPrice));
+  if (params.maxPrice) query.set("maxPrice", String(params.maxPrice));
+
+  const res = await fetch(`${baseUrl}/api/v1/listings?${query}`);
+  if (!res.ok) throw new Error(`search listings: ${res.status}`);
+  return res.json();
+}
+
+export async function getRFQMessages(
+  rfqId: string,
+  options?: { authToken?: string }
+): Promise<{ messages: Array<{ id: string; rfqId: string; author: string; body: string; createdAt: string }> }> {
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+  const headers: Record<string, string> = {};
+  if (options?.authToken) headers["Authorization"] = `Bearer ${options.authToken}`;
+
+  const res = await fetch(`${baseUrl}/api/v1/rfqs/${rfqId}/messages`, { headers });
+  if (!res.ok) throw new Error(`rfq messages: ${res.status}`);
+  return res.json();
+}
+
+export async function createRFQMessage(
+  rfqId: string,
+  author: string,
+  body: string,
+  options?: { authToken?: string }
+): Promise<{ message: { id: string; rfqId: string; author: string; body: string } }> {
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (options?.authToken) headers["Authorization"] = `Bearer ${options.authToken}`;
+
+  const res = await fetch(`${baseUrl}/api/v1/rfqs/${rfqId}/messages`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ author, body }),
+  });
+  if (!res.ok) throw new Error(`create rfq message: ${res.status}`);
+  return res.json();
+}
+
+export async function bindCarrier(
+  orderId: string,
+  milestoneId: string,
+  carrierId: string,
+  capabilities: string[],
+  options?: { authToken?: string }
+): Promise<{ binding: { id: string; carrierId: string } }> {
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (options?.authToken) headers["Authorization"] = `Bearer ${options.authToken}`;
+
+  const res = await fetch(`${baseUrl}/api/v1/orders/${orderId}/milestones/${milestoneId}/bind-carrier`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ carrierId, capabilities }),
+  });
+  if (!res.ok) throw new Error(`bind carrier: ${res.status}`);
+  return res.json();
+}
+
+export async function getJob(
+  jobId: string,
+  options?: { authToken?: string }
+): Promise<{ job: import("@1tok/contracts").ExecutionJob }> {
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+  const headers: Record<string, string> = {};
+  if (options?.authToken) headers["Authorization"] = `Bearer ${options.authToken}`;
+
+  const res = await fetch(`${baseUrl}/api/v1/jobs/${jobId}`, { headers });
+  if (!res.ok) throw new Error(`get job: ${res.status}`);
+  return res.json();
+}
