@@ -1134,3 +1134,90 @@ func TestDisputeRepository_NextID(t *testing.T) {
 		t.Error("expected unique IDs")
 	}
 }
+
+func TestOrderRepository_SaveAndList(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+	db, err := Open(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewOrderRepository(db)
+	id, _ := repo.NextID()
+
+	order := &core.Order{
+		ID:             id,
+		BuyerOrgID:     "org_b_save",
+		ProviderOrgID:  "org_p_save",
+		FundingMode:    core.FundingModePrepaid,
+		PlatformWallet: "platform_main",
+		Status:         core.OrderStatusRunning,
+		Milestones: []core.Milestone{
+			{
+				ID:             "ms_1",
+				Title:          "Test MS",
+				BasePriceCents: 5000,
+				BudgetCents:    5000,
+				State:          core.MilestoneStateRunning,
+				DisputeStatus:  core.DisputeStatusNone,
+			},
+		},
+	}
+	if err := repo.Save(order); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := repo.Get(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.BuyerOrgID != "org_b_save" {
+		t.Errorf("buyer = %s", got.BuyerOrgID)
+	}
+	if len(got.Milestones) != 1 {
+		t.Errorf("milestones = %d", len(got.Milestones))
+	}
+
+	orders, err := repo.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, o := range orders {
+		if o.ID == id {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("order not in list")
+	}
+}
+
+func TestMessageRepository_NextID_Unique(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+	db, err := Open(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewMessageRepository(db)
+	id1, _ := repo.NextID()
+	id2, _ := repo.NextID()
+	if id1 == id2 {
+		t.Error("expected unique message IDs")
+	}
+}
