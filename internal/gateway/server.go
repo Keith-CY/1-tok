@@ -430,6 +430,17 @@ func (s *Server) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if verr := validation.New().
+		Required("fundingMode", payload.FundingMode).
+		Build(); verr != nil {
+		httputil.WriteErrorWithDetails(w, http.StatusBadRequest, httputil.ErrCodeValidation, "validation failed", verr.Fields)
+		return
+	}
+	if len(payload.Milestones) == 0 {
+		httputil.WriteError(w, http.StatusBadRequest, httputil.ErrCodeValidation, "at least one milestone is required")
+		return
+	}
+
 	buyerOrgID, err := s.resolveBuyerOrg(r, payload.BuyerOrgID)
 	if err != nil {
 		httputil.WriteAuthError(w, err)
@@ -957,6 +968,15 @@ func (s *Server) handleCreateDispute(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+
+	if verr := validation.New().
+		Required("milestoneId", payload.MilestoneID).
+		Required("reason", payload.Reason).
+		Positive("refundCents", payload.RefundCents).
+		Build(); verr != nil {
+		httputil.WriteErrorWithDetails(w, http.StatusBadRequest, httputil.ErrCodeValidation, "validation failed", verr.Fields)
 		return
 	}
 
