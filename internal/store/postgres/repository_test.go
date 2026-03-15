@@ -1221,3 +1221,76 @@ func TestMessageRepository_NextID_Unique(t *testing.T) {
 		t.Error("expected unique message IDs")
 	}
 }
+
+func TestIdentityStore_CreateSignup_FullCycle(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL is not set")
+	}
+	db, err := Open(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+
+	store := NewIdentityStore(db)
+	email := fmt.Sprintf("full-cycle-%d@test.com", time.Now().UnixNano())
+	digest := fmt.Sprintf("full-digest-%d", time.Now().UnixNano())
+
+	// Signup
+	actor, err := store.CreateSignup(identity.Signup{
+		Email: email, Name: "Full Cycle", PasswordHash: "hash123",
+		OrganizationName: "Full Org", OrganizationKind: "provider",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if actor.User.ID == "" {
+		t.Fatal("expected user ID")
+	}
+	if len(actor.Memberships) != 1 {
+		t.Fatalf("expected 1 membership, got %d", len(actor.Memberships))
+	}
+
+	// Find by email
+	user, err := store.FindUserByEmail(email)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user.Email != email {
+		t.Errorf("email = %s", user.Email)
+	}
+
+	// Create session
+	session, err := store.CreateSession(identity.NewSession{
+		UserID:      user.ID,
+		TokenDigest: digest,
+		ExpiresAt:   time.Now().Add(24 * time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.UserID != user.ID {
+		t.Errorf("session user = %s", session.UserID)
+	}
+
+	// Get authenticated actor
+	authenticated, err := store.GetAuthenticatedActorBySessionDigest(digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if authenticated.User.Email != email {
+		t.Errorf("actor email = %s", authenticated.User.Email)
+	}
+	if len(authenticated.Memberships) != 1 {
+		t.Errorf("memberships = %d", len(authenticated.Memberships))
+	}
+
+	// Revoke session
+	if err := store.RevokeSession(digest); err != nil {
+		t.Fatal(err)
+	}
+}

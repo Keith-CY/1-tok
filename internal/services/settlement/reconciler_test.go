@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"testing"
 	"time"
 
@@ -766,5 +767,44 @@ func TestRunReconcilerLoop_TickerWithRecovery(t *testing.T) {
 	// Should exit with context deadline
 	if err != context.DeadlineExceeded {
 		t.Logf("exit: %v", err)
+	}
+}
+
+func TestNewReconciler_DefaultFunding(t *testing.T) {
+	// No SETTLEMENT_DATABASE_URL — falls back to memory
+	t.Setenv("SETTLEMENT_DATABASE_URL", "")
+	t.Setenv("DATABASE_URL", "")
+
+	r := NewReconciler(ReconcilerOptions{
+		Fiber: &stubFiberClient{},
+		// Funding nil — should use loadFundingRecordRepositoryE which returns memory
+	})
+	if r == nil {
+		t.Fatal("expected non-nil reconciler")
+	}
+
+	// Verify it works
+	summary, err := r.Sync(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.InvoiceUpdates != 0 {
+		t.Errorf("expected 0 updates, got %d", summary.InvoiceUpdates)
+	}
+}
+
+func TestNewReconciler_WithPostgres(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL not set")
+	}
+	t.Setenv("SETTLEMENT_DATABASE_URL", dsn)
+
+	r := NewReconciler(ReconcilerOptions{
+		Fiber: &stubFiberClient{},
+		// Funding nil — should load from env with postgres
+	})
+	if r == nil {
+		t.Fatal("expected non-nil reconciler")
 	}
 }
