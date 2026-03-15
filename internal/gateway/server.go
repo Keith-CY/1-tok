@@ -118,6 +118,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/providers":
 		s.handleListProviders(w, r)
+	case r.Method == http.MethodGet && isProviderPath(r.URL.Path):
+		s.handleGetProvider(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/listings":
 		s.handleListListings(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/rfqs":
@@ -1416,4 +1418,22 @@ func (s *Server) handleListOrderMessages(w http.ResponseWriter, r *http.Request)
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"messages": messages})
+}
+
+func isProviderPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 4 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "providers"
+}
+
+func (s *Server) handleGetProvider(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	providerID := parts[3]
+
+	provider, err := s.app.GetProvider(providerID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"provider": provider})
 }

@@ -3646,6 +3646,7 @@ func TestCreateMessage_ForeignOrg(t *testing.T) {
 
 type failingProviderRepo struct{}
 func (failingProviderRepo) List() ([]platform.ProviderProfile, error) { return nil, errors.New("broken") }
+func (failingProviderRepo) Get(string) (platform.ProviderProfile, error) { return platform.ProviderProfile{}, errors.New("broken") }
 
 type failingListingRepo struct{}
 func (failingListingRepo) List() ([]platform.Listing, error) { return nil, errors.New("broken") }

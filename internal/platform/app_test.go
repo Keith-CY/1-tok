@@ -1217,6 +1217,7 @@ func TestCreateMessage_NextIDError(t *testing.T) {
 
 type failingProviderRepo struct{}
 func (failingProviderRepo) List() ([]ProviderProfile, error) { return nil, errors.New("broken") }
+func (failingProviderRepo) Get(string) (ProviderProfile, error) { return ProviderProfile{}, errors.New("broken") }
 
 func TestListProviders_Error(t *testing.T) {
 	app := NewApp(nil, failingProviderRepo{}, nil, nil, nil, nil, nil)

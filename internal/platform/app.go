@@ -145,6 +145,7 @@ type OrderRepository interface {
 
 type ProviderRepository interface {
 	List() ([]ProviderProfile, error)
+	Get(id string) (ProviderProfile, error)
 }
 
 type ListingRepository interface {
@@ -818,6 +819,15 @@ func (r *memoryProviderRepository) List() ([]ProviderProfile, error) {
 	return slices.Clone(r.data), nil
 }
 
+func (r *memoryProviderRepository) Get(id string) (ProviderProfile, error) {
+	for _, p := range r.data {
+		if p.ID == id {
+			return p, nil
+		}
+	}
+	return ProviderProfile{}, fmt.Errorf("provider not found: %s", id)
+}
+
 type memoryListingRepository struct {
 	data []Listing
 }
@@ -1273,4 +1283,30 @@ func (a *App) ListOrderMessages(orderID string) ([]Message, error) {
 		return nil, err
 	}
 	return a.messages.ListByOrder(orderID)
+}
+
+// GetProvider returns a provider profile by ID, with rating computed from order ratings.
+func (a *App) GetProvider(id string) (ProviderProfile, error) {
+	provider, err := a.providers.Get(id)
+	if err != nil {
+		return ProviderProfile{}, err
+	}
+
+	// Compute rating from stored ratings
+	a.mu.Lock()
+	var total, count int
+	for _, r := range a.ratings {
+		if r.ProviderOrgID == id {
+			total += r.Score
+			count++
+		}
+	}
+	a.mu.Unlock()
+
+	if count > 0 {
+		provider.Rating = float64(total) / float64(count)
+		provider.RatingCount = count
+	}
+
+	return provider, nil
 }

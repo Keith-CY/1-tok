@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 
 	"github.com/chenyu/1-tok/internal/platform"
 )
@@ -59,4 +60,20 @@ func (r *ProviderRepository) Upsert(provider platform.ProviderProfile) error {
 			updated_at = NOW()
 	`, provider.ID, provider.Name, capabilities, provider.ReputationTier)
 	return err
+}
+
+func (r *ProviderRepository) Get(id string) (platform.ProviderProfile, error) {
+	var p platform.ProviderProfile
+	var caps string
+	err := r.db.QueryRowContext(context.TODO(), `
+		SELECT id, name, capabilities, reputation_tier
+		FROM providers WHERE id = $1
+	`, id).Scan(&p.ID, &p.Name, &caps, &p.ReputationTier)
+	if err != nil {
+		return platform.ProviderProfile{}, fmt.Errorf("provider not found: %s", id)
+	}
+	if err := json.Unmarshal([]byte(caps), &p.Capabilities); err != nil {
+		p.Capabilities = []string{}
+	}
+	return p, nil
 }
