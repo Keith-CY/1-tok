@@ -4817,3 +4817,69 @@ func TestAwardRFQ_MissingBuyerAuth(t *testing.T) {
 		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestNewServerWithOptionsE_RequireExternals_MissingIAM(t *testing.T) {
+	t.Setenv("ONE_TOK_REQUIRE_EXTERNALS", "true")
+	t.Setenv("IAM_UPSTREAM", "http://iam:8081")
+	t.Setenv("API_GATEWAY_EXECUTION_TOKEN", "exec-token")
+
+	_, err := NewServerWithOptionsE(Options{App: platform.NewAppWithMemory()})
+	if err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+}
+
+func TestCreateDispute_NoAuth(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "No auth disp", Category: "ai",
+		Scope: "test", BudgetCents: 10000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	bid, _ := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid",
+		QuoteCents: 10000, Milestones: []platform.BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 10000, BudgetCents: 10000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, platform.AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+	app.SettleMilestone(order.ID, core.SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+
+	// IAM configured but no auth header
+	gw, _ := NewServerWithOptionsE(Options{
+		App: app,
+		IAM: &stubIAMClient{actor: iamclient.Actor{UserID: "u_1"}},
+	})
+	payload, _ := json.Marshal(map[string]any{
+		"milestoneId": "ms_1", "reason": "bad", "refundCents": 500,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders/"+order.ID+"/disputes", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	// No Authorization header
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestListRFQBids_NoAuthHeader(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "No auth bids", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+
+	gw, _ := NewServerWithOptionsE(Options{
+		App: app,
+		IAM: &stubIAMClient{actor: iamclient.Actor{UserID: "u_1"}},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/rfqs/"+rfq.ID+"/bids", nil)
+	// No Authorization header
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
