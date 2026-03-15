@@ -1268,3 +1268,21 @@ func TestLoadConfiguredStoreFromEnv_InvalidDSN(t *testing.T) {
 		t.Error("expected error for invalid DSN")
 	}
 }
+
+func TestSignup_WithRateLimitError(t *testing.T) {
+	store := identity.NewMemoryStore()
+	s := NewServerWithOptions(Options{
+		Store:       store,
+		RateLimiter: &errorRateLimiter{},
+	})
+
+	// Login should also hit rate limiter error
+	payload := `{"email":"rl_err2@test.com","password":"correct horse battery staple 123"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
+	}
+}

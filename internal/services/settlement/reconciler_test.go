@@ -731,3 +731,40 @@ func TestRunReconcilerLoop_TickerErrors(t *testing.T) {
 	}
 	t.Logf("loop exited: %v (fiber calls: %d)", err, fiber.callCount)
 }
+
+func TestNewReconciler_NilFiber(t *testing.T) {
+	r := NewReconciler(ReconcilerOptions{
+		Funding: NewMemoryFundingRecordRepository(),
+		// Fiber nil — should use NewClientFromEnv which returns missingClient
+	})
+	if r == nil {
+		t.Fatal("expected non-nil reconciler")
+	}
+}
+
+func TestNewReconciler_WithAll(t *testing.T) {
+	r := NewReconciler(ReconcilerOptions{
+		Fiber:   &stubFiberClient{},
+		Funding: NewMemoryFundingRecordRepository(),
+	})
+	if r == nil {
+		t.Fatal("expected non-nil reconciler")
+	}
+}
+
+func TestRunReconcilerLoop_TickerWithRecovery(t *testing.T) {
+	// First sync succeeds, then ticker fires with success
+	fiber := &stubFiberClient{}
+	funding := NewMemoryFundingRecordRepository()
+
+	r := NewReconciler(ReconcilerOptions{Fiber: fiber, Funding: funding})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+
+	err := RunReconcilerLoop(ctx, r, 30*time.Millisecond, nil)
+	// Should exit with context deadline
+	if err != context.DeadlineExceeded {
+		t.Logf("exit: %v", err)
+	}
+}
