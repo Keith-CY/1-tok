@@ -5946,3 +5946,54 @@ func TestDisputeResolve_WithOps(t *testing.T) {
 		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+func TestListingSort_Title(t *testing.T) {
+	srv := NewServer()
+	req := httptest.NewRequest("GET", "/api/v1/listings?sort=title", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+}
+
+func TestListingSort_PriceAsc(t *testing.T) {
+	srv := NewServer()
+	req := httptest.NewRequest("GET", "/api/v1/listings?sort=price_asc", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+}
+
+func TestListingSearch_WithTag(t *testing.T) {
+	srv := NewServer()
+	req := httptest.NewRequest("GET", "/api/v1/listings?tag=carrier-compatible", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+}
+
+func TestListingSearch_WithMinMaxPrice(t *testing.T) {
+	srv := NewServer()
+	req := httptest.NewRequest("GET", "/api/v1/listings?minPrice=1000&maxPrice=5000", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+}
+
+func TestExposure(t *testing.T) {
+	srv := NewServer()
+	req := httptest.NewRequest("GET", "/api/v1/system/exposure", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+}
+
+func TestCarrierCallback_NormalizedEvent(t *testing.T) {
+	srv := NewServer()
+	// Use snake_case event name
+	body := `{"type":"job_started","jobId":"","bindingId":"","timestamp":"2026-03-15T00:00:00Z","signature":"","payload":{}}`
+	req := httptest.NewRequest("POST", "/api/v1/carrier/callback", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	// Should normalize to job.started and process (may fail on missing job, but shouldn't 404)
+	if w.Code == http.StatusNotFound { t.Error("callback should be routable") }
+}
