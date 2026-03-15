@@ -242,3 +242,60 @@ func TestRunFNNAdapterSmoke_HealthFail(t *testing.T) {
 		t.Error("expected error for unhealthy adapter")
 	}
 }
+
+func TestRunFNNAdapterSmoke_Success(t *testing.T) {
+	callCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		callCount++
+		w.Header().Set("Content-Type", "application/json")
+
+		body, _ := io.ReadAll(r.Body)
+		var rpc struct{ Method string `json:"method"` }
+		json.Unmarshal(body, &rpc)
+
+		switch rpc.Method {
+		case "tip.create":
+			json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": "1",
+				"result": map[string]any{"invoice": "lnbc_smoke", "tipId": "tip_1"},
+			})
+		case "tip.status":
+			json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": "1",
+				"result": map[string]any{"state": "UNPAID"},
+			})
+		case "withdrawal.quote":
+			json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": "1",
+				"result": map[string]any{
+					"asset": "CKB", "amount": "12", "minimumAmount": "1",
+					"availableBalance": "100", "lockedBalance": "0",
+					"networkFee": "0", "receiveAmount": "12",
+					"destinationValid": true,
+				},
+			})
+		default:
+			json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": "1",
+				"result": map[string]any{},
+			})
+		}
+	}))
+	defer srv.Close()
+
+	summary, err := RunFNNAdapterSmoke(context.Background(), FNNAdapterSmokeConfig{
+		BaseURL:    srv.URL,
+		AppID:      "app_smoke",
+		HMACSecret: "secret_smoke",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Invoice == "" {
+		t.Error("expected invoice in summary")
+	}
+}
