@@ -1947,7 +1947,15 @@ func (s *Server) handleCarrierCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build callback response with recommendedAction
-	httputil.WriteJSON(w, http.StatusOK, s.buildCallbackResponse(event))
+	response := s.buildCallbackResponse(event)
+
+	// Store decision in ledger for replay
+	if eventID != "" {
+		decisionBytes, _ := json.Marshal(response.RecommendedAction)
+		s.ledger.UpdateDecision(eventID, string(decisionBytes))
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, response)
 }
 func (s *Server) handleCreateListing(w http.ResponseWriter, r *http.Request) {
 	var payload platform.CreateListingInput

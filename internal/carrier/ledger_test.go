@@ -68,3 +68,23 @@ func TestLedger_FirstEvent(t *testing.T) {
 	_, _, err := l.Record("exec_1", "evt_a", 1, "execution.started", "", "{}", "{}")
 	if err != nil { t.Fatal(err) }
 }
+
+func TestLedger_UpdateDecision(t *testing.T) {
+	l := NewEventLedger()
+	l.Record("exec_1", "evt_a", 1, "execution.started", "", "{}", "")
+
+	l.UpdateDecision("evt_a", `{"type":"continue"}`)
+
+	// Replay should return updated decision
+	ev, replay, _ := l.Record("exec_1", "evt_a", 1, "execution.started", "", "{}", "")
+	if !replay { t.Error("expected replay") }
+	if ev.DecisionJSON != `{"type":"continue"}` {
+		t.Errorf("decision = %s", ev.DecisionJSON)
+	}
+}
+
+func TestLedger_UpdateDecision_NotFound(t *testing.T) {
+	l := NewEventLedger()
+	// Should not panic
+	l.UpdateDecision("nonexistent", `{"type":"cancel"}`)
+}

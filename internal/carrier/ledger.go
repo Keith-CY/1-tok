@@ -100,3 +100,20 @@ func (l *EventLedger) LastSequence(executionID string) int64 {
 	defer l.mu.Unlock()
 	return l.lastSequence[executionID]
 }
+
+// UpdateDecision sets the decisionJSON on an already-recorded event.
+func (l *EventLedger) UpdateDecision(eventID, decisionJSON string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if ev, ok := l.eventIndex[eventID]; ok {
+		ev.DecisionJSON = decisionJSON
+		l.eventIndex[eventID] = ev
+		// Also update in the events list
+		for i := range l.events[ev.ExecutionID] {
+			if l.events[ev.ExecutionID][i].EventID == eventID {
+				l.events[ev.ExecutionID][i].DecisionJSON = decisionJSON
+				break
+			}
+		}
+	}
+}
