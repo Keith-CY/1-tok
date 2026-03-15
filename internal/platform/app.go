@@ -1,7 +1,6 @@
 package platform
 
 import (
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -193,6 +192,7 @@ type App struct {
 	notifier     Notifier
 	mu           sync.Mutex // guards compound multi-store operations
 	ratings      []OrderRating
+	clock        Clock
 }
 
 // Notifier is an optional notification delivery interface.
@@ -352,10 +352,10 @@ func (a *App) GetOrder(id string) (*core.Order, error) {
 
 func (a *App) CreateRFQ(input CreateRFQInput) (RFQ, error) {
 	if input.BuyerOrgID == "" || input.Title == "" || input.Category == "" || input.Scope == "" || input.BudgetCents <= 0 {
-		return RFQ{}, errors.New("missing required fields")
+		return RFQ{}, ErrMissingRequiredFields
 	}
 	if input.ResponseDeadlineAt.IsZero() {
-		return RFQ{}, errors.New("response deadline is required")
+		return RFQ{}, ErrDeadlineRequired
 	}
 
 	rfqID, err := a.rfqs.NextID()
@@ -378,7 +378,7 @@ func (a *App) CreateRFQ(input CreateRFQInput) (RFQ, error) {
 		})
 	}
 
-	now := time.Now().UTC()
+	now := a.now()
 	rfq := RFQ{
 		ID:                 rfqID,
 		BuyerOrgID:         input.BuyerOrgID,
@@ -412,7 +412,7 @@ func (a *App) CreateRFQ(input CreateRFQInput) (RFQ, error) {
 
 func (a *App) CreateOrder(input CreateOrderInput) (*core.Order, error) {
 	if input.BuyerOrgID == "" || input.ProviderOrgID == "" || len(input.Milestones) == 0 {
-		return nil, errors.New("missing required fields")
+		return nil, ErrMissingRequiredFields
 	}
 
 	orderID, err := a.orders.NextID()
@@ -601,7 +601,7 @@ func (a *App) OpenDispute(orderID string, input OpenDisputeInput) (*core.Order, 
 		Reason:      input.Reason,
 		RefundCents: input.RefundCents,
 		Status:      core.DisputeStatusOpen,
-		CreatedAt:   time.Now().UTC(),
+		CreatedAt:   a.now(),
 	}); err != nil {
 		return nil, core.LedgerEntry{}, core.LedgerEntry{}, err
 	}
@@ -650,7 +650,7 @@ func (a *App) ResolveDispute(disputeID string, input ResolveDisputeInput) (Dispu
 		return Dispute{}, nil, err
 	}
 
-	resolvedAt := time.Now().UTC()
+	resolvedAt := a.now()
 	dispute.Status = core.DisputeStatusResolved
 	dispute.Resolution = input.Resolution
 	dispute.ResolvedBy = input.ResolvedBy
@@ -701,7 +701,7 @@ func (a *App) CreateMessage(orderID, author, body string) (Message, error) {
 		OrderID:   orderID,
 		Author:    author,
 		Body:      body,
-		CreatedAt: time.Now().UTC(),
+		CreatedAt: a.now(),
 	}
 
 	if err := a.messages.Save(message); err != nil {
@@ -1125,7 +1125,7 @@ func matchesListingFilter(listing Listing, input ListListingsInput) bool {
 // Only completed orders can be rated, and each order can only be rated once.
 func (a *App) RateOrder(orderID string, input RateOrderInput) (OrderRating, error) {
 	if input.Score < 1 || input.Score > 5 {
-		return OrderRating{}, errors.New("score must be between 1 and 5")
+		return OrderRating{}, ErrInvalidScore
 	}
 
 	order, err := a.orders.Get(orderID)
@@ -1133,7 +1133,7 @@ func (a *App) RateOrder(orderID string, input RateOrderInput) (OrderRating, erro
 		return OrderRating{}, err
 	}
 	if order.Status != core.OrderStatusCompleted {
-		return OrderRating{}, errors.New("only completed orders can be rated")
+		return OrderRating{}, ErrOrderNotCompleted
 	}
 
 	a.mu.Lock()
@@ -1142,7 +1142,7 @@ func (a *App) RateOrder(orderID string, input RateOrderInput) (OrderRating, erro
 	// Check if already rated
 	for _, r := range a.ratings {
 		if r.OrderID == orderID {
-			return OrderRating{}, errors.New("order already rated")
+			return OrderRating{}, ErrOrderAlreadyRated
 		}
 	}
 
@@ -1152,7 +1152,7 @@ func (a *App) RateOrder(orderID string, input RateOrderInput) (OrderRating, erro
 		BuyerOrgID:    order.BuyerOrgID,
 		Score:         input.Score,
 		Comment:       input.Comment,
-		CreatedAt:     time.Now().UTC(),
+		CreatedAt:     a.now(),
 	}
 	a.ratings = append(a.ratings, rating)
 
@@ -1199,7 +1199,7 @@ func (a *App) GetOrderRating(orderID string) (OrderRating, error) {
 			return r, nil
 		}
 	}
-	return OrderRating{}, errors.New("order not rated")
+	return OrderRating{}, ErrOrderNotRated
 }
 
 // CreateRFQMessage creates a message in the context of an RFQ.
@@ -1218,7 +1218,7 @@ func (a *App) CreateRFQMessage(rfqID, author, body string) (Message, error) {
 		RFQID:     rfqID,
 		Author:    author,
 		Body:      body,
-		CreatedAt: time.Now().UTC(),
+		CreatedAt: a.now(),
 	}
 
 	if err := a.messages.Save(message); err != nil {
@@ -1247,4 +1247,22 @@ func (a *App) ListRFQMessages(rfqID string) ([]Message, error) {
 // ListBids returns all bids for a given RFQ.
 func (a *App) ListBids(rfqID string) ([]Bid, error) {
 	return a.bids.ListByRFQ(rfqID)
+}
+
+// Clock provides the current time. Override for testing.
+type Clock func() time.Time
+
+// DefaultClock returns the real current time.
+func DefaultClock() time.Time { return time.Now().UTC() }
+
+// SetClock overrides the clock used by the App.
+func (a *App) SetClock(c Clock) {
+	a.clock = c
+}
+
+func (a *App) now() time.Time {
+	if a.clock != nil {
+		return a.clock()
+	}
+	return time.Now().UTC()
 }
