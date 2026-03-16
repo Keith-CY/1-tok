@@ -1797,6 +1797,80 @@ func TestResolveDispute_InvalidJSON(t *testing.T) {
 	}
 }
 
+func TestCreateMessage_ValidationMatrix_Noop_Gateway(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Msg auth", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	bid, _ := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid", QuoteCents: 5000,
+		Milestones: []platform.BidMilestoneInput{{ID: "ms_1", Title: "Work", BasePriceCents: 5000, BudgetCents: 5000}},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, platform.AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+
+	type tc struct {
+		name string
+		body string
+		want int
+	}
+	cases := []tc{
+		{name: "missing orderId", body: `{"author":"buyer","body":"hello"}`, want: http.StatusBadRequest},
+		{name: "whitespace orderId", body: `{"orderId":"   ","author":"buyer","body":"hello"}`, want: http.StatusBadRequest},
+		{name: "missing body", body: `{"orderId":"` + order.ID + `","author":"buyer"}`, want: http.StatusBadRequest},
+		{name: "whitespace body", body: `{"orderId":"` + order.ID + `","author":"buyer","body":"   "}`, want: http.StatusBadRequest},
+		{name: "missing author", body: `{"orderId":"` + order.ID + `","body":"hello"}`, want: http.StatusBadRequest},
+		{name: "whitespace author", body: `{"orderId":"` + order.ID + `","author":"   ","body":"hello"}`, want: http.StatusBadRequest},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", bytes.NewReader([]byte(tt.body)))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			gw.ServeHTTP(rec, req)
+			if rec.Code != tt.want {
+				t.Fatalf("%s: expected %d, got %d: %s", tt.name, tt.want, rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestCreateRFQMessage_ValidationMatrix_NoAuth_Gateway(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Msg test", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+
+	type tc struct {
+		name string
+		body string
+		want int
+	}
+	cases := []tc{
+		{name: "missing body", body: `{"author":"buyer"}`, want: http.StatusBadRequest},
+		{name: "whitespace body", body: `{"author":"buyer","body":"   "}`, want: http.StatusBadRequest},
+		{name: "missing author", body: `{"body":"hello"}`, want: http.StatusBadRequest},
+		{name: "whitespace author", body: `{"author":"   ","body":"hello"}`, want: http.StatusBadRequest},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs/"+rfq.ID+"/messages", bytes.NewReader([]byte(tt.body)))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			gw.ServeHTTP(rec, req)
+			if rec.Code != tt.want {
+				t.Fatalf("%s: expected %d, got %d: %s", tt.name, tt.want, rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestCreateMessage_InvalidJSON(t *testing.T) {
 	gw, _ := NewServerWithOptionsE(Options{App: platform.NewAppWithMemory()})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", bytes.NewReader([]byte("{broken")))
