@@ -181,6 +181,10 @@ export default async function OpsPage({
           <span className="tag">Pending reviews</span>
           <h3>Items that require a human decision, not another dashboard filter.</h3>
           <form method="GET" className="auth-form market-form">
+            <input type="hidden" name="disputesSearch" value={searchParams?.disputesSearch ?? ""} />
+            <input type="hidden" name="disputeStatusFilter" value={searchParams?.disputeStatusFilter ?? "open"} />
+            <input type="hidden" name="riskSearch" value={searchParams?.riskSearch ?? ""} />
+            <input type="hidden" name="fundingSearch" value={searchParams?.fundingSearch ?? ""} />
             <label className="auth-field">
               <span>Search pending reviews</span>
               <input
@@ -229,6 +233,10 @@ export default async function OpsPage({
         <span className="tag">Risk feed</span>
         <h3>Today’s market pressure points.</h3>
         <form method="GET" className="auth-form market-form">
+          <input type="hidden" name="pendingReviewSearch" value={searchParams?.pendingReviewSearch ?? ""} />
+          <input type="hidden" name="disputesSearch" value={searchParams?.disputesSearch ?? ""} />
+          <input type="hidden" name="disputeStatusFilter" value={searchParams?.disputeStatusFilter ?? "open"} />
+          <input type="hidden" name="fundingSearch" value={searchParams?.fundingSearch ?? ""} />
           <label className="auth-field">
             <span>Search risk alerts</span>
             <input
@@ -259,6 +267,9 @@ export default async function OpsPage({
         <span className="tag">Dispute queue</span>
         <h3>Platform-first reimbursement only works if disputes stay visible.</h3>
         <form method="GET" className="auth-form market-form">
+          <input type="hidden" name="pendingReviewSearch" value={searchParams?.pendingReviewSearch ?? ""} />
+          <input type="hidden" name="riskSearch" value={searchParams?.riskSearch ?? ""} />
+          <input type="hidden" name="fundingSearch" value={searchParams?.fundingSearch ?? ""} />
           <div className="market-form__grid">
             <label className="auth-field">
               <span>Search disputes</span>
@@ -324,6 +335,10 @@ export default async function OpsPage({
         <span className="tag">Funding journal</span>
         <h3>Live money movement, not demo theater.</h3>
         <form method="GET" className="auth-form market-form">
+          <input type="hidden" name="pendingReviewSearch" value={searchParams?.pendingReviewSearch ?? ""} />
+          <input type="hidden" name="disputesSearch" value={searchParams?.disputesSearch ?? ""} />
+          <input type="hidden" name="disputeStatusFilter" value={searchParams?.disputeStatusFilter ?? "open"} />
+          <input type="hidden" name="riskSearch" value={searchParams?.riskSearch ?? ""} />
           <label className="auth-field">
             <span>Search funding journal</span>
             <input
