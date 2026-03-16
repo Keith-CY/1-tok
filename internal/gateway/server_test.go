@@ -6821,3 +6821,12 @@ func TestExportApplications_Gateway(t *testing.T) {
 	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
 	if w.Header().Get("Content-Type") != "text/csv" { t.Error("expected CSV") }
 }
+
+func TestCreateOrder_InvalidFundingMode(t *testing.T) {
+	srv := NewServer()
+	body := `{"buyerOrgId":"org_b","providerOrgId":"org_p","fundingMode":"invalid","milestones":[{"id":"ms_1","title":"W","basePriceCents":1000,"budgetCents":1000}]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest { t.Errorf("expected 400, got %d", w.Code) }
+}

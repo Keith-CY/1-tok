@@ -332,3 +332,8 @@ func max64(a, b int64) int64 {
 
 	return b
 }
+
+// IsValidFundingMode checks if the given funding mode is valid.
+func IsValidFundingMode(mode FundingMode) bool {
+	return mode == FundingModePrepaid || mode == FundingModeCredit
+}

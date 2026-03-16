@@ -546,3 +546,10 @@ func TestOpenDispute_MilestoneNotFound(t *testing.T) {
 		t.Error("expected error for nonexistent milestone")
 	}
 }
+
+func TestIsValidFundingMode(t *testing.T) {
+	if !IsValidFundingMode(FundingModePrepaid) { t.Error("prepaid should be valid") }
+	if !IsValidFundingMode(FundingModeCredit) { t.Error("credit should be valid") }
+	if IsValidFundingMode("invalid") { t.Error("invalid should not be valid") }
+	if IsValidFundingMode("") { t.Error("empty should not be valid") }
+}

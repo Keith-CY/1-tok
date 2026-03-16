@@ -474,6 +474,10 @@ func (s *Server) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteError(w, http.StatusBadRequest, httputil.ErrCodeValidation, "at least one milestone is required")
 		return
 	}
+	if !core.IsValidFundingMode(core.FundingMode(payload.FundingMode)) {
+		httputil.WriteError(w, http.StatusBadRequest, httputil.ErrCodeValidation, "fundingMode must be 'prepaid' or 'credit'")
+		return
+	}
 	buyerOrgID, err := s.resolveBuyerOrg(r, payload.BuyerOrgID)
 	if err != nil {
 		httputil.WriteAuthError(w, err)
