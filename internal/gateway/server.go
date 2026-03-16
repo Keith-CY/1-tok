@@ -2479,10 +2479,7 @@ func recordEvidenceFromCallbackPayload(summary string, rawArtifacts any, rawUsag
 		}
 	}
 
-	if summary == "" {
-		summary = eventPayloadString(map[string]any{"summary": ""}, "summary")
-	}
-
+	// Keep summary as provided by caller; empty summary is valid when caller intentionally omits it.
 	var usage *carrier.UsageReport
 	if rawUsage != nil {
 		usageJSON, err := json.Marshal(rawUsage)

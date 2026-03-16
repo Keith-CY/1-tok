@@ -263,13 +263,15 @@ func (s *Service) CancelJob(jobID string) (ExecutionJob, error) {
 func (s *Service) transitionJob(jobID string, to JobState, output, errMsg string) (ExecutionJob, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.transitionJobLocked(jobID, to, output, errMsg)
+}
 
+func (s *Service) transitionJobLocked(jobID string, to JobState, output, errMsg string) (ExecutionJob, error) {
 	job, ok := s.jobs[jobID]
 	if !ok {
 		return ExecutionJob{}, ErrJobNotFound
 	}
 	if !canTransition(job.State, to) {
-		// Idempotent: if already in target state, return current job (safe retry)
 		if job.State == to {
 			return job, nil
 		}
@@ -501,28 +503,24 @@ func IsValidFailureCategory(category string) bool {
 
 // FailJobTyped transitions a job to failed with a typed failure category.
 func (s *Service) FailJobTyped(jobID string, category FailureCategory, code, errMsg string) (ExecutionJob, error) {
-	job, err := s.FailJob(jobID, errMsg)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	job, err := s.transitionJobLocked(jobID, JobStateFailed, "", errMsg)
 	if err != nil {
 		return job, err
 	}
 
-	s.mu.Lock()
-	if j, ok := s.jobs[jobID]; ok {
-		// Store category in the attempt if available
-		if attempts, ok := s.attempts[jobID]; ok && len(attempts) > 0 {
-			last := &s.attempts[jobID][len(attempts)-1]
-			last.FailureCategory = string(category)
-			last.FailureCode = code
-			last.State = JobStateFailed
-			now := j.CompletedAt
-			last.EndedAt = now
-		}
+	if len(s.attempts[jobID]) > 0 {
+		last := &s.attempts[jobID][len(s.attempts[jobID])-1]
+		last.FailureCategory = string(category)
+		last.FailureCode = code
+		last.State = JobStateFailed
+		endedAt := time.Now().UTC()
+		last.EndedAt = &endedAt
 	}
-	s.mu.Unlock()
 
-	s.log("carrier.job.failed.typed", map[string]any{
-		"jobId": jobID, "category": string(category), "code": code,
-	})
+	s.log("carrier.job.failed.typed", map[string]any{"jobId": jobID, "category": string(category), "code": code})
 
 	return job, nil
 }
