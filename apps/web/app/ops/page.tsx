@@ -22,6 +22,38 @@ export default async function OpsPage({
   const resolvedDisputeId = readSearchParam(searchParams, "resolvedDisputeId");
   const disputeStatus = readSearchParam(searchParams, "disputeStatus");
   const error = readSearchParam(searchParams, "error");
+  const disputesSearch = readSearchParam(searchParams, "disputesSearch").trim().toLowerCase();
+  const disputeStatusFilter = readSearchParam(searchParams, "disputeStatusFilter").trim().toLowerCase();
+  const pendingReviewSearch = readSearchParam(searchParams, "pendingReviewSearch").trim().toLowerCase();
+  const riskSearch = readSearchParam(searchParams, "riskSearch").trim().toLowerCase();
+  const fundingSearch = readSearchParam(searchParams, "fundingSearch").trim().toLowerCase();
+
+  const filteredDisputes = data.disputes.filter((dispute) =>
+    (disputeStatusFilter === "" || disputeStatusFilter === "all" || dispute.status === disputeStatusFilter) &&
+    (
+      disputesSearch === "" ||
+      dispute.orderId.toLowerCase().includes(disputesSearch) ||
+      dispute.milestoneId.toLowerCase().includes(disputesSearch) ||
+      dispute.reason.toLowerCase().includes(disputesSearch)
+    ),
+  );
+
+  const filteredPendingReviews = data.pendingReviews.filter((review) =>
+    pendingReviewSearch === "" ||
+    review.title.toLowerCase().includes(pendingReviewSearch) ||
+    review.detail.toLowerCase().includes(pendingReviewSearch),
+  );
+
+  const filteredRiskFeed = data.riskFeed.filter((risk) =>
+    riskSearch === "" ||
+    risk.title.toLowerCase().includes(riskSearch) ||
+    risk.detail.toLowerCase().includes(riskSearch),
+  );
+
+  const filteredFunding = data.fundingRecords.filter((record) => {
+    const haystack = `${record.kind} ${record.state} ${record.amount ?? ""} ${record.providerOrgId ?? ""} ${record.buyerOrgId ?? ""} ${record.invoice ?? ""} ${record.externalId ?? ""} ${record.asset ?? ""}`.toLowerCase();
+    return fundingSearch === "" || haystack.includes(fundingSearch);
+  });
 
   return (
     <PortalShell
@@ -148,11 +180,26 @@ export default async function OpsPage({
         <article className="feed-card">
           <span className="tag">Pending reviews</span>
           <h3>Items that require a human decision, not another dashboard filter.</h3>
+          <form method="GET" className="auth-form market-form">
+            <label className="auth-field">
+              <span>Search pending reviews</span>
+              <input
+                name="pendingReviewSearch"
+                type="text"
+                placeholder="Search by title or detail"
+                defaultValue={searchParams?.pendingReviewSearch ?? ""}
+              />
+            </label>
+            <button type="submit" className="auth-submit">
+              Filter reviews
+            </button>
+          </form>
+
           <div className="feed-list">
-            {data.pendingReviews.length === 0 ? (
+            {filteredPendingReviews.length === 0 ? (
               <EmptyState icon="✅" message="No pending manual reviews right now." actionLabel="Check disputes" actionHref="#disputes" />
             ) : null}
-            {data.pendingReviews.map((review) => (
+            {filteredPendingReviews.map((review) => (
               <div key={review.id} className="feed-item">
                 <strong>{review.title}</strong>
                 <p>{review.detail}</p>
@@ -181,11 +228,25 @@ export default async function OpsPage({
       <article className="timeline-card" id="risk-feed">
         <span className="tag">Risk feed</span>
         <h3>Today’s market pressure points.</h3>
+        <form method="GET" className="auth-form market-form">
+          <label className="auth-field">
+            <span>Search risk alerts</span>
+            <input
+              name="riskSearch"
+              type="text"
+              placeholder="Search risk title or detail"
+              defaultValue={searchParams?.riskSearch ?? ""}
+            />
+          </label>
+          <button type="submit" className="auth-submit">
+            Filter risk feed
+          </button>
+        </form>
         <div className="timeline">
-          {data.riskFeed.length === 0 ? (
+          {filteredRiskFeed.length === 0 ? (
             <EmptyState icon="📈" message="No risk alerts in the last period." actionLabel="Open treasury signals" actionHref="#treasury" />
           ) : null}
-          {data.riskFeed.map((item) => (
+          {filteredRiskFeed.map((item) => (
             <div key={item.id} className="timeline-item">
               <strong>{item.title}</strong>
               <p>{item.detail}</p>
@@ -197,11 +258,35 @@ export default async function OpsPage({
       <article className="timeline-card" id="disputes">
         <span className="tag">Dispute queue</span>
         <h3>Platform-first reimbursement only works if disputes stay visible.</h3>
+        <form method="GET" className="auth-form market-form">
+          <div className="market-form__grid">
+            <label className="auth-field">
+              <span>Search disputes</span>
+              <input
+                name="disputesSearch"
+                type="text"
+                placeholder="Search order, milestone or reason"
+                defaultValue={searchParams?.disputesSearch ?? ""}
+              />
+            </label>
+            <label className="auth-field">
+              <span>Status</span>
+              <select name="disputeStatusFilter" defaultValue={searchParams?.disputeStatusFilter ?? "open"}>
+                <option value="open">Open</option>
+                <option value="resolved">Resolved</option>
+                <option value="all">All</option>
+              </select>
+            </label>
+          </div>
+          <button type="submit" className="auth-submit">
+            Filter disputes
+          </button>
+        </form>
         <div className="timeline">
-          {data.disputes.length === 0 ? (
+          {filteredDisputes.length === 0 ? (
             <EmptyState icon="⚖️" message="No disputes in queue." actionLabel="View credit decision" actionHref="#credit-decision" />
           ) : null}
-          {data.disputes.map((dispute) => (
+          {filteredDisputes.map((dispute) => (
             <div key={dispute.id} className="timeline-item">
               <strong>
                 {dispute.orderId} · {dispute.milestoneId} · {dispute.status}
@@ -238,11 +323,25 @@ export default async function OpsPage({
       <article className="timeline-card" id="journal">
         <span className="tag">Funding journal</span>
         <h3>Live money movement, not demo theater.</h3>
+        <form method="GET" className="auth-form market-form">
+          <label className="auth-field">
+            <span>Search funding journal</span>
+            <input
+              name="fundingSearch"
+              type="text"
+              placeholder="Search kind, state, org, or invoice"
+              defaultValue={searchParams?.fundingSearch ?? ""}
+            />
+          </label>
+          <button type="submit" className="auth-submit">
+            Filter funding
+          </button>
+        </form>
         <div className="timeline">
-          {data.fundingRecords.length === 0 ? (
+          {filteredFunding.length === 0 ? (
             <EmptyState icon="📚" message="No funding records to display yet." actionLabel="Open treasury controls" actionHref="#treasury" />
           ) : null}
-          {data.fundingRecords.map((record) => (
+          {filteredFunding.map((record) => (
             <div key={record.id} className="timeline-item">
               <strong>
                 {record.kind.toUpperCase()} · {record.state}
