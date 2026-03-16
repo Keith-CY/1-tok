@@ -45,6 +45,29 @@ export default async function ProviderListingsPage({
   const chipClass = (active: boolean) =>
     active ? "action-button action-button--active" : "action-button";
 
+  const buildCategoryHref = (nextCategory: string) => {
+    const params = new URLSearchParams();
+
+    if (q) {
+      params.set("q", q);
+    }
+
+    if (selectedTier && selectedTier !== "all") {
+      params.set("tier", selectedTier);
+    }
+
+    if (sort && sort !== "title") {
+      params.set("sort", sort);
+    }
+
+    if (nextCategory !== "all") {
+      params.set("category", nextCategory);
+    }
+
+    const queryString = params.toString();
+    return queryString ? `/provider/listings?${queryString}` : "/provider/listings";
+  };
+
   const buildTierHref = (nextTier: string) => {
     const params = new URLSearchParams();
 
@@ -116,16 +139,70 @@ export default async function ProviderListingsPage({
         </div>
 
         <div className="flex gap-2 mb-2">
-          <a href={buildTierHref("all")} className={chipClass(selectedTier === "all")}>
+          <a
+            href={buildCategoryHref("all")}
+            className={chipClass(selectedCategory === "all")}
+            aria-current={selectedCategory === "all" ? "page" : undefined}
+          >
+            All categories
+          </a>
+          <a
+            href={buildCategoryHref("agent-ops")}
+            className={chipClass(selectedCategory === "agent-ops")}
+            aria-current={selectedCategory === "agent-ops" ? "page" : undefined}
+          >
+            Agent Ops
+          </a>
+          <a
+            href={buildCategoryHref("agent-runtime")}
+            className={chipClass(selectedCategory === "agent-runtime")}
+            aria-current={selectedCategory === "agent-runtime" ? "page" : undefined}
+          >
+            Agent Runtime
+          </a>
+          <a
+            href={buildCategoryHref("compute")}
+            className={chipClass(selectedCategory === "compute")}
+            aria-current={selectedCategory === "compute" ? "page" : undefined}
+          >
+            Compute
+          </a>
+          <a
+            href={buildCategoryHref("data-pipeline")}
+            className={chipClass(selectedCategory === "data-pipeline")}
+            aria-current={selectedCategory === "data-pipeline" ? "page" : undefined}
+          >
+            Data Pipeline
+          </a>
+        </div>
+
+        <div className="flex gap-2 mb-2">
+          <a
+            href={buildTierHref("all")}
+            className={chipClass(selectedTier === "all")}
+            aria-current={selectedTier === "all" ? "page" : undefined}
+          >
             All tiers
           </a>
-          <a href={buildTierHref("gold")} className={chipClass(selectedTier === "gold")}>
+          <a
+            href={buildTierHref("gold")}
+            className={chipClass(selectedTier === "gold")}
+            aria-current={selectedTier === "gold" ? "page" : undefined}
+          >
             Gold
           </a>
-          <a href={buildTierHref("silver")} className={chipClass(selectedTier === "silver")}>
+          <a
+            href={buildTierHref("silver")}
+            className={chipClass(selectedTier === "silver")}
+            aria-current={selectedTier === "silver" ? "page" : undefined}
+          >
             Silver
           </a>
-          <a href={buildTierHref("bronze")} className={chipClass(selectedTier === "bronze")}>
+          <a
+            href={buildTierHref("bronze")}
+            className={chipClass(selectedTier === "bronze")}
+            aria-current={selectedTier === "bronze" ? "page" : undefined}
+          >
             Bronze
           </a>
         </div>
