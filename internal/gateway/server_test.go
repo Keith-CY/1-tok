@@ -1900,7 +1900,7 @@ func TestAwardRFQ_Success(t *testing.T) {
 
 	gw, _ := NewServerWithOptionsE(Options{App: app})
 	payload, _ := json.Marshal(map[string]any{
-		"bidId": bid.ID, "fundingMode": "credit",
+		"bidId": bid.ID, "fundingMode": "credit", "creditLineId": "cl_test",
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs/"+rfq.ID+"/award", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
@@ -4003,7 +4003,7 @@ func TestAwardRFQ_RateLimited(t *testing.T) {
 
 	// First award
 	payload, _ := json.Marshal(map[string]any{
-		"bidId": bid.ID, "fundingMode": "credit",
+		"bidId": bid.ID, "fundingMode": "credit", "creditLineId": "cl_test",
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs/"+rfq.ID+"/award", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
@@ -6829,4 +6829,46 @@ func TestCreateOrder_InvalidFundingMode(t *testing.T) {
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest { t.Errorf("expected 400, got %d", w.Code) }
+}
+
+func TestCreateOrder_CreditWithoutLineID(t *testing.T) {
+	srv := NewServer()
+	body := `{"buyerOrgId":"org_b","providerOrgId":"org_p","fundingMode":"credit","milestones":[{"id":"ms_1","title":"W","basePriceCents":1000,"budgetCents":1000}]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest { t.Errorf("expected 400, got %d: %s", w.Code, w.Body.String()) }
+}
+
+func TestCreateOrder_CreditWithLineID(t *testing.T) {
+	srv := NewServer()
+	body := `{"buyerOrgId":"org_b","providerOrgId":"org_p","fundingMode":"credit","creditLineId":"cl_1","milestones":[{"id":"ms_1","title":"W","basePriceCents":1000,"budgetCents":1000}]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated { t.Errorf("expected 201, got %d: %s", w.Code, w.Body.String()) }
+}
+
+func TestAwardRFQ_CreditWithoutLineID(t *testing.T) {
+	srv := NewServer()
+	rfqBody := `{"buyerOrgId":"org_b","title":"credit","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(rfqBody))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	rfqID := resp["rfq"].(map[string]any)["id"].(string)
+
+	bidBody := `{"providerOrgId":"org_p","message":"b","quoteCents":5000,"milestones":[{"id":"ms_1","title":"W","basePriceCents":5000,"budgetCents":5000}]}`
+	req = httptest.NewRequest("POST", "/api/v1/rfqs/"+rfqID+"/bids", strings.NewReader(bidBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	bidID := resp["bid"].(map[string]any)["id"].(string)
+
+	awardBody := fmt.Sprintf(`{"bidId":"%s","fundingMode":"credit"}`, bidID)
+	req = httptest.NewRequest("POST", "/api/v1/rfqs/"+rfqID+"/award", strings.NewReader(awardBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest { t.Errorf("expected 400, got %d: %s", w.Code, w.Body.String()) }
 }

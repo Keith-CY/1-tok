@@ -478,6 +478,10 @@ func (s *Server) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteError(w, http.StatusBadRequest, httputil.ErrCodeValidation, "fundingMode must be 'prepaid' or 'credit'")
 		return
 	}
+	if payload.FundingMode == "credit" && payload.CreditLineID == "" {
+		httputil.WriteError(w, http.StatusBadRequest, httputil.ErrCodeValidation, "creditLineId is required for credit funding mode")
+		return
+	}
 	buyerOrgID, err := s.resolveBuyerOrg(r, payload.BuyerOrgID)
 	if err != nil {
 		httputil.WriteAuthError(w, err)
@@ -697,6 +701,10 @@ func (s *Server) handleAwardRFQ(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	if payload.FundingMode == "credit" && payload.CreditLineID == "" {
+		httputil.WriteError(w, http.StatusBadRequest, httputil.ErrCodeValidation, "creditLineId is required for credit funding mode")
 		return
 	}
 	rfq, err := s.app.GetRFQ(rfqID)
