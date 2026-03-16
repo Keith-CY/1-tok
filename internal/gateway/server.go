@@ -158,6 +158,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleExportOrders(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/export/disputes":
 		s.handleExportDisputes(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/export/rfqs":
+		s.handleExportRFQs(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/export/applications":
+		s.handleExportApplications(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/orders/batch-status":
 		s.handleBatchOrderStatus(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/listings":
@@ -2184,4 +2188,22 @@ func (s *Server) handleFiberExposure(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, exposure)
+}
+
+func (s *Server) handleExportRFQs(w http.ResponseWriter, r *http.Request) {
+	csv, err := s.app.ExportRFQsCSV()
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", "attachment; filename=rfqs.csv")
+	w.Write([]byte(csv))
+}
+
+func (s *Server) handleExportApplications(w http.ResponseWriter, r *http.Request) {
+	csv := s.app.ExportProviderApplicationsCSV()
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", "attachment; filename=applications.csv")
+	w.Write([]byte(csv))
 }

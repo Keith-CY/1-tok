@@ -43,3 +43,24 @@ func TestExportDisputesCSV(t *testing.T) {
 		t.Error("missing header")
 	}
 }
+
+func TestExportRFQsCSV(t *testing.T) {
+	app := NewAppWithMemory()
+	app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Export RFQ", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	csv, err := app.ExportRFQsCSV()
+	if err != nil { t.Fatal(err) }
+	if !strings.Contains(csv, "RFQID") { t.Error("missing header") }
+	if !strings.Contains(csv, "org_b") { t.Error("missing data") }
+}
+
+func TestExportProviderApplicationsCSV(t *testing.T) {
+	app := NewAppWithMemory()
+	app.SubmitProviderApplication("org_p", "Provider Inc", []string{"gpu"})
+	csv := app.ExportProviderApplicationsCSV()
+	if !strings.Contains(csv, "ApplicationID") { t.Error("missing header") }
+	if !strings.Contains(csv, "Provider Inc") { t.Error("missing data") }
+}

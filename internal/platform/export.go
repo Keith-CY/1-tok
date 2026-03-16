@@ -49,3 +49,37 @@ func (a *App) ExportDisputesCSV() (string, error) {
 
 	return sb.String(), nil
 }
+
+// ExportRFQsCSV generates a CSV representation of RFQs.
+func (a *App) ExportRFQsCSV() (string, error) {
+	rfqs, err := a.rfqs.List()
+	if err != nil {
+		return "", err
+	}
+
+	var sb strings.Builder
+	sb.WriteString("RFQID,BuyerOrgID,Title,Category,BudgetCents,Status,CreatedAt\n")
+	for _, r := range rfqs {
+		title := strings.ReplaceAll(r.Title, ",", ";")
+		sb.WriteString(fmt.Sprintf("%s,%s,%s,%s,%d,%s,%s\n",
+			r.ID, r.BuyerOrgID, title, r.Category,
+			r.BudgetCents, r.Status, r.CreatedAt.Format("2006-01-02")))
+	}
+	return sb.String(), nil
+}
+
+// ExportProviderApplicationsCSV generates a CSV of provider applications.
+func (a *App) ExportProviderApplicationsCSV() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	var sb strings.Builder
+	sb.WriteString("ApplicationID,OrgID,Name,Status,ReviewedBy,SubmittedAt\n")
+	for _, app := range a.providerApplications {
+		name := strings.ReplaceAll(app.Name, ",", ";")
+		sb.WriteString(fmt.Sprintf("%s,%s,%s,%s,%s,%s\n",
+			app.ID, app.OrgID, name, app.Status,
+			app.ReviewedBy, app.SubmittedAt.Format("2006-01-02")))
+	}
+	return sb.String()
+}
