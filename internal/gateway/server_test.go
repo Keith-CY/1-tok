@@ -1835,6 +1835,51 @@ func TestCreateMessage_MissingAuthorRejected_Gateway(t *testing.T) {
 	}
 }
 
+func TestCreateMessage_WhitespaceAuthorRejected_Gateway(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Msg auth", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	bid, _ := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid", QuoteCents: 5000,
+		Milestones: []platform.BidMilestoneInput{{ID: "ms_1", Title: "Work", BasePriceCents: 5000, BudgetCents: 5000}},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, platform.AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+	payload, _ := json.Marshal(map[string]any{
+		"orderId": order.ID,
+		"author":  "   ",
+		"body":    "hello",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateMessage_OrderIDWhitespaceRejected_Gateway(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+	payload, _ := json.Marshal(map[string]any{
+		"orderId": "   ",
+		"author":  "buyer",
+		"body":    "hello",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestCreateMessage_WhitespaceBodyRejected_Gateway(t *testing.T) {
 	app := platform.NewAppWithMemory()
 	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
@@ -8062,6 +8107,25 @@ func TestCreateRFQMessage_EmptyBodyRejected_Gateway(t *testing.T) {
 	srv.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("create msg with empty body: %d", w.Code)
+	}
+}
+
+func TestCreateRFQMessage_WhitespaceAuthorRejected_Gateway(t *testing.T) {
+	srv := NewServer()
+	rfqBody := `{"buyerOrgId":"org_b","title":"msg test","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2099-04-01T00:00:00Z"}`
+	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(rfqBody))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	rfqID := resp["rfq"].(map[string]any)["id"].(string)
+
+	msgBody := `{"author":"   ","body":"hello"}`
+	req = httptest.NewRequest("POST", "/api/v1/rfqs/"+rfqID+"/messages", strings.NewReader(msgBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("create msg with whitespace author: %d", w.Code)
 	}
 }
 

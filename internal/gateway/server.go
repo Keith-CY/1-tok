@@ -1104,7 +1104,7 @@ func (s *Server) handleCreateMessage(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteErrorWithDetails(w, http.StatusBadRequest, httputil.ErrCodeValidation, "validation failed", verr.Fields)
 		return
 	}
-	if fieldErrors := trimRequiredFields(map[string]string{"body": payload.Body}); len(fieldErrors) > 0 {
+	if fieldErrors := trimRequiredFields(map[string]string{"orderId": payload.OrderID, "body": payload.Body}); len(fieldErrors) > 0 {
 		httputil.WriteErrorWithDetails(w, http.StatusBadRequest, httputil.ErrCodeValidation, "validation failed", fieldErrors)
 		return
 	}
