@@ -68,7 +68,7 @@ func TestMarketplaceBot_OrderStatus(t *testing.T) {
 	rfq, _ := mb.app.CreateRFQ(platform.CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Bot test", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := mb.app.CreateBid(rfq.ID, platform.CreateBidInput{
 		ProviderOrgID: "org_p", Message: "bid",
@@ -129,7 +129,7 @@ func TestMarketplaceBot_RFQStatus(t *testing.T) {
 	rfq, _ := mb.app.CreateRFQ(platform.CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "RFQ Bot", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 
 	body := `{"type":2,"data":{"name":"rfq-status","options":[{"name":"rfq_id","value":"` + rfq.ID + `"}]}}`
@@ -180,7 +180,7 @@ func TestMarketplaceBot_Bids(t *testing.T) {
 	rfq, _ := mb.app.CreateRFQ(platform.CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Bids Bot", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	mb.app.CreateBid(rfq.ID, platform.CreateBidInput{
 		ProviderOrgID: "org_p", Message: "my bid",
@@ -210,7 +210,7 @@ func TestMarketplaceBot_Bids_Empty(t *testing.T) {
 	rfq, _ := mb.app.CreateRFQ(platform.CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "No bids", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 
 	body := `{"type":2,"data":{"name":"bids","options":[{"name":"rfq_id","value":"` + rfq.ID + `"}]}}`
@@ -338,7 +338,7 @@ func TestMarketplaceBot_OrderStatus_WithOrder(t *testing.T) {
 	rfq, _ := mb.app.CreateRFQ(platform.CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Discord test", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := mb.app.CreateBid(rfq.ID, platform.CreateBidInput{
 		ProviderOrgID: "org_p", Message: "bid", QuoteCents: 5000,
@@ -367,7 +367,7 @@ func TestMarketplaceBot_RFQStatus_WithAwarded(t *testing.T) {
 	rfq, _ := mb.app.CreateRFQ(platform.CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Awarded RFQ", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := mb.app.CreateBid(rfq.ID, platform.CreateBidInput{
 		ProviderOrgID: "org_p", Message: "bid", QuoteCents: 5000,

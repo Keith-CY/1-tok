@@ -54,7 +54,7 @@ func TestAppCreateRFQPersistsAndListsRFQs(t *testing.T) {
 		Category:           "agent-ops",
 		Scope:              "Investigate failures, stabilize runtime, and report next steps.",
 		BudgetCents:        9_500,
-		ResponseDeadlineAt: time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 3, 15, 12, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
 		t.Fatalf("create rfq: %v", err)
@@ -87,7 +87,7 @@ func TestAppCreateBidPersistsAndListsRFQBids(t *testing.T) {
 		Category:           "agent-ops",
 		Scope:              "Investigate failures, stabilize runtime, and report next steps.",
 		BudgetCents:        9_500,
-		ResponseDeadlineAt: time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 3, 15, 12, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
 		t.Fatalf("create rfq: %v", err)
@@ -143,7 +143,7 @@ func TestAppAwardRFQCreatesOrderAndMarksWinningBid(t *testing.T) {
 		Category:           "agent-ops",
 		Scope:              "Investigate failures, stabilize runtime, and report next steps.",
 		BudgetCents:        9_500,
-		ResponseDeadlineAt: time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 3, 15, 12, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
 		t.Fatalf("create rfq: %v", err)
@@ -402,7 +402,7 @@ func TestGetRFQ(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Test", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 
 	got, err := app.GetRFQ(rfq.ID)
@@ -485,7 +485,7 @@ func TestSettleMilestone(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Settle test", Category: "ai",
 		Scope: "test", BudgetCents: 10000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid",
@@ -520,7 +520,7 @@ func TestRecordUsageCharge(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Usage test", Category: "ai",
 		Scope: "test", BudgetCents: 10000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid",
@@ -551,7 +551,7 @@ func TestCreateMessage(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Msg test", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid",
@@ -603,7 +603,7 @@ func TestCreateBid_ClosedRFQ(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Closed", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid",
@@ -636,7 +636,7 @@ func TestOpenDispute_Success(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Dispute test", Category: "ai",
 		Scope: "test", BudgetCents: 10000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid",
@@ -663,7 +663,7 @@ func TestResolveDispute_Success(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Resolve test", Category: "ai",
 		Scope: "test", BudgetCents: 10000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid",
@@ -745,7 +745,7 @@ func TestListRFQBids(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Bids test", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid1",
@@ -768,7 +768,7 @@ func TestSettleMilestone_Completed(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Complete", Category: "ai",
 		Scope: "test", BudgetCents: 10000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid",
@@ -798,7 +798,7 @@ func TestOpenDispute_PublishesEvent(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Dispute pub", Category: "ai",
 		Scope: "test", BudgetCents: 10000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid",
@@ -835,7 +835,7 @@ func TestResolveDispute_PublishesEvent(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Resolve pub", Category: "ai",
 		Scope: "test", BudgetCents: 10000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid",
@@ -875,7 +875,7 @@ func TestSetPublisher_Nil(t *testing.T) {
 	_, err := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Noop", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -922,7 +922,7 @@ func TestSettleMilestone_PublishError(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Settle pub err", Category: "ai",
 		Scope: "test", BudgetCents: 10000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid",
@@ -944,7 +944,7 @@ func TestRecordUsageCharge_PublishError(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Usage pub err", Category: "ai",
 		Scope: "test", BudgetCents: 10000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid",
@@ -968,7 +968,7 @@ func TestCreateMessage_PublishError(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Msg pub err", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid",
@@ -990,7 +990,7 @@ func TestOpenDispute_PublishError(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Disp pub err", Category: "ai",
 		Scope: "test", BudgetCents: 10000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid",
@@ -1036,12 +1036,12 @@ func TestAwardRFQ_BidNotBelongToRFQ(t *testing.T) {
 	rfq1, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "RFQ1", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	rfq2, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "RFQ2", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq2.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid",
@@ -1061,7 +1061,7 @@ func TestAwardRFQ_MissingBidID(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "No bid", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 
 	_, _, err := app.AwardRFQ(rfq.ID, AwardRFQInput{FundingMode: "prepaid"})
@@ -1075,7 +1075,7 @@ func TestResolveDispute_PublishError(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Resolve pub err", Category: "ai",
 		Scope: "test", BudgetCents: 10000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid",
@@ -1100,7 +1100,7 @@ func TestCreateBid_PublishError(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Bid pub err", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 
 	app.SetPublisher(errorPublisher{})
@@ -1120,7 +1120,7 @@ func TestAwardRFQ_PublishError(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Award pub err", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid",
@@ -1177,16 +1177,17 @@ func TestListOrders_Error(t *testing.T) {
 }
 
 type failingRFQRepo struct{}
+
 func (failingRFQRepo) NextID() (string, error) { return "", errors.New("broken") }
 func (failingRFQRepo) Get(string) (RFQ, error) { return RFQ{}, ErrRFQNotFound }
-func (failingRFQRepo) Save(RFQ) error { return errors.New("broken") }
-func (failingRFQRepo) List() ([]RFQ, error) { return nil, errors.New("broken") }
+func (failingRFQRepo) Save(RFQ) error          { return errors.New("broken") }
+func (failingRFQRepo) List() ([]RFQ, error)    { return nil, errors.New("broken") }
 
 func TestCreateRFQ_NextIDError(t *testing.T) {
 	app := NewApp(nil, nil, nil, failingRFQRepo{}, nil, nil, nil)
 	_, err := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "b", Title: "T", Category: "ai", Scope: "s", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	if err == nil {
 		t.Error("expected error")
@@ -1202,9 +1203,10 @@ func TestListRFQs_Error(t *testing.T) {
 }
 
 type failingMessageRepo struct{}
-func (failingMessageRepo) NextID() (string, error) { return "", errors.New("broken") }
-func (failingMessageRepo) Save(Message) error { return errors.New("broken") }
-func (failingMessageRepo) ListByRFQ(string) ([]Message, error) { return nil, errors.New("broken") }
+
+func (failingMessageRepo) NextID() (string, error)               { return "", errors.New("broken") }
+func (failingMessageRepo) Save(Message) error                    { return errors.New("broken") }
+func (failingMessageRepo) ListByRFQ(string) ([]Message, error)   { return nil, errors.New("broken") }
 func (failingMessageRepo) ListByOrder(string) ([]Message, error) { return nil, errors.New("broken") }
 
 func TestCreateMessage_NextIDError(t *testing.T) {
@@ -1216,8 +1218,11 @@ func TestCreateMessage_NextIDError(t *testing.T) {
 }
 
 type failingProviderRepo struct{}
+
 func (failingProviderRepo) List() ([]ProviderProfile, error) { return nil, errors.New("broken") }
-func (failingProviderRepo) Get(string) (ProviderProfile, error) { return ProviderProfile{}, errors.New("broken") }
+func (failingProviderRepo) Get(string) (ProviderProfile, error) {
+	return ProviderProfile{}, errors.New("broken")
+}
 
 func TestListProviders_Error(t *testing.T) {
 	app := NewApp(nil, failingProviderRepo{}, nil, nil, nil, nil, nil)
@@ -1228,7 +1233,8 @@ func TestListProviders_Error(t *testing.T) {
 }
 
 type failingListingRepo struct{}
-func (failingListingRepo) List() ([]Listing, error) { return nil, errors.New("broken") }
+
+func (failingListingRepo) List() ([]Listing, error)    { return nil, errors.New("broken") }
 func (failingListingRepo) Get(string) (Listing, error) { return Listing{}, errors.New("broken") }
 
 func TestListListings_Error(t *testing.T) {
@@ -1240,10 +1246,11 @@ func TestListListings_Error(t *testing.T) {
 }
 
 type failingDisputeRepo struct{}
-func (failingDisputeRepo) NextID() (string, error) { return "", errors.New("broken") }
+
+func (failingDisputeRepo) NextID() (string, error)     { return "", errors.New("broken") }
 func (failingDisputeRepo) Get(string) (Dispute, error) { return Dispute{}, ErrDisputeNotFound }
-func (failingDisputeRepo) Save(Dispute) error { return errors.New("broken") }
-func (failingDisputeRepo) List() ([]Dispute, error) { return nil, errors.New("broken") }
+func (failingDisputeRepo) Save(Dispute) error          { return errors.New("broken") }
+func (failingDisputeRepo) List() ([]Dispute, error)    { return nil, errors.New("broken") }
 
 func TestListDisputes_Error(t *testing.T) {
 	app := NewApp(nil, nil, nil, nil, nil, nil, failingDisputeRepo{})
@@ -1254,16 +1261,17 @@ func TestListDisputes_Error(t *testing.T) {
 }
 
 type failingBidRepo struct{}
-func (failingBidRepo) NextID() (string, error) { return "", errors.New("broken") }
-func (failingBidRepo) Get(string) (Bid, error) { return Bid{}, ErrBidNotFound }
-func (failingBidRepo) Save(Bid) error { return errors.New("broken") }
+
+func (failingBidRepo) NextID() (string, error)         { return "", errors.New("broken") }
+func (failingBidRepo) Get(string) (Bid, error)         { return Bid{}, ErrBidNotFound }
+func (failingBidRepo) Save(Bid) error                  { return errors.New("broken") }
 func (failingBidRepo) ListByRFQ(string) ([]Bid, error) { return nil, errors.New("broken") }
 
 func TestCreateBid_NextIDError(t *testing.T) {
 	app := NewAppWithMemory()
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "b", Title: "T", Category: "ai", Scope: "s", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 
 	// Replace bids repo with failing one
@@ -1278,13 +1286,13 @@ func TestCreateBid_NextIDError(t *testing.T) {
 }
 
 type failAfterFirstSaveOrderRepo struct {
-	real    OrderRepository
+	real      OrderRepository
 	saveCount int
 }
 
-func (f *failAfterFirstSaveOrderRepo) NextID() (string, error) { return f.real.NextID() }
+func (f *failAfterFirstSaveOrderRepo) NextID() (string, error)            { return f.real.NextID() }
 func (f *failAfterFirstSaveOrderRepo) Get(id string) (*core.Order, error) { return f.real.Get(id) }
-func (f *failAfterFirstSaveOrderRepo) List() ([]*core.Order, error) { return f.real.List() }
+func (f *failAfterFirstSaveOrderRepo) List() ([]*core.Order, error)       { return f.real.List() }
 func (f *failAfterFirstSaveOrderRepo) Save(o *core.Order) error {
 	f.saveCount++
 	if f.saveCount > 1 {
@@ -1299,7 +1307,7 @@ func TestSettleMilestone_SaveError(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Save err", Category: "ai",
 		Scope: "test", BudgetCents: 10000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid",
@@ -1323,7 +1331,7 @@ func TestRecordUsageCharge_WrongState(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Wrong state", Category: "ai",
 		Scope: "test", BudgetCents: 10000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid",
@@ -1350,7 +1358,7 @@ func TestOpenDispute_RunningMilestone(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Disp running", Category: "ai",
 		Scope: "test", BudgetCents: 10000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid",
@@ -1374,7 +1382,7 @@ func TestResolveDispute_OrderNotFound(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Resolve bad", Category: "ai",
 		Scope: "test", BudgetCents: 10000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid",
@@ -1401,7 +1409,7 @@ func TestRecordUsageCharge_SaveError(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Save err usage", Category: "ai",
 		Scope: "test", BudgetCents: 10000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid",
@@ -1425,7 +1433,7 @@ func TestOpenDispute_SaveError(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "OD save", Category: "ai",
 		Scope: "test", BudgetCents: 10000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid",
@@ -1452,7 +1460,7 @@ func TestResolveDispute_SaveOrderError(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "RD save", Category: "ai",
 		Scope: "test", BudgetCents: 10000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid",
@@ -1479,7 +1487,7 @@ func TestAwardRFQ_BidNotFound(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Award bad bid", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 
 	_, _, err := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: "nonexistent_bid", FundingMode: "prepaid"})
@@ -1493,7 +1501,7 @@ func TestOpenDispute_DisputeIDError(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "OD id err", Category: "ai",
 		Scope: "test", BudgetCents: 10000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid",
@@ -1530,7 +1538,7 @@ func TestAwardRFQ_AlreadyAwarded(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Double award", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid",
@@ -1552,7 +1560,7 @@ func TestListOrders_WithData(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "List orders", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid",
@@ -1576,12 +1584,12 @@ func TestListRFQs_WithData(t *testing.T) {
 	app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "RFQ1", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "RFQ2", Category: "ai",
 		Scope: "test", BudgetCents: 3000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 
 	rfqs, err := app.ListRFQs()
@@ -1678,7 +1686,7 @@ func TestRateOrder_Success(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Rate test", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_p", Message: "bid",
@@ -1715,7 +1723,7 @@ func TestRateOrder_NotCompleted(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Not done", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_p", Message: "bid",
@@ -1736,7 +1744,7 @@ func TestRateOrder_AlreadyRated(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Double rate", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_p", Message: "bid",
@@ -1767,7 +1775,7 @@ func TestCreateRFQMessage(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Msg RFQ", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 
 	msg, err := app.CreateRFQMessage(rfq.ID, "buyer", "Any questions about this RFQ?")
@@ -1787,7 +1795,7 @@ func TestListRFQMessages(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "List msg", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 
 	app.CreateRFQMessage(rfq.ID, "buyer", "msg1")
@@ -1880,7 +1888,7 @@ func TestGetOrderBudget(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Budget test", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_p", Message: "bid",
@@ -1908,7 +1916,7 @@ func TestGetOrderTimeline(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Timeline", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_p", Message: "bid",
@@ -2011,7 +2019,7 @@ func TestTopUpMilestone(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "TopUp", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_p", Message: "bid", QuoteCents: 5000,
@@ -2059,6 +2067,32 @@ func TestRegisterCarrierBinding(t *testing.T) {
 	}
 	if binding.Status != "pending_verification" {
 		t.Errorf("status = %s", binding.Status)
+	}
+	if binding.CallbackSecret == "" {
+		// ok for no secret
+	}
+	if binding.CallbackSecret != "" && binding.CallbackKeyID == "" {
+		t.Fatalf("expected key id for callback secret")
+	}
+}
+
+func TestRegisterCarrierBinding_WithExplicitCallbackKeyId(t *testing.T) {
+	app := NewAppWithMemory()
+	binding, err := app.RegisterCarrierBinding(ProviderCarrierBinding{
+		ProviderOrgID:  "org_k",
+		CarrierBaseURL: "https://carrier.example.com",
+		HostID:         "h1",
+		AgentID:        "a1",
+		Backend:        "agent",
+		WorkspaceRoot:  "/workspace",
+		CallbackSecret: "s3",
+		CallbackKeyID:  "explicit-k",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if binding.CallbackKeyID != "explicit-k" {
+		t.Fatalf("expected explicit callback key id, got %s", binding.CallbackKeyID)
 	}
 }
 
@@ -2136,7 +2170,7 @@ func TestAwardRFQ_BlockedBySuspendedBinding(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Suspend test", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid", QuoteCents: 5000,
@@ -2157,7 +2191,7 @@ func TestBudgetWall_PauseAndResume(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Budget wall", Category: "ai",
 		Scope: "test", BudgetCents: 1000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_p", Message: "bid", QuoteCents: 1000,
@@ -2238,7 +2272,7 @@ func TestCreateBid_RequiresProfile_WhenEnforced(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Profile bid", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 
 	_, err := app.CreateBid(rfq.ID, CreateBidInput{
@@ -2252,7 +2286,7 @@ func TestCreateBid_RequiresProfile_WhenEnforced(t *testing.T) {
 	_, err = app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_p", Message: "bid", QuoteCents: 5000,
 		ExecutionProfileID: "prof_valid",
-		Milestones: []BidMilestoneInput{{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000}},
+		Milestones:         []BidMilestoneInput{{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000}},
 	})
 	if err != nil {
 		t.Errorf("expected success, got %v", err)
@@ -2321,20 +2355,24 @@ func TestMultipleBidsOnSameRFQ(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Multi bid", Category: "ai",
 		Scope: "test", BudgetCents: 10000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 
 	bid1, err := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_p1", Message: "bid 1", QuoteCents: 9000,
 		Milestones: []BidMilestoneInput{{ID: "ms_1", Title: "W", BasePriceCents: 9000, BudgetCents: 9000}},
 	})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	bid2, err := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_p2", Message: "bid 2", QuoteCents: 8000,
 		Milestones: []BidMilestoneInput{{ID: "ms_1", Title: "W", BasePriceCents: 8000, BudgetCents: 8000}},
 	})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	bids, _ := app.ListBids(rfq.ID)
 	if len(bids) != 2 {
@@ -2343,7 +2381,9 @@ func TestMultipleBidsOnSameRFQ(t *testing.T) {
 
 	// Award bid 2 — bid 1 should be rejected
 	_, order, err := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid2.ID, FundingMode: "prepaid"})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if order.ProviderOrgID != "org_p2" {
 		t.Errorf("provider = %s, want org_p2", order.ProviderOrgID)
 	}
@@ -2365,7 +2405,7 @@ func TestMilestoneAutoAdvance(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Advance", Category: "ai",
 		Scope: "test", BudgetCents: 6000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_p", Message: "bid", QuoteCents: 6000,
@@ -2398,7 +2438,7 @@ func TestCreditFundingMode(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Credit", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_p", Message: "bid", QuoteCents: 5000,
@@ -2419,27 +2459,39 @@ func TestCreditFundingMode(t *testing.T) {
 func TestGetProvider(t *testing.T) {
 	app := NewAppWithMemory()
 	p, err := app.GetProvider("provider_1")
-	if err != nil { t.Fatal(err) }
-	if p.Name == "" { t.Error("expected name") }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Name == "" {
+		t.Error("expected name")
+	}
 }
 
 func TestGetProvider_NotFound(t *testing.T) {
 	app := NewAppWithMemory()
 	_, err := app.GetProvider("nonexistent")
-	if err == nil { t.Error("expected error") }
+	if err == nil {
+		t.Error("expected error")
+	}
 }
 
 func TestGetListing(t *testing.T) {
 	app := NewAppWithMemory()
 	l, err := app.GetListing("listing_1")
-	if err != nil { t.Fatal(err) }
-	if l.Title == "" { t.Error("expected title") }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l.Title == "" {
+		t.Error("expected title")
+	}
 }
 
 func TestGetDispute_NotFound(t *testing.T) {
 	app := NewAppWithMemory()
 	_, err := app.GetDispute("nonexistent")
-	if err == nil { t.Error("expected error") }
+	if err == nil {
+		t.Error("expected error")
+	}
 }
 
 func TestListOrderMessages(t *testing.T) {
@@ -2447,7 +2499,7 @@ func TestListOrderMessages(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Msg", Category: "ai",
 		Scope: "t", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_p", Message: "b", QuoteCents: 5000,
@@ -2455,28 +2507,38 @@ func TestListOrderMessages(t *testing.T) {
 	})
 	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
 	messages, err := app.ListOrderMessages(order.ID)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	_ = messages // may be empty
 }
 
 func TestBatchOrderStatus(t *testing.T) {
 	app := NewAppWithMemory()
 	statuses, _ := app.BatchOrderStatus([]string{"nonexistent"})
-	if len(statuses) != 0 { t.Errorf("expected 0, got %d", len(statuses)) }
+	if len(statuses) != 0 {
+		t.Errorf("expected 0, got %d", len(statuses))
+	}
 }
 
 func TestGetProviderRevenue(t *testing.T) {
 	app := NewAppWithMemory()
 	rev, err := app.GetProviderRevenue("provider_1")
-	if err != nil { t.Fatal(err) }
-	if rev.ProviderOrgID != "provider_1" { t.Errorf("provider = %s", rev.ProviderOrgID) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rev.ProviderOrgID != "provider_1" {
+		t.Errorf("provider = %s", rev.ProviderOrgID)
+	}
 }
 
 func TestSetClock(t *testing.T) {
 	app := NewAppWithMemory()
 	fixed := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	app.SetClock(func() time.Time { return fixed })
-	if app.now() != fixed { t.Error("clock not set") }
+	if app.now() != fixed {
+		t.Error("clock not set")
+	}
 }
 
 func TestSetNotifier(t *testing.T) {
@@ -2484,10 +2546,13 @@ func TestSetNotifier(t *testing.T) {
 	called := false
 	app.SetNotifier(&testNotifier{onSend: func() { called = true }})
 	app.notify("test", "target", nil)
-	if !called { t.Error("notifier not called") }
+	if !called {
+		t.Error("notifier not called")
+	}
 }
 
 type testNotifier struct{ onSend func() }
+
 func (n *testNotifier) Send(event, target string, payload map[string]any) error {
 	n.onSend()
 	return nil
@@ -2496,7 +2561,9 @@ func (n *testNotifier) Send(event, target string, payload map[string]any) error 
 func TestListNotifications(t *testing.T) {
 	app := NewAppWithMemory()
 	notifs, err := app.ListNotifications("org_1")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	_ = notifs
 }
 
@@ -2506,14 +2573,20 @@ func TestGetProviderCarrierBinding(t *testing.T) {
 		ProviderOrgID: "org_p", CarrierBaseURL: "https://carrier.test", HostID: "h1",
 	})
 	binding, err := app.GetProviderCarrierBinding("org_p")
-	if err != nil { t.Fatal(err) }
-	if binding.HostID != "h1" { t.Errorf("hostId = %s", binding.HostID) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if binding.HostID != "h1" {
+		t.Errorf("hostId = %s", binding.HostID)
+	}
 }
 
 func TestGetProviderCarrierBinding_NotFound(t *testing.T) {
 	app := NewAppWithMemory()
 	_, err := app.GetProviderCarrierBinding("nonexistent")
-	if err == nil { t.Error("expected error") }
+	if err == nil {
+		t.Error("expected error")
+	}
 }
 
 func TestGetDisputeWithEvidence(t *testing.T) {
@@ -2522,7 +2595,7 @@ func TestGetDisputeWithEvidence(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Ev", Category: "ai",
 		Scope: "t", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_p", Message: "b", QuoteCents: 5000,
@@ -2533,11 +2606,17 @@ func TestGetDisputeWithEvidence(t *testing.T) {
 	app.OpenDispute(order.ID, OpenDisputeInput{MilestoneID: "ms_1", Reason: "bad", RefundCents: 100})
 
 	disputes, _ := app.ListDisputes()
-	if len(disputes) == 0 { t.Fatal("expected dispute") }
+	if len(disputes) == 0 {
+		t.Fatal("expected dispute")
+	}
 
 	dwe, err := app.GetDisputeWithEvidence(disputes[0].ID)
-	if err != nil { t.Fatal(err) }
-	if dwe.Dispute.ID == "" { t.Error("expected dispute ID") }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dwe.Dispute.ID == "" {
+		t.Error("expected dispute ID")
+	}
 }
 
 func TestExportOrdersCSV_WithData(t *testing.T) {
@@ -2545,7 +2624,7 @@ func TestExportOrdersCSV_WithData(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Export", Category: "ai",
 		Scope: "t", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_p", Message: "b", QuoteCents: 5000,
@@ -2554,25 +2633,35 @@ func TestExportOrdersCSV_WithData(t *testing.T) {
 	app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
 
 	csv, err := app.ExportOrdersCSV()
-	if err != nil { t.Fatal(err) }
-	if !strings.Contains(csv, "org_b") { t.Error("missing buyer in CSV") }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(csv, "org_b") {
+		t.Error("missing buyer in CSV")
+	}
 }
 
 func TestDefaultClock(t *testing.T) {
 	now := DefaultClock()
-	if now.IsZero() { t.Error("clock returned zero") }
+	if now.IsZero() {
+		t.Error("clock returned zero")
+	}
 }
 
 func TestSearchProviders_ByMinRating(t *testing.T) {
 	app := NewAppWithMemory()
 	providers, _ := app.SearchProviders(SearchProvidersInput{MinRating: 99.0})
-	if len(providers) != 0 { t.Errorf("expected 0, got %d", len(providers)) }
+	if len(providers) != 0 {
+		t.Errorf("expected 0, got %d", len(providers))
+	}
 }
 
 func TestSearchListings_ByProviderOrgID(t *testing.T) {
 	app := NewAppWithMemory()
 	listings, _ := app.SearchListings(ListListingsInput{ProviderOrgID: "nonexistent"})
-	if len(listings) != 0 { t.Errorf("expected 0, got %d", len(listings)) }
+	if len(listings) != 0 {
+		t.Errorf("expected 0, got %d", len(listings))
+	}
 }
 
 func TestAwardRFQ_WithActiveBinding_Succeeds(t *testing.T) {
@@ -2586,7 +2675,7 @@ func TestAwardRFQ_WithActiveBinding_Succeeds(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Active binding", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_p", Message: "bid", QuoteCents: 5000,
@@ -2604,15 +2693,23 @@ func TestAwardRFQ_WithActiveBinding_Succeeds(t *testing.T) {
 func TestGetLeaderboard(t *testing.T) {
 	app := NewAppWithMemory()
 	entries, err := app.GetProviderLeaderboard()
-	if err != nil { t.Fatal(err) }
-	if len(entries) < 1 { t.Errorf("expected at least 2, got %d", len(entries)) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) < 1 {
+		t.Errorf("expected at least 2, got %d", len(entries))
+	}
 }
 
 func TestExportDisputesCSV_Empty(t *testing.T) {
 	app := NewAppWithMemory()
 	csv, err := app.ExportDisputesCSV()
-	if err != nil { t.Fatal(err) }
-	if !strings.Contains(csv, "DisputeID") { t.Error("missing header") }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(csv, "DisputeID") {
+		t.Error("missing header")
+	}
 }
 
 func TestGetMarketplaceStats_WithData(t *testing.T) {
@@ -2620,7 +2717,7 @@ func TestGetMarketplaceStats_WithData(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Stats", Category: "ai",
 		Scope: "t", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_p", Message: "b", QuoteCents: 5000,
@@ -2629,9 +2726,15 @@ func TestGetMarketplaceStats_WithData(t *testing.T) {
 	app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
 
 	stats, err := app.GetMarketplaceStats()
-	if err != nil { t.Fatal(err) }
-	if stats.TotalOrders == 0 { t.Error("expected orders") }
-	if stats.TotalRFQs == 0 { t.Error("expected RFQs") }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.TotalOrders == 0 {
+		t.Error("expected orders")
+	}
+	if stats.TotalRFQs == 0 {
+		t.Error("expected RFQs")
+	}
 }
 
 func TestCreateBid_DefaultMilestonesFromRFQ(t *testing.T) {
@@ -2639,7 +2742,7 @@ func TestCreateBid_DefaultMilestonesFromRFQ(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Default ms", Category: "ai",
 		Scope: "test", BudgetCents: 10000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 
 	// Bid without milestones — should get defaults from RFQ
@@ -2664,7 +2767,7 @@ func TestCreateBid_RFQNotOpen(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Closed", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_p", Message: "first", QuoteCents: 5000,
@@ -2698,13 +2801,12 @@ func TestSearchListings_ByMaxPrice(t *testing.T) {
 	}
 }
 
-
 func TestCreateBid_ExceedsBudget(t *testing.T) {
 	app := NewAppWithMemory()
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Budget check", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	_, err := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_p", Message: "expensive", QuoteCents: 10000,
@@ -2722,7 +2824,7 @@ func TestCreateBid_ExactBudget(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Exact", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	_, err := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_p", Message: "exact", QuoteCents: 5000,
@@ -2740,7 +2842,7 @@ func TestGetBudgetWallInfo(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Wall", Category: "ai",
 		Scope: "t", BudgetCents: 1000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_p", Message: "b", QuoteCents: 1000,
@@ -2750,7 +2852,9 @@ func TestGetBudgetWallInfo(t *testing.T) {
 
 	// Before wall
 	info, _ := app.GetBudgetWallInfo(order.ID)
-	if info != nil { t.Error("should be nil before wall") }
+	if info != nil {
+		t.Error("should be nil before wall")
+	}
 
 	// Hit wall
 	app.RecordUsageCharge(order.ID, RecordUsageChargeInput{
@@ -2758,9 +2862,15 @@ func TestGetBudgetWallInfo(t *testing.T) {
 	})
 
 	info, _ = app.GetBudgetWallInfo(order.ID)
-	if info == nil { t.Fatal("expected budget wall info") }
-	if info.OverageCents != 1100 { t.Errorf("overage = %d", info.OverageCents) }
-	if info.MilestoneID != "ms_1" { t.Errorf("milestone = %s", info.MilestoneID) }
+	if info == nil {
+		t.Fatal("expected budget wall info")
+	}
+	if info.OverageCents != 1100 {
+		t.Errorf("overage = %d", info.OverageCents)
+	}
+	if info.MilestoneID != "ms_1" {
+		t.Errorf("milestone = %s", info.MilestoneID)
+	}
 }
 
 func TestGetFiberExposure(t *testing.T) {
@@ -2768,7 +2878,7 @@ func TestGetFiberExposure(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Exp", Category: "ai",
 		Scope: "t", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_p", Message: "b", QuoteCents: 5000,
@@ -2777,17 +2887,29 @@ func TestGetFiberExposure(t *testing.T) {
 	app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
 
 	exp, err := app.GetFiberExposure()
-	if err != nil { t.Fatal(err) }
-	if exp.ActiveOrderCount == 0 { t.Error("expected active orders") }
-	if exp.TotalPrepaidUnsettledCents == 0 { t.Error("expected prepaid exposure") }
-	if exp.TotalExposureCents == 0 { t.Error("expected total exposure") }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exp.ActiveOrderCount == 0 {
+		t.Error("expected active orders")
+	}
+	if exp.TotalPrepaidUnsettledCents == 0 {
+		t.Error("expected prepaid exposure")
+	}
+	if exp.TotalExposureCents == 0 {
+		t.Error("expected total exposure")
+	}
 }
 
 func TestGetFiberExposure_Empty(t *testing.T) {
 	app := NewAppWithMemory()
 	exp, err := app.GetFiberExposure()
-	if err != nil { t.Fatal(err) }
-	if exp.TotalExposureCents != 0 { t.Errorf("expected 0, got %d", exp.TotalExposureCents) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exp.TotalExposureCents != 0 {
+		t.Errorf("expected 0, got %d", exp.TotalExposureCents)
+	}
 }
 
 func TestGetProviderLeaderboard_WithRatings(t *testing.T) {
@@ -2797,7 +2919,7 @@ func TestGetProviderLeaderboard_WithRatings(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "LB", Category: "ai",
 		Scope: "t", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "provider_1", Message: "b", QuoteCents: 5000,
@@ -2808,31 +2930,45 @@ func TestGetProviderLeaderboard_WithRatings(t *testing.T) {
 	app.RateOrder(order.ID, RateOrderInput{Score: 5, Comment: "great"})
 
 	entries, err := app.GetProviderLeaderboard()
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// provider_1 should have a rating
 	found := false
 	for _, e := range entries {
 		if e.ProviderID == "provider_1" {
 			found = true
-			if e.Rating != 5.0 { t.Errorf("rating = %f", e.Rating) }
-			if e.RatingCount != 1 { t.Errorf("ratingCount = %d", e.RatingCount) }
-			if e.TotalOrders != 1 { t.Errorf("totalOrders = %d", e.TotalOrders) }
+			if e.Rating != 5.0 {
+				t.Errorf("rating = %f", e.Rating)
+			}
+			if e.RatingCount != 1 {
+				t.Errorf("ratingCount = %d", e.RatingCount)
+			}
+			if e.TotalOrders != 1 {
+				t.Errorf("totalOrders = %d", e.TotalOrders)
+			}
 		}
 	}
-	if !found { t.Error("provider_1 not in leaderboard") }
+	if !found {
+		t.Error("provider_1 not in leaderboard")
+	}
 }
 
 func TestSearchProviders_NoResults(t *testing.T) {
 	app := NewAppWithMemory()
 	providers, _ := app.SearchProviders(SearchProvidersInput{Capability: "quantum-computing"})
-	if len(providers) != 0 { t.Errorf("expected 0, got %d", len(providers)) }
+	if len(providers) != 0 {
+		t.Errorf("expected 0, got %d", len(providers))
+	}
 }
 
 func TestSearchProviders_ByTier_NoMatch(t *testing.T) {
 	app := NewAppWithMemory()
 	providers, _ := app.SearchProviders(SearchProvidersInput{Tier: "diamond"})
-	if len(providers) != 0 { t.Errorf("expected 0, got %d", len(providers)) }
+	if len(providers) != 0 {
+		t.Errorf("expected 0, got %d", len(providers))
+	}
 }
 
 func TestGetOrderTimeline_WithSettlement(t *testing.T) {
@@ -2840,7 +2976,7 @@ func TestGetOrderTimeline_WithSettlement(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "TL", Category: "ai",
 		Scope: "t", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_p", Message: "b", QuoteCents: 5000,
@@ -2856,8 +2992,12 @@ func TestGetOrderTimeline_WithSettlement(t *testing.T) {
 	for _, ev := range timeline {
 		types[ev.Type] = true
 	}
-	if !types["order.created"] { t.Error("missing order.created") }
-	if !types["order.rated"] { t.Error("missing order.rated") }
+	if !types["order.created"] {
+		t.Error("missing order.created")
+	}
+	if !types["order.rated"] {
+		t.Error("missing order.rated")
+	}
 }
 
 func TestResolveDispute_AlreadyResolved(t *testing.T) {
@@ -2865,7 +3005,7 @@ func TestResolveDispute_AlreadyResolved(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "DR", Category: "ai",
 		Scope: "t", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_p", Message: "b", QuoteCents: 5000,
@@ -2893,7 +3033,7 @@ func TestOpenDispute_NotSettled(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "NS", Category: "ai",
 		Scope: "t", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_p", Message: "b", QuoteCents: 5000,
@@ -2913,7 +3053,7 @@ func TestRateOrder_DuplicateRating(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Dup", Category: "ai",
 		Scope: "t", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_p", Message: "b", QuoteCents: 5000,
@@ -2934,7 +3074,7 @@ func TestCreateRFQ_MissingTitle(t *testing.T) {
 	_, err := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	if err != ErrMissingRequiredFields {
 		t.Errorf("expected ErrMissingRequiredFields, got %v", err)
@@ -2965,7 +3105,7 @@ func TestListBids_EmptyRFQ(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Empty", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bids, _ := app.ListBids(rfq.ID)
 	if len(bids) != 0 {
@@ -2986,13 +3126,21 @@ func TestCreateRFQMessage_Success(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Msg", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	msg, err := app.CreateRFQMessage(rfq.ID, "buyer", "hello provider")
-	if err != nil { t.Fatal(err) }
-	if msg.RFQID != rfq.ID { t.Errorf("rfqId = %s", msg.RFQID) }
-	if msg.Author != "buyer" { t.Errorf("author = %s", msg.Author) }
-	if msg.Body != "hello provider" { t.Errorf("body = %s", msg.Body) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msg.RFQID != rfq.ID {
+		t.Errorf("rfqId = %s", msg.RFQID)
+	}
+	if msg.Author != "buyer" {
+		t.Errorf("author = %s", msg.Author)
+	}
+	if msg.Body != "hello provider" {
+		t.Errorf("body = %s", msg.Body)
+	}
 }
 
 func TestListRFQMessages_Multiple(t *testing.T) {
@@ -3000,15 +3148,19 @@ func TestListRFQMessages_Multiple(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Msgs", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	app.CreateRFQMessage(rfq.ID, "buyer", "msg1")
 	app.CreateRFQMessage(rfq.ID, "provider", "msg2")
 	app.CreateRFQMessage(rfq.ID, "buyer", "msg3")
 
 	msgs, err := app.ListRFQMessages(rfq.ID)
-	if err != nil { t.Fatal(err) }
-	if len(msgs) != 3 { t.Errorf("expected 3, got %d", len(msgs)) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 3 {
+		t.Errorf("expected 3, got %d", len(msgs))
+	}
 }
 
 func TestCreditLimit_EnforcedOnOrder(t *testing.T) {
@@ -3019,21 +3171,23 @@ func TestCreditLimit_EnforcedOnOrder(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "CL", Category: "ai",
 		Scope: "t", BudgetCents: 3000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_p", Message: "b", QuoteCents: 3000,
 		Milestones: []BidMilestoneInput{{ID: "ms_1", Title: "W", BasePriceCents: 3000, BudgetCents: 3000}},
 	})
 	_, order, err := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "credit", CreditLineID: "cl_1"})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	_ = order
 
 	// Second order exceeds remaining limit
 	rfq2, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "CL2", Category: "ai",
 		Scope: "t", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid2, _ := app.CreateBid(rfq2.ID, CreateBidInput{
 		ProviderOrgID: "org_p", Message: "b", QuoteCents: 5000,
@@ -3048,5 +3202,19 @@ func TestCreditLimit_EnforcedOnOrder(t *testing.T) {
 func TestCheckCreditAvailability_NoLimit(t *testing.T) {
 	app := NewAppWithMemory()
 	err := app.CheckCreditAvailability("org_no_limit", 99999)
-	if err != nil { t.Errorf("no limit should pass: %v", err) }
+	if err != nil {
+		t.Errorf("no limit should pass: %v", err)
+	}
+}
+
+func TestCreateRFQ_PastDeadline(t *testing.T) {
+	app := NewAppWithMemory()
+	_, err := app.CreateRFQ(CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Past", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+	})
+	if !errors.Is(err, ErrDeadlineInPast) {
+		t.Fatalf("expected ErrDeadlineInPast, got %v", err)
+	}
 }

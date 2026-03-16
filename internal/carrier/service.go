@@ -20,11 +20,11 @@ const (
 )
 
 var (
-	ErrBindingExists      = errors.New("carrier already bound to this milestone")
-	ErrBindingNotFound    = errors.New("carrier binding not found")
-	ErrJobNotFound        = errors.New("execution job not found")
-	ErrInvalidTransition  = errors.New("invalid job state transition")
-	ErrCarrierStale       = errors.New("carrier heartbeat stale")
+	ErrBindingExists     = errors.New("carrier already bound to this milestone")
+	ErrBindingNotFound   = errors.New("carrier binding not found")
+	ErrJobNotFound       = errors.New("execution job not found")
+	ErrInvalidTransition = errors.New("invalid job state transition")
+	ErrCarrierStale      = errors.New("carrier heartbeat stale")
 )
 
 // HeartbeatTimeout is how long before a carrier is considered stale.
@@ -32,12 +32,12 @@ const HeartbeatTimeout = 2 * time.Minute
 
 // Binding represents a Carrier instance bound to an order milestone.
 type Binding struct {
-	ID           string    `json:"id"`
-	CarrierID    string    `json:"carrierId"`
-	OrderID      string    `json:"orderId"`
-	MilestoneID  string    `json:"milestoneId"`
-	Capabilities []string  `json:"capabilities"`
-	BoundAt      time.Time `json:"boundAt"`
+	ID            string    `json:"id"`
+	CarrierID     string    `json:"carrierId"`
+	OrderID       string    `json:"orderId"`
+	MilestoneID   string    `json:"milestoneId"`
+	Capabilities  []string  `json:"capabilities"`
+	BoundAt       time.Time `json:"boundAt"`
 	LastHeartbeat time.Time `json:"lastHeartbeat"`
 }
 
@@ -87,16 +87,16 @@ func canTransition(from, to JobState) bool {
 
 // Service manages carrier bindings and execution jobs.
 type Service struct {
-	mu          sync.Mutex
-	bindingSeq  int
-	jobSeq      int
-	bindings    map[string]Binding            // id → binding
-	bindingIdx  map[string]string             // "orderID|milestoneID" → binding id
-	jobs        map[string]ExecutionJob       // id → job
-	jobsByBinding map[string][]string         // binding id → job ids
-	attempts      map[string][]ExecutionAttempt
+	mu              sync.Mutex
+	bindingSeq      int
+	jobSeq          int
+	bindings        map[string]Binding      // id → binding
+	bindingIdx      map[string]string       // "orderID|milestoneID" → binding id
+	jobs            map[string]ExecutionJob // id → job
+	jobsByBinding   map[string][]string     // binding id → job ids
+	attempts        map[string][]ExecutionAttempt
 	idempotencyKeys map[string]string // job id → attempts
-	logger      Logger
+	logger          Logger
 }
 
 // Logger is an optional structured logger for carrier operations.
@@ -151,6 +151,18 @@ func (s *Service) Bind(orderID, milestoneID, carrierID string, capabilities []st
 	s.bindings[binding.ID] = binding
 	s.bindingIdx[key] = binding.ID
 	s.log("carrier.bind", map[string]any{"bindingId": binding.ID, "carrierId": carrierID, "orderId": orderID})
+	return binding, nil
+}
+
+// GetBindingByID retrieves a binding by its ID.
+func (s *Service) GetBindingByID(bindingID string) (Binding, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	binding, ok := s.bindings[bindingID]
+	if !ok {
+		return Binding{}, ErrBindingNotFound
+	}
 	return binding, nil
 }
 
@@ -319,9 +331,9 @@ const StaleJobTimeout = 5 * time.Minute
 
 // StaleJob represents a job that missed its heartbeat window.
 type StaleJob struct {
-	Job           ExecutionJob `json:"job"`
-	BindingID     string       `json:"bindingId"`
-	LastHeartbeat time.Time    `json:"lastHeartbeat"`
+	Job           ExecutionJob  `json:"job"`
+	BindingID     string        `json:"bindingId"`
+	LastHeartbeat time.Time     `json:"lastHeartbeat"`
 	StaleSince    time.Duration `json:"staleSince"`
 }
 
@@ -449,13 +461,13 @@ func (s *Service) CreateJobIdempotent(bindingID, milestoneID, input, idempotency
 type FailureCategory string
 
 const (
-	FailureCategoryProviderFault         FailureCategory = "provider_fault"
-	FailureCategoryPolicyDenied          FailureCategory = "policy_denied"
-	FailureCategoryInfraUnavailable      FailureCategory = "infra_unavailable"
-	FailureCategoryTimeout               FailureCategory = "timeout"
-	FailureCategoryInvalidInput          FailureCategory = "invalid_input"
+	FailureCategoryProviderFault          FailureCategory = "provider_fault"
+	FailureCategoryPolicyDenied           FailureCategory = "policy_denied"
+	FailureCategoryInfraUnavailable       FailureCategory = "infra_unavailable"
+	FailureCategoryTimeout                FailureCategory = "timeout"
+	FailureCategoryInvalidInput           FailureCategory = "invalid_input"
 	FailureCategoryBuyerDependencyMissing FailureCategory = "buyer_dependency_missing"
-	FailureCategoryUnknown               FailureCategory = "unknown"
+	FailureCategoryUnknown                FailureCategory = "unknown"
 )
 
 // ValidFailureCategories lists all accepted failure categories.

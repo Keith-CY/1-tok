@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chenyu/1-tok/internal/carrier"
 	"github.com/chenyu/1-tok/internal/core"
 	iamclient "github.com/chenyu/1-tok/internal/integrations/iam"
 	"github.com/chenyu/1-tok/internal/platform"
@@ -194,7 +195,7 @@ func TestCreateRFQDerivesBuyerOrgFromAuthenticatedMembership(t *testing.T) {
 		"category":           "agent-ops",
 		"scope":              "Investigate failures and propose a fix plan.",
 		"budgetCents":        8000,
-		"responseDeadlineAt": "2026-03-15T12:00:00Z",
+		"responseDeadlineAt": "2099-03-15T12:00:00Z",
 	}
 	body, _ := json.Marshal(payload)
 
@@ -271,7 +272,7 @@ func TestCreateRFQIsRateLimited(t *testing.T) {
 		"category":           "agent-ops",
 		"scope":              "Investigate failures and propose a fix plan.",
 		"budgetCents":        8000,
-		"responseDeadlineAt": "2026-03-15T12:00:00Z",
+		"responseDeadlineAt": "2099-03-15T12:00:00Z",
 	})
 
 	for i := 0; i < 2; i++ {
@@ -305,7 +306,7 @@ func TestCreateBidDerivesProviderOrgFromAuthenticatedMembership(t *testing.T) {
 		Category:           "agent-ops",
 		Scope:              "Investigate failures and propose a fix plan.",
 		BudgetCents:        8_000,
-		ResponseDeadlineAt: time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 3, 15, 12, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
 		t.Fatalf("create rfq: %v", err)
@@ -379,7 +380,7 @@ func TestAwardRFQCreatesOrderFromWinningBid(t *testing.T) {
 		Category:           "agent-ops",
 		Scope:              "Investigate failures and propose a fix plan.",
 		BudgetCents:        8_000,
-		ResponseDeadlineAt: time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 3, 15, 12, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
 		t.Fatalf("create rfq: %v", err)
@@ -853,7 +854,7 @@ func TestListRFQsScopesBuyerMembershipWhenIAMConfigured(t *testing.T) {
 		Category:           "agent-ops",
 		Scope:              "Scope one",
 		BudgetCents:        4200,
-		ResponseDeadlineAt: time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 3, 15, 12, 0, 0, 0, time.UTC),
 	}); err != nil {
 		t.Fatalf("create rfq 1: %v", err)
 	}
@@ -915,7 +916,7 @@ func TestListRFQsShowsOpenAndAwardedProviderRFQsWhenIAMConfigured(t *testing.T) 
 		Category:           "agent-ops",
 		Scope:              "Open scope",
 		BudgetCents:        4200,
-		ResponseDeadlineAt: time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 3, 15, 12, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
 		t.Fatalf("create open rfq: %v", err)
@@ -1031,7 +1032,7 @@ func TestListRFQBidsScopesProviderMembershipWhenIAMConfigured(t *testing.T) {
 		Category:           "agent-ops",
 		Scope:              "Shared scope",
 		BudgetCents:        4200,
-		ResponseDeadlineAt: time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 3, 15, 12, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
 		t.Fatalf("create rfq: %v", err)
@@ -1687,6 +1688,22 @@ func TestResolveDispute(t *testing.T) {
 	}
 }
 
+func TestCreateRFQ_PastDeadline(t *testing.T) {
+	srv := NewServer()
+	body := `{"title":"Past RFQ","buyerOrgId":"org_b","category":"ai","scope":"test","budgetCents":5000,"responseDeadlineAt":"2000-01-01T00:00:00Z"}`
+	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "response deadline must be in the future") {
+		t.Fatalf("expected past deadline error message, got %s", w.Body.String())
+	}
+}
+
 func TestCreateRFQ_MissingFields(t *testing.T) {
 	gw, _ := NewServerWithOptionsE(Options{App: platform.NewAppWithMemory()})
 	payload, _ := json.Marshal(map[string]any{"title": ""})
@@ -1849,7 +1866,7 @@ func TestCreateRFQ_Success(t *testing.T) {
 	payload, _ := json.Marshal(map[string]any{
 		"buyerOrgId": "org_b", "title": "Need agent", "category": "ai",
 		"scope": "Build something", "budgetCents": 10000,
-		"responseDeadlineAt": "2026-04-01T00:00:00Z",
+		"responseDeadlineAt": "2099-04-01T00:00:00Z",
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
@@ -2027,7 +2044,7 @@ func TestCreateRFQ_WithBuyerAuth(t *testing.T) {
 	gw, _, _ := newAuthGateway(t, "buyer")
 	payload, _ := json.Marshal(map[string]any{
 		"title": "Auth RFQ", "category": "ai", "scope": "test",
-		"budgetCents": 10000, "responseDeadlineAt": "2026-04-01T00:00:00Z",
+		"budgetCents": 10000, "responseDeadlineAt": "2099-04-01T00:00:00Z",
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
@@ -2352,7 +2369,7 @@ func TestCreateRFQ_MissingBudget(t *testing.T) {
 	payload, _ := json.Marshal(map[string]any{
 		"buyerOrgId": "org_b", "title": "No budget", "category": "ai",
 		"scope": "test", "budgetCents": 0,
-		"responseDeadlineAt": "2026-04-01T00:00:00Z",
+		"responseDeadlineAt": "2099-04-01T00:00:00Z",
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
@@ -2583,7 +2600,7 @@ func TestCreateRFQ_WithRateLimit(t *testing.T) {
 	// First request succeeds
 	payload, _ := json.Marshal(map[string]any{
 		"title": "Rate limited", "category": "ai", "scope": "test",
-		"budgetCents": 5000, "responseDeadlineAt": "2026-04-01T00:00:00Z",
+		"budgetCents": 5000, "responseDeadlineAt": "2099-04-01T00:00:00Z",
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
@@ -2597,7 +2614,7 @@ func TestCreateRFQ_WithRateLimit(t *testing.T) {
 	// Second request gets rate limited
 	payload2, _ := json.Marshal(map[string]any{
 		"title": "Rate limited 2", "category": "ai", "scope": "test",
-		"budgetCents": 5000, "responseDeadlineAt": "2026-04-01T00:00:00Z",
+		"budgetCents": 5000, "responseDeadlineAt": "2099-04-01T00:00:00Z",
 	})
 	req2 := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs", bytes.NewReader(payload2))
 	req2.Header.Set("Content-Type", "application/json")
@@ -3442,7 +3459,6 @@ func TestListProviders_WithPagination(t *testing.T) {
 	}
 }
 
-
 func TestCreateRFQ_NoAuthHeader(t *testing.T) {
 	gw, _ := NewServerWithOptionsE(Options{
 		App: platform.NewAppWithMemory(),
@@ -3450,7 +3466,7 @@ func TestCreateRFQ_NoAuthHeader(t *testing.T) {
 	})
 	payload, _ := json.Marshal(map[string]any{
 		"title": "No auth", "category": "ai", "scope": "test",
-		"budgetCents": 5000, "responseDeadlineAt": "2026-04-01T00:00:00Z",
+		"budgetCents": 5000, "responseDeadlineAt": "2099-04-01T00:00:00Z",
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
@@ -3517,14 +3533,14 @@ func TestCreateRFQ_RateLimiterError(t *testing.T) {
 		},
 	}
 	gw, _ := NewServerWithOptionsE(Options{
-		App: platform.NewAppWithMemory(),
-		IAM: &stubIAMClient{actor: actor},
+		App:         platform.NewAppWithMemory(),
+		IAM:         &stubIAMClient{actor: actor},
 		RateLimiter: &errorRateLimiter{},
 	})
 
 	payload, _ := json.Marshal(map[string]any{
 		"title": "RL error", "category": "ai", "scope": "test",
-		"budgetCents": 5000, "responseDeadlineAt": "2026-04-01T00:00:00Z",
+		"budgetCents": 5000, "responseDeadlineAt": "2099-04-01T00:00:00Z",
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
@@ -3645,12 +3661,20 @@ func TestCreateMessage_ForeignOrg(t *testing.T) {
 }
 
 type failingProviderRepo struct{}
-func (failingProviderRepo) List() ([]platform.ProviderProfile, error) { return nil, errors.New("broken") }
-func (failingProviderRepo) Get(string) (platform.ProviderProfile, error) { return platform.ProviderProfile{}, errors.New("broken") }
+
+func (failingProviderRepo) List() ([]platform.ProviderProfile, error) {
+	return nil, errors.New("broken")
+}
+func (failingProviderRepo) Get(string) (platform.ProviderProfile, error) {
+	return platform.ProviderProfile{}, errors.New("broken")
+}
 
 type failingListingRepo struct{}
+
 func (failingListingRepo) List() ([]platform.Listing, error) { return nil, errors.New("broken") }
-func (failingListingRepo) Get(string) (platform.Listing, error) { return platform.Listing{}, errors.New("broken") }
+func (failingListingRepo) Get(string) (platform.Listing, error) {
+	return platform.Listing{}, errors.New("broken")
+}
 
 func TestListProviders_AppError(t *testing.T) {
 	app := platform.NewApp(nil, failingProviderRepo{}, nil, nil, nil, nil, nil)
@@ -3675,21 +3699,28 @@ func TestListListings_AppError(t *testing.T) {
 }
 
 type failingRFQRepo struct{}
+
 func (failingRFQRepo) NextID() (string, error) { return "", errors.New("broken") }
-func (failingRFQRepo) Get(string) (platform.RFQ, error) { return platform.RFQ{}, platform.ErrRFQNotFound }
-func (failingRFQRepo) Save(platform.RFQ) error { return errors.New("broken") }
+func (failingRFQRepo) Get(string) (platform.RFQ, error) {
+	return platform.RFQ{}, platform.ErrRFQNotFound
+}
+func (failingRFQRepo) Save(platform.RFQ) error       { return errors.New("broken") }
 func (failingRFQRepo) List() ([]platform.RFQ, error) { return nil, errors.New("broken") }
 
 type failingOrderRepo struct{}
-func (failingOrderRepo) NextID() (string, error) { return "", errors.New("broken") }
+
+func (failingOrderRepo) NextID() (string, error)         { return "", errors.New("broken") }
 func (failingOrderRepo) Get(string) (*core.Order, error) { return nil, core.ErrOrderNotFound }
-func (failingOrderRepo) Save(*core.Order) error { return errors.New("broken") }
-func (failingOrderRepo) List() ([]*core.Order, error) { return nil, errors.New("broken") }
+func (failingOrderRepo) Save(*core.Order) error          { return errors.New("broken") }
+func (failingOrderRepo) List() ([]*core.Order, error)    { return nil, errors.New("broken") }
 
 type failingDisputeRepo struct{}
+
 func (failingDisputeRepo) NextID() (string, error) { return "", errors.New("broken") }
-func (failingDisputeRepo) Get(string) (platform.Dispute, error) { return platform.Dispute{}, platform.ErrDisputeNotFound }
-func (failingDisputeRepo) Save(platform.Dispute) error { return errors.New("broken") }
+func (failingDisputeRepo) Get(string) (platform.Dispute, error) {
+	return platform.Dispute{}, platform.ErrDisputeNotFound
+}
+func (failingDisputeRepo) Save(platform.Dispute) error       { return errors.New("broken") }
 func (failingDisputeRepo) List() ([]platform.Dispute, error) { return nil, errors.New("broken") }
 
 func TestListRFQs_AppError(t *testing.T) {
@@ -3726,9 +3757,12 @@ func TestListDisputes_AppError(t *testing.T) {
 }
 
 type failingBidRepo struct{}
+
 func (failingBidRepo) NextID() (string, error) { return "", errors.New("broken") }
-func (failingBidRepo) Get(string) (platform.Bid, error) { return platform.Bid{}, platform.ErrBidNotFound }
-func (failingBidRepo) Save(platform.Bid) error { return errors.New("broken") }
+func (failingBidRepo) Get(string) (platform.Bid, error) {
+	return platform.Bid{}, platform.ErrBidNotFound
+}
+func (failingBidRepo) Save(platform.Bid) error                  { return errors.New("broken") }
 func (failingBidRepo) ListByRFQ(string) ([]platform.Bid, error) { return nil, errors.New("broken") }
 
 func TestListRFQBids_BidRepoError(t *testing.T) {
@@ -3801,8 +3835,8 @@ func TestCreateRFQ_BuyerOrgMismatch(t *testing.T) {
 
 	payload, _ := json.Marshal(map[string]any{
 		"buyerOrgId": "org_wrong", // Doesn't match actor's org
-		"title": "Mismatch", "category": "ai", "scope": "test",
-		"budgetCents": 5000, "responseDeadlineAt": "2026-04-01T00:00:00Z",
+		"title":      "Mismatch", "category": "ai", "scope": "test",
+		"budgetCents": 5000, "responseDeadlineAt": "2099-04-01T00:00:00Z",
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
@@ -3832,7 +3866,7 @@ func TestCreateBid_ProviderOrgMismatch(t *testing.T) {
 
 	payload, _ := json.Marshal(map[string]any{
 		"providerOrgId": "org_wrong", // Mismatch
-		"message": "bid", "quoteCents": 4000,
+		"message":       "bid", "quoteCents": 4000,
 		"milestones": []map[string]any{{"id": "ms_1", "title": "W", "basePriceCents": 4000, "budgetCents": 4000}},
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs/"+rfq.ID+"/bids", bytes.NewReader(payload))
@@ -3861,8 +3895,8 @@ func TestCreateOrder_RateLimited(t *testing.T) {
 		},
 	})
 	gw, _ := NewServerWithOptionsE(Options{
-		App: platform.NewAppWithMemory(),
-		IAM: &stubIAMClient{actor: actor},
+		App:         platform.NewAppWithMemory(),
+		IAM:         &stubIAMClient{actor: actor},
 		RateLimiter: limiter,
 	})
 
@@ -4051,8 +4085,8 @@ func TestCreditDecision_RateLimited(t *testing.T) {
 		},
 	})
 	gw, _ := NewServerWithOptionsE(Options{
-		App: platform.NewAppWithMemory(),
-		IAM: &stubIAMClient{actor: actor},
+		App:         platform.NewAppWithMemory(),
+		IAM:         &stubIAMClient{actor: actor},
 		RateLimiter: limiter,
 	})
 
@@ -4295,14 +4329,14 @@ func TestCreateRFQ_WithRateLimitAndAuth(t *testing.T) {
 		},
 	})
 	gw, _ := NewServerWithOptionsE(Options{
-		App: platform.NewAppWithMemory(),
-		IAM: &stubIAMClient{actor: actor},
+		App:         platform.NewAppWithMemory(),
+		IAM:         &stubIAMClient{actor: actor},
 		RateLimiter: limiter,
 	})
 
 	payload, _ := json.Marshal(map[string]any{
 		"title": "RL+auth", "category": "ai", "scope": "test",
-		"budgetCents": 5000, "responseDeadlineAt": "2026-04-01T00:00:00Z",
+		"budgetCents": 5000, "responseDeadlineAt": "2099-04-01T00:00:00Z",
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
@@ -4713,9 +4747,12 @@ func TestCreateDispute_NoMembership(t *testing.T) {
 }
 
 type internalErrorOrderRepo struct{}
+
 func (internalErrorOrderRepo) NextID() (string, error) { return "", errors.New("broken") }
-func (internalErrorOrderRepo) Get(string) (*core.Order, error) { return nil, errors.New("internal error") }
-func (internalErrorOrderRepo) Save(*core.Order) error { return errors.New("broken") }
+func (internalErrorOrderRepo) Get(string) (*core.Order, error) {
+	return nil, errors.New("internal error")
+}
+func (internalErrorOrderRepo) Save(*core.Order) error       { return errors.New("broken") }
 func (internalErrorOrderRepo) List() ([]*core.Order, error) { return nil, errors.New("broken") }
 
 func TestGetOrder_InternalError(t *testing.T) {
@@ -5122,8 +5159,8 @@ func TestRouteOrderSubResources(t *testing.T) {
 
 	// These should NOT hit handleGetOrder (which would fail with "invalid order path")
 	paths := []struct {
-		method string
-		path   string
+		method  string
+		path    string
 		wantNot int
 	}{
 		{"GET", "/api/v1/orders/ord_1/budget", http.StatusBadRequest},
@@ -5147,7 +5184,9 @@ func TestMarketplaceStats(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/stats", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestLeaderboard(t *testing.T) {
@@ -5155,7 +5194,9 @@ func TestLeaderboard(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/leaderboard", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestGetProvider(t *testing.T) {
@@ -5163,7 +5204,9 @@ func TestGetProvider(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/providers/provider_1", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestGetListing(t *testing.T) {
@@ -5171,7 +5214,9 @@ func TestGetListing(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/listings/listing_1", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestProviderRevenue(t *testing.T) {
@@ -5179,7 +5224,9 @@ func TestProviderRevenue(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/providers/provider_1/revenue", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestOrderBudget(t *testing.T) {
@@ -5197,7 +5244,9 @@ func TestOrderBudget(t *testing.T) {
 	req = httptest.NewRequest("GET", "/api/v1/orders/"+orderID+"/budget", nil)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestOrderTimeline(t *testing.T) {
@@ -5213,7 +5262,9 @@ func TestOrderTimeline(t *testing.T) {
 	req = httptest.NewRequest("GET", "/api/v1/orders/"+orderID+"/timeline", nil)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestBatchOrderStatus(t *testing.T) {
@@ -5222,7 +5273,9 @@ func TestBatchOrderStatus(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/v1/orders/batch-status", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestExportOrders(t *testing.T) {
@@ -5230,8 +5283,12 @@ func TestExportOrders(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/export/orders", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
-	if w.Header().Get("Content-Type") != "text/csv" { t.Errorf("content-type = %s", w.Header().Get("Content-Type")) }
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d", w.Code)
+	}
+	if w.Header().Get("Content-Type") != "text/csv" {
+		t.Errorf("content-type = %s", w.Header().Get("Content-Type"))
+	}
 }
 
 func TestExportDisputes(t *testing.T) {
@@ -5239,7 +5296,9 @@ func TestExportDisputes(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/export/disputes", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestSystemInfo(t *testing.T) {
@@ -5247,7 +5306,9 @@ func TestSystemInfo(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/system", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestProviderApplicationSubmit(t *testing.T) {
@@ -5256,7 +5317,9 @@ func TestProviderApplicationSubmit(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/v1/provider-applications", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusCreated { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusCreated {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestProviderApplicationList(t *testing.T) {
@@ -5264,7 +5327,9 @@ func TestProviderApplicationList(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/provider-applications?status=pending", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestWebhookRegisterAndList(t *testing.T) {
@@ -5273,12 +5338,16 @@ func TestWebhookRegisterAndList(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/v1/webhooks", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusCreated { t.Errorf("register status = %d", w.Code) }
+	if w.Code != http.StatusCreated {
+		t.Errorf("register status = %d", w.Code)
+	}
 
 	req = httptest.NewRequest("GET", "/api/v1/webhooks", nil)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("list status = %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("list status = %d", w.Code)
+	}
 }
 
 func TestCarrierBindAndJobLifecycleGateway(t *testing.T) {
@@ -5289,7 +5358,9 @@ func TestCarrierBindAndJobLifecycleGateway(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/v1/orders/ord_1/milestones/ms_1/bind-carrier", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusCreated { t.Fatalf("bind: %d %s", w.Code, w.Body.String()) }
+	if w.Code != http.StatusCreated {
+		t.Fatalf("bind: %d %s", w.Code, w.Body.String())
+	}
 
 	var bindResp map[string]any
 	json.Unmarshal(w.Body.Bytes(), &bindResp)
@@ -5299,14 +5370,18 @@ func TestCarrierBindAndJobLifecycleGateway(t *testing.T) {
 	req = httptest.NewRequest("GET", "/api/v1/orders/ord_1/milestones/ms_1/bind-carrier", nil)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("get binding: %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("get binding: %d", w.Code)
+	}
 
 	// Create job
 	jobBody := fmt.Sprintf(`{"bindingId":"%s","input":"test"}`, bindID)
 	req = httptest.NewRequest("POST", "/api/v1/orders/ord_1/milestones/ms_1/jobs", strings.NewReader(jobBody))
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusCreated { t.Fatalf("job create: %d %s", w.Code, w.Body.String()) }
+	if w.Code != http.StatusCreated {
+		t.Fatalf("job create: %d %s", w.Code, w.Body.String())
+	}
 
 	var jobResp map[string]any
 	json.Unmarshal(w.Body.Bytes(), &jobResp)
@@ -5316,30 +5391,40 @@ func TestCarrierBindAndJobLifecycleGateway(t *testing.T) {
 	req = httptest.NewRequest("GET", "/api/v1/orders/ord_1/milestones/ms_1/jobs", nil)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("list jobs: %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("list jobs: %d", w.Code)
+	}
 
 	// Start → complete
 	req = httptest.NewRequest("PATCH", "/api/v1/jobs/"+jobID+"/start", nil)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("start: %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("start: %d", w.Code)
+	}
 
 	req = httptest.NewRequest("PATCH", "/api/v1/jobs/"+jobID+"/complete", strings.NewReader(`{"output":"done"}`))
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("complete: %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("complete: %d", w.Code)
+	}
 
 	// Evidence
 	evidenceBody := `{"summary":"done","artifacts":[{"name":"log","type":"log","url":"http://test/log"}]}`
 	req = httptest.NewRequest("POST", "/api/v1/jobs/"+jobID+"/evidence", strings.NewReader(evidenceBody))
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusCreated { t.Errorf("evidence submit: %d %s", w.Code, w.Body.String()) }
+	if w.Code != http.StatusCreated {
+		t.Errorf("evidence submit: %d %s", w.Code, w.Body.String())
+	}
 
 	req = httptest.NewRequest("GET", "/api/v1/jobs/"+jobID+"/evidence", nil)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("evidence get: %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("evidence get: %d", w.Code)
+	}
 
 	// Cancel (new job)
 	req = httptest.NewRequest("POST", "/api/v1/orders/ord_1/milestones/ms_1/jobs", strings.NewReader(fmt.Sprintf(`{"bindingId":"%s","input":"cancel test"}`, bindID)))
@@ -5352,13 +5437,15 @@ func TestCarrierBindAndJobLifecycleGateway(t *testing.T) {
 	req = httptest.NewRequest("POST", "/api/v1/jobs/"+j2ID+"/cancel", nil)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("cancel: %d %s", w.Code, w.Body.String()) }
+	if w.Code != http.StatusOK {
+		t.Errorf("cancel: %d %s", w.Code, w.Body.String())
+	}
 }
 
 func TestGetRFQ(t *testing.T) {
 	srv := NewServer()
 	// Create RFQ first
-	body := `{"buyerOrgId":"org_b","title":"test","category":"ai","scope":"test","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	body := `{"buyerOrgId":"org_b","title":"test","category":"ai","scope":"test","budgetCents":5000,"responseDeadlineAt":"2099-04-01T00:00:00Z"}`
 	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -5369,7 +5456,9 @@ func TestGetRFQ(t *testing.T) {
 	req = httptest.NewRequest("GET", "/api/v1/rfqs/"+rfqID, nil)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestGetDispute(t *testing.T) {
@@ -5377,12 +5466,14 @@ func TestGetDispute(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/disputes/nonexistent", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusNotFound { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestRFQMessages(t *testing.T) {
 	srv := NewServer()
-	body := `{"buyerOrgId":"org_b","title":"msg test","category":"ai","scope":"test","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	body := `{"buyerOrgId":"org_b","title":"msg test","category":"ai","scope":"test","budgetCents":5000,"responseDeadlineAt":"2099-04-01T00:00:00Z"}`
 	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -5395,13 +5486,17 @@ func TestRFQMessages(t *testing.T) {
 	req = httptest.NewRequest("POST", "/api/v1/rfqs/"+rfqID+"/messages", strings.NewReader(msgBody))
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusCreated { t.Errorf("create msg: %d %s", w.Code, w.Body.String()) }
+	if w.Code != http.StatusCreated {
+		t.Errorf("create msg: %d %s", w.Code, w.Body.String())
+	}
 
 	// List messages
 	req = httptest.NewRequest("GET", "/api/v1/rfqs/"+rfqID+"/messages", nil)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("list msg: %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("list msg: %d", w.Code)
+	}
 }
 
 func TestCreditLimit(t *testing.T) {
@@ -5410,12 +5505,16 @@ func TestCreditLimit(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/v1/credit-limits", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("set: %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("set: %d", w.Code)
+	}
 
 	req = httptest.NewRequest("GET", "/api/v1/credit-limits/org_b", nil)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("get: %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("get: %d", w.Code)
+	}
 }
 
 func TestStaleJobs(t *testing.T) {
@@ -5423,7 +5522,9 @@ func TestStaleJobs(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/system/stale-jobs", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestAuthRequired_Endpoints(t *testing.T) {
@@ -5476,7 +5577,7 @@ func TestRFQMessagesAuth_Forbidden(t *testing.T) {
 	app := platform.NewAppWithMemory()
 	// Create RFQ without auth (using default server)
 	noAuthSrv := NewServerWithOptions(Options{App: app})
-	rfqBody := `{"buyerOrgId":"org_buyer","title":"auth test","category":"ai","scope":"test","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	rfqBody := `{"buyerOrgId":"org_buyer","title":"auth test","category":"ai","scope":"test","budgetCents":5000,"responseDeadlineAt":"2099-04-01T00:00:00Z"}`
 	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(rfqBody))
 	w := httptest.NewRecorder()
 	noAuthSrv.ServeHTTP(w, req)
@@ -5591,7 +5692,9 @@ func TestRateOrder_InvalidJSON(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/v1/orders/ord_1/rating", strings.NewReader("not json"))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusBadRequest { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestGetOrder_NotFound(t *testing.T) {
@@ -5599,7 +5702,9 @@ func TestGetOrder_NotFound(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/orders/nonexistent", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusNotFound { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestTopUp_OrderNotFound(t *testing.T) {
@@ -5608,7 +5713,9 @@ func TestTopUp_OrderNotFound(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/v1/orders/nonexistent/top-up", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusNotFound { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestWebhookRegister_InvalidJSON(t *testing.T) {
@@ -5616,7 +5723,9 @@ func TestWebhookRegister_InvalidJSON(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/v1/webhooks", strings.NewReader("not json"))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusBadRequest { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestWebhookRegister_MissingFields(t *testing.T) {
@@ -5624,7 +5733,9 @@ func TestWebhookRegister_MissingFields(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/v1/webhooks", strings.NewReader(`{"target":""}`))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusBadRequest { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestProviderApplicationReview_NotFound(t *testing.T) {
@@ -5634,7 +5745,9 @@ func TestProviderApplicationReview_NotFound(t *testing.T) {
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 	// Should return error (not found or conflict)
-	if w.Code == http.StatusOK { t.Error("expected error for nonexistent application") }
+	if w.Code == http.StatusOK {
+		t.Error("expected error for nonexistent application")
+	}
 }
 
 func TestFullOrderLifecycle(t *testing.T) {
@@ -5645,7 +5758,9 @@ func TestFullOrderLifecycle(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(orderBody))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusCreated { t.Fatalf("create: %d", w.Code) }
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create: %d", w.Code)
+	}
 	var orderResp map[string]any
 	json.Unmarshal(w.Body.Bytes(), &orderResp)
 	orderID := orderResp["order"].(map[string]any)["id"].(string)
@@ -5655,32 +5770,42 @@ func TestFullOrderLifecycle(t *testing.T) {
 	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/milestones/ms_1/usage", strings.NewReader(usageBody))
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Fatalf("usage: %d %s", w.Code, w.Body.String()) }
+	if w.Code != http.StatusOK {
+		t.Fatalf("usage: %d %s", w.Code, w.Body.String())
+	}
 
 	// Settle
 	settleBody := `{"milestoneId":"ms_1","summary":"done"}`
 	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/milestones/ms_1/settle", strings.NewReader(settleBody))
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Fatalf("settle: %d %s", w.Code, w.Body.String()) }
+	if w.Code != http.StatusOK {
+		t.Fatalf("settle: %d %s", w.Code, w.Body.String())
+	}
 
 	// Open dispute
 	disputeBody := `{"milestoneId":"ms_1","reason":"bad work","refundCents":500}`
 	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/disputes", strings.NewReader(disputeBody))
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusCreated { t.Fatalf("dispute: %d %s", w.Code, w.Body.String()) }
+	if w.Code != http.StatusCreated {
+		t.Fatalf("dispute: %d %s", w.Code, w.Body.String())
+	}
 
 	// List disputes
 	req = httptest.NewRequest("GET", "/api/v1/disputes", nil)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Fatalf("list disputes: %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Fatalf("list disputes: %d", w.Code)
+	}
 
 	var disputeList map[string]any
 	json.Unmarshal(w.Body.Bytes(), &disputeList)
 	disputes := disputeList["disputes"].([]any)
-	if len(disputes) == 0 { t.Fatal("expected disputes") }
+	if len(disputes) == 0 {
+		t.Fatal("expected disputes")
+	}
 	disputeID := disputes[0].(map[string]any)["id"].(string)
 
 	// Resolve dispute
@@ -5688,20 +5813,26 @@ func TestFullOrderLifecycle(t *testing.T) {
 	req = httptest.NewRequest("POST", "/api/v1/disputes/"+disputeID+"/resolve", strings.NewReader(resolveBody))
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Fatalf("resolve: %d %s", w.Code, w.Body.String()) }
+	if w.Code != http.StatusOK {
+		t.Fatalf("resolve: %d %s", w.Code, w.Body.String())
+	}
 
 	// Rate order (order should be completed after settlement)
 	rateBody := `{"score":3,"comment":"average"}`
 	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/rating", strings.NewReader(rateBody))
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusCreated { t.Fatalf("rate: %d %s", w.Code, w.Body.String()) }
+	if w.Code != http.StatusCreated {
+		t.Fatalf("rate: %d %s", w.Code, w.Body.String())
+	}
 
 	// Get rating
 	req = httptest.NewRequest("GET", "/api/v1/orders/"+orderID+"/rating", nil)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Fatalf("get rating: %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Fatalf("get rating: %d", w.Code)
+	}
 }
 
 func TestListOrders_StatusFilter(t *testing.T) {
@@ -5716,12 +5847,14 @@ func TestListOrders_StatusFilter(t *testing.T) {
 	req = httptest.NewRequest("GET", "/api/v1/orders?status=running", nil)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestListRFQs_StatusFilter(t *testing.T) {
 	srv := NewServer()
-	body := `{"buyerOrgId":"org_b","title":"test","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	body := `{"buyerOrgId":"org_b","title":"test","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2099-04-01T00:00:00Z"}`
 	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -5729,7 +5862,9 @@ func TestListRFQs_StatusFilter(t *testing.T) {
 	req = httptest.NewRequest("GET", "/api/v1/rfqs?status=open", nil)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestListingSort(t *testing.T) {
@@ -5737,7 +5872,9 @@ func TestListingSort(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/listings?sort=price_desc", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestProviderSearch(t *testing.T) {
@@ -5745,7 +5882,9 @@ func TestProviderSearch(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/providers?tier=gold&minRating=0", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestResolveBuyerOrg_Success(t *testing.T) {
@@ -5757,7 +5896,7 @@ func TestResolveBuyerOrg_Success(t *testing.T) {
 	}}
 	srv := NewServerWithOptions(Options{App: platform.NewAppWithMemory(), IAM: mockIAM})
 
-	body := `{"buyerOrgId":"org_buyer","title":"test","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	body := `{"buyerOrgId":"org_buyer","title":"test","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2099-04-01T00:00:00Z"}`
 	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer valid")
 	w := httptest.NewRecorder()
@@ -5776,7 +5915,7 @@ func TestResolveBuyerOrg_Mismatch(t *testing.T) {
 	}}
 	srv := NewServerWithOptions(Options{App: platform.NewAppWithMemory(), IAM: mockIAM})
 
-	body := `{"buyerOrgId":"org_wrong","title":"test","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	body := `{"buyerOrgId":"org_wrong","title":"test","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2099-04-01T00:00:00Z"}`
 	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer valid")
 	w := httptest.NewRecorder()
@@ -5797,7 +5936,7 @@ func TestResolveProviderOrg_Success(t *testing.T) {
 
 	// Create RFQ first (no auth needed for this)
 	noAuthSrv := NewServerWithOptions(Options{App: srv.app})
-	rfqBody := `{"buyerOrgId":"org_b","title":"test","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	rfqBody := `{"buyerOrgId":"org_b","title":"test","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2099-04-01T00:00:00Z"}`
 	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(rfqBody))
 	w := httptest.NewRecorder()
 	noAuthSrv.ServeHTTP(w, req)
@@ -5952,7 +6091,9 @@ func TestListingSort_Title(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/listings?sort=title", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestListingSort_PriceAsc(t *testing.T) {
@@ -5960,7 +6101,9 @@ func TestListingSort_PriceAsc(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/listings?sort=price_asc", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestListingSearch_WithTag(t *testing.T) {
@@ -5968,7 +6111,9 @@ func TestListingSearch_WithTag(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/listings?tag=carrier-compatible", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestListingSearch_WithMinMaxPrice(t *testing.T) {
@@ -5976,7 +6121,9 @@ func TestListingSearch_WithMinMaxPrice(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/listings?minPrice=1000&maxPrice=5000", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestExposure(t *testing.T) {
@@ -5984,7 +6131,9 @@ func TestExposure(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/system/exposure", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestCarrierCallback_NormalizedEvent(t *testing.T) {
@@ -5995,7 +6144,9 @@ func TestCarrierCallback_NormalizedEvent(t *testing.T) {
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 	// Should normalize to job.started and process (may fail on missing job, but shouldn't 404)
-	if w.Code == http.StatusNotFound { t.Error("callback should be routable") }
+	if w.Code == http.StatusNotFound {
+		t.Error("callback should be routable")
+	}
 }
 
 func TestAwardRFQ_WithBuyerAuth(t *testing.T) {
@@ -6003,7 +6154,7 @@ func TestAwardRFQ_WithBuyerAuth(t *testing.T) {
 	noAuth := NewServerWithOptions(Options{App: app})
 
 	// Create RFQ + bid without auth
-	rfqBody := `{"buyerOrgId":"org_b","title":"award auth","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	rfqBody := `{"buyerOrgId":"org_b","title":"award auth","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2099-04-01T00:00:00Z"}`
 	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(rfqBody))
 	w := httptest.NewRecorder()
 	noAuth.ServeHTTP(w, req)
@@ -6107,7 +6258,7 @@ func TestCreateBid_WithProfileEnforcement(t *testing.T) {
 	noEnforceSrv := NewServerWithOptions(Options{App: app})
 	_ = noEnforceSrv // RFQ creation uses the same app
 
-	rfqBody := `{"buyerOrgId":"org_b","title":"prof test","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	rfqBody := `{"buyerOrgId":"org_b","title":"prof test","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2099-04-01T00:00:00Z"}`
 	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(rfqBody))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -6169,6 +6320,646 @@ func TestCarrierCallback_JobStarted(t *testing.T) {
 	srv.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("callback complete: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCarrierCallback_CanonicalPathAndEvents(t *testing.T) {
+	srv := NewServer()
+
+	// bind + create job
+	bindBody := `{"carrierId":"c2","capabilities":["gpu"]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders/ord_2/milestones/ms_2/bind-carrier", strings.NewReader(bindBody))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var bindResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &bindResp)
+	bindingID := bindResp["binding"].(map[string]any)["id"].(string)
+
+	jobBody := fmt.Sprintf(`{"bindingId":"%s","input":"test-canonical"}`, bindingID)
+	req = httptest.NewRequest("POST", "/api/v1/orders/ord_2/milestones/ms_2/jobs", strings.NewReader(jobBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var jobResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &jobResp)
+	jobID := jobResp["job"].(map[string]any)["id"].(string)
+
+	cbBody := fmt.Sprintf(`{"type":"execution.started","jobId":"%s","bindingId":"%s","timestamp":"2026-03-15T00:00:00Z","signature":"","payload":{}}`, jobID, bindingID)
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callbacks/events", strings.NewReader(cbBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("canonical start callback: %d %s", w.Code, w.Body.String())
+	}
+
+	cbBody = fmt.Sprintf(`{"type":"execution.completed","jobId":"%s","bindingId":"%s","timestamp":"2026-03-15T00:00:00Z","signature":"","payload":{"output":"done-canonical"}}`, jobID, bindingID)
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callbacks/events", strings.NewReader(cbBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("canonical complete callback: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCarrierCallback_UsageReportedRecordsCharge(t *testing.T) {
+	srv := NewServer()
+
+	orderPayload := map[string]any{
+		"buyerOrgId":    "buyer_1",
+		"providerOrgId": "provider_1",
+		"title":         "Execution usage order",
+		"fundingMode":   "prepaid",
+		"milestones": []map[string]any{{
+			"id":             "ms_usage",
+			"title":          "Usage",
+			"basePriceCents": 1000,
+			"budgetCents":    2000,
+		}},
+	}
+	orderBody, _ := json.Marshal(orderPayload)
+	req := httptest.NewRequest("POST", "/api/v1/orders", bytes.NewReader(orderBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create order: %d %s", w.Code, w.Body.String())
+	}
+	var orderCreateResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &orderCreateResp)
+	orderID := orderCreateResp["order"].(map[string]any)["id"].(string)
+
+	bindBody := `{"carrierId":"c_usage","capabilities":["gpu"]}`
+	req = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/orders/%s/milestones/ms_usage/bind-carrier", orderID), strings.NewReader(bindBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("bind status: %d %s", w.Code, w.Body.String())
+	}
+	var bindResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &bindResp)
+	bindingID := bindResp["binding"].(map[string]any)["id"].(string)
+
+	jobBody := fmt.Sprintf(`{"bindingId":"%s","input":"usage job"}`, bindingID)
+	req = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/orders/%s/milestones/ms_usage/jobs", orderID), strings.NewReader(jobBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create job status: %d %s", w.Code, w.Body.String())
+	}
+	var jobResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &jobResp)
+	jobID := jobResp["job"].(map[string]any)["id"].(string)
+
+	// usage reported (exceed budget) on the running milestone
+	cbBody := fmt.Sprintf(`{"type":"usage.reported","jobId":"%s","bindingId":"%s","timestamp":"2026-03-15T00:00:00Z","signature":"","payload":{"kind":"step","amountCents":6000}}`, jobID, bindingID)
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callbacks/events", strings.NewReader(cbBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("usage callback: %d %s", w.Code, w.Body.String())
+	}
+	var cbResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &cbResp)
+	if cbResp["continueAllowed"] != false {
+		t.Fatalf("expected continueAllowed=false after budget exceeded, got %v", cbResp["continueAllowed"])
+	}
+	if _, ok := cbResp["recommendedAction"]; !ok {
+		t.Fatal("expected recommendedAction")
+	}
+
+	// Verify charge persisted
+	req = httptest.NewRequest("GET", fmt.Sprintf("/api/v1/orders/%s", orderID), nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("get order: %d %s", w.Code, w.Body.String())
+	}
+	var orderResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &orderResp)
+	order := orderResp["order"].(map[string]any)
+	ms := order["milestones"].([]any)[0].(map[string]any)
+	charges := ms["usageCharges"].([]any)
+	if len(charges) == 0 {
+		t.Fatal("expected usage charge to be recorded")
+	}
+}
+
+func TestCarrierCallback_ArtifactReadySubmitsEvidence(t *testing.T) {
+	srv := NewServer()
+
+	orderPayload := map[string]any{
+		"buyerOrgId":    "buyer_3",
+		"providerOrgId": "provider_3",
+		"title":         "Execution artifact order",
+		"fundingMode":   "prepaid",
+		"milestones": []map[string]any{{
+			"id":             "ms_artifact",
+			"title":          "Artifact",
+			"basePriceCents": 1000,
+			"budgetCents":    3000,
+		}},
+	}
+	orderBody, _ := json.Marshal(orderPayload)
+	req := httptest.NewRequest("POST", "/api/v1/orders", bytes.NewReader(orderBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create order: %d %s", w.Code, w.Body.String())
+	}
+	var orderCreateResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &orderCreateResp)
+	orderID := orderCreateResp["order"].(map[string]any)["id"].(string)
+
+	bindBody := `{"carrierId":"c_artifact","capabilities":["gpu"]}`
+	req = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/orders/%s/milestones/ms_artifact/bind-carrier", orderID), strings.NewReader(bindBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("bind: %d %s", w.Code, w.Body.String())
+	}
+	var bindResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &bindResp)
+	bindingID := bindResp["binding"].(map[string]any)["id"].(string)
+
+	jobBody := fmt.Sprintf(`{"bindingId":"%s","input":"artifact job"}`, bindingID)
+	req = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/orders/%s/milestones/ms_artifact/jobs", orderID), strings.NewReader(jobBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create job: %d %s", w.Code, w.Body.String())
+	}
+	var jobResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &jobResp)
+	jobID := jobResp["job"].(map[string]any)["id"].(string)
+
+	cbBody := fmt.Sprintf(`{"type":"artifact.ready","jobId":"%s","bindingId":"%s","timestamp":"2026-03-15T00:00:00Z","signature":"","payload":{"summary":"artifact done","artifacts":[{"name":"log","type":"log","url":"https://example.test/log.txt","sizeBytes":10}],"usageReport":{"tokenCount":12,"stepCount":3,"apiCallCount":2,"totalCostCents":300}}}`, jobID, bindingID)
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callbacks/events", strings.NewReader(cbBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("artifact callback: %d %s", w.Code, w.Body.String())
+	}
+
+	// evidence endpoint should expose the package
+	req = httptest.NewRequest("GET", "/api/v1/jobs/"+jobID+"/evidence", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("get evidence: %d %s", w.Code, w.Body.String())
+	}
+	var evResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &evResp)
+	if evResp["evidence"].(map[string]any)["summary"] != "artifact done" {
+		t.Fatalf("expected evidence summary, got %v", evResp)
+	}
+}
+
+func TestCarrierCallback_WithCallbackKeyIdAccepted(t *testing.T) {
+	srv := NewServer()
+
+	orderPayload := map[string]any{
+		"buyerOrgId":    "buyer_key_ok",
+		"providerOrgId": "org_key_ok",
+		"title":         "Callback key id order",
+		"fundingMode":   "prepaid",
+		"milestones": []map[string]any{{
+			"id":             "ms_key_ok",
+			"title":          "Key ok",
+			"basePriceCents": 1000,
+			"budgetCents":    2000,
+		}},
+	}
+	orderBody, _ := json.Marshal(orderPayload)
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(string(orderBody)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create order: %d %s", w.Code, w.Body.String())
+	}
+	var ord map[string]any
+	json.Unmarshal(w.Body.Bytes(), &ord)
+	orderID := ord["order"].(map[string]any)["id"].(string)
+
+	regBody := `{"providerOrgId":"org_key_ok","carrierBaseUrl":"https://carrier.test","hostId":"hk1","agentId":"a1","backend":"agent","workspaceRoot":"/tmp","callbackSecret":"secret-k","callbackKeyId":"key-k-1"}`
+	req = httptest.NewRequest("POST", "/api/v1/carrier-bindings", strings.NewReader(regBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("register binding: %d %s", w.Code, w.Body.String())
+	}
+
+	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/milestones/ms_key_ok/bind-carrier", strings.NewReader(`{"carrierId":"c_key","capabilities":["gpu"]}`))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("bind: %d %s", w.Code, w.Body.String())
+	}
+	var bindResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &bindResp)
+	bindingID := bindResp["binding"].(map[string]any)["id"].(string)
+
+	jobBody := fmt.Sprintf(`{"bindingId":"%s","input":"work"}`, bindingID)
+	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/milestones/ms_key_ok/jobs", strings.NewReader(jobBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create job: %d %s", w.Code, w.Body.String())
+	}
+	var jobResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &jobResp)
+	jobID := jobResp["job"].(map[string]any)["id"].(string)
+
+	evt := carrier.CallbackEvent{Type: "job.started", JobID: jobID, BindingID: bindingID, Timestamp: time.Now().UTC().Format(time.RFC3339), Payload: map[string]any{"eventId": "k1", "sequence": float64(1)}}
+	evt.Signature = carrier.SignCallback("secret-k", evt)
+	body, _ := json.Marshal(evt)
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callbacks/events", strings.NewReader(string(body)))
+	req.Header.Set("X-One-Tok-Callback-Key-Id", "key-k-1")
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("key-id callback should pass: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCarrierCallback_WithCallbackKeyIdMismatchRejected(t *testing.T) {
+	srv := NewServer()
+
+	orderPayload := map[string]any{"buyerOrgId": "buyer_key_bad", "providerOrgId": "org_key_bad", "title": "Callback key id bad", "fundingMode": "prepaid", "milestones": []map[string]any{{"id": "ms_key_bad", "title": "Key bad", "basePriceCents": 1000, "budgetCents": 2000}}}
+	orderBody, _ := json.Marshal(orderPayload)
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(string(orderBody)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create order: %d %s", w.Code, w.Body.String())
+	}
+	var ord map[string]any
+	json.Unmarshal(w.Body.Bytes(), &ord)
+	orderID := ord["order"].(map[string]any)["id"].(string)
+
+	regBody := `{"providerOrgId":"org_key_bad","carrierBaseUrl":"https://carrier.test","hostId":"hk2","agentId":"a1","backend":"agent","workspaceRoot":"/tmp","callbackSecret":"secret-k-bad","callbackKeyId":"key-k-bad"}`
+	req = httptest.NewRequest("POST", "/api/v1/carrier-bindings", strings.NewReader(regBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("register binding: %d %s", w.Code, w.Body.String())
+	}
+
+	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/milestones/ms_key_bad/bind-carrier", strings.NewReader(`{"carrierId":"c_key_bad","capabilities":["gpu"]}`))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("bind: %d %s", w.Code, w.Body.String())
+	}
+	var bindResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &bindResp)
+	bindingID := bindResp["binding"].(map[string]any)["id"].(string)
+
+	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/milestones/ms_key_bad/jobs", strings.NewReader(fmt.Sprintf(`{"bindingId":"%s","input":"work"}`, bindingID)))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create job: %d %s", w.Code, w.Body.String())
+	}
+	var jobResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &jobResp)
+	jobID := jobResp["job"].(map[string]any)["id"].(string)
+
+	evt := carrier.CallbackEvent{Type: "job.started", JobID: jobID, BindingID: bindingID, Timestamp: time.Now().UTC().Format(time.RFC3339), Payload: map[string]any{"eventId": "kbad-1", "sequence": float64(1)}}
+	evt.Signature = carrier.SignCallback("secret-k-bad", evt)
+	body, _ := json.Marshal(evt)
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callbacks/events", strings.NewReader(string(body)))
+	req.Header.Set("X-One-Tok-Callback-Key-Id", "wrong-key")
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unauthorized for mismatched key id, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCarrierCallback_WithProviderBindingSecret(t *testing.T) {
+	srv := NewServer()
+
+	// Register a carrier binding that includes callback secret
+	regBody := `{"providerOrgId":"org_sig","carrierBaseUrl":"https://carrier.test","hostId":"h1","agentId":"a1","backend":"agent","workspaceRoot":"/tmp","callbackSecret":"secret-signature-123"}`
+	req := httptest.NewRequest("POST", "/api/v1/carrier-bindings", strings.NewReader(regBody))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("register binding: %d %s", w.Code, w.Body.String())
+	}
+
+	orderPayload := map[string]any{
+		"buyerOrgId":    "buyer_sig",
+		"providerOrgId": "org_sig",
+		"title":         "Binding secret order",
+		"fundingMode":   "prepaid",
+		"milestones": []map[string]any{{
+			"id":             "ms_sig",
+			"title":          "Binding secret milestone",
+			"basePriceCents": 1000,
+			"budgetCents":    2000,
+		}},
+	}
+	orderBody, _ := json.Marshal(orderPayload)
+	req = httptest.NewRequest("POST", "/api/v1/orders", bytes.NewReader(orderBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create order: %d %s", w.Code, w.Body.String())
+	}
+	var orderResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &orderResp)
+	orderID := orderResp["order"].(map[string]any)["id"].(string)
+
+	bindBody := `{"carrierId":"c_sig","capabilities":["gpu"]}`
+	req = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/orders/%s/milestones/ms_sig/bind-carrier", orderID), strings.NewReader(bindBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("bind: %d %s", w.Code, w.Body.String())
+	}
+	var bindResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &bindResp)
+	bindingID := bindResp["binding"].(map[string]any)["id"].(string)
+
+	jobBody := fmt.Sprintf(`{"bindingId":"%s","input":"signed"}`, bindingID)
+	req = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/orders/%s/milestones/ms_sig/jobs", orderID), strings.NewReader(jobBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create job: %d %s", w.Code, w.Body.String())
+	}
+	var jobResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &jobResp)
+	jobID := jobResp["job"].(map[string]any)["id"].(string)
+
+	evt := carrier.CallbackEvent{
+		Type:      "job.started",
+		JobID:     jobID,
+		BindingID: bindingID,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Payload: map[string]any{
+			"eventId":  "signed_evt_1",
+			"sequence": float64(1),
+		},
+	}
+	evt.Signature = carrier.SignCallback("secret-signature-123", evt)
+	body, _ := json.Marshal(evt)
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callback", strings.NewReader(string(body)))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("signed callback: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCarrierCallback_SignatureWithoutConfiguredSecretIsUnauthorized(t *testing.T) {
+	srv := NewServer()
+
+	orderPayload := map[string]any{
+		"buyerOrgId":    "buyer_sig_none",
+		"providerOrgId": "org_sig_none",
+		"title":         "No secret order",
+		"fundingMode":   "prepaid",
+		"milestones": []map[string]any{{
+			"id":             "ms_sig_none",
+			"title":          "No secret milestone",
+			"basePriceCents": 1000,
+			"budgetCents":    2000,
+		}},
+	}
+	orderBody, _ := json.Marshal(orderPayload)
+	req := httptest.NewRequest("POST", "/api/v1/orders", bytes.NewReader(orderBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create order: %d %s", w.Code, w.Body.String())
+	}
+	var orderResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &orderResp)
+	orderID := orderResp["order"].(map[string]any)["id"].(string)
+
+	bindBody := `{"carrierId":"c_sig_none","capabilities":["gpu"]}`
+	req = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/orders/%s/milestones/ms_sig_none/bind-carrier", orderID), strings.NewReader(bindBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("bind: %d %s", w.Code, w.Body.String())
+	}
+	var bindResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &bindResp)
+	bindingID := bindResp["binding"].(map[string]any)["id"].(string)
+
+	jobBody := fmt.Sprintf(`{"bindingId":"%s","input":"no secret signature"}`, bindingID)
+	req = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/orders/%s/milestones/ms_sig_none/jobs", orderID), strings.NewReader(jobBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create job: %d %s", w.Code, w.Body.String())
+	}
+	var jobResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &jobResp)
+	jobID := jobResp["job"].(map[string]any)["id"].(string)
+
+	evt := carrier.CallbackEvent{
+		Type:      "job.started",
+		JobID:     jobID,
+		BindingID: bindingID,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Signature: "non-empty-but-unverifiable",
+		Payload: map[string]any{
+			"eventId":  "sig_none_1",
+			"sequence": float64(1),
+		},
+	}
+	body, _ := json.Marshal(evt)
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callback", strings.NewReader(string(body)))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for signature without secret, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCarrierCallback_WithInvalidBindingSecretRejected(t *testing.T) {
+	srv := NewServer()
+
+	regBody := `{"providerOrgId":"org_sig_bad","carrierBaseUrl":"https://carrier.test","hostId":"h2","agentId":"a1","backend":"agent","workspaceRoot":"/tmp","callbackSecret":"another-secret"}`
+	req := httptest.NewRequest("POST", "/api/v1/carrier-bindings", strings.NewReader(regBody))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("register binding: %d %s", w.Code, w.Body.String())
+	}
+
+	orderPayload := map[string]any{
+		"buyerOrgId":    "buyer_sig_bad",
+		"providerOrgId": "org_sig_bad",
+		"title":         "Binding secret order bad",
+		"fundingMode":   "prepaid",
+		"milestones": []map[string]any{{
+			"id":             "ms_sig_bad",
+			"title":          "Bad secret milestone",
+			"basePriceCents": 1000,
+			"budgetCents":    2000,
+		}},
+	}
+	orderBody, _ := json.Marshal(orderPayload)
+	req = httptest.NewRequest("POST", "/api/v1/orders", bytes.NewReader(orderBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create order: %d %s", w.Code, w.Body.String())
+	}
+	var orderResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &orderResp)
+	orderID := orderResp["order"].(map[string]any)["id"].(string)
+
+	bindBody := `{"carrierId":"c_sig_bad","capabilities":["gpu"]}`
+	req = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/orders/%s/milestones/ms_sig_bad/bind-carrier", orderID), strings.NewReader(bindBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("bind: %d %s", w.Code, w.Body.String())
+	}
+	var bindResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &bindResp)
+	bindingID := bindResp["binding"].(map[string]any)["id"].(string)
+
+	jobBody := fmt.Sprintf(`{"bindingId":"%s","input":"invalid signed"}`, bindingID)
+	req = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/orders/%s/milestones/ms_sig_bad/jobs", orderID), strings.NewReader(jobBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create job: %d %s", w.Code, w.Body.String())
+	}
+	var jobResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &jobResp)
+	jobID := jobResp["job"].(map[string]any)["id"].(string)
+
+	evt := carrier.CallbackEvent{
+		Type:      "job.started",
+		JobID:     jobID,
+		BindingID: bindingID,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Payload: map[string]any{
+			"eventId":  "signed_evt_bad",
+			"sequence": float64(1),
+		},
+	}
+	evt.Signature = carrier.SignCallback("wrong-secret", evt)
+	body, _ := json.Marshal(evt)
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callback", strings.NewReader(string(body)))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("invalid signed callback: expected 401, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCarrierCallback_UsageReportedRejectsInvalidProof(t *testing.T) {
+	srv := NewServer()
+
+	orderPayload := map[string]any{
+		"buyerOrgId":    "buyer_4",
+		"providerOrgId": "provider_4",
+		"title":         "Invalid proof order",
+		"fundingMode":   "prepaid",
+		"milestones": []map[string]any{{
+			"id":             "ms_badproof",
+			"title":          "BadProof",
+			"basePriceCents": 1000,
+			"budgetCents":    2000,
+		}},
+	}
+	orderBody, _ := json.Marshal(orderPayload)
+	req := httptest.NewRequest("POST", "/api/v1/orders", bytes.NewReader(orderBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create order: %d %s", w.Code, w.Body.String())
+	}
+	var orderCreateResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &orderCreateResp)
+	orderID := orderCreateResp["order"].(map[string]any)["id"].(string)
+
+	bindBody := `{"carrierId":"c_badproof","capabilities":["gpu"]}`
+	req = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/orders/%s/milestones/ms_badproof/bind-carrier", orderID), strings.NewReader(bindBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("bind: %d %s", w.Code, w.Body.String())
+	}
+	var bindResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &bindResp)
+	bindingID := bindResp["binding"].(map[string]any)["id"].(string)
+
+	jobBody := fmt.Sprintf(`{"bindingId":"%s","input":"bad proof"}`, bindingID)
+	req = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/orders/%s/milestones/ms_badproof/jobs", orderID), strings.NewReader(jobBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create job: %d %s", w.Code, w.Body.String())
+	}
+	var jobResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &jobResp)
+	jobID := jobResp["job"].(map[string]any)["id"].(string)
+
+	cbBody := fmt.Sprintf(`{"type":"usage.reported","jobId":"%s","bindingId":"%s","timestamp":"2026-03-15T00:00:00Z","signature":"","payload":{"kind":"step","amountCents":100,"proofRef":"r1","proofSignature":"s1","proofTimestamp":"bad-ts"}}`, jobID, bindingID)
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callbacks/events", strings.NewReader(cbBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid proof, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCarrierCallback_BudgetLowPauseAction(t *testing.T) {
+	srv := NewServer()
+
+	bindBody := `{"carrierId":"c_blow","capabilities":["gpu"]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders/ord_2/milestones/ms_2/bind-carrier", strings.NewReader(bindBody))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("bind: %d %s", w.Code, w.Body.String())
+	}
+	var bindResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &bindResp)
+	bindingID := bindResp["binding"].(map[string]any)["id"].(string)
+
+	jobBody := fmt.Sprintf(`{"bindingId":"%s","input":"budget callback"}`, bindingID)
+	req = httptest.NewRequest("POST", "/api/v1/orders/ord_2/milestones/ms_2/jobs", strings.NewReader(jobBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create job: %d %s", w.Code, w.Body.String())
+	}
+	var jobResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &jobResp)
+	jobID := jobResp["job"].(map[string]any)["id"].(string)
+
+	cbBody := fmt.Sprintf(`{"type":"budget.low","jobId":"%s","bindingId":"%s","timestamp":"2026-03-15T00:00:00Z","signature":"","payload":{"recommendedAction":"pause","reason":"budget threshold hit","remainingBudgetCents":100}}`, jobID, bindingID)
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callbacks/events", strings.NewReader(cbBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("budget callback: %d %s", w.Code, w.Body.String())
+	}
+	var cbResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &cbResp)
+	reqAction := cbResp["recommendedAction"].(map[string]any)
+	if reqAction["type"] != "pause" {
+		t.Fatalf("expected pause recommendation, got %v", reqAction["type"])
+	}
+	if cbResp["continueAllowed"] != false {
+		t.Fatalf("expected continueAllowed=false, got %v", cbResp["continueAllowed"])
 	}
 }
 
@@ -6284,10 +7075,14 @@ func TestBatchOrderStatus_WithOrders(t *testing.T) {
 	req = httptest.NewRequest("POST", "/api/v1/orders/batch-status", strings.NewReader(batchBody))
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d", w.Code)
+	}
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	orders := resp["orders"].([]any)
-	if len(orders) != 2 { t.Errorf("expected 2, got %d", len(orders)) }
+	if len(orders) != 2 {
+		t.Errorf("expected 2, got %d", len(orders))
+	}
 }
 
 func TestListNotifications_Gateway(t *testing.T) {
@@ -6295,12 +7090,14 @@ func TestListNotifications_Gateway(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/notifications/org_1", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestCreateRFQMessage_Gateway(t *testing.T) {
 	srv := NewServer()
-	rfqBody := `{"buyerOrgId":"org_b","title":"msg test","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	rfqBody := `{"buyerOrgId":"org_b","title":"msg test","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2099-04-01T00:00:00Z"}`
 	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(rfqBody))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -6320,7 +7117,7 @@ func TestCreateRFQMessage_Gateway(t *testing.T) {
 
 func TestCreateRFQMessage_InvalidJSON_Gateway(t *testing.T) {
 	srv := NewServer()
-	rfqBody := `{"buyerOrgId":"org_b","title":"msg","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	rfqBody := `{"buyerOrgId":"org_b","title":"msg","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2099-04-01T00:00:00Z"}`
 	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(rfqBody))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -6357,6 +7154,39 @@ func TestCarrierBinding_Register(t *testing.T) {
 	}
 }
 
+func TestCarrierBinding_GetIncludesCallbackKeyIdAndHidesSecrets(t *testing.T) {
+	srv := NewServer()
+	body := `{"providerOrgId":"org_khide","carrierBaseUrl":"https://carrier.test","hostId":"h1","agentId":"a1","backend":"gpt-4","workspaceRoot":"/ws","callbackSecret":"top-secret","callbackKeyId":"route-key"}`
+	req := httptest.NewRequest("POST", "/api/v1/carrier-bindings", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("register: %d %s", w.Code, w.Body.String())
+	}
+
+	req = httptest.NewRequest("GET", "/api/v1/carrier-bindings/org_khide", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("get binding: %d %s", w.Code, w.Body.String())
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	binding := resp["binding"].(map[string]any)
+	if binding["callbackKeyId"].(string) != "route-key" {
+		t.Fatalf("expected callbackKeyId route-key, got %v", binding["callbackKeyId"])
+	}
+	if _, ok := binding["callbackSecret"]; ok {
+		t.Fatal("callbackSecret should be redacted in GET")
+	}
+	if _, ok := binding["integrationToken"]; ok {
+		t.Fatal("integrationToken should be redacted in GET")
+	}
+
+}
+
 func TestCarrierBinding_GetNotFound(t *testing.T) {
 	srv := NewServer()
 	req := httptest.NewRequest("GET", "/api/v1/carrier-bindings/nonexistent", nil)
@@ -6374,17 +7204,23 @@ func TestCreditLimit_SetAndGet(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/v1/credit-limits", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("set: %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("set: %d", w.Code)
+	}
 
 	req = httptest.NewRequest("GET", "/api/v1/credit-limits/org_b", nil)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("get: %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("get: %d", w.Code)
+	}
 
 	req = httptest.NewRequest("GET", "/api/v1/credit-limits/nonexistent", nil)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusNotFound { t.Errorf("not found: %d", w.Code) }
+	if w.Code != http.StatusNotFound {
+		t.Errorf("not found: %d", w.Code)
+	}
 }
 
 func TestCarrierBinding_VerifyAndSuspend(t *testing.T) {
@@ -6401,13 +7237,42 @@ func TestCarrierBinding_VerifyAndSuspend(t *testing.T) {
 	req = httptest.NewRequest("POST", "/api/v1/carrier-bindings/"+bindingID+"/verify", nil)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("verify: %d %s", w.Code, w.Body.String()) }
+	if w.Code != http.StatusOK {
+		t.Errorf("verify: %d %s", w.Code, w.Body.String())
+	}
+	var verifyResp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &verifyResp); err != nil {
+		t.Fatalf("decode verify: %v", err)
+	}
+	vBinding := verifyResp["binding"].(map[string]any)
+	if _, ok := vBinding["integrationToken"]; ok {
+		t.Error("verify response should hide integrationToken")
+	}
+	if _, ok := vBinding["callbackSecret"]; ok {
+		t.Error("verify response should hide callbackSecret")
+	}
+	if _, ok := vBinding["integrationToken"]; ok {
+		t.Error("verify response should hide integrationToken")
+	}
 
 	// Suspend
 	req = httptest.NewRequest("POST", "/api/v1/carrier-bindings/"+bindingID+"/suspend", nil)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("suspend: %d %s", w.Code, w.Body.String()) }
+	if w.Code != http.StatusOK {
+		t.Errorf("suspend: %d %s", w.Code, w.Body.String())
+	}
+	var suspendResp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &suspendResp); err != nil {
+		t.Fatalf("decode suspend: %v", err)
+	}
+	sBinding := suspendResp["binding"].(map[string]any)
+	if _, ok := sBinding["integrationToken"]; ok {
+		t.Error("suspend response should hide integrationToken")
+	}
+	if _, ok := sBinding["callbackSecret"]; ok {
+		t.Error("suspend response should hide callbackSecret")
+	}
 }
 
 func TestTopUp_Gateway(t *testing.T) {
@@ -6424,7 +7289,9 @@ func TestTopUp_Gateway(t *testing.T) {
 	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/top-up", strings.NewReader(topUpBody))
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("top-up: %d %s", w.Code, w.Body.String()) }
+	if w.Code != http.StatusOK {
+		t.Errorf("top-up: %d %s", w.Code, w.Body.String())
+	}
 }
 
 func TestApplicationReview_Gateway(t *testing.T) {
@@ -6443,7 +7310,9 @@ func TestApplicationReview_Gateway(t *testing.T) {
 	req = httptest.NewRequest("POST", "/api/v1/provider-applications/"+appID+"/review", strings.NewReader(reviewBody))
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("review: %d %s", w.Code, w.Body.String()) }
+	if w.Code != http.StatusOK {
+		t.Errorf("review: %d %s", w.Code, w.Body.String())
+	}
 }
 
 func TestCreateListing_Gateway(t *testing.T) {
@@ -6452,7 +7321,9 @@ func TestCreateListing_Gateway(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/v1/listings", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusCreated { t.Errorf("create listing: %d %s", w.Code, w.Body.String()) }
+	if w.Code != http.StatusCreated {
+		t.Errorf("create listing: %d %s", w.Code, w.Body.String())
+	}
 }
 
 func TestRateLimitConfig(t *testing.T) {
@@ -6460,7 +7331,9 @@ func TestRateLimitConfig(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/system/ratelimits", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d", w.Code)
+	}
 }
 
 func TestOrderMessages_CreateAndList(t *testing.T) {
@@ -6478,13 +7351,17 @@ func TestOrderMessages_CreateAndList(t *testing.T) {
 	req = httptest.NewRequest("POST", "/api/v1/messages", strings.NewReader(msgBody))
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusCreated { t.Errorf("create: %d", w.Code) }
+	if w.Code != http.StatusCreated {
+		t.Errorf("create: %d", w.Code)
+	}
 
 	// List messages
 	req = httptest.NewRequest("GET", "/api/v1/orders/"+orderID+"/messages", nil)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("list: %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("list: %d", w.Code)
+	}
 }
 
 func TestNotifications_WithAuth(t *testing.T) {
@@ -6576,7 +7453,7 @@ func TestRFQMessages_BiddingProviderCanAccess(t *testing.T) {
 	noAuth := NewServerWithOptions(Options{App: app})
 
 	// Create RFQ
-	rfqBody := `{"buyerOrgId":"org_buyer","title":"bidder access","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	rfqBody := `{"buyerOrgId":"org_buyer","title":"bidder access","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2099-04-01T00:00:00Z"}`
 	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(rfqBody))
 	w := httptest.NewRecorder()
 	noAuth.ServeHTTP(w, req)
@@ -6612,7 +7489,7 @@ func TestRFQMessages_NonParticipantDenied(t *testing.T) {
 	app := platform.NewAppWithMemory()
 	noAuth := NewServerWithOptions(Options{App: app})
 
-	rfqBody := `{"buyerOrgId":"org_buyer","title":"deny","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	rfqBody := `{"buyerOrgId":"org_buyer","title":"deny","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2099-04-01T00:00:00Z"}`
 	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(rfqBody))
 	w := httptest.NewRecorder()
 	noAuth.ServeHTTP(w, req)
@@ -6780,10 +7657,14 @@ func TestDisputeList_StatusFilter(t *testing.T) {
 	req = httptest.NewRequest("GET", "/api/v1/disputes?status=open", nil)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status filter: %d", w.Code) }
+	if w.Code != http.StatusOK {
+		t.Errorf("status filter: %d", w.Code)
+	}
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	disputes := resp["disputes"].([]any)
-	if len(disputes) == 0 { t.Error("expected open disputes") }
+	if len(disputes) == 0 {
+		t.Error("expected open disputes")
+	}
 
 	// Filter by status=resolved (should be empty)
 	req = httptest.NewRequest("GET", "/api/v1/disputes?status=resolved", nil)
@@ -6791,12 +7672,14 @@ func TestDisputeList_StatusFilter(t *testing.T) {
 	srv.ServeHTTP(w, req)
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	resolved := resp["disputes"].([]any)
-	if len(resolved) != 0 { t.Errorf("expected 0 resolved, got %d", len(resolved)) }
+	if len(resolved) != 0 {
+		t.Errorf("expected 0 resolved, got %d", len(resolved))
+	}
 }
 
 func TestExportRFQs_Gateway(t *testing.T) {
 	srv := NewServer()
-	body := `{"buyerOrgId":"org_b","title":"export","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	body := `{"buyerOrgId":"org_b","title":"export","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2099-04-01T00:00:00Z"}`
 	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -6804,8 +7687,12 @@ func TestExportRFQs_Gateway(t *testing.T) {
 	req = httptest.NewRequest("GET", "/api/v1/export/rfqs", nil)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
-	if w.Header().Get("Content-Type") != "text/csv" { t.Error("expected CSV") }
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d", w.Code)
+	}
+	if w.Header().Get("Content-Type") != "text/csv" {
+		t.Error("expected CSV")
+	}
 }
 
 func TestExportApplications_Gateway(t *testing.T) {
@@ -6818,8 +7705,12 @@ func TestExportApplications_Gateway(t *testing.T) {
 	req = httptest.NewRequest("GET", "/api/v1/export/applications", nil)
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
-	if w.Header().Get("Content-Type") != "text/csv" { t.Error("expected CSV") }
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d", w.Code)
+	}
+	if w.Header().Get("Content-Type") != "text/csv" {
+		t.Error("expected CSV")
+	}
 }
 
 func TestCreateOrder_InvalidFundingMode(t *testing.T) {
@@ -6828,7 +7719,9 @@ func TestCreateOrder_InvalidFundingMode(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusBadRequest { t.Errorf("expected 400, got %d", w.Code) }
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
 }
 
 func TestCreateOrder_CreditWithoutLineID(t *testing.T) {
@@ -6837,7 +7730,9 @@ func TestCreateOrder_CreditWithoutLineID(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusBadRequest { t.Errorf("expected 400, got %d: %s", w.Code, w.Body.String()) }
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
 }
 
 func TestCreateOrder_CreditWithLineID(t *testing.T) {
@@ -6846,12 +7741,14 @@ func TestCreateOrder_CreditWithLineID(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusCreated { t.Errorf("expected 201, got %d: %s", w.Code, w.Body.String()) }
+	if w.Code != http.StatusCreated {
+		t.Errorf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
 }
 
 func TestAwardRFQ_CreditWithoutLineID(t *testing.T) {
 	srv := NewServer()
-	rfqBody := `{"buyerOrgId":"org_b","title":"credit","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	rfqBody := `{"buyerOrgId":"org_b","title":"credit","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2099-04-01T00:00:00Z"}`
 	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(rfqBody))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -6870,5 +7767,7 @@ func TestAwardRFQ_CreditWithoutLineID(t *testing.T) {
 	req = httptest.NewRequest("POST", "/api/v1/rfqs/"+rfqID+"/award", strings.NewReader(awardBody))
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusBadRequest { t.Errorf("expected 400, got %d: %s", w.Code, w.Body.String()) }
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
 }

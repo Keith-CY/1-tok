@@ -17,6 +17,7 @@ var (
 	// Validation errors
 	ErrMissingRequiredFields = errors.New("missing required fields")
 	ErrDeadlineRequired      = errors.New("response deadline is required")
+	ErrDeadlineInPast        = errors.New("response deadline must be in the future")
 	ErrMilestonesRequired    = errors.New("milestones are required")
 
 	// RFQ/Bid state errors

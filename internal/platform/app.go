@@ -32,7 +32,7 @@ type OrderRating struct {
 
 // RateOrderInput is the input for rating a completed order.
 type RateOrderInput struct {
-	Score   int    // 1-5 stars
+	Score   int // 1-5 stars
 	Comment string
 }
 
@@ -55,20 +55,20 @@ const (
 )
 
 type RFQ struct {
-	ID                   string           `json:"id"`
-	BuyerOrgID           string           `json:"buyerOrgId"`
-	Title                string           `json:"title"`
-	Category             string           `json:"category"`
-	Scope                string           `json:"scope"`
-	BudgetCents          int64            `json:"budgetCents"`
-	DefaultMilestones    []RFQMilestone   `json:"defaultMilestones"`
-	Status               RFQStatus        `json:"status"`
-	AwardedBidID         string           `json:"awardedBidId,omitempty"`
-	AwardedProviderOrgID string           `json:"awardedProviderOrgId,omitempty"`
-	OrderID              string           `json:"orderId,omitempty"`
-	ResponseDeadlineAt   time.Time        `json:"responseDeadlineAt"`
-	CreatedAt            time.Time        `json:"createdAt"`
-	UpdatedAt            time.Time        `json:"updatedAt"`
+	ID                   string         `json:"id"`
+	BuyerOrgID           string         `json:"buyerOrgId"`
+	Title                string         `json:"title"`
+	Category             string         `json:"category"`
+	Scope                string         `json:"scope"`
+	BudgetCents          int64          `json:"budgetCents"`
+	DefaultMilestones    []RFQMilestone `json:"defaultMilestones"`
+	Status               RFQStatus      `json:"status"`
+	AwardedBidID         string         `json:"awardedBidId,omitempty"`
+	AwardedProviderOrgID string         `json:"awardedProviderOrgId,omitempty"`
+	OrderID              string         `json:"orderId,omitempty"`
+	ResponseDeadlineAt   time.Time      `json:"responseDeadlineAt"`
+	CreatedAt            time.Time      `json:"createdAt"`
+	UpdatedAt            time.Time      `json:"updatedAt"`
 }
 
 // RFQMilestone is a platform-generated default milestone attached to an RFQ.
@@ -184,19 +184,19 @@ type DisputeRepository interface {
 }
 
 type App struct {
-	orders       OrderRepository
-	providers    ProviderRepository
-	listings     ListingRepository
-	rfqs         RFQRepository
-	bids         BidRepository
-	messages     MessageRepository
-	disputes     DisputeRepository
-	creditEngine core.CreditDecisionEngine
-	publisher    EventPublisher
-	notifier     Notifier
-	mu           sync.Mutex // guards compound multi-store operations
-	ratings      []OrderRating
-	clock        Clock
+	orders               OrderRepository
+	providers            ProviderRepository
+	listings             ListingRepository
+	rfqs                 RFQRepository
+	bids                 BidRepository
+	messages             MessageRepository
+	disputes             DisputeRepository
+	creditEngine         core.CreditDecisionEngine
+	publisher            EventPublisher
+	notifier             Notifier
+	mu                   sync.Mutex // guards compound multi-store operations
+	ratings              []OrderRating
+	clock                Clock
 	providerApplications []ProviderApplication
 	carrierBindings      []ProviderCarrierBinding
 	carrierBindingsByOrg map[string]int // providerOrgID → index in carrierBindings
@@ -366,6 +366,9 @@ func (a *App) CreateRFQ(input CreateRFQInput) (RFQ, error) {
 	}
 	if input.ResponseDeadlineAt.IsZero() {
 		return RFQ{}, ErrDeadlineRequired
+	}
+	if input.ResponseDeadlineAt.Before(a.now()) {
+		return RFQ{}, ErrDeadlineInPast
 	}
 
 	rfqID, err := a.rfqs.NextID()
@@ -1356,7 +1359,6 @@ func (a *App) GetDispute(id string) (Dispute, error) {
 	return a.disputes.Get(id)
 }
 
-
 // SearchProviders returns providers matching optional capability and tier filters.
 type SearchProvidersInput struct {
 	Capability string
@@ -1412,16 +1414,16 @@ func (a *App) SearchProviders(input SearchProvidersInput) ([]ProviderProfile, er
 
 // MarketplaceStats holds aggregate marketplace statistics.
 type MarketplaceStats struct {
-	TotalProviders  int     `json:"totalProviders"`
-	TotalListings   int     `json:"totalListings"`
-	TotalRFQs       int     `json:"totalRfqs"`
-	OpenRFQs        int     `json:"openRfqs"`
-	TotalOrders     int     `json:"totalOrders"`
-	ActiveOrders    int     `json:"activeOrders"`
-	TotalDisputes   int     `json:"totalDisputes"`
-	OpenDisputes    int     `json:"openDisputes"`
-	TotalRatings    int     `json:"totalRatings"`
-	AverageRating   float64 `json:"averageRating"`
+	TotalProviders int     `json:"totalProviders"`
+	TotalListings  int     `json:"totalListings"`
+	TotalRFQs      int     `json:"totalRfqs"`
+	OpenRFQs       int     `json:"openRfqs"`
+	TotalOrders    int     `json:"totalOrders"`
+	ActiveOrders   int     `json:"activeOrders"`
+	TotalDisputes  int     `json:"totalDisputes"`
+	OpenDisputes   int     `json:"openDisputes"`
+	TotalRatings   int     `json:"totalRatings"`
+	AverageRating  float64 `json:"averageRating"`
 }
 
 // GetMarketplaceStats returns aggregate marketplace statistics.
@@ -1489,13 +1491,13 @@ func (a *App) GetMarketplaceStats() (MarketplaceStats, error) {
 
 // OrderBudgetSummary shows budget utilization per milestone.
 type MilestoneBudget struct {
-	ID          string  `json:"id"`
-	Title       string  `json:"title"`
-	BudgetCents int64   `json:"budgetCents"`
-	SpentCents  int64   `json:"spentCents"`
-	SettledCents int64  `json:"settledCents"`
+	ID           string  `json:"id"`
+	Title        string  `json:"title"`
+	BudgetCents  int64   `json:"budgetCents"`
+	SpentCents   int64   `json:"spentCents"`
+	SettledCents int64   `json:"settledCents"`
 	UsagePercent float64 `json:"usagePercent"`
-	State       string  `json:"state"`
+	State        string  `json:"state"`
 }
 
 type OrderBudgetSummary struct {
@@ -1548,12 +1550,12 @@ func (a *App) GetOrderBudget(orderID string) (OrderBudgetSummary, error) {
 
 // ProviderRevenueSummary shows revenue across all orders for a provider.
 type ProviderRevenueSummary struct {
-	ProviderOrgID   string `json:"providerOrgId"`
-	TotalOrders     int    `json:"totalOrders"`
-	ActiveOrders    int    `json:"activeOrders"`
-	TotalRevenue    int64  `json:"totalRevenueCents"`
-	PendingRevenue  int64  `json:"pendingRevenueCents"`
-	TotalDisputes   int    `json:"totalDisputes"`
+	ProviderOrgID  string `json:"providerOrgId"`
+	TotalOrders    int    `json:"totalOrders"`
+	ActiveOrders   int    `json:"activeOrders"`
+	TotalRevenue   int64  `json:"totalRevenueCents"`
+	PendingRevenue int64  `json:"pendingRevenueCents"`
+	TotalDisputes  int    `json:"totalDisputes"`
 }
 
 // GetProviderRevenue returns revenue summary for a provider.
@@ -1597,8 +1599,8 @@ func (a *App) GetProviderRevenue(providerOrgID string) (ProviderRevenueSummary, 
 
 // TimelineEvent represents a single event in an order's timeline.
 type TimelineEvent struct {
-	Type      string    `json:"type"`
-	Timestamp time.Time `json:"timestamp"`
+	Type      string         `json:"type"`
+	Timestamp time.Time      `json:"timestamp"`
 	Details   map[string]any `json:"details,omitempty"`
 }
 
@@ -1667,13 +1669,13 @@ func (a *App) GetOrderTimeline(orderID string) ([]TimelineEvent, error) {
 
 // OrderStatusBrief is a compact order status for batch queries.
 type OrderStatusBrief struct {
-	ID              string `json:"id"`
-	Status          string `json:"status"`
-	ProviderOrgID   string `json:"providerOrgId"`
-	BuyerOrgID      string `json:"buyerOrgId"`
-	MilestoneCount  int    `json:"milestoneCount"`
-	SettledCount    int    `json:"settledCount"`
-	HasAnomaly      bool   `json:"hasAnomaly"`
+	ID             string `json:"id"`
+	Status         string `json:"status"`
+	ProviderOrgID  string `json:"providerOrgId"`
+	BuyerOrgID     string `json:"buyerOrgId"`
+	MilestoneCount int    `json:"milestoneCount"`
+	SettledCount   int    `json:"settledCount"`
+	HasAnomaly     bool   `json:"hasAnomaly"`
 }
 
 // BatchOrderStatus returns brief status for multiple orders.
@@ -1713,12 +1715,12 @@ func (a *App) ListNotifications(target string) ([]map[string]any, error) {
 
 // ProviderLeaderboard returns providers ranked by rating.
 type LeaderboardEntry struct {
-	ProviderID    string  `json:"providerId"`
-	Name          string  `json:"name"`
-	Rating        float64 `json:"rating"`
-	RatingCount   int     `json:"ratingCount"`
-	TotalOrders   int     `json:"totalOrders"`
-	ReputationTier string `json:"reputationTier"`
+	ProviderID     string  `json:"providerId"`
+	Name           string  `json:"name"`
+	Rating         float64 `json:"rating"`
+	RatingCount    int     `json:"ratingCount"`
+	TotalOrders    int     `json:"totalOrders"`
+	ReputationTier string  `json:"reputationTier"`
 }
 
 func (a *App) GetProviderLeaderboard() ([]LeaderboardEntry, error) {
@@ -1778,7 +1780,6 @@ func (a *App) GetProviderLeaderboard() ([]LeaderboardEntry, error) {
 	return entries, nil
 }
 
-
 // ProviderVettingStatus represents the vetting state of a provider.
 type ProviderVettingStatus string
 
@@ -1790,15 +1791,15 @@ const (
 
 // ProviderApplication represents a provider registration request.
 type ProviderApplication struct {
-	ID             string                `json:"id"`
-	OrgID          string                `json:"orgId"`
-	Name           string                `json:"name"`
-	Capabilities   []string              `json:"capabilities"`
-	Status         ProviderVettingStatus `json:"status"`
-	ReviewedBy     string                `json:"reviewedBy,omitempty"`
-	ReviewNote     string                `json:"reviewNote,omitempty"`
-	SubmittedAt    time.Time             `json:"submittedAt"`
-	ReviewedAt     *time.Time            `json:"reviewedAt,omitempty"`
+	ID           string                `json:"id"`
+	OrgID        string                `json:"orgId"`
+	Name         string                `json:"name"`
+	Capabilities []string              `json:"capabilities"`
+	Status       ProviderVettingStatus `json:"status"`
+	ReviewedBy   string                `json:"reviewedBy,omitempty"`
+	ReviewNote   string                `json:"reviewNote,omitempty"`
+	SubmittedAt  time.Time             `json:"submittedAt"`
+	ReviewedAt   *time.Time            `json:"reviewedAt,omitempty"`
 }
 
 // SubmitProviderApplication creates a new provider application for ops review.
@@ -1918,7 +1919,7 @@ func (a *App) CreateListing(input CreateListingInput) (Listing, error) {
 
 // TopUpBudget adds budget to a milestone (buyer response to budget wall).
 type TopUpInput struct {
-	MilestoneID    string `json:"milestoneId"`
+	MilestoneID     string `json:"milestoneId"`
 	AdditionalCents int64  `json:"additionalCents"`
 }
 
@@ -1953,18 +1954,19 @@ func (a *App) TopUpMilestone(orderID string, input TopUpInput) (*core.Order, err
 
 // ProviderCarrierBinding represents a provider's Carrier integration credentials.
 type ProviderCarrierBinding struct {
-	ID              string    `json:"id"`
-	ProviderOrgID   string    `json:"providerOrgId"`
-	CarrierBaseURL  string    `json:"carrierBaseUrl"`
-	IntegrationToken string   `json:"integrationToken,omitempty"`
-	HostID          string    `json:"hostId"`
-	AgentID         string    `json:"agentId"`
-	Backend         string    `json:"backend"`
-	WorkspaceRoot   string    `json:"workspaceRoot"`
-	CallbackSecret  string    `json:"callbackSecret,omitempty"`
-	Status          string    `json:"status"` // active, suspended, pending_verification
-	CreatedAt       time.Time `json:"createdAt"`
-	VerifiedAt      *time.Time `json:"verifiedAt,omitempty"`
+	ID               string     `json:"id"`
+	ProviderOrgID    string     `json:"providerOrgId"`
+	CarrierBaseURL   string     `json:"carrierBaseUrl"`
+	IntegrationToken string     `json:"integrationToken,omitempty"`
+	HostID           string     `json:"hostId"`
+	AgentID          string     `json:"agentId"`
+	Backend          string     `json:"backend"`
+	WorkspaceRoot    string     `json:"workspaceRoot"`
+	CallbackSecret   string     `json:"callbackSecret,omitempty"`
+	CallbackKeyID    string     `json:"callbackKeyId,omitempty"`
+	Status           string     `json:"status"` // active, suspended, pending_verification
+	CreatedAt        time.Time  `json:"createdAt"`
+	VerifiedAt       *time.Time `json:"verifiedAt,omitempty"`
 }
 
 // RegisterCarrierBinding registers a provider's Carrier integration.
@@ -1993,8 +1995,13 @@ func (a *App) RegisterCarrierBinding(input ProviderCarrierBinding) (ProviderCarr
 		Backend:          input.Backend,
 		WorkspaceRoot:    input.WorkspaceRoot,
 		CallbackSecret:   input.CallbackSecret,
+		CallbackKeyID:    input.CallbackKeyID,
 		Status:           "pending_verification",
 		CreatedAt:        a.now(),
+	}
+
+	if binding.CallbackSecret != "" && strings.TrimSpace(binding.CallbackKeyID) == "" {
+		binding.CallbackKeyID = fmt.Sprintf("cbk_%d", len(a.carrierBindings)+1)
 	}
 
 	a.carrierBindings = append(a.carrierBindings, binding)
@@ -2055,8 +2062,8 @@ func (a *App) SuspendCarrierBinding(bindingID string) (ProviderCarrierBinding, e
 
 // DisputeWithEvidence combines a dispute with its associated carrier evidence.
 type DisputeWithEvidence struct {
-	Dispute   Dispute        `json:"dispute"`
-	Evidence  []any          `json:"evidence,omitempty"`
+	Dispute  Dispute `json:"dispute"`
+	Evidence []any   `json:"evidence,omitempty"`
 }
 
 // GetDisputeWithEvidence returns a dispute along with any carrier evidence
