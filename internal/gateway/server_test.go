@@ -6018,7 +6018,7 @@ func TestGetOrder_WithAuth(t *testing.T) {
 	noAuth.ServeHTTP(w, req)
 	var resp map[string]any
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	orderID := resp["order"].(map[string]any)["id"].(string)
+	orderID := parseOrderID(t, w.Body.Bytes())
 
 	// Get with buyer auth
 	mockIAM := &stubIAMClient{actor: iamclient.Actor{
@@ -6049,7 +6049,7 @@ func TestDisputeResolve_WithOps(t *testing.T) {
 	noAuth.ServeHTTP(w, req)
 	var resp map[string]any
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	orderID := resp["order"].(map[string]any)["id"].(string)
+	orderID := parseOrderID(t, w.Body.Bytes())
 
 	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/milestones/ms_1/settle", strings.NewReader(`{"milestoneId":"ms_1","summary":"done"}`))
 	w = httptest.NewRecorder()
@@ -6202,7 +6202,7 @@ func TestSettleMilestone_WithExecToken(t *testing.T) {
 	noTokenSrv.ServeHTTP(w, req)
 	var resp map[string]any
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	orderID := resp["order"].(map[string]any)["id"].(string)
+	orderID := parseOrderID(t, w.Body.Bytes())
 
 	// Settle with exec token
 	settleBody := `{"milestoneId":"ms_1","summary":"done"}`
@@ -7392,7 +7392,7 @@ func TestGetDispute_WithEvidence(t *testing.T) {
 	srv.ServeHTTP(w, req)
 	var resp map[string]any
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	orderID := resp["order"].(map[string]any)["id"].(string)
+	orderID := parseOrderID(t, w.Body.Bytes())
 
 	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/milestones/ms_1/settle", strings.NewReader(`{"milestoneId":"ms_1","summary":"done"}`))
 	w = httptest.NewRecorder()
@@ -7432,13 +7432,13 @@ func TestBatchOrderStatus_WithOrders(t *testing.T) {
 	srv.ServeHTTP(w, req)
 	var resp map[string]any
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	id1 := resp["order"].(map[string]any)["id"].(string)
+	id1 := parseOrderID(t, w.Body.Bytes())
 
 	req = httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(body))
 	w = httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	id2 := resp["order"].(map[string]any)["id"].(string)
+	id2 := parseOrderID(t, w.Body.Bytes())
 
 	// Batch status
 	batchBody := fmt.Sprintf(`{"orderIds":["%s","%s"]}`, id1, id2)
@@ -7686,7 +7686,7 @@ func TestTopUp_Gateway(t *testing.T) {
 	srv.ServeHTTP(w, req)
 	var resp map[string]any
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	orderID := resp["order"].(map[string]any)["id"].(string)
+	orderID := parseOrderID(t, w.Body.Bytes())
 
 	topUpBody := `{"milestoneId":"ms_1","additionalCents":2000}`
 	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/top-up", strings.NewReader(topUpBody))
@@ -7747,7 +7747,7 @@ func TestOrderMessages_CreateAndList(t *testing.T) {
 	srv.ServeHTTP(w, req)
 	var resp map[string]any
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	orderID := resp["order"].(map[string]any)["id"].(string)
+	orderID := parseOrderID(t, w.Body.Bytes())
 
 	// Create message
 	msgBody := fmt.Sprintf(`{"orderId":"%s","author":"buyer","body":"update?"}`, orderID)
@@ -8046,7 +8046,7 @@ func TestDisputeList_StatusFilter(t *testing.T) {
 	srv.ServeHTTP(w, req)
 	var resp map[string]any
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	orderID := resp["order"].(map[string]any)["id"].(string)
+	orderID := parseOrderID(t, w.Body.Bytes())
 
 	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/milestones/ms_1/settle", strings.NewReader(`{"milestoneId":"ms_1","summary":"done"}`))
 	w = httptest.NewRecorder()
