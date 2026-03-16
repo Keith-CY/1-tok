@@ -8569,3 +8569,40 @@ func mustJSON(t *testing.T, v any) string {
 	}
 	return string(b)
 }
+
+func TestCarrierCallback_ReorderRejected(t *testing.T) {
+	srv := NewServer()
+	_, bindingID, jobID := prepareOrderCarrierBindingAndJob(t, srv, "org_reorder", "secret-reorder", "ms_reorder")
+	if bindingID == "" || jobID == "" {
+		t.Fatal("fixture failed")
+	}
+
+	// sequence 2 first
+	evt2 := carrier.CallbackEvent{Type: "job.started", JobID: jobID, BindingID: bindingID, Timestamp: time.Now().UTC().Format(time.RFC3339), Payload: map[string]any{"eventId": "evt-2", "sequence": float64(2)}}
+	evt2.Signature = carrier.SignCallback("secret-reorder", evt2)
+	req := httptest.NewRequest("POST", "/api/v1/carrier/callbacks/events", strings.NewReader(mustJSON(t, evt2)))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("first seq2 expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	evt1 := carrier.CallbackEvent{Type: "job.started", JobID: jobID, BindingID: bindingID, Timestamp: time.Now().UTC().Format(time.RFC3339), Payload: map[string]any{"eventId": "evt-1", "sequence": float64(1)}}
+	evt1.Signature = carrier.SignCallback("secret-reorder", evt1)
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callbacks/events", strings.NewReader(mustJSON(t, evt1)))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("reorder expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp["code"] != "CONFLICT" {
+		t.Fatalf("expected code=CONFLICT, got %v", resp["code"])
+	}
+	if accepted, ok := resp["accepted"].(bool); !ok || accepted {
+		t.Fatalf("expected accepted=false, got %v", resp["accepted"])
+	}
+}
