@@ -5716,6 +5716,61 @@ func TestTopUp_InvalidJSON(t *testing.T) {
 	}
 }
 
+func TestTopUp_BudgetAccumulatesOnRepeatedCalls(t *testing.T) {
+	srv := NewServer()
+	orderBody := `{"buyerOrgId":"org_b","providerOrgId":"org_p","fundingMode":"prepaid","milestones":[{"id":"ms_1","title":"W","basePriceCents":1000,"budgetCents":1000}]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(orderBody))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create order: %d %s", w.Code, w.Body.String())
+	}
+	var create map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &create); err != nil {
+		t.Fatalf("unmarshal create: %v", err)
+	}
+	order := create["order"].(map[string]any)
+	orderID := order["id"].(string)
+	milestones := order["milestones"].([]any)
+	if len(milestones) != 1 {
+		t.Fatalf("want 1 milestone, got %d", len(milestones))
+	}
+	ms := milestones[0].(map[string]any)
+	if ms["budgetCents"].(float64) != 1000 {
+		t.Fatalf("initial budget = %v", ms["budgetCents"])
+	}
+
+	req = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/orders/%s/top-up", orderID), strings.NewReader(`{"milestoneId":"ms_1","additionalCents":500}`))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("top-up1: %d %s", w.Code, w.Body.String())
+	}
+	var after1 map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &after1); err != nil {
+		t.Fatalf("unmarshal after1: %v", err)
+	}
+	order1 := after1["order"].(map[string]any)
+	if budget := order1["milestones"].([]any)[0].(map[string]any)["budgetCents"].(float64); budget != 1500 {
+		t.Fatalf("after1 budget = %v", budget)
+	}
+
+	req = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/orders/%s/top-up", orderID), strings.NewReader(`{"milestoneId":"ms_1","additionalCents":300}`))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("top-up2: %d %s", w.Code, w.Body.String())
+	}
+	var after2 map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &after2); err != nil {
+		t.Fatalf("unmarshal after2: %v", err)
+	}
+	budget := after2["order"].(map[string]any)["milestones"].([]any)[0].(map[string]any)["budgetCents"].(float64)
+	if budget != 1800 {
+		t.Fatalf("after2 budget = %v", budget)
+	}
+}
+
 func TestTopUp_OrderNotFound(t *testing.T) {
 	srv := NewServer()
 	body := `{"milestoneId":"ms_1","additionalCents":1000}`
@@ -8107,6 +8162,47 @@ func TestRFQMessages_NonParticipantDenied(t *testing.T) {
 	authSrv.ServeHTTP(w, req)
 	if w.Code != http.StatusForbidden {
 		t.Errorf("non-participant should be denied, got %d", w.Code)
+	}
+}
+
+func TestCarrierCallback_ReplayOnSameEventIdDifferentTimestamp(t *testing.T) {
+	srv := NewServer()
+	_, bindingID, jobID := prepareOrderCarrierBindingAndJob(t, srv, "org_replay_ts", "", "ms_replay_ts")
+	if bindingID == "" || jobID == "" {
+		t.Fatal("fixture failed")
+	}
+
+	cb := carrier.CallbackEvent{
+		Type:      "job.started",
+		JobID:     jobID,
+		BindingID: bindingID,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Payload:   map[string]any{"eventId": "replay-ts", "sequence": float64(1)},
+	}
+	first, _ := json.Marshal(cb)
+	req := httptest.NewRequest("POST", "/api/v1/carrier/callback", strings.NewReader(string(first)))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("first: %d %s", w.Code, w.Body.String())
+	}
+
+	// Re-send same eventId/sequence with different timestamp should still be treated as replay.
+	cb.Timestamp = time.Now().Add(1 * time.Second).UTC().Format(time.RFC3339)
+	cb.Signature = ""
+	second, _ := json.Marshal(cb)
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callback", strings.NewReader(string(second)))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("replay: %d %s", w.Code, w.Body.String())
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal replay: %v", err)
+	}
+	if resp["replay"] != true {
+		t.Fatalf("expected replay=true, got %v", resp["replay"])
 	}
 }
 
