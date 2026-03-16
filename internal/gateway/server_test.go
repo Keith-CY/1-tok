@@ -1600,9 +1600,7 @@ func TestCreateMessage(t *testing.T) {
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 }
 
 func TestCreateDispute(t *testing.T) {
@@ -1632,9 +1630,7 @@ func TestCreateDispute(t *testing.T) {
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 }
 
 func TestCreditDecision(t *testing.T) {
@@ -1797,6 +1793,13 @@ func TestResolveDispute_InvalidJSON(t *testing.T) {
 	}
 }
 
+func assertStatus(t *testing.T, got int, want int, body string) {
+	t.Helper()
+	if got != want {
+		t.Fatalf("expected %d, got %d: %s", want, got, body)
+	}
+}
+
 func postMessageRequest(t *testing.T, gw *Server, path string, body string, token ...string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
@@ -1952,9 +1955,7 @@ func TestCreateMessage_MissingAuthorRejected_Gateway(t *testing.T) {
 		"body":    "hello",
 	})
 	rec := postMessageRequest(t, gw, "/api/v1/messages", string(payload))
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusBadRequest, rec.Body.String())
 }
 
 func TestCreateMessage_WhitespaceAuthorRejected_Gateway(t *testing.T) {
@@ -1977,9 +1978,7 @@ func TestCreateMessage_WhitespaceAuthorRejected_Gateway(t *testing.T) {
 		"body":    "hello",
 	})
 	rec := postMessageRequest(t, gw, "/api/v1/messages", string(payload))
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusBadRequest, rec.Body.String())
 }
 
 func TestCreateMessage_OrderIDWhitespaceRejected_Gateway(t *testing.T) {
@@ -1991,9 +1990,7 @@ func TestCreateMessage_OrderIDWhitespaceRejected_Gateway(t *testing.T) {
 		"body":    "hello",
 	})
 	rec := postMessageRequest(t, gw, "/api/v1/messages", string(payload))
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusBadRequest, rec.Body.String())
 }
 
 func TestCreateMessage_WhitespaceBodyRejected_Gateway(t *testing.T) {
@@ -2016,9 +2013,7 @@ func TestCreateMessage_WhitespaceBodyRejected_Gateway(t *testing.T) {
 		"body":    "   ",
 	})
 	rec := postMessageRequest(t, gw, "/api/v1/messages", string(payload))
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusBadRequest, rec.Body.String())
 }
 
 func TestCreditDecision_InvalidJSON(t *testing.T) {
@@ -2071,9 +2066,7 @@ func TestCreateOrder_Success(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 }
 
 func TestCreateRFQ_Success(t *testing.T) {
@@ -2089,9 +2082,7 @@ func TestCreateRFQ_Success(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 }
 
 func TestCreateBid_Success(t *testing.T) {
@@ -2113,9 +2104,7 @@ func TestCreateBid_Success(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 }
 
 func TestAwardRFQ_Success(t *testing.T) {
@@ -2268,9 +2257,7 @@ func TestCreateRFQ_WithBuyerAuth(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 }
 
 func TestCreateBid_WithProviderAuth(t *testing.T) {
@@ -2299,9 +2286,7 @@ func TestCreateBid_WithProviderAuth(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer prov-token")
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 }
 
 func TestGetOrder_WithBuyerAuth(t *testing.T) {
@@ -2359,9 +2344,7 @@ func TestCreateOrder_WithAuth(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer buyer-token")
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 }
 
 func TestListOrders_WithBuyerAuth(t *testing.T) {
@@ -3055,9 +3038,7 @@ func TestHandleCreateDispute_WithBuyerAuth(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer token")
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 }
 
 func TestHandleSettleMilestone_WithAuth(t *testing.T) {
@@ -3253,9 +3234,7 @@ func TestCreateMessage_WhitespaceAuthorIgnoredForBuyerAuth(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer buyer-token")
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 
 	var resp map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
@@ -3298,9 +3277,7 @@ func TestHandleCreateMessage_WithBuyerAuth(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer buyer-token")
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 }
 
 func TestHandleCreditDecision_WithOpsAuth(t *testing.T) {
@@ -4265,9 +4242,7 @@ func TestCreateMessage_WithProviderAuth(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer token")
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 }
 
 func TestAwardRFQ_RateLimited(t *testing.T) {
@@ -4608,9 +4583,7 @@ func TestCreateRFQ_WithRateLimitAndAuth(t *testing.T) {
 	req.RemoteAddr = "10.0.0.1:12345"
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 	// Verify rate limit headers
 	if rec.Header().Get("X-RateLimit-Limit") == "" {
 		t.Log("rate limit headers not present (may not be set on success)")
@@ -4652,9 +4625,7 @@ func TestCreateBid_WithRateLimitAndAuth(t *testing.T) {
 	req.RemoteAddr = "10.0.0.2:54321"
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 }
 
 func TestCreateMessage_RateLimited(t *testing.T) {
@@ -4762,9 +4733,7 @@ func TestCreateOrder_ProviderOrgId_FromAuth(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer token")
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 }
 
 func TestResolveDispute_RateLimited(t *testing.T) {
@@ -4888,9 +4857,7 @@ func TestCreateDispute_WithBuyerAuthAndRateLimit(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer token")
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 }
 
 func TestListRFQs_NoMembership(t *testing.T) {
