@@ -267,7 +267,7 @@ func TestResolveDispute(t *testing.T) {
 		FundingMode: FundingModeCredit, Status: OrderStatusRunning,
 		PlatformWallet: "w",
 		Milestones: []Milestone{
-			{ID: "ms_1", Title: "Work", BasePriceCents: 1000, BudgetCents: 1000,
+			{ID: "ms_1", Title: "Work", BasePriceCents: 1000, BudgetCents: 1000, SettledCents: 1000,
 				State: MilestoneStateSettled, DisputeStatus: DisputeStatusNone},
 		},
 	}
@@ -486,7 +486,7 @@ func TestSettleMilestone_FromPaused(t *testing.T) {
 		Status:      OrderStatusAwaitingBudget,
 		FundingMode: FundingModePrepaid,
 		Milestones: []Milestone{
-			{ID: "ms_1", Title: "W", BasePriceCents: 1000, BudgetCents: 1000, State: MilestoneStatePaused, DisputeStatus: DisputeStatusNone},
+			{ID: "ms_1", Title: "W", BasePriceCents: 1000, BudgetCents: 1000, SettledCents: 1000, State: MilestoneStatePaused, DisputeStatus: DisputeStatusNone},
 		},
 	}
 	entry, err := order.SettleMilestone(SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
@@ -507,7 +507,7 @@ func TestSettleMilestone_CreditMode(t *testing.T) {
 		Status:      OrderStatusRunning,
 		FundingMode: FundingModeCredit,
 		Milestones: []Milestone{
-			{ID: "ms_1", Title: "W", BasePriceCents: 1000, BudgetCents: 1000, State: MilestoneStateRunning, DisputeStatus: DisputeStatusNone},
+			{ID: "ms_1", Title: "W", BasePriceCents: 1000, BudgetCents: 1000, SettledCents: 1000, State: MilestoneStateRunning, DisputeStatus: DisputeStatusNone},
 		},
 	}
 	entry, err := order.SettleMilestone(SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
@@ -578,4 +578,26 @@ func TestRecordUsageCharge_ZeroAmount(t *testing.T) {
 		MilestoneID: "ms_1", Kind: UsageChargeKindToken, AmountCents: 0,
 	})
 	if err == nil { t.Error("expected error for zero amount") }
+}
+
+func TestOpenDispute_RefundExceedsSettled(t *testing.T) {
+	order := &Order{
+		ID: "ord_1", Status: OrderStatusRunning,
+		Milestones: []Milestone{
+			{ID: "ms_1", State: MilestoneStateSettled, SettledCents: 1000, BasePriceCents: 1000, DisputeStatus: DisputeStatusNone},
+		},
+	}
+	_, _, err := order.OpenDispute(OpenDisputeInput{MilestoneID: "ms_1", Reason: "bad", RefundCents: 2000})
+	if err == nil { t.Error("expected error for refund > settled") }
+}
+
+func TestOpenDispute_NegativeRefund(t *testing.T) {
+	order := &Order{
+		ID: "ord_1", Status: OrderStatusRunning,
+		Milestones: []Milestone{
+			{ID: "ms_1", State: MilestoneStateSettled, SettledCents: 1000, BasePriceCents: 1000, DisputeStatus: DisputeStatusNone},
+		},
+	}
+	_, _, err := order.OpenDispute(OpenDisputeInput{MilestoneID: "ms_1", Reason: "bad", RefundCents: -100})
+	if err == nil { t.Error("expected error for negative refund") }
 }

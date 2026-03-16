@@ -204,6 +204,13 @@ func (o *Order) OpenDispute(input OpenDisputeInput) (LedgerEntry, LedgerEntry, e
 		return LedgerEntry{}, LedgerEntry{}, errors.New("only settled milestones can be disputed")
 	}
 
+	if input.RefundCents <= 0 {
+		return LedgerEntry{}, LedgerEntry{}, errors.New("refund amount must be positive")
+	}
+	if input.RefundCents > milestone.SettledCents {
+		return LedgerEntry{}, LedgerEntry{}, fmt.Errorf("refund %d exceeds settled amount %d", input.RefundCents, milestone.SettledCents)
+	}
+
 	milestone.DisputeStatus = DisputeStatusFrozen
 	milestone.State = MilestoneStatePaused // Freeze: prevent further settlement
 
