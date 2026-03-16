@@ -24,7 +24,7 @@ export default async function ProviderRFQsPage() {
     >
       <div className="space-y-4">
         {openRFQs.length === 0 ? (
-          <EmptyState message="No open RFQs available." />
+          <EmptyState message="No open RFQs available." actionLabel="Browse all RFQs" actionHref="/provider" />
         ) : (
           <div className="space-y-3">
             {openRFQs.map((rfq) => (

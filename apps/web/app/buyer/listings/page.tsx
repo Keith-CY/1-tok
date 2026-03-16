@@ -56,7 +56,11 @@ export default async function BuyerListingsPage({
         {error && <p className="text-red-500">{error}</p>}
 
         {listings.length === 0 ? (
-          <EmptyState message="No listings found. Try adjusting your search." />
+          <EmptyState
+            message="No listings found. Try adjusting your search."
+            actionLabel="Create an RFQ"
+            actionHref="/buyer"
+          />
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
             {listings.map((listing: any) => (

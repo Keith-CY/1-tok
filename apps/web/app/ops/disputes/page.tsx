@@ -34,7 +34,7 @@ export default async function OpsDisputesPage() {
         </div>
 
         {disputes.length === 0 ? (
-          <EmptyState message="No disputes to review." />
+          <EmptyState message="No disputes to review." actionLabel="Open dispute controls" actionHref="/ops" />
         ) : (
           <div className="space-y-3">
             {disputes.map((d) => (

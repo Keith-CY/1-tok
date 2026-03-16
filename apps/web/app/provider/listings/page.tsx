@@ -24,7 +24,7 @@ export default async function ProviderListingsPage() {
           </a>
         </div>
 
-        <EmptyState message="No listings yet. Create your first listing to start receiving RFQs." />
+        <EmptyState message="No listings yet. Create your first listing to start receiving RFQs." actionLabel="Create your first listing" actionHref="/provider/listings/create" />
       </div>
     </PortalShell>
   );
