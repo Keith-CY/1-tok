@@ -5706,6 +5706,16 @@ func TestGetOrder_NotFound(t *testing.T) {
 	}
 }
 
+func TestTopUp_InvalidJSON(t *testing.T) {
+	srv := NewServer()
+	req := httptest.NewRequest("POST", "/api/v1/orders/order1/top-up", strings.NewReader("not json"))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestTopUp_OrderNotFound(t *testing.T) {
 	srv := NewServer()
 	body := `{"milestoneId":"ms_1","additionalCents":1000}`
@@ -5734,6 +5744,16 @@ func TestWebhookRegister_MissingFields(t *testing.T) {
 	srv.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("status = %d", w.Code)
+	}
+}
+
+func TestApplicationReview_InvalidJSON_Gateway(t *testing.T) {
+	srv := NewServer()
+	req := httptest.NewRequest("POST", "/api/v1/provider-applications/app_1/review", strings.NewReader("not json"))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
@@ -6764,6 +6784,58 @@ func TestCarrierCallback_HeaderAuthTakesHeaderSignatureAndTimestamp(t *testing.T
 	srv.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("callback with header auth overrides expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCarrierCallback_ExpiredTimestampRejected(t *testing.T) {
+	srv := NewServer()
+	orderPayload := map[string]any{"buyerOrgId": "buyer_expire", "providerOrgId": "org_expire", "title": "Callback Expired Timestamp", "fundingMode": "prepaid", "milestones": []map[string]any{{"id": "ms_exp", "title": "Work", "basePriceCents": 1000, "budgetCents": 2000}}}
+	orderBody, _ := json.Marshal(orderPayload)
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(string(orderBody)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create order: %d %s", w.Code, w.Body.String())
+	}
+	var ord map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &ord); err != nil {
+		t.Fatalf("decode order: %v", err)
+	}
+	orderID := ord["order"].(map[string]any)["id"].(string)
+
+	req = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/orders/%s/milestones/ms_exp/bind-carrier", orderID), strings.NewReader(`{"carrierId":"c-exp","capabilities":["gpu"]}`))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("bind carrier: %d %s", w.Code, w.Body.String())
+	}
+	var bindResp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &bindResp); err != nil {
+		t.Fatalf("decode bind: %v", err)
+	}
+	bindingID := bindResp["binding"].(map[string]any)["id"].(string)
+
+	req = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/orders/%s/milestones/ms_exp/jobs", orderID), strings.NewReader(fmt.Sprintf(`{"bindingId":"%s","input":"work"}`, bindingID)))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create job: %d %s", w.Code, w.Body.String())
+	}
+	var jobResp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &jobResp); err != nil {
+		t.Fatalf("decode job: %v", err)
+	}
+	jobID := jobResp["job"].(map[string]any)["id"].(string)
+
+	t.Setenv("CARRIER_CALLBACK_SECRET", "secret_expire")
+	event := carrier.CallbackEvent{Type: "job.started", JobID: jobID, BindingID: bindingID, Timestamp: time.Now().Add(-10 * time.Minute).Format(time.RFC3339), Payload: map[string]any{"eventId": "exp_1", "sequence": float64(1)}}
+	event.Signature = carrier.SignCallback("secret_expire", event)
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callbacks/events", strings.NewReader(mustJSON(t, event)))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for expired timestamp, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
@@ -8173,4 +8245,13 @@ func TestAwardRFQ_CreditWithoutLineID(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d: %s", w.Code, w.Body.String())
 	}
+}
+
+func mustJSON(t *testing.T, v any) string {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	return string(b)
 }
