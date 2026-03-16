@@ -6982,6 +6982,107 @@ func TestCarrierCallback_SignatureWithoutConfiguredSecretIsUnauthorized(t *testi
 	}
 }
 
+func TestCarrierCallback_ErrorResponseCodes(t *testing.T) {
+	srv := NewServer()
+
+	orderPayload := map[string]any{
+		"buyerOrgId":    "buyer_code",
+		"providerOrgId": "org_code",
+		"title":         "Error code callback order",
+		"fundingMode":   "prepaid",
+		"milestones": []map[string]any{{
+			"id":             "ms_code",
+			"title":          "Error code milestone",
+			"basePriceCents": 1000,
+			"budgetCents":    2000,
+		}},
+	}
+	orderBody, _ := json.Marshal(orderPayload)
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(string(orderBody)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create order: %d %s", w.Code, w.Body.String())
+	}
+	var ord map[string]any
+	json.Unmarshal(w.Body.Bytes(), &ord)
+	orderID := ord["order"].(map[string]any)["id"].(string)
+
+	regBody := `{"providerOrgId":"org_code","carrierBaseUrl":"https://carrier.test","hostId":"hk-code","agentId":"a1","backend":"agent","workspaceRoot":"/tmp","callbackSecret":"secret-code","callbackKeyId":"code-k"}`
+	req = httptest.NewRequest("POST", "/api/v1/carrier-bindings", strings.NewReader(regBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("register binding: %d %s", w.Code, w.Body.String())
+	}
+
+	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/milestones/ms_code/bind-carrier", strings.NewReader(`{"carrierId":"c_code","capabilities":["gpu"]}`))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("bind: %d %s", w.Code, w.Body.String())
+	}
+	var bindResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &bindResp)
+	bindingID := bindResp["binding"].(map[string]any)["id"].(string)
+
+	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/milestones/ms_code/jobs", strings.NewReader(fmt.Sprintf(`{"bindingId":"%s","input":"code"}`, bindingID)))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create job: %d %s", w.Code, w.Body.String())
+	}
+	var jobResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &jobResp)
+	jobID := jobResp["job"].(map[string]any)["id"].(string)
+
+	evt := carrier.CallbackEvent{Type: "job.started", JobID: jobID, BindingID: bindingID, Timestamp: time.Now().UTC().Format(time.RFC3339), Payload: map[string]any{"eventId": "code-1", "sequence": float64(1)}}
+	evt.Signature = "bad"
+	body, _ := json.Marshal(evt)
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callback", strings.NewReader(string(body)))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unauthorized for bad signature, got %d: %s", w.Code, w.Body.String())
+	}
+	var unauthorizedResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &unauthorizedResp)
+	if unauthorizedResp["code"] != "UNAUTHORIZED" {
+		t.Fatalf("expected UNAUTHORIZED code, got %v", unauthorizedResp)
+	}
+
+	badTypeBody := fmt.Sprintf(`{"type":"job.startedly","jobId":"%s","bindingId":"%s","timestamp":"%s","signature":"%s","payload":{"eventId":"code-2","sequence":2}}`, jobID, bindingID, time.Now().UTC().Format(time.RFC3339), carrier.SignCallback("secret-code", carrier.CallbackEvent{Type: "job.startedly", JobID: jobID, BindingID: bindingID, Timestamp: time.Now().UTC().Format(time.RFC3339)}))
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callback", strings.NewReader(badTypeBody))
+	req.Header.Set("X-One-Tok-Callback-Key-Id", "code-k")
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected bad request for unknown type, got %d: %s", w.Code, w.Body.String())
+	}
+	var badResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &badResp)
+	if badResp["code"] != "BAD_REQUEST" {
+		t.Fatalf("expected BAD_REQUEST code, got %v", badResp)
+	}
+
+	evtGap := carrier.CallbackEvent{Type: "job.started", JobID: jobID, BindingID: bindingID, Timestamp: time.Now().UTC().Format(time.RFC3339), Payload: map[string]any{"eventId": "code-gap", "sequence": float64(4)}}
+	evtGap.Signature = carrier.SignCallback("secret-code", evtGap)
+	bg, _ := json.Marshal(evtGap)
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callback", strings.NewReader(string(bg)))
+	req.Header.Set("X-One-Tok-Callback-Key-Id", "code-k")
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected conflict for gap, got %d: %s", w.Code, w.Body.String())
+	}
+	var gapResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &gapResp)
+	if gapResp["code"] != "CONFLICT" {
+		t.Fatalf("expected CONFLICT code, got %v", gapResp)
+	}
+}
+
 func TestCarrierCallback_WithInvalidBindingSecretRejected(t *testing.T) {
 	srv := NewServer()
 

@@ -424,7 +424,7 @@ func (s *Server) handleListOrders(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetOrder(w http.ResponseWriter, r *http.Request) {
 	orderID, err := orderIDFromPath(r.URL.Path)
 	if err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeCallbackError(w, http.StatusBadRequest, httputil.ErrCodeBadRequest, err.Error())
 		return
 	}
 	order, err := s.app.GetOrder(orderID)
@@ -530,7 +530,7 @@ func (s *Server) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	order, err := s.app.CreateOrder(input)
 	if err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeCallbackError(w, http.StatusBadRequest, httputil.ErrCodeBadRequest, err.Error())
 		return
 	}
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{"order": order})
@@ -1928,11 +1928,11 @@ func (s *Server) handleCarrierCallback(w http.ResponseWriter, r *http.Request) {
 	// Verify callback signature (binding/provider secret preferred, then env fallback)
 	callbackSecret, err := s.resolveCarrierCallbackSecret(r, event)
 	if err != nil {
-		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error()})
+		writeCallbackError(w, http.StatusUnauthorized, httputil.ErrCodeUnauthorized, err.Error())
 		return
 	}
 	if err := carrier.VerifyCallback(callbackSecret, event); err != nil {
-		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error()})
+		writeCallbackError(w, http.StatusUnauthorized, httputil.ErrCodeUnauthorized, err.Error())
 		return
 	}
 
@@ -1949,7 +1949,7 @@ func (s *Server) handleCarrierCallback(w http.ResponseWriter, r *http.Request) {
 		if ledgerErr != nil {
 			// Gap or reorder — tell Carrier to redeliver
 			httputil.WriteJSON(w, http.StatusConflict, map[string]any{
-				"error": ledgerErr.Error(), "accepted": false,
+				"error": ledgerErr.Error(), "accepted": false, "code": httputil.ErrCodeConflict,
 			})
 			return
 		}
@@ -2026,7 +2026,7 @@ func (s *Server) handleCarrierCallback(w http.ResponseWriter, r *http.Request) {
 		// Best effort: parse requested recommendation if provided by carrier.
 		recommendedAction = eventBudgetRecommendedAction(event.Payload)
 	default:
-		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown callback type"})
+		writeCallbackError(w, http.StatusBadRequest, httputil.ErrCodeBadRequest, "unknown callback type")
 		return
 	}
 
@@ -2046,6 +2046,10 @@ func (s *Server) handleCarrierCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, response)
+}
+
+func writeCallbackError(w http.ResponseWriter, status int, code string, message string) {
+	httputil.WriteJSON(w, status, map[string]any{"error": message, "code": code})
 }
 
 func (s *Server) applyCarrierCallbackAuthHeaders(event *carrier.CallbackEvent, r *http.Request) {
