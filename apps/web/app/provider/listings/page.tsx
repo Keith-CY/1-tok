@@ -33,18 +33,40 @@ const MOCK_LISTINGS = [
 export default async function ProviderListingsPage({
   searchParams,
 }: {
-  searchParams?: { q?: string; category?: string };
+  searchParams?: { q?: string; category?: string; tier?: string; sort?: string };
 }) {
   const viewer = await requirePortalViewer("provider", "/provider/listings");
 
   const q = (searchParams?.q ?? "").trim().toLowerCase();
   const selectedCategory = (searchParams?.category ?? "all").toLowerCase();
+  const selectedTier = (searchParams?.tier ?? "all").toLowerCase();
+  const sort = (searchParams?.sort ?? "title").toLowerCase();
 
-  const filteredListings = MOCK_LISTINGS.filter(
-    (item) =>
-      (!q || item.title.toLowerCase().includes(q) || item.category.toLowerCase().includes(q)) &&
-      (selectedCategory === "all" || item.category === selectedCategory),
-  );
+  const filteredListings = MOCK_LISTINGS
+    .filter(
+      (item) =>
+        (!q || item.title.toLowerCase().includes(q) || item.category.toLowerCase().includes(q)) &&
+        (selectedCategory === "all" || item.category === selectedCategory) &&
+        (selectedTier === "all" || item.tier === selectedTier),
+    )
+    .sort((a, b) => {
+      if (sort === "title") {
+        return a.title.localeCompare(b.title);
+      }
+
+      if (sort === "capacity") {
+        const parseCapacity = (value: string) =>
+          Number.parseInt(value.split(" ")[0] ?? "0", 10);
+        return parseCapacity(b.capacity) - parseCapacity(a.capacity);
+      }
+
+      if (sort === "tier") {
+        const tierRank = (tier: string) => (tier === "gold" ? 3 : tier === "silver" ? 2 : 1);
+        return tierRank(b.tier) - tierRank(a.tier);
+      }
+
+      return 0;
+    });
 
   return (
     <PortalShell
@@ -75,17 +97,34 @@ export default async function ProviderListingsPage({
                 name="q"
                 type="text"
                 placeholder="Search by title or category"
-                defaultValue={searchParams?.q ?? ""}
+                defaultValue={q}
               />
             </label>
             <label className="auth-field">
               <span>Category</span>
-              <select name="category" defaultValue={searchParams?.category ?? "all"}>
+              <select name="category" defaultValue={selectedCategory}>
                 <option value="all">All categories</option>
                 <option value="agent-ops">Agent Ops</option>
                 <option value="agent-runtime">Agent Runtime</option>
                 <option value="compute">Compute</option>
                 <option value="data-pipeline">Data Pipeline</option>
+              </select>
+            </label>
+            <label className="auth-field">
+              <span>Tier</span>
+              <select name="tier" defaultValue={selectedTier}>
+                <option value="all">All tiers</option>
+                <option value="gold">Gold</option>
+                <option value="silver">Silver</option>
+                <option value="bronze">Bronze</option>
+              </select>
+            </label>
+            <label className="auth-field">
+              <span>Sort by</span>
+              <select name="sort" defaultValue={sort}>
+                <option value="title">Title</option>
+                <option value="tier">Tier</option>
+                <option value="capacity">Capacity</option>
               </select>
             </label>
           </div>
