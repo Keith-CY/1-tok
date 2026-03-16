@@ -26,6 +26,29 @@ export default async function ProviderRFQsPage({
   const categoryValue = categoryFilter !== "all" ? categoryFilter : "";
   const sortValue = sort !== "deadline" ? sort : "";
 
+  const buildCategoryHref = (nextCategory: string) => {
+    const params = new URLSearchParams();
+
+    if (q) {
+      params.set("q", q);
+    }
+
+    if (statusFilter !== "all") {
+      params.set("status", statusFilter);
+    }
+
+    if (sortValue) {
+      params.set("sort", sortValue);
+    }
+
+    if (nextCategory !== "all") {
+      params.set("category", nextCategory);
+    }
+
+    const queryString = params.toString();
+    return queryString ? `/provider/rfqs?${queryString}` : "/provider/rfqs";
+  };
+
   const buildStatusHref = (nextStatus: string) => {
     const params = new URLSearchParams();
 
@@ -84,6 +107,23 @@ export default async function ProviderRFQsPage({
     >
       <div className="space-y-4">
 
+        <div className="flex gap-2 mb-2">
+          <a href={buildCategoryHref("all")} className="action-button">
+            All categories
+          </a>
+          <a href={buildCategoryHref("agent-ops")} className="action-button">
+            Agent Ops
+          </a>
+          <a href={buildCategoryHref("agent-runtime")} className="action-button">
+            Agent Runtime
+          </a>
+          <a href={buildCategoryHref("data-pipeline")} className="action-button">
+            Data Pipeline
+          </a>
+          <a href={buildCategoryHref("compute")} className="action-button">
+            Compute
+          </a>
+        </div>
         <div className="flex gap-2 mb-2">
           <a href={buildStatusHref("all")} className="action-button">
             All
