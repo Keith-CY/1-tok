@@ -8,27 +8,40 @@ export const dynamic = "force-dynamic";
 export default async function ProviderRFQsPage({
   searchParams,
 }: {
-  searchParams?: { q?: string; category?: string };
+  searchParams?: { q?: string; category?: string; status?: string; sort?: string };
 }) {
   const viewer = await requirePortalViewer("provider", "/provider/rfqs");
 
   // Demo data — will be replaced with API
   const openRFQs = [
-    { id: "rfq_1", title: "Agent runtime triage", category: "agent-ops", budgetCents: 5400, deadline: "2026-03-15T12:00:00Z" },
-    { id: "rfq_2", title: "Data pipeline cleanup", category: "data-pipeline", budgetCents: 8200, deadline: "2026-03-18T12:00:00Z" },
+    { id: "rfq_1", title: "Agent runtime triage", category: "agent-ops", status: "open", budgetCents: 5400, deadline: "2026-03-15T12:00:00Z" },
+    { id: "rfq_2", title: "Data pipeline cleanup", category: "data-pipeline", status: "awarded", budgetCents: 8200, deadline: "2026-03-18T12:00:00Z" },
   ];
 
   const q = (searchParams?.q ?? "").trim().toLowerCase();
   const categoryFilter = (searchParams?.category ?? "all").toLowerCase();
+  const statusFilter = (searchParams?.status ?? "all").toLowerCase();
+  const sort = (searchParams?.sort ?? "deadline").toLowerCase();
 
   const filteredRFQs = openRFQs
     .filter(
       (rfq) =>
-        !q ||
-        rfq.title.toLowerCase().includes(q) ||
-        rfq.category.toLowerCase().includes(q),
+        (!q || rfq.title.toLowerCase().includes(q) || rfq.category.toLowerCase().includes(q) || rfq.status.toLowerCase().includes(q)) &&
+        (categoryFilter === "all" || rfq.category === categoryFilter) &&
+        (statusFilter === "all" || rfq.status === statusFilter),
     )
-    .filter((rfq) => categoryFilter === "all" || rfq.category === categoryFilter);
+    .sort((a, b) => {
+      if (sort === "budget") {
+        return b.budgetCents - a.budgetCents;
+      }
+      if (sort === "title") {
+        return a.title.localeCompare(b.title);
+      }
+      if (sort === "deadline") {
+        return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+      }
+      return 0;
+    });
 
   return (
     <PortalShell
@@ -60,6 +73,22 @@ export default async function ProviderRFQsPage({
                 <option value="compute">Compute</option>
               </select>
             </label>
+            <label className="auth-field">
+              <span>Status</span>
+              <select name="status" defaultValue={searchParams?.status ?? "all"}>
+                <option value="all">All</option>
+                <option value="open">Open</option>
+                <option value="awarded">Awarded</option>
+              </select>
+            </label>
+            <label className="auth-field">
+              <span>Sort</span>
+              <select name="sort" defaultValue={searchParams?.sort ?? "deadline"}>
+                <option value="deadline">Deadline</option>
+                <option value="budget">Budget</option>
+                <option value="title">Title</option>
+              </select>
+            </label>
           </div>
           <button type="submit" className="auth-submit">
             Find opportunities
@@ -81,7 +110,7 @@ export default async function ProviderRFQsPage({
                     <h3 className="font-semibold text-lg">{rfq.title}</h3>
                     <p className="text-sm text-gray-500">{rfq.category}</p>
                     <div className="mt-1 text-xs">
-                      <StatusBadge status="open" />
+                      <StatusBadge status={rfq.status} />
                     </div>
                   </div>
                   <div className="text-right">
