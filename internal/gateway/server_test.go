@@ -6787,6 +6787,126 @@ func TestCarrierCallback_HeaderAuthTakesHeaderSignatureAndTimestamp(t *testing.T
 	}
 }
 
+func prepareOrderCarrierBindingAndJob(t *testing.T, srv *Server, providerOrg, secret, milestoneID string) (orderID, bindingID, jobID string) {
+	t.Helper()
+
+	if secret != "" {
+		t.Setenv("CARRIER_CALLBACK_SECRET", "")
+		regBody := fmt.Sprintf(`{"providerOrgId":"%s","carrierBaseUrl":"https://carrier.test","hostId":"h1","agentId":"a1","backend":"agent","workspaceRoot":"/tmp","callbackSecret":"%s"}`, providerOrg, secret)
+		req := httptest.NewRequest("POST", "/api/v1/carrier-bindings", strings.NewReader(regBody))
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, req)
+		if w.Code != http.StatusCreated {
+			t.Fatalf("register binding: %d %s", w.Code, w.Body.String())
+		}
+	}
+
+	orderPayload := map[string]any{
+		"buyerOrgId":    providerOrg + "_buyer",
+		"providerOrgId": providerOrg,
+		"title":         "Callback fixture order",
+		"fundingMode":   "prepaid",
+		"milestones": []map[string]any{{
+			"id":             milestoneID,
+			"title":          "Work",
+			"basePriceCents": 1000,
+			"budgetCents":    2000,
+		}},
+	}
+	orderBody, _ := json.Marshal(orderPayload)
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(string(orderBody)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create order: %d %s", w.Code, w.Body.String())
+	}
+	var ord map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &ord); err != nil {
+		t.Fatalf("decode order: %v", err)
+	}
+	orderID = ord["order"].(map[string]any)["id"].(string)
+
+	bindBody := `{"carrierId":"c-fixture","capabilities":["gpu"]}`
+	req = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/orders/%s/milestones/%s/bind-carrier", orderID, milestoneID), strings.NewReader(bindBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("bind carrier: %d %s", w.Code, w.Body.String())
+	}
+	var bindResp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &bindResp); err != nil {
+		t.Fatalf("decode bind: %v", err)
+	}
+	bindingID = bindResp["binding"].(map[string]any)["id"].(string)
+
+	jobBody := fmt.Sprintf(`{"bindingId":"%s","input":"work"}`, bindingID)
+	req = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/orders/%s/milestones/%s/jobs", orderID, milestoneID), strings.NewReader(jobBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create job: %d %s", w.Code, w.Body.String())
+	}
+	var jobResp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &jobResp); err != nil {
+		t.Fatalf("decode job: %v", err)
+	}
+	jobID = jobResp["job"].(map[string]any)["id"].(string)
+
+	return
+}
+
+func TestCarrierCallback_MissingSignatureRejected(t *testing.T) {
+	srv := NewServer()
+	_, bindingID, jobID := prepareOrderCarrierBindingAndJob(t, srv, "org_missing_sig", "secret-missing", "ms_missing")
+	if bindingID == "" || jobID == "" {
+		t.Fatal("invalid fixture")
+	}
+
+	event := carrier.CallbackEvent{
+		Type:      "job.started",
+		JobID:     jobID,
+		BindingID: bindingID,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Payload: map[string]any{
+			"eventId":  "sig-missing-1",
+			"sequence": float64(1),
+		},
+	}
+	body, _ := json.Marshal(event)
+	req := httptest.NewRequest("POST", "/api/v1/carrier/callback", strings.NewReader(string(body)))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for missing signature, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCarrierCallback_InvalidTimestampRejected(t *testing.T) {
+	srv := NewServer()
+	_, bindingID, jobID := prepareOrderCarrierBindingAndJob(t, srv, "org_bad_ts", "secret-bad-ts", "ms_bad_ts")
+	if bindingID == "" || jobID == "" {
+		t.Fatal("invalid fixture")
+	}
+
+	payload := map[string]any{"eventId": "bad-ts-1", "sequence": float64(1)}
+	base := carrier.CallbackEvent{
+		Type:      "job.started",
+		JobID:     jobID,
+		BindingID: bindingID,
+		Timestamp: "not-a-timestamp",
+		Payload:   payload,
+	}
+	base.Signature = carrier.SignCallback("secret-bad-ts", base)
+	body, _ := json.Marshal(base)
+	req := httptest.NewRequest("POST", "/api/v1/carrier/callback", strings.NewReader(string(body)))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for invalid timestamp, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestCarrierCallback_ExpiredTimestampRejected(t *testing.T) {
 	srv := NewServer()
 	orderPayload := map[string]any{"buyerOrgId": "buyer_expire", "providerOrgId": "org_expire", "title": "Callback Expired Timestamp", "fundingMode": "prepaid", "milestones": []map[string]any{{"id": "ms_exp", "title": "Work", "basePriceCents": 1000, "budgetCents": 2000}}}
