@@ -5771,6 +5771,44 @@ func TestTopUp_BudgetAccumulatesOnRepeatedCalls(t *testing.T) {
 	}
 }
 
+func TestTopUp_InvalidAmountRejected(t *testing.T) {
+	srv := NewServer()
+	body := `{"buyerOrgId":"org_b","providerOrgId":"org_p","fundingMode":"prepaid","milestones":[{"id":"ms_1","title":"W","basePriceCents":1000,"budgetCents":1000}]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create order: %d %s", w.Code, w.Body.String())
+	}
+	orderID := parseOrderID(t, w.Body.Bytes())
+
+	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/top-up", strings.NewReader(`{"milestoneId":"ms_1","additionalCents":0}`))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for non-positive top-up, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestTopUp_MissingMilestoneRejected(t *testing.T) {
+	srv := NewServer()
+	body := `{"buyerOrgId":"org_b","providerOrgId":"org_p","fundingMode":"prepaid","milestones":[{"id":"ms_1","title":"W","basePriceCents":1000,"budgetCents":1000}]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create order: %d %s", w.Code, w.Body.String())
+	}
+	orderID := parseOrderID(t, w.Body.Bytes())
+
+	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/top-up", strings.NewReader(`{"milestoneId":"ms_missing","additionalCents":100}`))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for missing milestone, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestTopUp_OrderNotFound(t *testing.T) {
 	srv := NewServer()
 	body := `{"milestoneId":"ms_1","additionalCents":1000}`
