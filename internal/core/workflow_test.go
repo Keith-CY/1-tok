@@ -553,3 +553,29 @@ func TestIsValidFundingMode(t *testing.T) {
 	if IsValidFundingMode("invalid") { t.Error("invalid should not be valid") }
 	if IsValidFundingMode("") { t.Error("empty should not be valid") }
 }
+
+func TestRecordUsageCharge_NegativeAmount(t *testing.T) {
+	order := &Order{
+		ID: "ord_1", Status: OrderStatusRunning,
+		Milestones: []Milestone{
+			{ID: "ms_1", State: MilestoneStateRunning, BudgetCents: 5000, DisputeStatus: DisputeStatusNone},
+		},
+	}
+	_, err := order.RecordUsageCharge(RecordUsageChargeInput{
+		MilestoneID: "ms_1", Kind: UsageChargeKindToken, AmountCents: -100,
+	})
+	if err == nil { t.Error("expected error for negative amount") }
+}
+
+func TestRecordUsageCharge_ZeroAmount(t *testing.T) {
+	order := &Order{
+		ID: "ord_1", Status: OrderStatusRunning,
+		Milestones: []Milestone{
+			{ID: "ms_1", State: MilestoneStateRunning, BudgetCents: 5000, DisputeStatus: DisputeStatusNone},
+		},
+	}
+	_, err := order.RecordUsageCharge(RecordUsageChargeInput{
+		MilestoneID: "ms_1", Kind: UsageChargeKindToken, AmountCents: 0,
+	})
+	if err == nil { t.Error("expected error for zero amount") }
+}

@@ -169,6 +169,10 @@ func (o *Order) RecordUsageCharge(input RecordUsageChargeInput) (UsageCharge, er
 		return UsageCharge{}, err
 	}
 
+	if input.AmountCents <= 0 {
+		return UsageCharge{}, errors.New("usage charge amount must be positive")
+	}
+
 	if milestone.State != MilestoneStateRunning && milestone.State != MilestoneStatePaused {
 		return UsageCharge{}, fmt.Errorf("milestone %s does not accept usage from state %s", milestone.ID, milestone.State)
 	}
