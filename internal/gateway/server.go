@@ -1922,6 +1922,8 @@ func (s *Server) handleCarrierCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.applyCarrierCallbackAuthHeaders(&event, r)
+
 	// Verify callback signature (binding/provider secret preferred, then env fallback)
 	callbackSecret, err := s.resolveCarrierCallbackSecret(r, event)
 	if err != nil {
@@ -2045,12 +2047,29 @@ func (s *Server) handleCarrierCallback(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, response)
 }
 
+func (s *Server) applyCarrierCallbackAuthHeaders(event *carrier.CallbackEvent, r *http.Request) {
+	if event == nil {
+		return
+	}
+
+	if sig := strings.TrimSpace(r.Header.Get("X-One-Tok-Signature")); sig != "" {
+		event.Signature = sig
+	}
+
+	if ts := strings.TrimSpace(r.Header.Get("X-One-Tok-Timestamp")); ts != "" {
+		event.Timestamp = ts
+	}
+}
+
 func (s *Server) resolveCarrierCallbackSecret(r *http.Request, event carrier.CallbackEvent) (string, error) {
 	if overrideSecret := strings.TrimSpace(r.Header.Get("X-One-Tok-Callback-Secret")); overrideSecret != "" {
 		return overrideSecret, nil
 	}
 
 	overrideKeyID := strings.TrimSpace(r.Header.Get("X-One-Tok-Callback-Key-Id"))
+	if overrideKeyID == "" {
+		overrideKeyID = strings.TrimSpace(r.Header.Get("X-One-Tok-Key-Id"))
+	}
 	if event.BindingID == "" {
 		if overrideKeyID != "" {
 			return "", fmt.Errorf("callback key id provided but no binding secret configured")

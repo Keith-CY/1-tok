@@ -6638,6 +6638,80 @@ func TestCarrierCallback_WithCallbackKeyIdMismatchRejected(t *testing.T) {
 	}
 }
 
+func TestCarrierCallback_HeaderAuthTakesHeaderSignatureAndTimestamp(t *testing.T) {
+	srv := NewServer()
+
+	orderPayload := map[string]any{
+		"buyerOrgId":    "buyer_hdr",
+		"providerOrgId": "org_hdr",
+		"title":         "Header auth callback order",
+		"fundingMode":   "prepaid",
+		"milestones": []map[string]any{{
+			"id":             "ms_hdr",
+			"title":          "Header auth",
+			"basePriceCents": 1000,
+			"budgetCents":    2000,
+		}},
+	}
+	orderBody, _ := json.Marshal(orderPayload)
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(string(orderBody)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create order: %d %s", w.Code, w.Body.String())
+	}
+	var ord map[string]any
+	json.Unmarshal(w.Body.Bytes(), &ord)
+	orderID := ord["order"].(map[string]any)["id"].(string)
+
+	regBody := `{"providerOrgId":"org_hdr","carrierBaseUrl":"https://carrier.test","hostId":"hdr-hk","agentId":"a1","backend":"agent","workspaceRoot":"/tmp","callbackSecret":"secret-hdr","callbackKeyId":"k-hdr"}`
+	req = httptest.NewRequest("POST", "/api/v1/carrier-bindings", strings.NewReader(regBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("register binding: %d %s", w.Code, w.Body.String())
+	}
+
+	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/milestones/ms_hdr/bind-carrier", strings.NewReader(`{"carrierId":"c_hdr","capabilities":["gpu"]}`))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("bind: %d %s", w.Code, w.Body.String())
+	}
+	var bindResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &bindResp)
+	bindingID := bindResp["binding"].(map[string]any)["id"].(string)
+
+	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/milestones/ms_hdr/jobs", strings.NewReader(fmt.Sprintf(`{"bindingId":"%s","input":"input"}`, bindingID)))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create job: %d %s", w.Code, w.Body.String())
+	}
+	var jobResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &jobResp)
+	jobID := jobResp["job"].(map[string]any)["id"].(string)
+
+	bodyTs := time.Now().Add(-2 * time.Minute).UTC().Format(time.RFC3339)
+	headerTs := time.Now().Add(1 * time.Minute).UTC().Format(time.RFC3339)
+	evt := carrier.CallbackEvent{Type: "job.started", JobID: jobID, BindingID: bindingID, Timestamp: bodyTs}
+	evt.Signature = carrier.SignCallback("secret-hdr", evt)
+	body, _ := json.Marshal(evt)
+	headerSig := carrier.SignCallback("secret-hdr", carrier.CallbackEvent{Type: "job.started", JobID: jobID, BindingID: bindingID, Timestamp: headerTs})
+
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callback", strings.NewReader(string(body)))
+	req.Header.Set("X-One-Tok-Signature", headerSig)
+	req.Header.Set("X-One-Tok-Timestamp", headerTs)
+	req.Header.Set("X-One-Tok-Callback-Key-Id", "k-hdr")
+	req.Header.Set("X-One-Tok-Key-Id", "k-hdr")
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("callback with header auth overrides expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestCarrierCallback_WithCallbackKeyIdButNoBindingSecretRejected(t *testing.T) {
 	srv := NewServer()
 
