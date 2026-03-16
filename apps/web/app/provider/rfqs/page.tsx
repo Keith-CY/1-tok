@@ -20,6 +20,10 @@ export default async function ProviderRFQsPage() {
       copy="Browse open requests for quotes and submit bids."
       signal="RFQ discovery"
       asideTitle="Quick info"
+      quickActions={[
+        { label: "Back to provider dashboard", href: "/provider", tone: "secondary" },
+        { label: "Carrier operations", href: "/provider/carrier", tone: "secondary" },
+      ]}
       asideItems={[]}
     >
       <div className="space-y-4">
@@ -43,7 +47,7 @@ export default async function ProviderRFQsPage() {
                   <span className="text-xs text-gray-500">
                     Deadline: {new Date(rfq.deadline).toLocaleDateString()}
                   </span>
-                  <a href={`/provider/rfqs/${rfq.id}/bid`} className="bg-blue-600 text-white px-3 py-1 rounded text-sm">
+                  <a href={`/provider/rfqs/${rfq.id}/bid`} className="action-button">
                     Submit Bid
                   </a>
                 </div>

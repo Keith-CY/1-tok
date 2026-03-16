@@ -15,6 +15,11 @@ export default async function OpsApplicationsPage() {
       copy="Review pending provider applications. Approve or reject with notes."
       signal="Provider vetting"
       asideTitle="Quick info"
+      quickActions={[
+        { label: "All applications", href: "/ops/applications", tone: "secondary" },
+        { label: "Resolved disputes", href: "/ops/disputes?status=resolved", tone: "secondary" },
+        { label: "Open disputes", href: "/ops/disputes", tone: "primary" },
+      ]}
       asideItems={[]}
     >
       <div className="space-y-4">

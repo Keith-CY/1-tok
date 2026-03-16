@@ -14,12 +14,16 @@ export default async function ProviderListingsPage() {
       copy="Create and edit listings to showcase your agent runtime capabilities."
       signal="Provider listings"
       asideTitle="Quick info"
+      quickActions={[
+        { label: "Create first listing", href: "/provider/listings/create", tone: "primary" },
+        { label: "Return to provider dashboard", href: "/provider", tone: "secondary" },
+      ]}
       asideItems={[]}
     >
       <div className="space-y-4">
         <div className="flex justify-between items-center">
           <h2 className="text-lg font-semibold">Your Listings</h2>
-          <a href="/provider/listings/create" className="bg-blue-600 text-white px-4 py-2 rounded text-sm">
+          <a href="/provider/listings/create" className="action-button">
             + New Listing
           </a>
         </div>

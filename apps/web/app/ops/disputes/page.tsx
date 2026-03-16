@@ -24,6 +24,11 @@ export default async function OpsDisputesPage() {
       copy="Review open disputes, examine evidence, and decide on refund/recovery."
       signal="Dispute review"
       asideTitle="Quick info"
+      quickActions={[
+        { label: "Review applications", href: "/ops/applications", tone: "secondary" },
+        { label: "Credit decision", href: "/ops#credit-decision", tone: "secondary" },
+        { label: "Dispute evidence", href: "/ops/disputes", tone: "primary" },
+      ]}
       asideItems={[]}
     >
       <div className="space-y-4">
@@ -57,9 +62,9 @@ export default async function OpsDisputesPage() {
                 </div>
                 {d.status === "open" && (
                   <div className="flex gap-2 mt-3">
-                    <button className="bg-green-600 text-white px-3 py-1 rounded text-sm">Approve Refund</button>
-                    <button className="bg-gray-600 text-white px-3 py-1 rounded text-sm">Reject</button>
-                    <a href={`/ops/disputes/${d.id}/evidence`} className="px-3 py-1 border rounded text-sm">View Evidence</a>
+                    <button className="action-button">Approve Refund</button>
+                    <button className="action-button">Reject</button>
+                    <a href={`/ops/disputes/${d.id}/evidence`} className="action-button">View Evidence</a>
                   </div>
                 )}
               </div>

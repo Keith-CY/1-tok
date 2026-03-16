@@ -15,6 +15,10 @@ export default async function ProviderCarrierPage() {
       copy="View your Carrier binding, execution profiles, and active jobs."
       signal="Carrier management"
       asideTitle="Quick info"
+      quickActions={[
+        { label: "Open your listings", href: "/provider/listings", tone: "secondary" },
+        { label: "Register or refresh carrier", href: "/provider/carrier/register", tone: "primary" },
+      ]}
       asideItems={[]}
     >
       <div className="space-y-6">
@@ -40,7 +44,7 @@ export default async function ProviderCarrierPage() {
               </div>
             </div>
             <div className="mt-4">
-              <Link href="/provider/carrier/register" className="bg-blue-600 text-white px-4 py-2 rounded text-sm">
+              <Link href="/provider/carrier/register" className="action-button">
                 Register Carrier
               </Link>
             </div>
