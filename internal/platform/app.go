@@ -1925,6 +1925,9 @@ type TopUpInput struct {
 
 // TopUpMilestone increases the budget for a paused milestone.
 func (a *App) TopUpMilestone(orderID string, input TopUpInput) (*core.Order, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	if input.MilestoneID == "" {
 		return nil, ErrMissingRequiredFields
 	}
