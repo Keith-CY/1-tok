@@ -8304,6 +8304,70 @@ func TestCarrierCallback_ReplayOnSameEventIdDifferentTimestamp(t *testing.T) {
 	}
 }
 
+func TestCarrierCallback_ReplayDecisionPreserved(t *testing.T) {
+	srv := NewServer()
+	_, bindingID, jobID := prepareOrderCarrierBindingAndJob(t, srv, "org_replay_decision", "secret-replay-decision", "ms_replay_decision")
+	if bindingID == "" || jobID == "" {
+		t.Fatal("fixture failed")
+	}
+
+	event := carrier.CallbackEvent{
+		Type:      "budget.low",
+		JobID:     jobID,
+		BindingID: bindingID,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Payload: map[string]any{
+			"eventId":           "decide-1",
+			"sequence":          float64(1),
+			"recommendedAction": "pause",
+			"reason":            "budget near limit",
+			"budgetRemaining":   float64(10),
+		},
+	}
+	event.Signature = carrier.SignCallback("secret-replay-decision", event)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/v1/carrier/callbacks/events", strings.NewReader(mustJSON(t, event)))
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("first budget.low: %d %s", w.Code, w.Body.String())
+	}
+	var firstResp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &firstResp); err != nil {
+		t.Fatalf("unmarshal first: %v", err)
+	}
+
+	evtIDVal, ok := firstResp["recommendedAction"].(map[string]any)["type"]
+	if !ok || evtIDVal != "pause" {
+		t.Fatalf("expected first recommendation pause, got %v", firstResp["recommendedAction"])
+	}
+
+	event.Signature = carrier.SignCallback("secret-replay-decision", event)
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callbacks/events", strings.NewReader(mustJSON(t, event)))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("replay budget.low: %d %s", w.Code, w.Body.String())
+	}
+	var replayResp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &replayResp); err != nil {
+		t.Fatalf("unmarshal replay: %v", err)
+	}
+	if replayResp["replay"] != true {
+		t.Fatalf("expected replay=true, got %v", replayResp["replay"])
+	}
+	decisionRaw, ok := replayResp["decision"].(string)
+	if !ok {
+		t.Fatalf("expected decision string, got %T", replayResp["decision"])
+	}
+	var replayDecision map[string]any
+	if err := json.Unmarshal([]byte(decisionRaw), &replayDecision); err != nil {
+		t.Fatalf("unmarshal decision: %v", err)
+	}
+	if replayDecision["type"] != "pause" || replayDecision["reason"] != "budget near limit" {
+		t.Fatalf("unexpected replay decision: %v", replayDecision)
+	}
+}
+
 func TestCarrierCallback_ReplayReturnsPreviousDecision(t *testing.T) {
 	srv := NewServer()
 
