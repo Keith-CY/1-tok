@@ -131,6 +131,17 @@ Carrier should expect these platform callback responses from `POST /v1/carrier/c
 - `409`: sequence gap or out-of-order event; Carrier should replay missing earlier events to restore sequence continuity, preserving `eventId`/`sequence`.
 - `5xx`: transport/runtime side failures; safe to retry with exponential backoff while preserving idempotency keys.
 
+Sample callback responses:
+
+- Accepted:
+  - `{"accepted":true,"recommendedAction":{"type":"continue"}}`
+- Auth failure:
+  - `{"error":"callback key id provided but no binding secret configured","code":"UNAUTHORIZED"}`
+- Validation failure:
+  - `{"error":"invalid usage proof payload: proofRef, proofSignature and proofTimestamp are required together","code":"BAD_REQUEST"}`
+- Sequence gap:
+  - `{"error":"out-of-order callback sequence","code":"CONFLICT","accepted":false,"replay":false}`
+
 ### 5. Support durable execution evidence
 
 
