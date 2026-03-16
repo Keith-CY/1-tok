@@ -42,6 +42,29 @@ export default async function ProviderListingsPage({
   const selectedTier = (searchParams?.tier ?? "all").toLowerCase();
   const sort = (searchParams?.sort ?? "title").toLowerCase();
 
+  const buildTierHref = (nextTier: string) => {
+    const params = new URLSearchParams();
+
+    if (q) {
+      params.set("q", q);
+    }
+
+    if (selectedCategory && selectedCategory !== "all") {
+      params.set("category", selectedCategory);
+    }
+
+    if (sort && sort !== "title") {
+      params.set("sort", sort);
+    }
+
+    if (nextTier !== "all") {
+      params.set("tier", nextTier);
+    }
+
+    const queryString = params.toString();
+    return queryString ? `/provider/listings?${queryString}` : "/provider/listings";
+  };
+
   const filteredListings = MOCK_LISTINGS
     .filter(
       (item) =>
@@ -87,6 +110,21 @@ export default async function ProviderListingsPage({
           <Link href="/provider/listings/create" className="action-button">
             + New Listing
           </Link>
+        </div>
+
+        <div className="flex gap-2 mb-2">
+          <a href={buildTierHref("all")} className="action-button">
+            All tiers
+          </a>
+          <a href={buildTierHref("gold")} className="action-button">
+            Gold
+          </a>
+          <a href={buildTierHref("silver")} className="action-button">
+            Silver
+          </a>
+          <a href={buildTierHref("bronze")} className="action-button">
+            Bronze
+          </a>
         </div>
 
         <form method="GET" className="auth-form market-form">
