@@ -10,14 +10,17 @@ export default async function BuyerListingsPage({
   searchParams: { q?: string; category?: string; tag?: string };
 }) {
   const params = searchParams;
+  const q = (params?.q ?? "").trim();
+  const category = (params?.category ?? "").trim();
+  const tag = (params?.tag ?? "").trim();
   let listings: any[] = [];
   let error = "";
 
   try {
     const result = await searchListings({
-      q: params.q,
-      category: params.category,
-      tag: params.tag,
+      q,
+      category,
+      tag,
     });
     listings = result.listings;
   } catch (e: any) {
@@ -46,17 +49,26 @@ export default async function BuyerListingsPage({
                 name="q"
                 type="text"
                 placeholder="Search listings..."
-                defaultValue={params.q ?? ""}
+                defaultValue={q}
               />
             </label>
             <label className="auth-field">
               <span>Category</span>
-              <select name="category" defaultValue={params.category ?? ""}>
+              <select name="category" defaultValue={category}>
                 <option value="">All categories</option>
                 <option value="agent-ops">Agent Ops</option>
                 <option value="agent-runtime">Agent Runtime</option>
                 <option value="compute">Compute</option>
               </select>
+            </label>
+            <label className="auth-field">
+              <span>Tag</span>
+              <input
+                name="tag"
+                type="text"
+                placeholder="Search by tag"
+                defaultValue={tag}
+              />
             </label>
           </div>
           <button type="submit" className="auth-submit">
@@ -69,8 +81,8 @@ export default async function BuyerListingsPage({
         {listings.length === 0 ? (
           <EmptyState
             message="No listings found. Try adjusting your search."
-            actionLabel="Create an RFQ"
-            actionHref="/buyer"
+            actionLabel="Clear filters"
+            actionHref="/buyer/listings"
           />
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
