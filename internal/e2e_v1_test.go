@@ -401,3 +401,82 @@ func TestV1BusinessFlowE2E_AuthAndStateGuards(t *testing.T) {
 	jobID := jobData["job"].(map[string]any)["id"].(string)
 	assert(post("/api/v1/jobs/"+jobID+"/complete", map[string]any{"output": "oops"}), http.StatusConflict)
 }
+
+func TestV1BusinessFlowE2E_ProviderApplicationLifecycle(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL not set")
+	}
+	t.Setenv("DATABASE_URL", dsn)
+	t.Setenv("NATS_URL", "")
+	t.Setenv("IAM_UPSTREAM", "")
+	t.Setenv("ONE_TOK_REQUIRE_EXTERNALS", "")
+
+	app, cleanup, err := bootstrap.LoadPlatformApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+
+	gw, err := gateway.NewServerWithOptionsE(gateway.Options{App: app})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	post := func(path string, payload any) *httptest.ResponseRecorder {
+		return gwRequest(t, gw, "POST", path, payload)
+	}
+	get := func(path string) *httptest.ResponseRecorder { return gwRequest(t, gw, "GET", path, nil) }
+	expect := func(resp *httptest.ResponseRecorder, code int) {
+		t.Helper()
+		if resp.Code != code {
+			t.Fatalf("want %d got %d: %s", code, resp.Code, resp.Body.String())
+		}
+	}
+
+	// submit provider application
+	submitResp := post("/api/v1/provider-applications", map[string]any{
+		"orgId":        "org_app_1",
+		"name":         "Test Provider",
+		"capabilities": []string{"gpu", "io"},
+	})
+	expect(submitResp, http.StatusCreated)
+	var payload struct {
+		Application struct {
+			ID string `json:"id"`
+		} `json:"application"`
+	}
+	if err := json.Unmarshal(submitResp.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal submit: %v", err)
+	}
+	appID := payload.Application.ID
+	if appID == "" {
+		t.Fatal("provider application id is empty")
+	}
+
+	// approve
+	reviewResp := post("/api/v1/provider-applications/"+appID+"/review", map[string]any{
+		"reviewedBy": "ops_admin",
+		"note":       "approve for e2e",
+		"approve":    true,
+	})
+	expect(reviewResp, http.StatusOK)
+
+	var reviewedResp map[string]any
+	if err := json.Unmarshal(reviewResp.Body.Bytes(), &reviewedResp); err != nil {
+		t.Fatalf("unmarshal review: %v", err)
+	}
+	appObj, ok := reviewedResp["application"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing application in review response: %v", reviewedResp)
+	}
+	if appObj["status"].(string) != "approved" {
+		t.Fatalf("expected approved status, got %v", appObj["status"])
+	}
+
+	approved := get("/api/v1/provider-applications?status=approved")
+	expect(approved, http.StatusOK)
+	if !strings.Contains(approved.Body.String(), appID) {
+		t.Fatalf("approved list should contain app id %s: %s", appID, approved.Body.String())
+	}
+}

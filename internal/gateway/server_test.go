@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -5321,13 +5322,78 @@ func TestProviderApplicationSubmit(t *testing.T) {
 	}
 }
 
-func TestProviderApplicationList(t *testing.T) {
+func TestProviderApplicationListWithFilter(t *testing.T) {
 	srv := NewServer()
 	req := httptest.NewRequest("GET", "/api/v1/provider-applications?status=pending", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("status = %d", w.Code)
+	}
+}
+
+func TestProviderApplication_ApproveAndVisibleInApprovedList(t *testing.T) {
+	srv := NewServer()
+
+	// submit
+	body := `{"orgId":"org_new_app","name":"New Provider App","capabilities":["gpu"]}`
+	req := httptest.NewRequest("POST", "/api/v1/provider-applications", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("submit: %d %s", w.Code, w.Body.String())
+	}
+	var submitResp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &submitResp); err != nil {
+		t.Fatalf("unmarshal submit: %v", err)
+	}
+	appID := submitResp["application"].(map[string]any)["id"].(string)
+
+	// review approve
+	reviewBody := `{"reviewedBy":"ops","note":"approved","approve":true}`
+	req = httptest.NewRequest("POST", "/api/v1/provider-applications/"+appID+"/review", strings.NewReader(reviewBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("review: %d %s", w.Code, w.Body.String())
+	}
+	var reviewResp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &reviewResp); err != nil {
+		t.Fatalf("unmarshal review: %v", err)
+	}
+	reviewed := reviewResp["application"].(map[string]any)
+	if reviewed["status"].(string) != "approved" {
+		t.Fatalf("expected approved status, got %v", reviewed["status"])
+	}
+
+	// list approved
+	req = httptest.NewRequest("GET", "/api/v1/provider-applications?status=approved", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("list approved: %d %s", w.Code, w.Body.String())
+	}
+	var listResp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &listResp); err != nil {
+		t.Fatalf("unmarshal list approved: %v", err)
+	}
+	apps, ok := listResp["applications"].([]any)
+	if !ok {
+		t.Fatalf("applications field missing or wrong type: %v", listResp["applications"])
+	}
+	found := false
+	for _, app := range apps {
+		appObj, ok := app.(map[string]any)
+		if !ok {
+			continue
+		}
+		if appObj["id"] == appID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("approved app not found in approved list")
 	}
 }
 
@@ -5806,6 +5872,62 @@ func TestTopUp_MissingMilestoneRejected(t *testing.T) {
 	srv.ServeHTTP(w, req)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 for missing milestone, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestTopUp_ConcurrentCallsAccumulateBudgetOnce(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	srv := NewServerWithOptions(Options{App: app})
+	orderBody := `{"buyerOrgId":"org_b","providerOrgId":"org_p","fundingMode":"prepaid","milestones":[{"id":"ms_1","title":"W","basePriceCents":1000,"budgetCents":1000}]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(orderBody))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create order: %d %s", w.Code, w.Body.String())
+	}
+	var createResp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &createResp); err != nil {
+		t.Fatalf("unmarshal create: %v", err)
+	}
+	orderID := createResp["order"].(map[string]any)["id"].(string)
+
+	results := make(chan string, 5)
+	var wg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			req := httptest.NewRequest("POST", fmt.Sprintf("/api/v1/orders/%s/top-up", orderID), strings.NewReader(`{"milestoneId":"ms_1","additionalCents":100}`))
+			w := httptest.NewRecorder()
+			srv.ServeHTTP(w, req)
+			if w.Code != http.StatusOK {
+				results <- fmt.Sprintf("top-up concurrent: %d %s", w.Code, w.Body.String())
+				return
+			}
+			results <- ""
+		}()
+	}
+	wg.Wait()
+	close(results)
+	for msg := range results {
+		if msg != "" {
+			t.Fatal(msg)
+		}
+	}
+
+	// verify budget incremented by 5*100 exactly once each
+	req = httptest.NewRequest("GET", "/api/v1/orders/"+orderID+"/budget", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("budget: %d %s", w.Code, w.Body.String())
+	}
+	var budget map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &budget); err != nil {
+		t.Fatalf("unmarshal budget: %v", err)
+	}
+	if budget["totalBudgetCents"].(float64) != 1500 {
+		t.Fatalf("expected totalBudgetCents=1500, got %v", budget["totalBudgetCents"])
 	}
 }
 
@@ -8474,6 +8596,58 @@ func TestCarrierCallback_ReplayReturnsPreviousDecision(t *testing.T) {
 	}
 }
 
+func TestCarrierCallback_HeartbeatReplayIsIdempotent(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	srv := NewServerWithOptions(Options{App: app})
+	orderID, bindingID, jobID := prepareOrderCarrierBindingAndJob(t, srv, "org_hb_replay", "", "ms_hb_replay")
+	if bindingID == "" || jobID == "" {
+		t.Fatal("fixture failed")
+	}
+
+	evt := carrier.CallbackEvent{
+		Type:      "heartbeat",
+		JobID:     jobID,
+		BindingID: bindingID,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Payload:   map[string]any{"eventId": "hb-replay", "sequence": float64(1)},
+	}
+	evt.Signature = ""
+	req := httptest.NewRequest("POST", "/api/v1/carrier/callback", strings.NewReader(mustJSON(t, evt)))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("first heartbeat: %d %s", w.Code, w.Body.String())
+	}
+
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callback", strings.NewReader(mustJSON(t, evt)))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("replay heartbeat: %d %s", w.Code, w.Body.String())
+	}
+	var replayResp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &replayResp); err != nil {
+		t.Fatalf("unmarshal replay: %v", err)
+	}
+	if replayResp["replay"] != true {
+		t.Fatalf("expected replay=true, got %v", replayResp["replay"])
+	}
+
+	req = httptest.NewRequest("GET", "/api/v1/orders/"+orderID+"/milestones/ms_hb_replay/bind-carrier", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("get binding: %d %s", w.Code, w.Body.String())
+	}
+	var bindResp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &bindResp); err != nil {
+		t.Fatalf("unmarshal bind: %v", err)
+	}
+	if bindResp["stale"].(bool) {
+		t.Fatal("binding should not be stale after replay heartbeat")
+	}
+}
+
 func TestCarrierCallback_HeartbeatUpdatesBinding(t *testing.T) {
 	srv := NewServer()
 	bindBody := `{"carrierId":"c_hb","capabilities":["gpu"]}`
@@ -8733,5 +8907,101 @@ func TestCarrierCallback_ReorderRejected(t *testing.T) {
 	}
 	if accepted, ok := resp["accepted"].(bool); !ok || accepted {
 		t.Fatalf("expected accepted=false, got %v", resp["accepted"])
+	}
+}
+
+func TestCarrierCallback_UsageReplayDoesNotDoubleCharge(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	srv := NewServerWithOptions(Options{App: app})
+	orderID, bindingID, jobID := prepareOrderCarrierBindingAndJob(t, srv, "org_usage_replay", "secret-usage-replay", "ms_usage_replay")
+	if bindingID == "" || jobID == "" {
+		t.Fatal("fixture failed")
+	}
+
+	evt := carrier.CallbackEvent{
+		Type:      "usage.reported",
+		JobID:     jobID,
+		BindingID: bindingID,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Payload:   map[string]any{"eventId": "usage-replay", "sequence": float64(1), "kind": "step", "amountCents": float64(300)},
+	}
+	evt.Signature = carrier.SignCallback("secret-usage-replay", evt)
+	w := httptest.NewRecorder()
+
+	// baseline budget before callback
+	req := httptest.NewRequest("GET", "/api/v1/orders/"+orderID+"/budget", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("budget before callback: %d %s", w.Code, w.Body.String())
+	}
+	var before map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &before); err != nil {
+		t.Fatalf("unmarshal before budget: %v", err)
+	}
+	beforeMs := before["milestones"].([]any)
+	if len(beforeMs) == 0 {
+		t.Fatal("budget response should include milestones")
+	}
+	beforeSpent := beforeMs[0].(map[string]any)["spentCents"].(float64)
+
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callbacks/events", strings.NewReader(mustJSON(t, evt)))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("first usage callback: %d %s", w.Code, w.Body.String())
+	}
+
+	// post-callback budget should reflect one usage charge only
+	req = httptest.NewRequest("GET", "/api/v1/orders/"+orderID+"/budget", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("budget after first callback: %d %s", w.Code, w.Body.String())
+	}
+	var after map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &after); err != nil {
+		t.Fatalf("unmarshal after budget: %v", err)
+	}
+	afterMs := after["milestones"].([]any)
+	if len(afterMs) == 0 {
+		t.Fatal("budget response should include milestones")
+	}
+	afterSpent := afterMs[0].(map[string]any)["spentCents"].(float64)
+	if afterSpent-beforeSpent != 300 {
+		t.Fatalf("usage callback should add 300 spend; before=%v after=%v", beforeSpent, afterSpent)
+	}
+	// replay same callback event
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callbacks/events", strings.NewReader(mustJSON(t, evt)))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("replay usage callback: %d %s", w.Code, w.Body.String())
+	}
+	var replayResp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &replayResp); err != nil {
+		t.Fatalf("unmarshal replay resp: %v", err)
+	}
+	if replayResp["replay"] != true {
+		t.Fatalf("expected replay=true, got %v", replayResp["replay"])
+	}
+
+	req = httptest.NewRequest("GET", "/api/v1/orders/"+orderID+"/budget", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("budget after replay: %d %s", w.Code, w.Body.String())
+	}
+	var secondBudget map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &secondBudget); err != nil {
+		t.Fatalf("unmarshal second budget: %v", err)
+	}
+	ms := secondBudget["milestones"].([]any)
+	if len(ms) == 0 {
+		t.Fatal("budget response should include milestones")
+	}
+	replaySpent := ms[0].(map[string]any)["spentCents"].(float64)
+	if replaySpent != afterSpent {
+		t.Fatalf("replay should not double charge; before=%v after=%v", afterSpent, replaySpent)
 	}
 }
