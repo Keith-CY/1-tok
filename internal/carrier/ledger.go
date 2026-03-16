@@ -8,38 +8,38 @@ import (
 )
 
 var (
-	ErrEventReplay    = errors.New("event already processed (replay)")
-	ErrEventReorder   = errors.New("event sequence out of order")
-	ErrEventGap       = errors.New("event sequence gap detected")
+	ErrEventReplay  = errors.New("event already processed (replay)")
+	ErrEventReorder = errors.New("event sequence out of order")
+	ErrEventGap     = errors.New("event sequence gap detected")
 )
 
 // ExecutionEvent is an append-only callback ledger entry.
 type ExecutionEvent struct {
-	ID           string         `json:"id"`
-	ExecutionID  string         `json:"executionId"`
-	EventID      string         `json:"eventId"`
-	Sequence     int64          `json:"sequence"`
-	EventType    string         `json:"eventType"`
-	AttemptID    string         `json:"attemptId,omitempty"`
-	PayloadJSON  string         `json:"payloadJson,omitempty"`
-	DecisionJSON string         `json:"decisionJson,omitempty"`
-	ReceivedAt   time.Time      `json:"receivedAt"`
+	ID           string    `json:"id"`
+	ExecutionID  string    `json:"executionId"`
+	EventID      string    `json:"eventId"`
+	Sequence     int64     `json:"sequence"`
+	EventType    string    `json:"eventType"`
+	AttemptID    string    `json:"attemptId,omitempty"`
+	PayloadJSON  string    `json:"payloadJson,omitempty"`
+	DecisionJSON string    `json:"decisionJson,omitempty"`
+	ReceivedAt   time.Time `json:"receivedAt"`
 }
 
 // EventLedger manages the append-only callback event log.
 type EventLedger struct {
 	mu           sync.Mutex
 	seq          int
-	events       map[string][]ExecutionEvent  // executionID → events
-	eventIndex   map[string]ExecutionEvent    // eventID → event (for replay detection)
-	lastSequence map[string]int64            // executionID → last sequence
+	events       map[string][]*ExecutionEvent // executionID → events
+	eventIndex   map[string]*ExecutionEvent   // eventID → event (for replay detection)
+	lastSequence map[string]int64             // executionID → last sequence
 }
 
 // NewEventLedger creates a new event ledger.
 func NewEventLedger() *EventLedger {
 	return &EventLedger{
-		events:       make(map[string][]ExecutionEvent),
-		eventIndex:   make(map[string]ExecutionEvent),
+		events:       make(map[string][]*ExecutionEvent),
+		eventIndex:   make(map[string]*ExecutionEvent),
 		lastSequence: make(map[string]int64),
 	}
 }
@@ -52,7 +52,10 @@ func (l *EventLedger) Record(executionID, eventID string, sequence int64, eventT
 
 	// Replay detection: same eventId → return previous decision
 	if prev, exists := l.eventIndex[eventID]; exists {
-		return prev, true, nil
+		if prev != nil {
+			return *prev, true, nil
+		}
+		return ExecutionEvent{}, true, nil
 	}
 
 	lastSeq := l.lastSequence[executionID]
@@ -80,8 +83,8 @@ func (l *EventLedger) Record(executionID, eventID string, sequence int64, eventT
 		ReceivedAt:   time.Now().UTC(),
 	}
 
-	l.events[executionID] = append(l.events[executionID], event)
-	l.eventIndex[eventID] = event
+	l.events[executionID] = append(l.events[executionID], &event)
+	l.eventIndex[eventID] = &event
 	l.lastSequence[executionID] = sequence
 
 	return event, false, nil
@@ -91,7 +94,14 @@ func (l *EventLedger) Record(executionID, eventID string, sequence int64, eventT
 func (l *EventLedger) List(executionID string) []ExecutionEvent {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.events[executionID]
+	raw := l.events[executionID]
+	out := make([]ExecutionEvent, 0, len(raw))
+	for _, ev := range raw {
+		if ev != nil {
+			out = append(out, *ev)
+		}
+	}
+	return out
 }
 
 // LastSequence returns the last processed sequence for an execution.
@@ -105,15 +115,7 @@ func (l *EventLedger) LastSequence(executionID string) int64 {
 func (l *EventLedger) UpdateDecision(eventID, decisionJSON string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if ev, ok := l.eventIndex[eventID]; ok {
+	if ev, ok := l.eventIndex[eventID]; ok && ev != nil {
 		ev.DecisionJSON = decisionJSON
-		l.eventIndex[eventID] = ev
-		// Also update in the events list
-		for i := range l.events[ev.ExecutionID] {
-			if l.events[ev.ExecutionID][i].EventID == eventID {
-				l.events[ev.ExecutionID][i].DecisionJSON = decisionJSON
-				break
-			}
-		}
 	}
 }
