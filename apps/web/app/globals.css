@@ -324,6 +324,15 @@ main {
   resize: vertical;
 }
 
+.auth-field select {
+  width: 100%;
+  padding: 0.95rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.03);
+}
+
 .auth-submit {
   padding: 0.95rem 1.1rem;
   border: 1px solid rgba(143, 246, 211, 0.36);
