@@ -101,3 +101,26 @@ func TestRequired_Panics(t *testing.T) {
 	}()
 	Required("DEFINITELY_MISSING_ENV_VAR")
 }
+
+func TestMissingEnvError(t *testing.T) {
+	err := &MissingEnvError{Key: "MY_VAR"}
+	if err.Error() != "required env var missing: MY_VAR" {
+		t.Errorf("got %s", err.Error())
+	}
+}
+
+func TestInt64_Invalid(t *testing.T) {
+	os.Setenv("TEST_I64_BAD", "abc")
+	defer os.Unsetenv("TEST_I64_BAD")
+	if v := Int64("TEST_I64_BAD", 42); v != 42 {
+		t.Errorf("got %d", v)
+	}
+}
+
+func TestDuration_Invalid(t *testing.T) {
+	os.Setenv("TEST_DUR_BAD", "abc")
+	defer os.Unsetenv("TEST_DUR_BAD")
+	if v := Duration("TEST_DUR_BAD", 5*time.Second); v != 5*time.Second {
+		t.Errorf("got %v", v)
+	}
+}

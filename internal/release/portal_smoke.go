@@ -119,7 +119,7 @@ func RunPortalSmoke(ctx context.Context, cfg PortalConfig) (PortalSummary, error
 		"category":           {"agent-ops"},
 		"scope":              {"Investigate the failure, stabilize the runtime, and summarize next steps."},
 		"budgetCents":        {"4200"},
-		"responseDeadlineAt": {"2026-03-15T12:00"},
+		"responseDeadlineAt": {time.Now().Add(24 * time.Hour).Format(time.RFC3339Nano)},
 	}, "/buyer", "Buyer portal / orchestration budget"); err != nil {
 		return PortalSummary{}, fmt.Errorf("create rfq: %w", err)
 	}

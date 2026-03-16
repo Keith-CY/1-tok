@@ -301,7 +301,8 @@ func TestHandleQuoteWithdrawal_InvalidParams(t *testing.T) {
 	})
 	req, _ := http.NewRequest(http.MethodPost, srv.URL, bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
-	resp, _ := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil { t.Fatal(err) }
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
@@ -318,7 +319,8 @@ func TestHandleRequestWithdrawal_InvalidParams(t *testing.T) {
 	})
 	req, _ := http.NewRequest(http.MethodPost, srv.URL, bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
-	resp, _ := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil { t.Fatal(err) }
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
@@ -335,7 +337,8 @@ func TestHandleDashboardSummary_InvalidParams(t *testing.T) {
 	})
 	req, _ := http.NewRequest(http.MethodPost, srv.URL, bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
-	resp, _ := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil { t.Fatal(err) }
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
@@ -352,7 +355,8 @@ func TestHandleSettledFeed_InvalidParams(t *testing.T) {
 	})
 	req, _ := http.NewRequest(http.MethodPost, srv.URL, bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
-	resp, _ := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil { t.Fatal(err) }
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)

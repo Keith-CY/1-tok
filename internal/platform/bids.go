@@ -23,15 +23,16 @@ type BidMilestone struct {
 }
 
 type Bid struct {
-	ID            string         `json:"id"`
-	RFQID         string         `json:"rfqId"`
-	ProviderOrgID string         `json:"providerOrgId"`
-	Message       string         `json:"message"`
-	QuoteCents    int64          `json:"quoteCents"`
-	Status        BidStatus      `json:"status"`
-	Milestones    []BidMilestone `json:"milestones"`
-	CreatedAt     time.Time      `json:"createdAt"`
-	UpdatedAt     time.Time      `json:"updatedAt"`
+	ID                 string         `json:"id"`
+	RFQID              string         `json:"rfqId"`
+	ProviderOrgID      string         `json:"providerOrgId"`
+	Message            string         `json:"message"`
+	QuoteCents         int64          `json:"quoteCents"`
+	Status             BidStatus      `json:"status"`
+	Milestones         []BidMilestone `json:"milestones"`
+	ExecutionProfileID string         `json:"executionProfileId,omitempty"`
+	CreatedAt          time.Time      `json:"createdAt"`
+	UpdatedAt          time.Time      `json:"updatedAt"`
 }
 
 type BidMilestoneInput struct {
@@ -42,10 +43,11 @@ type BidMilestoneInput struct {
 }
 
 type CreateBidInput struct {
-	ProviderOrgID string
-	Message       string
-	QuoteCents    int64              // optional: defaults to RFQ budget
-	Milestones    []BidMilestoneInput // optional: defaults to RFQ default milestones
+	ProviderOrgID      string
+	Message            string
+	QuoteCents         int64              // optional: defaults to RFQ budget
+	Milestones         []BidMilestoneInput // optional: defaults to RFQ default milestones
+	ExecutionProfileID string             // optional: required when profile enforcement enabled
 }
 
 type AwardRFQInput struct {
@@ -68,6 +70,9 @@ func (a *App) CreateBid(rfqID string, input CreateBidInput) (Bid, error) {
 	}
 	if input.ProviderOrgID == "" || input.Message == "" {
 		return Bid{}, ErrMissingRequiredFields
+	}
+	if err := a.validateExecutionProfile(input.ExecutionProfileID); err != nil {
+		return Bid{}, err
 	}
 
 	// Default to RFQ budget and milestones when the provider does not supply their own.
@@ -93,6 +98,15 @@ func (a *App) CreateBid(rfqID string, input CreateBidInput) (Bid, error) {
 		return Bid{}, ErrMilestonesRequired
 	}
 
+	// Validate milestone budget total does not exceed RFQ budget
+	var totalBudget int64
+	for _, ms := range milestones {
+		totalBudget += ms.BudgetCents
+	}
+	if totalBudget > rfq.BudgetCents {
+		return Bid{}, ErrBidExceedsBudget
+	}
+
 	bidID, err := a.bids.NextID()
 	if err != nil {
 		return Bid{}, err
@@ -100,15 +114,16 @@ func (a *App) CreateBid(rfqID string, input CreateBidInput) (Bid, error) {
 
 	now := a.now()
 	bid := Bid{
-		ID:            bidID,
-		RFQID:         rfqID,
-		ProviderOrgID: input.ProviderOrgID,
-		Message:       input.Message,
-		QuoteCents:    quoteCents,
-		Status:        BidStatusOpen,
-		Milestones:    make([]BidMilestone, 0, len(milestones)),
-		CreatedAt:     now,
-		UpdatedAt:     now,
+		ID:                 bidID,
+		RFQID:              rfqID,
+		ProviderOrgID:      input.ProviderOrgID,
+		Message:            input.Message,
+		QuoteCents:         quoteCents,
+		Status:             BidStatusOpen,
+		Milestones:         make([]BidMilestone, 0, len(milestones)),
+		ExecutionProfileID: input.ExecutionProfileID,
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	}
 	for _, milestone := range milestones {
 		bid.Milestones = append(bid.Milestones, BidMilestone{
@@ -154,6 +169,16 @@ func (a *App) AwardRFQ(rfqID string, input AwardRFQInput) (RFQ, *core.Order, err
 	if bid.RFQID != rfqID {
 		return RFQ{}, nil, ErrBidNotBelongToRFQ
 	}
+
+	// Check if provider's carrier binding is suspended
+	a.mu.Lock()
+	if idx, ok := a.carrierBindingsByOrg[bid.ProviderOrgID]; ok {
+		if a.carrierBindings[idx].Status == "suspended" {
+			a.mu.Unlock()
+			return RFQ{}, nil, ErrProviderSuspended
+		}
+	}
+	a.mu.Unlock()
 
 	bids, err := a.bids.ListByRFQ(rfqID)
 	if err != nil {

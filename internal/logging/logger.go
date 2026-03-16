@@ -1,3 +1,4 @@
+// Package logging provides structured JSON logging with level filtering.
 package logging
 
 import (

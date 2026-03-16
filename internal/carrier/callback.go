@@ -6,12 +6,15 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
 var (
 	ErrInvalidCallbackSignature = errors.New("invalid callback signature")
 	ErrExpiredCallback          = errors.New("callback timestamp expired")
+	ErrMissingCallbackSecret    = errors.New("callback secret not configured")
+	ErrMissingCallbackSignature = errors.New("callback signature missing")
 )
 
 // CallbackMaxAge is how old a callback timestamp can be.
@@ -19,12 +22,12 @@ const CallbackMaxAge = 5 * time.Minute
 
 // CallbackEvent represents a signed lifecycle event from a Carrier.
 type CallbackEvent struct {
-	Type        string         `json:"type"` // job.started, job.completed, job.failed, usage.reported, heartbeat
-	JobID       string         `json:"jobId"`
-	BindingID   string         `json:"bindingId"`
-	Timestamp   string         `json:"timestamp"`
-	Signature   string         `json:"signature"`
-	Payload     map[string]any `json:"payload,omitempty"`
+	Type      string         `json:"type"` // job.started, job.completed, job.failed, usage.reported, heartbeat
+	JobID     string         `json:"jobId"`
+	BindingID string         `json:"bindingId"`
+	Timestamp string         `json:"timestamp"`
+	Signature string         `json:"signature"`
+	Payload   map[string]any `json:"payload,omitempty"`
 }
 
 // SignCallback creates an HMAC-SHA256 signature for a callback event.
@@ -38,7 +41,14 @@ func SignCallback(secret string, event CallbackEvent) string {
 // VerifyCallback checks the callback signature and timestamp.
 func VerifyCallback(secret string, event CallbackEvent) error {
 	if secret == "" {
-		return nil // skip verification when no secret configured
+		if strings.TrimSpace(event.Signature) == "" {
+			return nil
+		}
+		return ErrMissingCallbackSecret
+	}
+
+	if strings.TrimSpace(event.Signature) == "" {
+		return ErrMissingCallbackSignature
 	}
 
 	expected := SignCallback(secret, event)

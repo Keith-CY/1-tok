@@ -449,13 +449,32 @@ Allowed `action` values:
 
 Headers:
 
-- `X-One-Tok-Key-Id`
-- `X-One-Tok-Timestamp`
-- `X-One-Tok-Signature`
+- `X-One-Tok-Callback-Key-Id` *(preferred)*
+- `X-One-Tok-Key-Id` *(compat alias, accepted)*
+- `X-One-Tok-Timestamp` *(override for request body timestamp)*
+- `X-One-Tok-Signature` *(override for request body signature)*
+- `X-One-Tok-Callback-Secret` *(manual override in special integrations)*
+
+Notes:
+
+- Header values `X-One-Tok-Timestamp` and `X-One-Tok-Signature` are applied before signature verification and take precedence over `timestamp`/`signature` in payload body.
+- Preferred key lookup key is `X-One-Tok-Callback-Key-Id`; `X-One-Tok-Key-Id` remains supported for compatibility.
+- A callback without a key-id can still pass if the legacy secret binding path is explicitly configured; key-id+wrong-secret becomes unauthorized immediately.
 
 The body is signed using `HMAC-SHA256` over timestamp plus body.
 
 The callback secret itself is provisioned during binding creation or rotation and looked up by `keyId`; it is never resent in per-execution requests.
+
+`usage.reported` proof validation behavior (when secret available):
+
+- `proofRef`, `proofSignature`, and `proofTimestamp` are required together.
+- Signature is verified with HMAC over `(executionId, milestoneId, kind, amountCents, proofTimestamp)`.
+- Replay and stale window checks on proof timestamp are enforced using the same max-age policy as callback authenticity.
+
+The legacy endpoint still supported for migration:
+
+- `POST /api/v1/carrier/callback`
+- backward-compatible snake_case event names are normalized server-side to dot-separated canonical names.
 
 Event envelope fields:
 

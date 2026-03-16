@@ -276,3 +276,17 @@ func TestLoadPlatformApp_WithPostgres_Migrate(t *testing.T) {
 	}
 	t.Logf("created RFQ: %s", rfq.ID)
 }
+
+func TestLoadPlatformApp_NoDatabase(t *testing.T) {
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("NATS_URL", "")
+	app, cleanup, err := LoadPlatformApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	if app == nil {
+		t.Error("expected non-nil app")
+	}
+}
+

@@ -15,6 +15,19 @@ func newTestBot() *MarketplaceBot {
 	return NewMarketplaceBot(app)
 }
 
+func executeInteraction(t *testing.T, mb *MarketplaceBot, body string) InteractionResponse {
+	t.Helper()
+	req := httptest.NewRequest("POST", "/interactions", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	mb.HandleInteraction(w, req)
+
+	var resp InteractionResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	return resp
+}
+
 func TestMarketplaceBot_Listings(t *testing.T) {
 	mb := newTestBot()
 
@@ -68,7 +81,7 @@ func TestMarketplaceBot_OrderStatus(t *testing.T) {
 	rfq, _ := mb.app.CreateRFQ(platform.CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Bot test", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := mb.app.CreateBid(rfq.ID, platform.CreateBidInput{
 		ProviderOrgID: "org_p", Message: "bid",
@@ -129,7 +142,7 @@ func TestMarketplaceBot_RFQStatus(t *testing.T) {
 	rfq, _ := mb.app.CreateRFQ(platform.CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "RFQ Bot", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 
 	body := `{"type":2,"data":{"name":"rfq-status","options":[{"name":"rfq_id","value":"` + rfq.ID + `"}]}}`
@@ -180,7 +193,7 @@ func TestMarketplaceBot_Bids(t *testing.T) {
 	rfq, _ := mb.app.CreateRFQ(platform.CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Bids Bot", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	mb.app.CreateBid(rfq.ID, platform.CreateBidInput{
 		ProviderOrgID: "org_p", Message: "my bid",
@@ -210,7 +223,7 @@ func TestMarketplaceBot_Bids_Empty(t *testing.T) {
 	rfq, _ := mb.app.CreateRFQ(platform.CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "No bids", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 
 	body := `{"type":2,"data":{"name":"bids","options":[{"name":"rfq_id","value":"` + rfq.ID + `"}]}}`
@@ -237,5 +250,147 @@ func TestMarketplaceBot_Bids_MissingID(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	if !strings.Contains(resp.Data.Content, "rfq_id") {
 		t.Errorf("content = %s", resp.Data.Content)
+	}
+}
+
+func TestMarketplaceBot_Stats(t *testing.T) {
+	mb := newTestBot()
+
+	resp := executeInteraction(t, mb, `{"type":2,"data":{"name":"stats"}}`)
+	if len(resp.Data.Embeds) == 0 {
+		t.Fatal("expected embed")
+	}
+	if resp.Data.Embeds[0].Title != "📊 Marketplace Stats" {
+		t.Errorf("title = %s", resp.Data.Embeds[0].Title)
+	}
+}
+
+func TestMarketplaceBot_Leaderboard(t *testing.T) {
+	mb := newTestBot()
+
+	resp := executeInteraction(t, mb, `{"type":2,"data":{"name":"leaderboard"}}`)
+	if len(resp.Data.Embeds) == 0 {
+		t.Fatal("expected embed")
+	}
+	if resp.Data.Embeds[0].Title != "🏆 Provider Leaderboard" {
+		t.Errorf("title = %s", resp.Data.Embeds[0].Title)
+	}
+}
+
+func TestMarketplaceBot_OrderStatus_MissingOption(t *testing.T) {
+	mb := newTestBot()
+	body := `{"type":2,"data":{"name":"order-status"}}`
+	req := httptest.NewRequest("POST", "/interactions", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	mb.HandleInteraction(w, req)
+
+	var resp InteractionResponse
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if !strings.Contains(resp.Data.Content, "order_id") {
+		t.Errorf("expected order_id prompt, got %s", resp.Data.Content)
+	}
+}
+
+func TestMarketplaceBot_Bids_MissingOption(t *testing.T) {
+	mb := newTestBot()
+	body := `{"type":2,"data":{"name":"bids"}}`
+	req := httptest.NewRequest("POST", "/interactions", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	mb.HandleInteraction(w, req)
+
+	var resp InteractionResponse
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if !strings.Contains(resp.Data.Content, "rfq_id") {
+		t.Errorf("expected rfq_id prompt, got %s", resp.Data.Content)
+	}
+}
+
+func TestMarketplaceBot_RFQStatus_MissingOption(t *testing.T) {
+	mb := newTestBot()
+	body := `{"type":2,"data":{"name":"rfq-status"}}`
+	req := httptest.NewRequest("POST", "/interactions", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	mb.HandleInteraction(w, req)
+
+	var resp InteractionResponse
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if !strings.Contains(resp.Data.Content, "rfq_id") {
+		t.Errorf("expected rfq_id prompt, got %s", resp.Data.Content)
+	}
+}
+
+func TestMarketplaceBot_ListingsWithCategory(t *testing.T) {
+	mb := newTestBot()
+	body := `{"type":2,"data":{"name":"listings","options":[{"name":"category","value":"agent-ops"}]}}`
+	req := httptest.NewRequest("POST", "/interactions", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	mb.HandleInteraction(w, req)
+
+	var resp InteractionResponse
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp.Type != ResponseChannelMessage {
+		t.Errorf("type = %d", resp.Type)
+	}
+}
+
+func TestMarketplaceBot_OrderStatus_WithOrder(t *testing.T) {
+	mb := newTestBot()
+	// Create a full order
+	rfq, _ := mb.app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Discord test", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := mb.app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid", QuoteCents: 5000,
+		Milestones: []platform.BidMilestoneInput{{ID: "ms_1", Title: "Work", BasePriceCents: 5000, BudgetCents: 5000}},
+	})
+	_, order, _ := mb.app.AwardRFQ(rfq.ID, platform.AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	body := `{"type":2,"data":{"name":"order-status","options":[{"name":"order_id","value":"` + order.ID + `"}]}}`
+	req := httptest.NewRequest("POST", "/interactions", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	mb.HandleInteraction(w, req)
+
+	var resp InteractionResponse
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if len(resp.Data.Embeds) == 0 {
+		t.Fatal("expected embed")
+	}
+	// Should have fields for milestones
+	if len(resp.Data.Embeds[0].Fields) < 4 {
+		t.Errorf("expected >= 4 fields (status+buyer+provider+funding+milestone), got %d", len(resp.Data.Embeds[0].Fields))
+	}
+}
+
+func TestMarketplaceBot_RFQStatus_WithAwarded(t *testing.T) {
+	mb := newTestBot()
+	rfq, _ := mb.app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Awarded RFQ", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
+	})
+	bid, _ := mb.app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid", QuoteCents: 5000,
+		Milestones: []platform.BidMilestoneInput{{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000}},
+	})
+	mb.app.AwardRFQ(rfq.ID, platform.AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	body := `{"type":2,"data":{"name":"rfq-status","options":[{"name":"rfq_id","value":"` + rfq.ID + `"}]}}`
+	req := httptest.NewRequest("POST", "/interactions", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	mb.HandleInteraction(w, req)
+
+	var resp InteractionResponse
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	// Should include "Awarded To" field
+	hasAwarded := false
+	for _, f := range resp.Data.Embeds[0].Fields {
+		if f.Name == "Awarded To" {
+			hasAwarded = true
+		}
+	}
+	if !hasAwarded {
+		t.Error("expected 'Awarded To' field")
 	}
 }

@@ -1,6 +1,7 @@
 package carrier
 
 import (
+	"sync"
 	"testing"
 	"time"
 )
@@ -351,5 +352,321 @@ func TestListJobs_ByBinding(t *testing.T) {
 	jobs2, _ := svc.ListJobs(b2.ID)
 	if len(jobs2) != 1 {
 		t.Errorf("expected 1 job for b2, got %d", len(jobs2))
+	}
+}
+
+func TestDuplicateCallback_CompleteTwice(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job, _ := svc.CreateJob(b.ID, "ms_1", "input")
+	svc.StartJob(job.ID)
+	svc.CompleteJob(job.ID, "result")
+
+	// Duplicate complete is idempotent (safe retry)
+	j, err := svc.CompleteJob(job.ID, "result again")
+	if err != nil {
+		t.Errorf("idempotent complete should not error: %v", err)
+	}
+	if j.State != JobStateCompleted {
+		t.Errorf("state = %s", j.State)
+	}
+}
+
+func TestOutOfOrder_CompleteBeforeStart(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job, _ := svc.CreateJob(b.ID, "ms_1", "input")
+
+	// Complete from pending state should fail
+	_, err := svc.CompleteJob(job.ID, "result")
+	if err == nil {
+		t.Error("expected error on complete before start")
+	}
+}
+
+func TestOutOfOrder_FailBeforeStart(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job, _ := svc.CreateJob(b.ID, "ms_1", "input")
+
+	_, err := svc.FailJob(job.ID, "error")
+	if err == nil {
+		t.Error("expected error on fail before start")
+	}
+}
+
+func TestDuplicateCallback_StartTwice(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job, _ := svc.CreateJob(b.ID, "ms_1", "input")
+	svc.StartJob(job.ID)
+
+	// Duplicate start is idempotent (safe retry)
+	j, err := svc.StartJob(job.ID)
+	if err != nil {
+		t.Errorf("idempotent start should not error: %v", err)
+	}
+	if j.State != JobStateRunning {
+		t.Errorf("state = %s", j.State)
+	}
+}
+
+func TestReconcileStaleJobs_NoStale(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job, _ := svc.CreateJob(b.ID, "ms_1", "input")
+	svc.StartJob(job.ID)
+
+	stale := svc.ReconcileStaleJobs()
+	if len(stale) != 0 {
+		t.Errorf("expected 0 stale, got %d", len(stale))
+	}
+}
+
+func TestReconcileStaleJobs_OnlyRunning(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job, _ := svc.CreateJob(b.ID, "ms_1", "input")
+
+	// Pending job should not appear as stale
+	_ = job
+	stale := svc.ReconcileStaleJobs()
+	if len(stale) != 0 {
+		t.Errorf("pending job should not be stale, got %d", len(stale))
+	}
+}
+
+func TestCreateAttempt(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job, _ := svc.CreateJob(b.ID, "ms_1", "input")
+
+	att, err := svc.CreateAttempt(job.ID, "carrier_exec_123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if att.AttemptNo != 1 {
+		t.Errorf("attemptNo = %d", att.AttemptNo)
+	}
+	if att.CarrierExecID != "carrier_exec_123" {
+		t.Errorf("carrierExecId = %s", att.CarrierExecID)
+	}
+}
+
+func TestCreateAttempt_Multiple(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job, _ := svc.CreateJob(b.ID, "ms_1", "input")
+
+	svc.CreateAttempt(job.ID, "exec_1")
+	att2, _ := svc.CreateAttempt(job.ID, "exec_2")
+	if att2.AttemptNo != 2 {
+		t.Errorf("attemptNo = %d", att2.AttemptNo)
+	}
+
+	attempts := svc.ListAttempts(job.ID)
+	if len(attempts) != 2 {
+		t.Errorf("expected 2 attempts, got %d", len(attempts))
+	}
+}
+
+func TestCreateAttempt_JobNotFound(t *testing.T) {
+	svc := NewService()
+	_, err := svc.CreateAttempt("nonexistent", "exec_1")
+	if err != ErrJobNotFound {
+		t.Errorf("expected ErrJobNotFound, got %v", err)
+	}
+}
+
+func TestListAttempts_Empty(t *testing.T) {
+	svc := NewService()
+	attempts := svc.ListAttempts("nonexistent")
+	if attempts != nil {
+		t.Errorf("expected nil, got %v", attempts)
+	}
+}
+
+func TestCreateJobIdempotent_NewKey(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job, replay, err := svc.CreateJobIdempotent(b.ID, "ms_1", "input", "key_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replay {
+		t.Error("should not be replay")
+	}
+	if job.ID == "" {
+		t.Error("expected job ID")
+	}
+}
+
+func TestCreateJobIdempotent_Replay(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job1, _, _ := svc.CreateJobIdempotent(b.ID, "ms_1", "input", "key_1")
+	job2, replay, err := svc.CreateJobIdempotent(b.ID, "ms_1", "input", "key_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !replay {
+		t.Error("expected replay")
+	}
+	if job2.ID != job1.ID {
+		t.Errorf("expected same job, got %s vs %s", job1.ID, job2.ID)
+	}
+}
+
+func TestCreateJobIdempotent_ConcurrentSameKey(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+
+	const n = 20
+	var wg sync.WaitGroup
+	wg.Add(n)
+	results := make(chan ExecutionJob, n)
+	replays := make(chan bool, n)
+	errCh := make(chan error, n)
+
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			job, replay, err := svc.CreateJobIdempotent(b.ID, "ms_1", "input", "same-key")
+			if err != nil {
+				errCh <- err
+				return
+			}
+			results <- job
+			replays <- replay
+		}()
+	}
+
+	wg.Wait()
+	close(results)
+	close(replays)
+	close(errCh)
+
+	if len(errCh) > 0 {
+		t.Fatalf("errors: %v", <-errCh)
+	}
+
+	var firstID string
+	for job := range results {
+		if firstID == "" {
+			firstID = job.ID
+			continue
+		}
+		if job.ID != firstID {
+			t.Fatalf("expected same job for concurrent idempotent calls, got %s and %s", firstID, job.ID)
+		}
+	}
+
+	replayCount := 0
+	for r := range replays {
+		if r {
+			replayCount++
+		}
+	}
+	if replayCount == 0 || replayCount == n {
+		t.Fatalf("expected mix of creator and replays, got replayCount=%d of %d", replayCount, n)
+	}
+}
+
+func TestCreateJobIdempotent_EmptyKey(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job1, _, _ := svc.CreateJobIdempotent(b.ID, "ms_1", "input", "")
+	job2, _, _ := svc.CreateJobIdempotent(b.ID, "ms_1", "input", "")
+	if job1.ID == job2.ID {
+		t.Error("empty key should create separate jobs")
+	}
+}
+
+func TestCreateJobIdempotent_DifferentKeys(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job1, _, _ := svc.CreateJobIdempotent(b.ID, "ms_1", "input", "key_1")
+	job2, _, _ := svc.CreateJobIdempotent(b.ID, "ms_1", "input", "key_2")
+	if job1.ID == job2.ID {
+		t.Error("different keys should create different jobs")
+	}
+}
+
+func TestIdempotentCancel(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job, _ := svc.CreateJob(b.ID, "ms_1", "input")
+	svc.CancelJob(job.ID)
+
+	// Second cancel should be idempotent (no error)
+	j, err := svc.CancelJob(job.ID)
+	if err != nil {
+		t.Errorf("idempotent cancel should not error: %v", err)
+	}
+	if j.State != JobStateCancelled {
+		t.Errorf("state = %s", j.State)
+	}
+}
+
+func TestIdempotentComplete(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job, _ := svc.CreateJob(b.ID, "ms_1", "input")
+	svc.StartJob(job.ID)
+	svc.CompleteJob(job.ID, "result")
+
+	// Second complete should be idempotent
+	j, err := svc.CompleteJob(job.ID, "result")
+	if err != nil {
+		t.Errorf("idempotent complete should not error: %v", err)
+	}
+	if j.State != JobStateCompleted {
+		t.Errorf("state = %s", j.State)
+	}
+}
+
+func TestIsValidFailureCategory(t *testing.T) {
+	if !IsValidFailureCategory("provider_fault") {
+		t.Error("provider_fault should be valid")
+	}
+	if !IsValidFailureCategory("timeout") {
+		t.Error("timeout should be valid")
+	}
+	if IsValidFailureCategory("made_up") {
+		t.Error("made_up should be invalid")
+	}
+}
+
+func TestFailJobTyped(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+	job, _ := svc.CreateJob(b.ID, "ms_1", "input")
+	svc.StartJob(job.ID)
+	svc.CreateAttempt(job.ID, "exec_1")
+
+	failed, err := svc.FailJobTyped(job.ID, FailureCategoryTimeout, "EXEC_TIMEOUT", "took too long")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.State != JobStateFailed {
+		t.Errorf("state = %s", failed.State)
+	}
+
+	attempts := svc.ListAttempts(job.ID)
+	if len(attempts) == 0 {
+		t.Fatal("expected attempts")
+	}
+	last := attempts[len(attempts)-1]
+	if last.FailureCategory != "timeout" {
+		t.Errorf("category = %s", last.FailureCategory)
+	}
+	if last.FailureCode != "EXEC_TIMEOUT" {
+		t.Errorf("code = %s", last.FailureCode)
+	}
+}
+
+func TestValidFailureCategories(t *testing.T) {
+	if len(ValidFailureCategories) != 7 {
+		t.Errorf("expected 7, got %d", len(ValidFailureCategories))
 	}
 }

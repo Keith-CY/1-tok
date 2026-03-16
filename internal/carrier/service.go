@@ -20,11 +20,11 @@ const (
 )
 
 var (
-	ErrBindingExists      = errors.New("carrier already bound to this milestone")
-	ErrBindingNotFound    = errors.New("carrier binding not found")
-	ErrJobNotFound        = errors.New("execution job not found")
-	ErrInvalidTransition  = errors.New("invalid job state transition")
-	ErrCarrierStale       = errors.New("carrier heartbeat stale")
+	ErrBindingExists     = errors.New("carrier already bound to this milestone")
+	ErrBindingNotFound   = errors.New("carrier binding not found")
+	ErrJobNotFound       = errors.New("execution job not found")
+	ErrInvalidTransition = errors.New("invalid job state transition")
+	ErrCarrierStale      = errors.New("carrier heartbeat stale")
 )
 
 // HeartbeatTimeout is how long before a carrier is considered stale.
@@ -32,12 +32,12 @@ const HeartbeatTimeout = 2 * time.Minute
 
 // Binding represents a Carrier instance bound to an order milestone.
 type Binding struct {
-	ID           string    `json:"id"`
-	CarrierID    string    `json:"carrierId"`
-	OrderID      string    `json:"orderId"`
-	MilestoneID  string    `json:"milestoneId"`
-	Capabilities []string  `json:"capabilities"`
-	BoundAt      time.Time `json:"boundAt"`
+	ID            string    `json:"id"`
+	CarrierID     string    `json:"carrierId"`
+	OrderID       string    `json:"orderId"`
+	MilestoneID   string    `json:"milestoneId"`
+	Capabilities  []string  `json:"capabilities"`
+	BoundAt       time.Time `json:"boundAt"`
 	LastHeartbeat time.Time `json:"lastHeartbeat"`
 }
 
@@ -87,13 +87,34 @@ func canTransition(from, to JobState) bool {
 
 // Service manages carrier bindings and execution jobs.
 type Service struct {
-	mu          sync.Mutex
-	bindingSeq  int
-	jobSeq      int
-	bindings    map[string]Binding            // id → binding
-	bindingIdx  map[string]string             // "orderID|milestoneID" → binding id
-	jobs        map[string]ExecutionJob       // id → job
-	jobsByBinding map[string][]string         // binding id → job ids
+	mu              sync.Mutex
+	bindingSeq      int
+	jobSeq          int
+	bindings        map[string]Binding      // id → binding
+	bindingIdx      map[string]string       // "orderID|milestoneID" → binding id
+	jobs            map[string]ExecutionJob // id → job
+	jobsByBinding   map[string][]string     // binding id → job ids
+	attempts        map[string][]ExecutionAttempt
+	idempotencyKeys map[string]string // job id → attempts
+	logger          Logger
+}
+
+// Logger is an optional structured logger for carrier operations.
+type Logger interface {
+	Info(msg string, fields ...map[string]any)
+	Warn(msg string, fields ...map[string]any)
+	Error(msg string, fields ...map[string]any)
+}
+
+// SetLogger configures the carrier service logger.
+func (s *Service) SetLogger(l Logger) {
+	s.logger = l
+}
+
+func (s *Service) log(msg string, fields map[string]any) {
+	if s.logger != nil {
+		s.logger.Info(msg, fields)
+	}
 }
 
 // NewService creates a new carrier service.
@@ -129,6 +150,19 @@ func (s *Service) Bind(orderID, milestoneID, carrierID string, capabilities []st
 	}
 	s.bindings[binding.ID] = binding
 	s.bindingIdx[key] = binding.ID
+	s.log("carrier.bind", map[string]any{"bindingId": binding.ID, "carrierId": carrierID, "orderId": orderID})
+	return binding, nil
+}
+
+// GetBindingByID retrieves a binding by its ID.
+func (s *Service) GetBindingByID(bindingID string) (Binding, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	binding, ok := s.bindings[bindingID]
+	if !ok {
+		return Binding{}, ErrBindingNotFound
+	}
 	return binding, nil
 }
 
@@ -229,12 +263,18 @@ func (s *Service) CancelJob(jobID string) (ExecutionJob, error) {
 func (s *Service) transitionJob(jobID string, to JobState, output, errMsg string) (ExecutionJob, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.transitionJobLocked(jobID, to, output, errMsg)
+}
 
+func (s *Service) transitionJobLocked(jobID string, to JobState, output, errMsg string) (ExecutionJob, error) {
 	job, ok := s.jobs[jobID]
 	if !ok {
 		return ExecutionJob{}, ErrJobNotFound
 	}
 	if !canTransition(job.State, to) {
+		if job.State == to {
+			return job, nil
+		}
 		return ExecutionJob{}, fmt.Errorf("%w: %s → %s", ErrInvalidTransition, job.State, to)
 	}
 	now := time.Now().UTC()
@@ -252,6 +292,7 @@ func (s *Service) transitionJob(jobID string, to JobState, output, errMsg string
 		job.CompletedAt = &now
 	}
 	s.jobs[jobID] = job
+	s.log("carrier.job.transition", map[string]any{"jobId": jobID, "to": string(to)})
 	return job, nil
 }
 
@@ -285,4 +326,201 @@ func (s *Service) ListJobs(bindingID string) ([]ExecutionJob, error) {
 		}
 	}
 	return result, nil
+}
+
+// StaleJobTimeout is the duration after which a running job with no heartbeat is considered stale.
+const StaleJobTimeout = 5 * time.Minute
+
+// StaleJob represents a job that missed its heartbeat window.
+type StaleJob struct {
+	Job           ExecutionJob  `json:"job"`
+	BindingID     string        `json:"bindingId"`
+	LastHeartbeat time.Time     `json:"lastHeartbeat"`
+	StaleSince    time.Duration `json:"staleSince"`
+}
+
+// ReconcileStaleJobs finds running jobs whose binding heartbeat is stale.
+func (s *Service) ReconcileStaleJobs() []StaleJob {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var stale []StaleJob
+	for _, job := range s.jobs {
+		if job.State != JobStateRunning {
+			continue
+		}
+		binding, ok := s.bindings[job.BindingID]
+		if !ok {
+			continue
+		}
+		elapsed := time.Since(binding.LastHeartbeat)
+		if elapsed > StaleJobTimeout {
+			stale = append(stale, StaleJob{
+				Job:           job,
+				BindingID:     job.BindingID,
+				LastHeartbeat: binding.LastHeartbeat,
+				StaleSince:    elapsed,
+			})
+		}
+	}
+	return stale
+}
+
+// ExecutionAttempt represents one attempt within an ExecutionJob.
+// Retries create new attempts; all share the same job.
+type ExecutionAttempt struct {
+	ID              string     `json:"id"`
+	JobID           string     `json:"jobId"`
+	AttemptNo       int        `json:"attemptNo"`
+	CarrierExecID   string     `json:"carrierExecutionId,omitempty"`
+	BindingSnapshot string     `json:"bindingSnapshot,omitempty"` // serialized binding at attempt time
+	State           JobState   `json:"state"`
+	FailureCategory string     `json:"failureCategory,omitempty"`
+	FailureCode     string     `json:"failureCode,omitempty"`
+	StartedAt       *time.Time `json:"startedAt,omitempty"`
+	EndedAt         *time.Time `json:"endedAt,omitempty"`
+	ResultSummary   string     `json:"resultSummary,omitempty"`
+}
+
+// CreateAttempt creates a new execution attempt for a job.
+func (s *Service) CreateAttempt(jobID, carrierExecID string) (ExecutionAttempt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	job, ok := s.jobs[jobID]
+	if !ok {
+		return ExecutionAttempt{}, ErrJobNotFound
+	}
+
+	attemptNo := len(s.attempts[jobID]) + 1
+	now := time.Now().UTC()
+	attempt := ExecutionAttempt{
+		ID:            fmt.Sprintf("%s_att_%d", jobID, attemptNo),
+		JobID:         jobID,
+		AttemptNo:     attemptNo,
+		CarrierExecID: carrierExecID,
+		State:         JobStatePending,
+		StartedAt:     &now,
+	}
+
+	if s.attempts == nil {
+		s.attempts = make(map[string][]ExecutionAttempt)
+	}
+	s.attempts[jobID] = append(s.attempts[jobID], attempt)
+
+	s.log("carrier.attempt.created", map[string]any{
+		"jobId": jobID, "attemptNo": attemptNo, "carrierExecId": carrierExecID,
+	})
+
+	_ = job // keep reference for future binding snapshot
+	return attempt, nil
+}
+
+// ListAttempts returns all attempts for a job.
+func (s *Service) ListAttempts(jobID string) []ExecutionAttempt {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.attempts[jobID]
+}
+
+// CreateJobIdempotent creates a job with an idempotency key.
+// If the key was already used, returns the existing job.
+func (s *Service) CreateJobIdempotent(bindingID, milestoneID, input, idempotencyKey string) (ExecutionJob, bool, error) {
+	if idempotencyKey == "" {
+		job, err := s.CreateJob(bindingID, milestoneID, input)
+		return job, false, err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.idempotencyKeys == nil {
+		s.idempotencyKeys = make(map[string]string)
+	}
+
+	// Check if key was already used
+	if existingID, ok := s.idempotencyKeys[idempotencyKey]; ok {
+		job, exists := s.jobs[existingID]
+		if exists {
+			return job, true, nil // replay
+		}
+		// stale entry; fall through and overwrite with a new idempotent job
+	}
+
+	if _, ok := s.bindings[bindingID]; !ok {
+		return ExecutionJob{}, false, ErrBindingNotFound
+	}
+
+	s.jobSeq++
+	job := ExecutionJob{
+		ID:          fmt.Sprintf("job_%d", s.jobSeq),
+		BindingID:   bindingID,
+		MilestoneID: milestoneID,
+		State:       JobStatePending,
+		Input:       input,
+		CreatedAt:   time.Now().UTC(),
+	}
+	s.jobs[job.ID] = job
+	s.jobsByBinding[bindingID] = append(s.jobsByBinding[bindingID], job.ID)
+	s.idempotencyKeys[idempotencyKey] = job.ID
+
+	return job, false, nil
+}
+
+// FailureCategory represents the reason for an execution failure.
+type FailureCategory string
+
+const (
+	FailureCategoryProviderFault          FailureCategory = "provider_fault"
+	FailureCategoryPolicyDenied           FailureCategory = "policy_denied"
+	FailureCategoryInfraUnavailable       FailureCategory = "infra_unavailable"
+	FailureCategoryTimeout                FailureCategory = "timeout"
+	FailureCategoryInvalidInput           FailureCategory = "invalid_input"
+	FailureCategoryBuyerDependencyMissing FailureCategory = "buyer_dependency_missing"
+	FailureCategoryUnknown                FailureCategory = "unknown"
+)
+
+// ValidFailureCategories lists all accepted failure categories.
+var ValidFailureCategories = []FailureCategory{
+	FailureCategoryProviderFault,
+	FailureCategoryPolicyDenied,
+	FailureCategoryInfraUnavailable,
+	FailureCategoryTimeout,
+	FailureCategoryInvalidInput,
+	FailureCategoryBuyerDependencyMissing,
+	FailureCategoryUnknown,
+}
+
+// IsValidFailureCategory checks if a category is valid.
+func IsValidFailureCategory(category string) bool {
+	for _, c := range ValidFailureCategories {
+		if string(c) == category {
+			return true
+		}
+	}
+	return false
+}
+
+// FailJobTyped transitions a job to failed with a typed failure category.
+func (s *Service) FailJobTyped(jobID string, category FailureCategory, code, errMsg string) (ExecutionJob, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	job, err := s.transitionJobLocked(jobID, JobStateFailed, "", errMsg)
+	if err != nil {
+		return job, err
+	}
+
+	if len(s.attempts[jobID]) > 0 {
+		last := &s.attempts[jobID][len(s.attempts[jobID])-1]
+		last.FailureCategory = string(category)
+		last.FailureCode = code
+		last.State = JobStateFailed
+		endedAt := time.Now().UTC()
+		last.EndedAt = &endedAt
+	}
+
+	s.log("carrier.job.failed.typed", map[string]any{"jobId": jobID, "category": string(category), "code": code})
+
+	return job, nil
 }

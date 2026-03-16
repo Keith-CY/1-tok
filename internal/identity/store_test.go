@@ -219,3 +219,35 @@ func TestMemoryStore_FindUserByEmail_CaseInsensitive(t *testing.T) {
 		t.Errorf("email = %s", user.Email)
 	}
 }
+
+func TestFindUserByEmail_NotFound(t *testing.T) {
+	store := NewMemoryStore()
+	_, err := store.FindUserByEmail("nonexistent@test.com")
+	if err != ErrNotFound {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestFindUserByEmail_CaseInsensitive(t *testing.T) {
+	store := NewMemoryStore()
+	store.CreateSignup(Signup{
+		Email: "Test@Example.COM", PasswordHash: "hash", Name: "Test",
+		OrganizationName: "Org", OrganizationKind: "buyer",
+	})
+	user, err := store.FindUserByEmail("test@example.com")
+	if err != nil { t.Fatal(err) }
+	if user.Name != "Test" { t.Errorf("name = %s", user.Name) }
+}
+
+func TestCreateSignup_DuplicateEmail(t *testing.T) {
+	store := NewMemoryStore()
+	store.CreateSignup(Signup{
+		Email: "dup@test.com", PasswordHash: "hash", Name: "First",
+		OrganizationName: "Org1", OrganizationKind: "buyer",
+	})
+	_, err := store.CreateSignup(Signup{
+		Email: "dup@test.com", PasswordHash: "hash", Name: "Second",
+		OrganizationName: "Org2", OrganizationKind: "buyer",
+	})
+	if err == nil { t.Error("expected error for duplicate email") }
+}

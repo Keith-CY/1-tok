@@ -37,6 +37,7 @@ type DisputeStatus string
 const (
 	DisputeStatusNone     DisputeStatus = "none"
 	DisputeStatusOpen     DisputeStatus = "open"
+	DisputeStatusFrozen   DisputeStatus = "frozen"
 	DisputeStatusResolved DisputeStatus = "resolved"
 )
 
@@ -168,6 +169,10 @@ func (o *Order) RecordUsageCharge(input RecordUsageChargeInput) (UsageCharge, er
 		return UsageCharge{}, err
 	}
 
+	if input.AmountCents <= 0 {
+		return UsageCharge{}, errors.New("usage charge amount must be positive")
+	}
+
 	if milestone.State != MilestoneStateRunning && milestone.State != MilestoneStatePaused {
 		return UsageCharge{}, fmt.Errorf("milestone %s does not accept usage from state %s", milestone.ID, milestone.State)
 	}
@@ -199,7 +204,15 @@ func (o *Order) OpenDispute(input OpenDisputeInput) (LedgerEntry, LedgerEntry, e
 		return LedgerEntry{}, LedgerEntry{}, errors.New("only settled milestones can be disputed")
 	}
 
-	milestone.DisputeStatus = DisputeStatusOpen
+	if input.RefundCents <= 0 {
+		return LedgerEntry{}, LedgerEntry{}, errors.New("refund amount must be positive")
+	}
+	if input.RefundCents > milestone.SettledCents {
+		return LedgerEntry{}, LedgerEntry{}, fmt.Errorf("refund %d exceeds settled amount %d", input.RefundCents, milestone.SettledCents)
+	}
+
+	milestone.DisputeStatus = DisputeStatusFrozen
+	milestone.State = MilestoneStatePaused // Freeze: prevent further settlement
 
 	now := time.Now().UTC()
 	refund := LedgerEntry{
@@ -232,8 +245,8 @@ func (o *Order) ResolveDispute(input ResolveDisputeInput) error {
 		return err
 	}
 
-	if milestone.DisputeStatus != DisputeStatusOpen {
-		return errors.New("only open disputes can be resolved")
+	if milestone.DisputeStatus != DisputeStatusFrozen && milestone.DisputeStatus != DisputeStatusOpen {
+		return errors.New("only open or frozen disputes can be resolved")
 	}
 
 	milestone.DisputeStatus = DisputeStatusResolved
@@ -329,4 +342,9 @@ func max64(a, b int64) int64 {
 	}
 
 	return b
+}
+
+// IsValidFundingMode checks if the given funding mode is valid.
+func IsValidFundingMode(mode FundingMode) bool {
+	return mode == FundingModePrepaid || mode == FundingModeCredit
 }

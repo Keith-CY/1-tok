@@ -51,7 +51,7 @@ func TestAppCreateRFQPublishesCreatedEvent(t *testing.T) {
 		Category:           "agent-ops",
 		Scope:              "Investigate failures and propose a fix plan.",
 		BudgetCents:        8_000,
-		ResponseDeadlineAt: time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 3, 15, 12, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
 		t.Fatalf("create rfq: %v", err)
@@ -77,7 +77,7 @@ func TestAppCreateBidPublishesSubmittedEvent(t *testing.T) {
 		Category:           "agent-ops",
 		Scope:              "Investigate failures and propose a fix plan.",
 		BudgetCents:        8_000,
-		ResponseDeadlineAt: time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 3, 15, 12, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
 		t.Fatalf("create rfq: %v", err)
@@ -120,7 +120,7 @@ func TestAppAwardRFQPublishesAwardedEvent(t *testing.T) {
 		Category:           "agent-ops",
 		Scope:              "Investigate failures and propose a fix plan.",
 		BudgetCents:        8_000,
-		ResponseDeadlineAt: time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 3, 15, 12, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
 		t.Fatalf("create rfq: %v", err)
@@ -208,7 +208,6 @@ func (s *spyPublisher) Publish(subject string, _ any) error {
 	return nil
 }
 
-
 func TestCreateMessage_PublishesEvent(t *testing.T) {
 	app := NewAppWithMemory()
 	publisher := &spyPublisher{}
@@ -217,7 +216,7 @@ func TestCreateMessage_PublishesEvent(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Msg pub", Category: "ai",
 		Scope: "test", BudgetCents: 5000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid",
@@ -251,7 +250,7 @@ func TestRecordUsageCharge_PublishesEvent(t *testing.T) {
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_1", Title: "Usage pub", Category: "ai",
 		Scope: "test", BudgetCents: 10000,
-		ResponseDeadlineAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC),
 	})
 	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{
 		ProviderOrgID: "org_2", Message: "bid",

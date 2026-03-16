@@ -32,17 +32,18 @@ type OrderRating struct {
 
 // RateOrderInput is the input for rating a completed order.
 type RateOrderInput struct {
-	Score   int    // 1-5 stars
+	Score   int // 1-5 stars
 	Comment string
 }
 
 type Listing struct {
-	ID             string   `json:"id"`
-	ProviderOrgID  string   `json:"providerOrgId"`
-	Title          string   `json:"title"`
-	Category       string   `json:"category"`
-	BasePriceCents int64    `json:"basePriceCents"`
-	Tags           []string `json:"tags"`
+	ID                 string   `json:"id"`
+	ProviderOrgID      string   `json:"providerOrgId"`
+	Title              string   `json:"title"`
+	Category           string   `json:"category"`
+	BasePriceCents     int64    `json:"basePriceCents"`
+	Tags               []string `json:"tags"`
+	ExecutionProfileID string   `json:"executionProfileId,omitempty"`
 }
 
 type RFQStatus string
@@ -54,20 +55,20 @@ const (
 )
 
 type RFQ struct {
-	ID                   string           `json:"id"`
-	BuyerOrgID           string           `json:"buyerOrgId"`
-	Title                string           `json:"title"`
-	Category             string           `json:"category"`
-	Scope                string           `json:"scope"`
-	BudgetCents          int64            `json:"budgetCents"`
-	DefaultMilestones    []RFQMilestone   `json:"defaultMilestones"`
-	Status               RFQStatus        `json:"status"`
-	AwardedBidID         string           `json:"awardedBidId,omitempty"`
-	AwardedProviderOrgID string           `json:"awardedProviderOrgId,omitempty"`
-	OrderID              string           `json:"orderId,omitempty"`
-	ResponseDeadlineAt   time.Time        `json:"responseDeadlineAt"`
-	CreatedAt            time.Time        `json:"createdAt"`
-	UpdatedAt            time.Time        `json:"updatedAt"`
+	ID                   string         `json:"id"`
+	BuyerOrgID           string         `json:"buyerOrgId"`
+	Title                string         `json:"title"`
+	Category             string         `json:"category"`
+	Scope                string         `json:"scope"`
+	BudgetCents          int64          `json:"budgetCents"`
+	DefaultMilestones    []RFQMilestone `json:"defaultMilestones"`
+	Status               RFQStatus      `json:"status"`
+	AwardedBidID         string         `json:"awardedBidId,omitempty"`
+	AwardedProviderOrgID string         `json:"awardedProviderOrgId,omitempty"`
+	OrderID              string         `json:"orderId,omitempty"`
+	ResponseDeadlineAt   time.Time      `json:"responseDeadlineAt"`
+	CreatedAt            time.Time      `json:"createdAt"`
+	UpdatedAt            time.Time      `json:"updatedAt"`
 }
 
 // RFQMilestone is a platform-generated default milestone attached to an RFQ.
@@ -98,6 +99,7 @@ type Dispute struct {
 	Resolution  string             `json:"resolution,omitempty"`
 	ResolvedBy  string             `json:"resolvedBy,omitempty"`
 	ResolvedAt  *time.Time         `json:"resolvedAt,omitempty"`
+	EvidenceIDs []string           `json:"evidenceIds,omitempty"`
 	CreatedAt   time.Time          `json:"createdAt"`
 }
 
@@ -182,21 +184,25 @@ type DisputeRepository interface {
 }
 
 type App struct {
-	orders       OrderRepository
-	providers    ProviderRepository
-	listings     ListingRepository
-	rfqs         RFQRepository
-	bids         BidRepository
-	messages     MessageRepository
-	disputes     DisputeRepository
-	creditEngine core.CreditDecisionEngine
-	publisher    EventPublisher
-	notifier     Notifier
-	mu           sync.Mutex // guards compound multi-store operations
-	ratings      []OrderRating
-	clock        Clock
+	orders               OrderRepository
+	providers            ProviderRepository
+	listings             ListingRepository
+	rfqs                 RFQRepository
+	bids                 BidRepository
+	messages             MessageRepository
+	disputes             DisputeRepository
+	creditEngine         core.CreditDecisionEngine
+	publisher            EventPublisher
+	notifier             Notifier
+	mu                   sync.Mutex // guards compound multi-store operations
+	ratings              []OrderRating
+	clock                Clock
 	providerApplications []ProviderApplication
 	carrierBindings      []ProviderCarrierBinding
+	carrierBindingsByOrg map[string]int // providerOrgID → index in carrierBindings
+	requireExecProfile   bool
+	profileValidator     func(profileID string) bool
+	creditLimits         map[string]BuyerCreditLimit
 }
 
 // Notifier is an optional notification delivery interface.
@@ -361,6 +367,9 @@ func (a *App) CreateRFQ(input CreateRFQInput) (RFQ, error) {
 	if input.ResponseDeadlineAt.IsZero() {
 		return RFQ{}, ErrDeadlineRequired
 	}
+	if input.ResponseDeadlineAt.Before(a.now()) {
+		return RFQ{}, ErrDeadlineInPast
+	}
 
 	rfqID, err := a.rfqs.NextID()
 	if err != nil {
@@ -417,6 +426,17 @@ func (a *App) CreateRFQ(input CreateRFQInput) (RFQ, error) {
 func (a *App) CreateOrder(input CreateOrderInput) (*core.Order, error) {
 	if input.BuyerOrgID == "" || input.ProviderOrgID == "" || len(input.Milestones) == 0 {
 		return nil, ErrMissingRequiredFields
+	}
+
+	// Credit limit check
+	if input.FundingMode == "credit" {
+		var totalBudget int64
+		for _, ms := range input.Milestones {
+			totalBudget += ms.BudgetCents
+		}
+		if err := a.CheckCreditAvailability(input.BuyerOrgID, totalBudget); err != nil {
+			return nil, err
+		}
 	}
 
 	orderID, err := a.orders.NextID()
@@ -1339,7 +1359,6 @@ func (a *App) GetDispute(id string) (Dispute, error) {
 	return a.disputes.Get(id)
 }
 
-
 // SearchProviders returns providers matching optional capability and tier filters.
 type SearchProvidersInput struct {
 	Capability string
@@ -1395,16 +1414,16 @@ func (a *App) SearchProviders(input SearchProvidersInput) ([]ProviderProfile, er
 
 // MarketplaceStats holds aggregate marketplace statistics.
 type MarketplaceStats struct {
-	TotalProviders  int     `json:"totalProviders"`
-	TotalListings   int     `json:"totalListings"`
-	TotalRFQs       int     `json:"totalRfqs"`
-	OpenRFQs        int     `json:"openRfqs"`
-	TotalOrders     int     `json:"totalOrders"`
-	ActiveOrders    int     `json:"activeOrders"`
-	TotalDisputes   int     `json:"totalDisputes"`
-	OpenDisputes    int     `json:"openDisputes"`
-	TotalRatings    int     `json:"totalRatings"`
-	AverageRating   float64 `json:"averageRating"`
+	TotalProviders int     `json:"totalProviders"`
+	TotalListings  int     `json:"totalListings"`
+	TotalRFQs      int     `json:"totalRfqs"`
+	OpenRFQs       int     `json:"openRfqs"`
+	TotalOrders    int     `json:"totalOrders"`
+	ActiveOrders   int     `json:"activeOrders"`
+	TotalDisputes  int     `json:"totalDisputes"`
+	OpenDisputes   int     `json:"openDisputes"`
+	TotalRatings   int     `json:"totalRatings"`
+	AverageRating  float64 `json:"averageRating"`
 }
 
 // GetMarketplaceStats returns aggregate marketplace statistics.
@@ -1472,13 +1491,13 @@ func (a *App) GetMarketplaceStats() (MarketplaceStats, error) {
 
 // OrderBudgetSummary shows budget utilization per milestone.
 type MilestoneBudget struct {
-	ID          string  `json:"id"`
-	Title       string  `json:"title"`
-	BudgetCents int64   `json:"budgetCents"`
-	SpentCents  int64   `json:"spentCents"`
-	SettledCents int64  `json:"settledCents"`
+	ID           string  `json:"id"`
+	Title        string  `json:"title"`
+	BudgetCents  int64   `json:"budgetCents"`
+	SpentCents   int64   `json:"spentCents"`
+	SettledCents int64   `json:"settledCents"`
 	UsagePercent float64 `json:"usagePercent"`
-	State       string  `json:"state"`
+	State        string  `json:"state"`
 }
 
 type OrderBudgetSummary struct {
@@ -1531,12 +1550,12 @@ func (a *App) GetOrderBudget(orderID string) (OrderBudgetSummary, error) {
 
 // ProviderRevenueSummary shows revenue across all orders for a provider.
 type ProviderRevenueSummary struct {
-	ProviderOrgID   string `json:"providerOrgId"`
-	TotalOrders     int    `json:"totalOrders"`
-	ActiveOrders    int    `json:"activeOrders"`
-	TotalRevenue    int64  `json:"totalRevenueCents"`
-	PendingRevenue  int64  `json:"pendingRevenueCents"`
-	TotalDisputes   int    `json:"totalDisputes"`
+	ProviderOrgID  string `json:"providerOrgId"`
+	TotalOrders    int    `json:"totalOrders"`
+	ActiveOrders   int    `json:"activeOrders"`
+	TotalRevenue   int64  `json:"totalRevenueCents"`
+	PendingRevenue int64  `json:"pendingRevenueCents"`
+	TotalDisputes  int    `json:"totalDisputes"`
 }
 
 // GetProviderRevenue returns revenue summary for a provider.
@@ -1580,8 +1599,8 @@ func (a *App) GetProviderRevenue(providerOrgID string) (ProviderRevenueSummary, 
 
 // TimelineEvent represents a single event in an order's timeline.
 type TimelineEvent struct {
-	Type      string    `json:"type"`
-	Timestamp time.Time `json:"timestamp"`
+	Type      string         `json:"type"`
+	Timestamp time.Time      `json:"timestamp"`
 	Details   map[string]any `json:"details,omitempty"`
 }
 
@@ -1650,13 +1669,13 @@ func (a *App) GetOrderTimeline(orderID string) ([]TimelineEvent, error) {
 
 // OrderStatusBrief is a compact order status for batch queries.
 type OrderStatusBrief struct {
-	ID              string `json:"id"`
-	Status          string `json:"status"`
-	ProviderOrgID   string `json:"providerOrgId"`
-	BuyerOrgID      string `json:"buyerOrgId"`
-	MilestoneCount  int    `json:"milestoneCount"`
-	SettledCount    int    `json:"settledCount"`
-	HasAnomaly      bool   `json:"hasAnomaly"`
+	ID             string `json:"id"`
+	Status         string `json:"status"`
+	ProviderOrgID  string `json:"providerOrgId"`
+	BuyerOrgID     string `json:"buyerOrgId"`
+	MilestoneCount int    `json:"milestoneCount"`
+	SettledCount   int    `json:"settledCount"`
+	HasAnomaly     bool   `json:"hasAnomaly"`
 }
 
 // BatchOrderStatus returns brief status for multiple orders.
@@ -1696,12 +1715,12 @@ func (a *App) ListNotifications(target string) ([]map[string]any, error) {
 
 // ProviderLeaderboard returns providers ranked by rating.
 type LeaderboardEntry struct {
-	ProviderID    string  `json:"providerId"`
-	Name          string  `json:"name"`
-	Rating        float64 `json:"rating"`
-	RatingCount   int     `json:"ratingCount"`
-	TotalOrders   int     `json:"totalOrders"`
-	ReputationTier string `json:"reputationTier"`
+	ProviderID     string  `json:"providerId"`
+	Name           string  `json:"name"`
+	Rating         float64 `json:"rating"`
+	RatingCount    int     `json:"ratingCount"`
+	TotalOrders    int     `json:"totalOrders"`
+	ReputationTier string  `json:"reputationTier"`
 }
 
 func (a *App) GetProviderLeaderboard() ([]LeaderboardEntry, error) {
@@ -1761,7 +1780,6 @@ func (a *App) GetProviderLeaderboard() ([]LeaderboardEntry, error) {
 	return entries, nil
 }
 
-
 // ProviderVettingStatus represents the vetting state of a provider.
 type ProviderVettingStatus string
 
@@ -1773,15 +1791,15 @@ const (
 
 // ProviderApplication represents a provider registration request.
 type ProviderApplication struct {
-	ID             string                `json:"id"`
-	OrgID          string                `json:"orgId"`
-	Name           string                `json:"name"`
-	Capabilities   []string              `json:"capabilities"`
-	Status         ProviderVettingStatus `json:"status"`
-	ReviewedBy     string                `json:"reviewedBy,omitempty"`
-	ReviewNote     string                `json:"reviewNote,omitempty"`
-	SubmittedAt    time.Time             `json:"submittedAt"`
-	ReviewedAt     *time.Time            `json:"reviewedAt,omitempty"`
+	ID           string                `json:"id"`
+	OrgID        string                `json:"orgId"`
+	Name         string                `json:"name"`
+	Capabilities []string              `json:"capabilities"`
+	Status       ProviderVettingStatus `json:"status"`
+	ReviewedBy   string                `json:"reviewedBy,omitempty"`
+	ReviewNote   string                `json:"reviewNote,omitempty"`
+	SubmittedAt  time.Time             `json:"submittedAt"`
+	ReviewedAt   *time.Time            `json:"reviewedAt,omitempty"`
 }
 
 // SubmitProviderApplication creates a new provider application for ops review.
@@ -1867,11 +1885,12 @@ func (a *App) ListProviderApplications(status string) []ProviderApplication {
 
 // CreateListingInput holds input for creating a new listing.
 type CreateListingInput struct {
-	ProviderOrgID  string   `json:"providerOrgId"`
-	Title          string   `json:"title"`
-	Category       string   `json:"category"`
-	BasePriceCents int64    `json:"basePriceCents"`
-	Tags           []string `json:"tags"`
+	ProviderOrgID      string   `json:"providerOrgId"`
+	Title              string   `json:"title"`
+	Category           string   `json:"category"`
+	BasePriceCents     int64    `json:"basePriceCents"`
+	Tags               []string `json:"tags"`
+	ExecutionProfileID string   `json:"executionProfileId"`
 }
 
 // CreateListing creates a new provider listing.
@@ -1879,14 +1898,18 @@ func (a *App) CreateListing(input CreateListingInput) (Listing, error) {
 	if input.Title == "" || input.Category == "" {
 		return Listing{}, ErrMissingRequiredFields
 	}
+	if err := a.validateExecutionProfile(input.ExecutionProfileID); err != nil {
+		return Listing{}, err
+	}
 
 	listing := Listing{
-		ID:             fmt.Sprintf("listing_%d", a.now().UnixNano()),
-		ProviderOrgID:  input.ProviderOrgID,
-		Title:          input.Title,
-		Category:       input.Category,
-		BasePriceCents: input.BasePriceCents,
-		Tags:           input.Tags,
+		ID:                 fmt.Sprintf("listing_%d", a.now().UnixNano()),
+		ProviderOrgID:      input.ProviderOrgID,
+		Title:              input.Title,
+		Category:           input.Category,
+		BasePriceCents:     input.BasePriceCents,
+		Tags:               input.Tags,
+		ExecutionProfileID: input.ExecutionProfileID,
 	}
 
 	// For memory store, we just add to the list
@@ -1896,7 +1919,7 @@ func (a *App) CreateListing(input CreateListingInput) (Listing, error) {
 
 // TopUpBudget adds budget to a milestone (buyer response to budget wall).
 type TopUpInput struct {
-	MilestoneID    string `json:"milestoneId"`
+	MilestoneID     string `json:"milestoneId"`
 	AdditionalCents int64  `json:"additionalCents"`
 }
 
@@ -1931,18 +1954,19 @@ func (a *App) TopUpMilestone(orderID string, input TopUpInput) (*core.Order, err
 
 // ProviderCarrierBinding represents a provider's Carrier integration credentials.
 type ProviderCarrierBinding struct {
-	ID              string    `json:"id"`
-	ProviderOrgID   string    `json:"providerOrgId"`
-	CarrierBaseURL  string    `json:"carrierBaseUrl"`
-	IntegrationToken string   `json:"integrationToken,omitempty"`
-	HostID          string    `json:"hostId"`
-	AgentID         string    `json:"agentId"`
-	Backend         string    `json:"backend"`
-	WorkspaceRoot   string    `json:"workspaceRoot"`
-	CallbackSecret  string    `json:"callbackSecret,omitempty"`
-	Status          string    `json:"status"` // active, suspended, pending_verification
-	CreatedAt       time.Time `json:"createdAt"`
-	VerifiedAt      *time.Time `json:"verifiedAt,omitempty"`
+	ID               string     `json:"id"`
+	ProviderOrgID    string     `json:"providerOrgId"`
+	CarrierBaseURL   string     `json:"carrierBaseUrl"`
+	IntegrationToken string     `json:"integrationToken,omitempty"`
+	HostID           string     `json:"hostId"`
+	AgentID          string     `json:"agentId"`
+	Backend          string     `json:"backend"`
+	WorkspaceRoot    string     `json:"workspaceRoot"`
+	CallbackSecret   string     `json:"callbackSecret,omitempty"`
+	CallbackKeyID    string     `json:"callbackKeyId,omitempty"`
+	Status           string     `json:"status"` // active, suspended, pending_verification
+	CreatedAt        time.Time  `json:"createdAt"`
+	VerifiedAt       *time.Time `json:"verifiedAt,omitempty"`
 }
 
 // RegisterCarrierBinding registers a provider's Carrier integration.
@@ -1971,11 +1995,20 @@ func (a *App) RegisterCarrierBinding(input ProviderCarrierBinding) (ProviderCarr
 		Backend:          input.Backend,
 		WorkspaceRoot:    input.WorkspaceRoot,
 		CallbackSecret:   input.CallbackSecret,
+		CallbackKeyID:    input.CallbackKeyID,
 		Status:           "pending_verification",
 		CreatedAt:        a.now(),
 	}
 
+	if binding.CallbackSecret != "" && strings.TrimSpace(binding.CallbackKeyID) == "" {
+		binding.CallbackKeyID = fmt.Sprintf("cbk_%d", len(a.carrierBindings)+1)
+	}
+
 	a.carrierBindings = append(a.carrierBindings, binding)
+	if a.carrierBindingsByOrg == nil {
+		a.carrierBindingsByOrg = make(map[string]int)
+	}
+	a.carrierBindingsByOrg[input.ProviderOrgID] = len(a.carrierBindings) - 1
 
 	a.notify("provider.carrier.binding.registered", input.ProviderOrgID, map[string]any{
 		"bindingId": binding.ID,
@@ -1989,12 +2022,20 @@ func (a *App) GetProviderCarrierBinding(providerOrgID string) (ProviderCarrierBi
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	for _, b := range a.carrierBindings {
-		if b.ProviderOrgID == providerOrgID {
-			return b, nil
-		}
+	if a.carrierBindingsByOrg == nil {
+		a.reindexCarrierBindings()
+	}
+	if idx, ok := a.carrierBindingsByOrg[providerOrgID]; ok && idx >= 0 && idx < len(a.carrierBindings) {
+		return a.carrierBindings[idx], nil
 	}
 	return ProviderCarrierBinding{}, fmt.Errorf("no carrier binding for provider %s", providerOrgID)
+}
+
+func (a *App) reindexCarrierBindings() {
+	a.carrierBindingsByOrg = make(map[string]int)
+	for i, binding := range a.carrierBindings {
+		a.carrierBindingsByOrg[binding.ProviderOrgID] = i
+	}
 }
 
 // VerifyCarrierBinding marks a binding as verified after successful health check.
@@ -2025,4 +2066,220 @@ func (a *App) SuspendCarrierBinding(bindingID string) (ProviderCarrierBinding, e
 		}
 	}
 	return ProviderCarrierBinding{}, fmt.Errorf("binding not found: %s", bindingID)
+}
+
+// DisputeWithEvidence combines a dispute with its associated carrier evidence.
+type DisputeWithEvidence struct {
+	Dispute  Dispute `json:"dispute"`
+	Evidence []any   `json:"evidence,omitempty"`
+}
+
+// GetDisputeWithEvidence returns a dispute along with any carrier evidence
+// associated with the disputed milestone's execution jobs.
+func (a *App) GetDisputeWithEvidence(disputeID string) (DisputeWithEvidence, error) {
+	dispute, err := a.disputes.Get(disputeID)
+	if err != nil {
+		return DisputeWithEvidence{}, err
+	}
+	return DisputeWithEvidence{
+		Dispute:  dispute,
+		Evidence: nil, // Evidence is retrieved from carrier.EvidenceStore in the gateway
+	}, nil
+}
+
+// SetRequireExecutionProfile enables execution profile enforcement.
+func (a *App) SetRequireExecutionProfile(validator func(profileID string) bool) {
+	a.requireExecProfile = true
+	a.profileValidator = validator
+}
+
+func (a *App) validateExecutionProfile(profileID string) error {
+	if !a.requireExecProfile {
+		return nil
+	}
+	if profileID == "" {
+		return fmt.Errorf("execution profile ID is required")
+	}
+	if a.profileValidator != nil && !a.profileValidator(profileID) {
+		return fmt.Errorf("execution profile %s not found or inactive", profileID)
+	}
+	return nil
+}
+
+// IsProviderApproved checks if a provider org has an approved application.
+// Returns true if no application system is configured (backward compatible).
+func (a *App) IsProviderApproved(providerOrgID string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if len(a.providerApplications) == 0 {
+		return true // No applications submitted yet — backward compatible
+	}
+
+	for _, app := range a.providerApplications {
+		if app.OrgID == providerOrgID && app.Status == VettingApproved {
+			return true
+		}
+	}
+	return false
+}
+
+// BuyerCreditLimit represents the credit limit for a buyer organization.
+type BuyerCreditLimit struct {
+	BuyerOrgID     string    `json:"buyerOrgId"`
+	LimitCents     int64     `json:"limitCents"`
+	UsedCents      int64     `json:"usedCents"`
+	AvailableCents int64     `json:"availableCents"`
+	SetBy          string    `json:"setBy"`
+	UpdatedAt      time.Time `json:"updatedAt"`
+}
+
+// SetCreditLimit sets or updates the credit limit for a buyer org (ops action).
+func (a *App) SetCreditLimit(buyerOrgID string, limitCents int64, setBy string) BuyerCreditLimit {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	// Calculate used credit from active credit-funded orders
+	var usedCents int64
+	orders, _ := a.orders.List()
+	for _, o := range orders {
+		if o.BuyerOrgID == buyerOrgID && o.FundingMode == "credit" &&
+			(o.Status == core.OrderStatusRunning || o.Status == core.OrderStatusAwaitingBudget) {
+			for _, ms := range o.Milestones {
+				usedCents += ms.BudgetCents
+			}
+		}
+	}
+
+	limit := BuyerCreditLimit{
+		BuyerOrgID:     buyerOrgID,
+		LimitCents:     limitCents,
+		UsedCents:      usedCents,
+		AvailableCents: limitCents - usedCents,
+		SetBy:          setBy,
+		UpdatedAt:      a.now(),
+	}
+
+	if a.creditLimits == nil {
+		a.creditLimits = make(map[string]BuyerCreditLimit)
+	}
+	a.creditLimits[buyerOrgID] = limit
+
+	a.notify("credit.limit.updated", buyerOrgID, map[string]any{
+		"limitCents": limitCents, "setBy": setBy,
+	})
+
+	return limit
+}
+
+// GetCreditLimit returns the credit limit for a buyer org.
+func (a *App) GetCreditLimit(buyerOrgID string) (BuyerCreditLimit, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	limit, ok := a.creditLimits[buyerOrgID]
+	return limit, ok
+}
+
+// BudgetWallInfo provides details when an order hits the budget wall.
+type BudgetWallInfo struct {
+	MilestoneID    string `json:"milestoneId"`
+	MilestoneTitle string `json:"milestoneTitle"`
+	BudgetCents    int64  `json:"budgetCents"`
+	SpentCents     int64  `json:"spentCents"`
+	OverageCents   int64  `json:"overageCents"`
+}
+
+// GetBudgetWallInfo returns budget wall details for an order in awaiting_budget state.
+func (a *App) GetBudgetWallInfo(orderID string) (*BudgetWallInfo, error) {
+	order, err := a.orders.Get(orderID)
+	if err != nil {
+		return nil, err
+	}
+	if order.Status != core.OrderStatusAwaitingBudget {
+		return nil, nil // Not in budget wall
+	}
+
+	for _, ms := range order.Milestones {
+		if ms.State == core.MilestoneStatePaused {
+			spent := ms.CurrentSpendCents()
+			return &BudgetWallInfo{
+				MilestoneID:    ms.ID,
+				MilestoneTitle: ms.Title,
+				BudgetCents:    ms.BudgetCents,
+				SpentCents:     spent,
+				OverageCents:   spent - ms.BudgetCents,
+			}, nil
+		}
+	}
+	return nil, nil
+}
+
+// FiberExposure summarizes outstanding settlement risk.
+type FiberExposure struct {
+	TotalPrepaidUnsettledCents int64 `json:"totalPrepaidUnsettledCents"`
+	TotalCreditUnsettledCents  int64 `json:"totalCreditUnsettledCents"`
+	TotalExposureCents         int64 `json:"totalExposureCents"`
+	ActiveOrderCount           int   `json:"activeOrderCount"`
+	PausedOrderCount           int   `json:"pausedOrderCount"`
+}
+
+// GetFiberExposure calculates total outstanding settlement risk.
+func (a *App) GetFiberExposure() (FiberExposure, error) {
+	orders, err := a.orders.List()
+	if err != nil {
+		return FiberExposure{}, err
+	}
+
+	var exp FiberExposure
+	for _, o := range orders {
+		if o.Status != core.OrderStatusRunning && o.Status != core.OrderStatusAwaitingBudget {
+			continue
+		}
+		if o.Status == core.OrderStatusRunning {
+			exp.ActiveOrderCount++
+		} else {
+			exp.PausedOrderCount++
+		}
+
+		for _, ms := range o.Milestones {
+			if ms.State == core.MilestoneStateRunning || ms.State == core.MilestoneStatePaused {
+				unsettled := ms.BudgetCents - ms.SettledCents
+				if o.FundingMode == "prepaid" {
+					exp.TotalPrepaidUnsettledCents += unsettled
+				} else {
+					exp.TotalCreditUnsettledCents += unsettled
+				}
+			}
+		}
+	}
+	exp.TotalExposureCents = exp.TotalPrepaidUnsettledCents + exp.TotalCreditUnsettledCents
+	return exp, nil
+}
+
+// CheckCreditAvailability verifies a buyer has enough credit for a new order.
+func (a *App) CheckCreditAvailability(buyerOrgID string, requestedCents int64) error {
+	a.mu.Lock()
+	limit, ok := a.creditLimits[buyerOrgID]
+	a.mu.Unlock()
+	if !ok {
+		return nil // No limit set — no enforcement
+	}
+
+	// Recalculate used credit from active orders
+	orders, _ := a.orders.List()
+	var usedCents int64
+	for _, o := range orders {
+		if o.BuyerOrgID == buyerOrgID && o.FundingMode == "credit" &&
+			(o.Status == core.OrderStatusRunning || o.Status == core.OrderStatusAwaitingBudget) {
+			for _, ms := range o.Milestones {
+				usedCents += ms.BudgetCents
+			}
+		}
+	}
+
+	available := limit.LimitCents - usedCents
+	if available < requestedCents {
+		return fmt.Errorf("insufficient credit: available %d, requested %d", available, requestedCents)
+	}
+	return nil
 }

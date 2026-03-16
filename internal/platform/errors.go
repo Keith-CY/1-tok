@@ -17,6 +17,7 @@ var (
 	// Validation errors
 	ErrMissingRequiredFields = errors.New("missing required fields")
 	ErrDeadlineRequired      = errors.New("response deadline is required")
+	ErrDeadlineInPast        = errors.New("response deadline must be in the future")
 	ErrMilestonesRequired    = errors.New("milestones are required")
 
 	// RFQ/Bid state errors
@@ -24,6 +25,12 @@ var (
 	ErrRFQNotOpenForAward = errors.New("rfq is not open for award")
 	ErrBidIDRequired      = errors.New("bid id is required")
 	ErrBidNotBelongToRFQ  = errors.New("bid does not belong to rfq")
+
+	// Provider errors
+	ErrProviderSuspended = errors.New("provider carrier binding is suspended")
+
+	// Bid errors
+	ErrBidExceedsBudget = errors.New("bid milestone totals exceed RFQ budget")
 
 	// Rating errors
 	ErrInvalidScore    = errors.New("score must be between 1 and 5")

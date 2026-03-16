@@ -1,15 +1,10 @@
 package gateway
+
 import (
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"os"
-	"slices"
-	"strconv"
-	"strings"
-	"time"
 	"github.com/chenyu/1-tok/internal/carrier"
 	"github.com/chenyu/1-tok/internal/core"
 	"github.com/chenyu/1-tok/internal/httputil"
@@ -20,13 +15,22 @@ import (
 	"github.com/chenyu/1-tok/internal/ratelimit"
 	"github.com/chenyu/1-tok/internal/runtimeconfig"
 	"github.com/chenyu/1-tok/internal/serviceauth"
+	"github.com/chenyu/1-tok/internal/usageproof"
 	"github.com/chenyu/1-tok/internal/validation"
+	"net/http"
+	"os"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
 )
+
 // Sentinel startup errors returned by NewServerWithOptionsE.
 var (
 	ErrIAMUpstreamRequired    = errors.New("IAM_UPSTREAM is required when ONE_TOK_REQUIRE_EXTERNALS=true")
 	ErrExecutionTokenRequired = errors.New("API_GATEWAY_EXECUTION_TOKEN or API_GATEWAY_EXECUTION_TOKENS is required when ONE_TOK_REQUIRE_EXTERNALS=true")
 )
+
 type Server struct {
 	app             *platform.App
 	auth            iamclient.Client
@@ -35,7 +39,9 @@ type Server struct {
 	carrier         *carrier.Service
 	webhooks        *notifications.Registry
 	evidence        *carrier.EvidenceStore
+	ledger          *carrier.EventLedger
 }
+
 func NewServer() *Server {
 	return NewServerWithOptions(Options{
 		App: platform.NewAppWithMemory(),
@@ -48,6 +54,7 @@ func NewServerWithApp(app *platform.App) *Server {
 		IAM: iamclient.NewClientFromEnv(),
 	})
 }
+
 type Options struct {
 	App             *platform.App
 	IAM             iamclient.Client
@@ -56,6 +63,7 @@ type Options struct {
 	RateLimiter     ratelimit.Limiter
 	Carrier         *carrier.Service
 }
+
 func NewServerWithOptions(options Options) *Server {
 	server, err := NewServerWithOptionsE(options)
 	if err != nil {
@@ -63,6 +71,7 @@ func NewServerWithOptions(options Options) *Server {
 	}
 	return server
 }
+
 // NewServerWithOptionsE is the error-returning variant of NewServerWithOptions.
 // Prefer this in entrypoints where you want to log.Fatal instead of panic.
 func NewServerWithOptionsE(options Options) (*Server, error) {
@@ -110,6 +119,7 @@ func NewServerWithOptionsE(options Options) (*Server, error) {
 		carrier:         carrierSvc,
 		webhooks:        registry,
 		evidence:        carrier.NewEvidenceStore(),
+		ledger:          carrier.NewEventLedger(),
 	}, nil
 }
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -120,6 +130,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleSystemInfo(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/system/ratelimits":
 		s.handleRateLimitConfig(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/system/stale-jobs":
+		s.handleStaleJobs(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/system/exposure":
+		s.handleFiberExposure(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/provider-applications":
 		s.handleSubmitApplication(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/provider-applications":
@@ -134,8 +148,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleVerifyCarrierBinding(w, r)
 	case r.Method == http.MethodPost && isCarrierBindingSuspendPath(r.URL.Path):
 		s.handleSuspendCarrierBinding(w, r)
-	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/carrier/callback":
+	case r.Method == http.MethodPost && (r.URL.Path == "/api/v1/carrier/callback" || r.URL.Path == "/api/v1/carrier/callbacks/events"):
 		s.handleCarrierCallback(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/credit-limits":
+		s.handleSetCreditLimit(w, r)
+	case r.Method == http.MethodGet && isGetCreditLimitPath(r.URL.Path):
+		s.handleGetCreditLimit(w, r)
 	case r.Method == http.MethodPost && isJobEvidencePath(r.URL.Path):
 		s.handleSubmitEvidence(w, r)
 	case r.Method == http.MethodGet && isJobEvidencePath(r.URL.Path):
@@ -148,6 +166,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleExportOrders(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/export/disputes":
 		s.handleExportDisputes(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/export/rfqs":
+		s.handleExportRFQs(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/export/applications":
+		s.handleExportApplications(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/orders/batch-status":
 		s.handleBatchOrderStatus(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/listings":
@@ -243,7 +265,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/api/v1/webhooks/"):
 		s.handleUnregisterWebhook(w, r)
 	default:
-		httputil.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "route not found"})
+		httputil.WriteError(w, http.StatusNotFound, httputil.ErrCodeNotFound, "route not found")
 	}
 }
 func (s *Server) handleListProviders(w http.ResponseWriter, r *http.Request) {
@@ -402,7 +424,7 @@ func (s *Server) handleListOrders(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetOrder(w http.ResponseWriter, r *http.Request) {
 	orderID, err := orderIDFromPath(r.URL.Path)
 	if err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeCallbackError(w, http.StatusBadRequest, httputil.ErrCodeBadRequest, err.Error())
 		return
 	}
 	order, err := s.app.GetOrder(orderID)
@@ -425,7 +447,12 @@ func (s *Server) handleGetOrder(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"order": order})
+
+	resp := map[string]any{"order": order}
+	if budgetWall, _ := s.app.GetBudgetWallInfo(order.ID); budgetWall != nil {
+		resp["budgetWall"] = budgetWall
+	}
+	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 func (s *Server) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
@@ -453,6 +480,14 @@ func (s *Server) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(payload.Milestones) == 0 {
 		httputil.WriteError(w, http.StatusBadRequest, httputil.ErrCodeValidation, "at least one milestone is required")
+		return
+	}
+	if !core.IsValidFundingMode(core.FundingMode(payload.FundingMode)) {
+		httputil.WriteError(w, http.StatusBadRequest, httputil.ErrCodeValidation, "fundingMode must be 'prepaid' or 'credit'")
+		return
+	}
+	if payload.FundingMode == "credit" && payload.CreditLineID == "" {
+		httputil.WriteError(w, http.StatusBadRequest, httputil.ErrCodeValidation, "creditLineId is required for credit funding mode")
 		return
 	}
 	buyerOrgID, err := s.resolveBuyerOrg(r, payload.BuyerOrgID)
@@ -495,7 +530,7 @@ func (s *Server) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	order, err := s.app.CreateOrder(input)
 	if err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeCallbackError(w, http.StatusBadRequest, httputil.ErrCodeBadRequest, err.Error())
 		return
 	}
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{"order": order})
@@ -598,10 +633,11 @@ func (s *Server) handleCreateBid(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload struct {
-		ProviderOrgID string `json:"providerOrgId"`
-		Message       string `json:"message"`
-		QuoteCents    int64  `json:"quoteCents"`
-		Milestones    []struct {
+		ProviderOrgID      string `json:"providerOrgId"`
+		Message            string `json:"message"`
+		QuoteCents         int64  `json:"quoteCents"`
+		ExecutionProfileID string `json:"executionProfileId"`
+		Milestones         []struct {
 			ID             string `json:"id"`
 			Title          string `json:"title"`
 			BasePriceCents int64  `json:"basePriceCents"`
@@ -639,10 +675,11 @@ func (s *Server) handleCreateBid(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	input := platform.CreateBidInput{
-		ProviderOrgID: providerOrgID,
-		Message:       payload.Message,
-		QuoteCents:    payload.QuoteCents,
-		Milestones:    make([]platform.BidMilestoneInput, 0, len(payload.Milestones)),
+		ProviderOrgID:      providerOrgID,
+		Message:            payload.Message,
+		QuoteCents:         payload.QuoteCents,
+		ExecutionProfileID: payload.ExecutionProfileID,
+		Milestones:         make([]platform.BidMilestoneInput, 0, len(payload.Milestones)),
 	}
 	for _, milestone := range payload.Milestones {
 		input.Milestones = append(input.Milestones, platform.BidMilestoneInput{
@@ -672,6 +709,10 @@ func (s *Server) handleAwardRFQ(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	if payload.FundingMode == "credit" && payload.CreditLineID == "" {
+		httputil.WriteError(w, http.StatusBadRequest, httputil.ErrCodeValidation, "creditLineId is required for credit funding mode")
 		return
 	}
 	rfq, err := s.app.GetRFQ(rfqID)
@@ -815,7 +856,9 @@ func (s *Server) resolveOpsUser(r *http.Request) (string, error) {
 	}
 	return "", fmt.Errorf("ops membership is required: %w", platform.ErrMembershipRequired)
 }
+
 type actorContextKey struct{}
+
 func (s *Server) authenticatedActor(r *http.Request) (iamclient.Actor, error) {
 	if s.auth == nil || iamclient.IsNoop(s.auth) {
 		return iamclient.Actor{}, nil
@@ -1147,9 +1190,24 @@ func writeGatewayError(w http.ResponseWriter, err error) {
 		errors.Is(err, platform.ErrRFQNotFound),
 		errors.Is(err, platform.ErrBidNotFound),
 		errors.Is(err, platform.ErrDisputeNotFound):
-		httputil.WriteJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		httputil.WriteError(w, http.StatusNotFound, httputil.ErrCodeNotFound, err.Error())
+	case errors.Is(err, platform.ErrProviderSuspended):
+		httputil.WriteError(w, http.StatusForbidden, httputil.ErrCodeForbidden, err.Error())
+	case errors.Is(err, platform.ErrMissingRequiredFields),
+		errors.Is(err, platform.ErrInvalidScore),
+		errors.Is(err, platform.ErrBidIDRequired),
+		errors.Is(err, platform.ErrDeadlineRequired),
+		errors.Is(err, platform.ErrDeadlineInPast),
+		errors.Is(err, platform.ErrMilestonesRequired):
+		httputil.WriteError(w, http.StatusBadRequest, httputil.ErrCodeValidation, err.Error())
+	case errors.Is(err, platform.ErrRFQNotOpenForBids),
+		errors.Is(err, platform.ErrRFQNotOpenForAward),
+		errors.Is(err, platform.ErrBidNotBelongToRFQ),
+		errors.Is(err, platform.ErrOrderNotCompleted),
+		errors.Is(err, platform.ErrOrderAlreadyRated):
+		httputil.WriteError(w, http.StatusConflict, httputil.ErrCodeConflict, err.Error())
 	default:
-		httputil.WriteJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		httputil.WriteError(w, http.StatusConflict, httputil.ErrCodeConflict, err.Error())
 	}
 }
 func (s *Server) actorUserID(r *http.Request) string {
@@ -1306,6 +1364,7 @@ func filterBidsForActor(rfq platform.RFQ, bids []platform.Bid, actor iamclient.A
 	}
 	return filtered, nil
 }
+
 // Route predicates — used in ServeHTTP to avoid fragile HasSuffix matching.
 // Each function validates that the path matches the expected structure.
 func isRFQBidsPath(path string) bool {
@@ -1564,7 +1623,27 @@ func (s *Server) handleGetDispute(w http.ResponseWriter, r *http.Request) {
 		writeGatewayError(w, err)
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"dispute": dispute})
+
+	// Collect evidence for the disputed order's jobs
+	var evidence []any
+	order, orderErr := s.app.GetOrder(dispute.OrderID)
+	if orderErr == nil {
+		for _, ms := range order.Milestones {
+			if ms.ID == dispute.MilestoneID {
+				binding, bindErr := s.carrier.GetBinding(order.ID, ms.ID)
+				if bindErr == nil {
+					jobs, _ := s.carrier.ListJobs(binding.ID)
+					for _, job := range jobs {
+						if ev, evErr := s.evidence.Get(job.ID); evErr == nil {
+							evidence = append(evidence, ev)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"dispute": dispute, "evidence": evidence})
 }
 func (s *Server) handleGetOrderRating(w http.ResponseWriter, r *http.Request) {
 	orderID, err := orderIDFromRatingPath(r.URL.Path)
@@ -1723,10 +1802,12 @@ func (s *Server) handleListNotifications(w http.ResponseWriter, r *http.Request)
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"notifications": notifications})
 }
+
 // webhookNotifierAdapter bridges platform.Notifier (string event) to notifications.WebhookService (EventType).
 type webhookNotifierAdapter struct {
 	svc *notifications.WebhookService
 }
+
 func (a *webhookNotifierAdapter) Send(event string, target string, payload map[string]any) error {
 	return a.svc.Send(notifications.EventType(event), target, payload)
 }
@@ -1841,42 +1922,206 @@ func (s *Server) handleCarrierCallback(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	// Verify callback signature (secret from env or config)
-	callbackSecret := os.Getenv("CARRIER_CALLBACK_SECRET")
-	if err := carrier.VerifyCallback(callbackSecret, event); err != nil {
-		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error()})
+
+	s.applyCarrierCallbackAuthHeaders(&event, r)
+
+	// Verify callback signature (binding/provider secret preferred, then env fallback)
+	callbackSecret, err := s.resolveCarrierCallbackSecret(r, event)
+	if err != nil {
+		writeCallbackError(w, http.StatusUnauthorized, httputil.ErrCodeUnauthorized, err.Error())
 		return
 	}
+	if err := carrier.VerifyCallback(callbackSecret, event); err != nil {
+		writeCallbackError(w, http.StatusUnauthorized, httputil.ErrCodeUnauthorized, err.Error())
+		return
+	}
+
+	// Normalize legacy snake_case event names to canonical dot-separated
+	event.Type = carrier.NormalizeEventName(event.Type)
+	// Ledger: check for replay/gap/reorder
+	eventID, _ := event.Payload["eventId"].(string)
+	sequence, _ := event.Payload["sequence"].(float64)
+	if eventID != "" {
+		ledgerEvent, replay, ledgerErr := s.ledger.Record(
+			event.JobID, eventID, int64(sequence),
+			event.Type, "", "", "",
+		)
+		if ledgerErr != nil {
+			// Gap or reorder — tell Carrier to redeliver
+			httputil.WriteJSON(w, http.StatusConflict, map[string]any{
+				"error": ledgerErr.Error(), "accepted": false, "code": httputil.ErrCodeConflict,
+			})
+			return
+		}
+		if replay {
+			// Return previous decision
+			httputil.WriteJSON(w, http.StatusOK, map[string]any{
+				"accepted": true, "replay": true, "decision": ledgerEvent.DecisionJSON,
+			})
+			return
+		}
+	}
+
 	// Process callback based on type
+	recommendedAction := RecommendedAction{Type: "continue"}
 	switch event.Type {
-	case "job.started":
+	case "job.started", "execution.started", "milestone.started":
 		if _, err := s.carrier.StartJob(event.JobID); err != nil {
 			writeGatewayError(w, err)
 			return
 		}
-	case "job.completed":
+	case "job.completed", "execution.completed":
 		output, _ := event.Payload["output"].(string)
 		if _, err := s.carrier.CompleteJob(event.JobID, output); err != nil {
 			writeGatewayError(w, err)
 			return
 		}
-	case "job.failed":
+	case "milestone.ready":
+		// Milestone-ready event often carries end-of-work artifacts. Persist evidence first, then mark completion.
+		if _, err := s.recordArtifactFromCallback(event); err != nil {
+			if !isEvidenceAlreadySubmittedError(err) {
+				writeGatewayError(w, err)
+				return
+			}
+		}
+		if _, err := s.carrier.CompleteJob(event.JobID, eventPayloadString(event.Payload, "output")); err != nil {
+			writeGatewayError(w, err)
+			return
+		}
+	case "job.failed", "execution.failed":
 		errMsg, _ := event.Payload["error"].(string)
 		if _, err := s.carrier.FailJob(event.JobID, errMsg); err != nil {
 			writeGatewayError(w, err)
 			return
 		}
-	case "heartbeat":
+	case "heartbeat", "execution.heartbeat":
 		if err := s.carrier.Heartbeat(event.BindingID); err != nil {
 			writeGatewayError(w, err)
 			return
 		}
+	case "execution.pause_requested", "execution.paused":
+		if _, err := s.carrier.CancelJob(event.JobID); err != nil {
+			writeGatewayError(w, err)
+			return
+		}
+		recommendedAction = RecommendedAction{Type: "pause", Reason: "pause requested by carrier"}
+	case "execution.resumed":
+		// Resumption is best-effort and currently maps to continue.
+		_ = event.JobID
+	case "usage.reported":
+		if _, _, err := s.recordUsageFromCallback(event); err != nil {
+			httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		recommendedAction = eventUsageBasedAction(event.Payload)
+	case "artifact.ready":
+		if _, err := s.recordArtifactFromCallback(event); err != nil {
+			if !isEvidenceAlreadySubmittedError(err) {
+				writeGatewayError(w, err)
+				return
+			}
+		}
+		recommendedAction = eventBudgetRecommendedAction(event.Payload)
+	case "budget.low":
+		// Best effort: parse requested recommendation if provided by carrier.
+		recommendedAction = eventBudgetRecommendedAction(event.Payload)
 	default:
-		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown callback type"})
+		writeCallbackError(w, http.StatusBadRequest, httputil.ErrCodeBadRequest, "unknown callback type")
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "processed"})
+
+	// Build callback response with recommendedAction
+	response := s.buildCallbackResponse(event)
+	if recommendedAction.Type != "" {
+		response.RecommendedAction = recommendedAction
+		if recommendedAction.Type != "continue" {
+			response.ContinueAllowed = false
+		}
+	}
+
+	// Store decision in ledger for replay
+	if eventID != "" {
+		decisionBytes, _ := json.Marshal(response.RecommendedAction)
+		s.ledger.UpdateDecision(eventID, string(decisionBytes))
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, response)
 }
+
+func writeCallbackError(w http.ResponseWriter, status int, code string, message string) {
+	httputil.WriteJSON(w, status, map[string]any{"error": message, "code": code})
+}
+
+func (s *Server) applyCarrierCallbackAuthHeaders(event *carrier.CallbackEvent, r *http.Request) {
+	if event == nil {
+		return
+	}
+
+	if sig := strings.TrimSpace(r.Header.Get("X-One-Tok-Signature")); sig != "" {
+		event.Signature = sig
+	}
+
+	if ts := strings.TrimSpace(r.Header.Get("X-One-Tok-Timestamp")); ts != "" {
+		event.Timestamp = ts
+	}
+}
+
+func (s *Server) resolveCarrierCallbackSecret(r *http.Request, event carrier.CallbackEvent) (string, error) {
+	if overrideSecret := strings.TrimSpace(r.Header.Get("X-One-Tok-Callback-Secret")); overrideSecret != "" {
+		return overrideSecret, nil
+	}
+
+	overrideKeyID := strings.TrimSpace(r.Header.Get("X-One-Tok-Callback-Key-Id"))
+	if overrideKeyID == "" {
+		overrideKeyID = strings.TrimSpace(r.Header.Get("X-One-Tok-Key-Id"))
+	}
+	if event.BindingID == "" {
+		if overrideKeyID != "" {
+			return "", fmt.Errorf("callback key id provided but no binding secret configured")
+		}
+		return os.Getenv("CARRIER_CALLBACK_SECRET"), nil
+	}
+
+	binding, err := s.carrier.GetBindingByID(event.BindingID)
+	if err != nil {
+		if overrideKeyID != "" {
+			return "", fmt.Errorf("callback key id provided but no binding secret configured")
+		}
+		return os.Getenv("CARRIER_CALLBACK_SECRET"), nil
+	}
+
+	order, err := s.app.GetOrder(binding.OrderID)
+	if err != nil {
+		if overrideKeyID != "" {
+			return "", fmt.Errorf("callback key id provided but no binding secret configured")
+		}
+		return os.Getenv("CARRIER_CALLBACK_SECRET"), nil
+	}
+
+	providerBinding, err := s.app.GetProviderCarrierBinding(order.ProviderOrgID)
+	if err != nil {
+		if overrideKeyID != "" {
+			return "", fmt.Errorf("callback key id provided but no binding secret configured")
+		}
+		return os.Getenv("CARRIER_CALLBACK_SECRET"), nil
+	}
+
+	if overrideKeyID != "" && providerBinding.CallbackKeyID != "" && overrideKeyID != providerBinding.CallbackKeyID {
+		return "", fmt.Errorf("unknown callback key id")
+	}
+
+	secret := strings.TrimSpace(providerBinding.CallbackSecret)
+	if secret == "" && overrideKeyID != "" {
+		return "", fmt.Errorf("callback key id provided but no binding secret configured")
+	}
+
+	if secret != "" {
+		return secret, nil
+	}
+
+	return os.Getenv("CARRIER_CALLBACK_SECRET"), nil
+}
+
 func (s *Server) handleCreateListing(w http.ResponseWriter, r *http.Request) {
 	var payload platform.CreateListingInput
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -1932,8 +2177,15 @@ func (s *Server) handleRegisterCarrierBinding(w http.ResponseWriter, r *http.Req
 		writeGatewayError(w, err)
 		return
 	}
+	binding = sanitizeCarrierBindingForPublic(binding)
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{"binding": binding})
 }
+func sanitizeCarrierBindingForPublic(b platform.ProviderCarrierBinding) platform.ProviderCarrierBinding {
+	b.IntegrationToken = ""
+	b.CallbackSecret = ""
+	return b
+}
+
 func (s *Server) handleGetCarrierBinding(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	providerOrgID := parts[3]
@@ -1942,9 +2194,7 @@ func (s *Server) handleGetCarrierBinding(w http.ResponseWriter, r *http.Request)
 		writeGatewayError(w, err)
 		return
 	}
-	// Don't expose secrets in GET response
-	binding.IntegrationToken = ""
-	binding.CallbackSecret = ""
+	binding = sanitizeCarrierBindingForPublic(binding)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"binding": binding})
 }
 func (s *Server) handleVerifyCarrierBinding(w http.ResponseWriter, r *http.Request) {
@@ -1955,8 +2205,10 @@ func (s *Server) handleVerifyCarrierBinding(w http.ResponseWriter, r *http.Reque
 		writeGatewayError(w, err)
 		return
 	}
+	binding = sanitizeCarrierBindingForPublic(binding)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"binding": binding})
 }
+
 func (s *Server) handleSuspendCarrierBinding(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	bindingID := parts[3]
@@ -1965,8 +2217,10 @@ func (s *Server) handleSuspendCarrierBinding(w http.ResponseWriter, r *http.Requ
 		writeGatewayError(w, err)
 		return
 	}
+	binding = sanitizeCarrierBindingForPublic(binding)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"binding": binding})
 }
+
 // authorizeRFQForActor verifies the actor is a participant in the RFQ.
 // Participants: buyer org, awarded provider, bidding providers, or ops roles.
 func (s *Server) authorizeRFQForActor(rfq platform.RFQ, actor iamclient.Actor) error {
@@ -2016,4 +2270,336 @@ func actorBelongsToOrg(actor iamclient.Actor, orgID string) bool {
 		}
 	}
 	return false
+}
+
+func (s *Server) handleStaleJobs(w http.ResponseWriter, r *http.Request) {
+	stale := s.carrier.ReconcileStaleJobs()
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"staleJobs": stale, "count": len(stale)})
+}
+
+func isGetCreditLimitPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 4 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "credit-limits"
+}
+
+func (s *Server) handleSetCreditLimit(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		BuyerOrgID string `json:"buyerOrgId"`
+		LimitCents int64  `json:"limitCents"`
+		SetBy      string `json:"setBy"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	limit := s.app.SetCreditLimit(payload.BuyerOrgID, payload.LimitCents, payload.SetBy)
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"creditLimit": limit})
+}
+
+func (s *Server) handleGetCreditLimit(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	buyerOrgID := parts[3]
+	limit, ok := s.app.GetCreditLimit(buyerOrgID)
+	if !ok {
+		httputil.WriteJSON(w, http.StatusNotFound, map[string]string{"error": "no credit limit set"})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"creditLimit": limit})
+}
+
+// CallbackResponse is the response sent back to Carrier after processing a callback.
+type CallbackResponse struct {
+	Accepted          bool              `json:"accepted"`
+	ContinueAllowed   bool              `json:"continueAllowed"`
+	RecommendedAction RecommendedAction `json:"recommendedAction"`
+}
+
+type RecommendedAction struct {
+	Type   string `json:"type"` // continue, pause, cancel
+	Reason string `json:"reason,omitempty"`
+}
+
+func (s *Server) buildCallbackResponse(event carrier.CallbackEvent) CallbackResponse {
+	resp := CallbackResponse{
+		Accepted:          true,
+		ContinueAllowed:   true,
+		RecommendedAction: RecommendedAction{Type: "continue"},
+	}
+
+	if event.JobID == "" {
+		return resp
+	}
+
+	job, err := s.carrier.GetJob(event.JobID)
+	if err != nil || job.State == carrier.JobStateCompleted || job.State == carrier.JobStateFailed || job.State == carrier.JobStateCancelled {
+		return resp
+	}
+
+	// Pause if milestone/order budget was exceeded.
+	binding, err := s.carrier.GetBindingByID(job.BindingID)
+	if err == nil {
+		if order, err := s.app.GetOrder(binding.OrderID); err == nil {
+			if order.Status == core.OrderStatusAwaitingBudget {
+				resp.RecommendedAction = RecommendedAction{Type: "pause", Reason: "order budget exhausted"}
+				resp.ContinueAllowed = false
+			}
+		}
+	}
+
+	// Check if binding is stale
+	stale, _ := s.carrier.IsStale(job.BindingID)
+	if stale {
+		resp.RecommendedAction = RecommendedAction{Type: "cancel", Reason: "carrier heartbeat stale"}
+		resp.ContinueAllowed = false
+	}
+
+	return resp
+}
+
+func (s *Server) recordUsageFromCallback(event carrier.CallbackEvent) (*core.Order, core.UsageCharge, error) {
+	job, err := s.carrier.GetJob(event.JobID)
+	if err != nil {
+		return nil, core.UsageCharge{}, err
+	}
+	binding, err := s.carrier.GetBindingByID(job.BindingID)
+	if err != nil {
+		return nil, core.UsageCharge{}, err
+	}
+
+	kind := jobInputDefaultUsageKind(event.Payload)
+	amountCents, ok := getPayloadInt64(event.Payload, "amountCents")
+	if !ok {
+		return nil, core.UsageCharge{}, fmt.Errorf("invalid usage amount")
+	}
+	proofRef, proofSig, proofTS, err := parseUsageProofPayload(event.Payload)
+	if err != nil {
+		return nil, core.UsageCharge{}, err
+	}
+
+	if err := s.verifyUsageProofBindingSecret(&job, binding, kind, amountCents, proofRef, proofSig, proofTS); err != nil {
+		return nil, core.UsageCharge{}, err
+	}
+
+	return s.app.RecordUsageCharge(binding.OrderID, platform.RecordUsageChargeInput{
+		MilestoneID:    job.MilestoneID,
+		Kind:           kind,
+		AmountCents:    amountCents,
+		ProofRef:       proofRef,
+		ProofSignature: proofSig,
+		ProofTimestamp: proofTS,
+	})
+}
+
+func parseUsageProofPayload(payload map[string]any) (proofRef string, proofSig string, proofTS string, err error) {
+	proofRef, _ = payload["proofRef"].(string)
+	proofSig, _ = payload["proofSignature"].(string)
+	proofTS, _ = payload["proofTimestamp"].(string)
+
+	hasAll := strings.TrimSpace(proofRef) != "" || strings.TrimSpace(proofSig) != "" || strings.TrimSpace(proofTS) != ""
+	if !hasAll {
+		return "", "", "", nil
+	}
+	if strings.TrimSpace(proofRef) == "" || strings.TrimSpace(proofSig) == "" || strings.TrimSpace(proofTS) == "" {
+		return "", "", "", fmt.Errorf("invalid usage proof payload: proofRef, proofSignature and proofTimestamp are required together")
+	}
+	if _, err = time.Parse(time.RFC3339, proofTS); err != nil {
+		return "", "", "", fmt.Errorf("invalid usage proof payload: proofTimestamp must be RFC3339")
+	}
+	return strings.TrimSpace(proofRef), strings.TrimSpace(proofSig), strings.TrimSpace(proofTS), nil
+}
+
+func (s *Server) verifyUsageProofBindingSecret(job *carrier.ExecutionJob, binding carrier.Binding, kind core.UsageChargeKind, amountCents int64, proofRef, proofSig, proofTS string) error {
+	if proofRef == "" && proofSig == "" && proofTS == "" {
+		return nil
+	}
+
+	order, err := s.app.GetOrder(binding.OrderID)
+	if err != nil {
+		return nil
+	}
+
+	providerBinding, err := s.app.GetProviderCarrierBinding(order.ProviderOrgID)
+	if err != nil {
+		return nil
+	}
+
+	secret := strings.TrimSpace(providerBinding.CallbackSecret)
+	if secret == "" {
+		secret = os.Getenv("CARRIER_CALLBACK_SECRET")
+	}
+	if secret == "" {
+		return nil
+	}
+
+	return usageproof.Verify(secret, usageproof.Proof{
+		ExecutionID: job.ID,
+		MilestoneID: job.MilestoneID,
+		Kind:        string(kind),
+		AmountCents: amountCents,
+		Timestamp:   proofTS,
+		Signature:   proofSig,
+	})
+}
+
+func jobInputDefaultUsageKind(payload map[string]any) core.UsageChargeKind {
+	kind := core.UsageChargeKindExternalAPI
+	if raw, ok := payload["kind"].(string); ok && raw != "" {
+		kind = core.UsageChargeKind(raw)
+	}
+	if raw, ok := payload["usageKind"].(string); ok && raw != "" {
+		kind = core.UsageChargeKind(raw)
+	}
+	return kind
+}
+
+func eventPayloadString(payload map[string]any, key string) string {
+	if raw, ok := payload[key].(string); ok {
+		return raw
+	}
+	return ""
+}
+
+func recordEvidenceFromCallbackPayload(summary string, rawArtifacts any, rawUsage any) ([]carrier.Artifact, *carrier.UsageReport, error) {
+	var artifacts []carrier.Artifact
+	if rawArtifacts != nil {
+		artifactsArray, ok := rawArtifacts.([]any)
+		if !ok {
+			return nil, nil, fmt.Errorf("invalid artifacts payload")
+		}
+		for _, item := range artifactsArray {
+			artifactJSON, err := json.Marshal(item)
+			if err != nil {
+				return nil, nil, err
+			}
+			var artifact carrier.Artifact
+			if err := json.Unmarshal(artifactJSON, &artifact); err != nil {
+				return nil, nil, err
+			}
+			artifacts = append(artifacts, artifact)
+		}
+	}
+
+	// Keep summary as provided by caller; empty summary is valid when caller intentionally omits it.
+	var usage *carrier.UsageReport
+	if rawUsage != nil {
+		usageJSON, err := json.Marshal(rawUsage)
+		if err != nil {
+			return nil, nil, err
+		}
+		var parsed carrier.UsageReport
+		if err := json.Unmarshal(usageJSON, &parsed); err != nil {
+			return nil, nil, err
+		}
+		usage = &parsed
+	}
+	return artifacts, usage, nil
+}
+
+func isEvidenceAlreadySubmittedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "evidence already submitted")
+}
+
+func (s *Server) recordArtifactFromCallback(event carrier.CallbackEvent) (carrier.EvidencePackage, error) {
+	job, err := s.carrier.GetJob(event.JobID)
+	if err != nil {
+		return carrier.EvidencePackage{}, err
+	}
+	summary := eventPayloadString(event.Payload, "summary")
+	artifacts, usage, err := recordEvidenceFromCallbackPayload(summary, event.Payload["artifacts"], event.Payload["usageReport"])
+	if err != nil {
+		return carrier.EvidencePackage{}, err
+	}
+	if _, ok := event.Payload["usageSnapshot"].(map[string]any); ok {
+		usageSnapshot := event.Payload["usageSnapshot"].(map[string]any)
+		if usage == nil {
+			if usageSnapshot != nil {
+				usageJSON, err := json.Marshal(usageSnapshot)
+				if err != nil {
+					return carrier.EvidencePackage{}, err
+				}
+				var parsed carrier.UsageReport
+				if err := json.Unmarshal(usageJSON, &parsed); err != nil {
+					return carrier.EvidencePackage{}, err
+				}
+				usage = &parsed
+			}
+		}
+	}
+
+	if len(artifacts) == 0 && strings.TrimSpace(summary) == "" && usage == nil {
+		return carrier.EvidencePackage{}, fmt.Errorf("artifact.ready requires evidence payload")
+	}
+
+	return s.evidence.Submit(job.ID, job.BindingID, summary, artifacts, usage)
+}
+
+func eventUsageBasedAction(payload map[string]any) RecommendedAction {
+	// If carrier asks to pause after usage update, pass through explicit recommendation.
+	if action, ok := payload["recommendedAction"].(string); ok && action != "" {
+		return RecommendedAction{Type: action}
+	}
+	if pause, ok := payload["pause"].(bool); ok && pause {
+		return RecommendedAction{Type: "pause", Reason: eventPayloadString(payload, "reason")}
+	}
+	return RecommendedAction{Type: "continue"}
+}
+
+func eventBudgetRecommendedAction(payload map[string]any) RecommendedAction {
+	if action, ok := payload["recommendedAction"].(string); ok && action != "" {
+		reason, _ := payload["reason"].(string)
+		return RecommendedAction{Type: action, Reason: reason}
+	}
+	if pause, ok := payload["pause"].(bool); ok && pause {
+		reason, _ := payload["reason"].(string)
+		return RecommendedAction{Type: "pause", Reason: reason}
+	}
+	return RecommendedAction{Type: "continue"}
+}
+
+func getPayloadInt64(payload map[string]any, key string) (int64, bool) {
+	if v, ok := payload[key]; ok {
+		switch vv := v.(type) {
+		case int:
+			return int64(vv), true
+		case int64:
+			return vv, true
+		case float64:
+			return int64(vv), true
+		case string:
+			if parsed, err := strconv.ParseInt(strings.TrimSpace(vv), 10, 64); err == nil {
+				return parsed, true
+			}
+		}
+	}
+	return 0, false
+}
+
+func (s *Server) handleFiberExposure(w http.ResponseWriter, r *http.Request) {
+	exposure, err := s.app.GetFiberExposure()
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, exposure)
+}
+
+func (s *Server) handleExportRFQs(w http.ResponseWriter, r *http.Request) {
+	csv, err := s.app.ExportRFQsCSV()
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", "attachment; filename=rfqs.csv")
+	w.Write([]byte(csv))
+}
+
+func (s *Server) handleExportApplications(w http.ResponseWriter, r *http.Request) {
+	csv := s.app.ExportProviderApplicationsCSV()
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", "attachment; filename=applications.csv")
+	w.Write([]byte(csv))
 }

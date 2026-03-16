@@ -28,9 +28,19 @@ func TestVerifyCallback_Success(t *testing.T) {
 	}
 }
 
-func TestVerifyCallback_NoSecret(t *testing.T) {
+func TestVerifyCallback_NoSecret_AllowsUnsigned(t *testing.T) {
 	if err := VerifyCallback("", CallbackEvent{}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestVerifyCallback_NoSecretWithSignature(t *testing.T) {
+	event := CallbackEvent{
+		Type: "job.completed", JobID: "job_1", BindingID: "bind_1",
+		Timestamp: time.Now().UTC().Format(time.RFC3339), Signature: "sig",
+	}
+	if err := VerifyCallback("", event); err != ErrMissingCallbackSecret {
+		t.Fatalf("expected ErrMissingCallbackSecret, got %v", err)
 	}
 }
 

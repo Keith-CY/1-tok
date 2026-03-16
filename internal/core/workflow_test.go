@@ -140,7 +140,7 @@ func TestDisputeCreatesRecoveryAgainstProvider(t *testing.T) {
 		t.Fatalf("expected provider recovery, got %s", recovery.Kind)
 	}
 
-	if order.Milestones[0].DisputeStatus != DisputeStatusOpen {
+	if order.Milestones[0].DisputeStatus != DisputeStatusFrozen {
 		t.Fatalf("expected open dispute, got %s", order.Milestones[0].DisputeStatus)
 	}
 }
@@ -267,7 +267,7 @@ func TestResolveDispute(t *testing.T) {
 		FundingMode: FundingModeCredit, Status: OrderStatusRunning,
 		PlatformWallet: "w",
 		Milestones: []Milestone{
-			{ID: "ms_1", Title: "Work", BasePriceCents: 1000, BudgetCents: 1000,
+			{ID: "ms_1", Title: "Work", BasePriceCents: 1000, BudgetCents: 1000, SettledCents: 1000,
 				State: MilestoneStateSettled, DisputeStatus: DisputeStatusNone},
 		},
 	}
@@ -477,5 +477,153 @@ func TestIsLastMilestoneSettled_NotAll(t *testing.T) {
 	}
 	if order.isLastMilestoneSettled() {
 		t.Error("expected false when not all milestones settled")
+	}
+}
+
+func TestSettleMilestone_FromPaused(t *testing.T) {
+	order := &Order{
+		ID:          "ord_1",
+		Status:      OrderStatusAwaitingBudget,
+		FundingMode: FundingModePrepaid,
+		Milestones: []Milestone{
+			{ID: "ms_1", Title: "W", BasePriceCents: 1000, BudgetCents: 1000, SettledCents: 1000, State: MilestoneStatePaused, DisputeStatus: DisputeStatusNone},
+		},
+	}
+	entry, err := order.SettleMilestone(SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry.Kind != LedgerEntryKindProviderPayout {
+		t.Errorf("kind = %s", entry.Kind)
+	}
+	if order.Status != OrderStatusCompleted {
+		t.Errorf("status = %s", order.Status)
+	}
+}
+
+func TestSettleMilestone_CreditMode(t *testing.T) {
+	order := &Order{
+		ID:          "ord_1",
+		Status:      OrderStatusRunning,
+		FundingMode: FundingModeCredit,
+		Milestones: []Milestone{
+			{ID: "ms_1", Title: "W", BasePriceCents: 1000, BudgetCents: 1000, SettledCents: 1000, State: MilestoneStateRunning, DisputeStatus: DisputeStatusNone},
+		},
+	}
+	entry, err := order.SettleMilestone(SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry.Kind != LedgerEntryKindPlatformExposure {
+		t.Errorf("kind = %s, want platform_exposure", entry.Kind)
+	}
+}
+
+func TestSettleMilestone_NotPayable(t *testing.T) {
+	order := &Order{
+		ID:     "ord_1",
+		Status: OrderStatusRunning,
+		Milestones: []Milestone{
+			{ID: "ms_1", Title: "W", State: MilestoneStatePending, DisputeStatus: DisputeStatusNone},
+		},
+	}
+	_, err := order.SettleMilestone(SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+	if err == nil {
+		t.Error("expected error for pending milestone")
+	}
+}
+
+func TestOpenDispute_MilestoneNotFound(t *testing.T) {
+	order := &Order{
+		ID:     "ord_1",
+		Status: OrderStatusRunning,
+		Milestones: []Milestone{
+			{ID: "ms_1", Title: "W", State: MilestoneStateSettled, DisputeStatus: DisputeStatusNone},
+		},
+	}
+	_, _, err := order.OpenDispute(OpenDisputeInput{MilestoneID: "ms_nonexistent", Reason: "bad", RefundCents: 100})
+	if err == nil {
+		t.Error("expected error for nonexistent milestone")
+	}
+}
+
+func TestIsValidFundingMode(t *testing.T) {
+	if !IsValidFundingMode(FundingModePrepaid) { t.Error("prepaid should be valid") }
+	if !IsValidFundingMode(FundingModeCredit) { t.Error("credit should be valid") }
+	if IsValidFundingMode("invalid") { t.Error("invalid should not be valid") }
+	if IsValidFundingMode("") { t.Error("empty should not be valid") }
+}
+
+func TestRecordUsageCharge_NegativeAmount(t *testing.T) {
+	order := &Order{
+		ID: "ord_1", Status: OrderStatusRunning,
+		Milestones: []Milestone{
+			{ID: "ms_1", State: MilestoneStateRunning, BudgetCents: 5000, DisputeStatus: DisputeStatusNone},
+		},
+	}
+	_, err := order.RecordUsageCharge(RecordUsageChargeInput{
+		MilestoneID: "ms_1", Kind: UsageChargeKindToken, AmountCents: -100,
+	})
+	if err == nil { t.Error("expected error for negative amount") }
+}
+
+func TestRecordUsageCharge_ZeroAmount(t *testing.T) {
+	order := &Order{
+		ID: "ord_1", Status: OrderStatusRunning,
+		Milestones: []Milestone{
+			{ID: "ms_1", State: MilestoneStateRunning, BudgetCents: 5000, DisputeStatus: DisputeStatusNone},
+		},
+	}
+	_, err := order.RecordUsageCharge(RecordUsageChargeInput{
+		MilestoneID: "ms_1", Kind: UsageChargeKindToken, AmountCents: 0,
+	})
+	if err == nil { t.Error("expected error for zero amount") }
+}
+
+func TestOpenDispute_RefundExceedsSettled(t *testing.T) {
+	order := &Order{
+		ID: "ord_1", Status: OrderStatusRunning,
+		Milestones: []Milestone{
+			{ID: "ms_1", State: MilestoneStateSettled, SettledCents: 1000, BasePriceCents: 1000, DisputeStatus: DisputeStatusNone},
+		},
+	}
+	_, _, err := order.OpenDispute(OpenDisputeInput{MilestoneID: "ms_1", Reason: "bad", RefundCents: 2000})
+	if err == nil { t.Error("expected error for refund > settled") }
+}
+
+func TestOpenDispute_NegativeRefund(t *testing.T) {
+	order := &Order{
+		ID: "ord_1", Status: OrderStatusRunning,
+		Milestones: []Milestone{
+			{ID: "ms_1", State: MilestoneStateSettled, SettledCents: 1000, BasePriceCents: 1000, DisputeStatus: DisputeStatusNone},
+		},
+	}
+	_, _, err := order.OpenDispute(OpenDisputeInput{MilestoneID: "ms_1", Reason: "bad", RefundCents: -100})
+	if err == nil { t.Error("expected error for negative refund") }
+}
+
+func TestSettleMilestone_CreditCompletes(t *testing.T) {
+	order := &Order{
+		ID: "ord_1", Status: OrderStatusRunning, FundingMode: FundingModeCredit,
+		Milestones: []Milestone{
+			{ID: "ms_1", BasePriceCents: 500, BudgetCents: 500, State: MilestoneStateRunning, DisputeStatus: DisputeStatusNone},
+			{ID: "ms_2", BasePriceCents: 500, BudgetCents: 500, State: MilestoneStatePending, DisputeStatus: DisputeStatusNone},
+		},
+	}
+	// Settle ms_1
+	order.SettleMilestone(SettleMilestoneInput{MilestoneID: "ms_1", Summary: "done"})
+	if order.Status == OrderStatusCompleted {
+		t.Error("should not complete yet — ms_2 still pending")
+	}
+
+	// Advance ms_2 to running and settle
+	order.Milestones[1].State = MilestoneStateRunning
+	entry, err := order.SettleMilestone(SettleMilestoneInput{MilestoneID: "ms_2", Summary: "done"})
+	if err != nil { t.Fatal(err) }
+	if order.Status != OrderStatusCompleted {
+		t.Errorf("expected completed, got %s", order.Status)
+	}
+	if entry.Kind != LedgerEntryKindPlatformExposure {
+		t.Errorf("credit should produce platform_exposure, got %s", entry.Kind)
 	}
 }

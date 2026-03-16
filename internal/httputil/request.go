@@ -1,3 +1,7 @@
+// Package httputil provides HTTP middleware and utility functions
+// for the 1-tok gateway: security headers, CORS, rate limiting,
+// request ID tracing, gzip compression, health endpoints,
+// error responses, pagination, and JSON helpers.
 package httputil
 
 import (
