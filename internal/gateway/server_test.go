@@ -6626,6 +6626,37 @@ func TestCarrierCallback_ArtifactReadySubmitsEvidence(t *testing.T) {
 	}
 }
 
+func TestCarrierCallback_UnknownEventTypeRejected(t *testing.T) {
+	srv := NewServer()
+	t.Setenv("CARRIER_CALLBACK_SECRET", "unknown-type-secret")
+	event := carrier.CallbackEvent{
+		Type:      "job.unknownish",
+		JobID:     "ord_ghost",
+		BindingID: "",
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Payload: map[string]any{
+			"eventId":  "unknown-type-1",
+			"sequence": float64(1),
+		},
+	}
+	event.Signature = carrier.SignCallback("unknown-type-secret", event)
+	req := httptest.NewRequest("POST", "/api/v1/carrier/callback", strings.NewReader(mustJSON(t, event)))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for unknown callback type, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if code, ok := resp["code"].(string); !ok || code != "BAD_REQUEST" {
+		t.Fatalf("unexpected error payload: %v", resp)
+	}
+	if msg, ok := resp["error"].(string); !ok || msg != "unknown callback type" {
+		t.Fatalf("unexpected error payload: %v", resp)
+	}
+}
 func TestCarrierCallback_WithCallbackKeyIdAccepted(t *testing.T) {
 	srv := NewServer()
 
@@ -8000,6 +8031,35 @@ func TestApplicationReview_Gateway(t *testing.T) {
 	srv.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("review: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestApplicationReview_SecondReviewRejected(t *testing.T) {
+	srv := NewServer()
+	// Submit
+	submitBody := `{"orgId":"org_review_repeat","name":"Repeat Review","capabilities":["gpu"]}`
+	req := httptest.NewRequest("POST", "/api/v1/provider-applications", strings.NewReader(submitBody))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var submitResp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &submitResp); err != nil {
+		t.Fatalf("submit unmarshal: %v", err)
+	}
+	appID := submitResp["application"].(map[string]any)["id"].(string)
+
+	first := `{"reviewedBy":"ops","note":"approve","approve":true}`
+	req = httptest.NewRequest("POST", "/api/v1/provider-applications/"+appID+"/review", strings.NewReader(first))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("first review: %d %s", w.Code, w.Body.String())
+	}
+
+	req = httptest.NewRequest("POST", "/api/v1/provider-applications/"+appID+"/review", strings.NewReader(`{"reviewedBy":"ops2","note":"second","approve":false}`))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409 on second review, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
