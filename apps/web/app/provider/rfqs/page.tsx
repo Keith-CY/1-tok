@@ -23,6 +23,32 @@ export default async function ProviderRFQsPage({
   const statusFilter = (searchParams?.status ?? "all").toLowerCase();
   const sort = (searchParams?.sort ?? "deadline").toLowerCase();
 
+  const categoryValue = categoryFilter !== "all" ? categoryFilter : "";
+  const sortValue = sort !== "deadline" ? sort : "";
+
+  const buildStatusHref = (nextStatus: string) => {
+    const params = new URLSearchParams();
+
+    if (q) {
+      params.set("q", q);
+    }
+
+    if (categoryValue) {
+      params.set("category", categoryValue);
+    }
+
+    if (sortValue) {
+      params.set("sort", sortValue);
+    }
+
+    if (nextStatus !== "all") {
+      params.set("status", nextStatus);
+    }
+
+    const queryString = params.toString();
+    return queryString ? `/provider/rfqs?${queryString}` : "/provider/rfqs";
+  };
+
   const filteredRFQs = openRFQs
     .filter(
       (rfq) =>
@@ -57,6 +83,18 @@ export default async function ProviderRFQsPage({
       asideItems={[]}
     >
       <div className="space-y-4">
+
+        <div className="flex gap-2 mb-2">
+          <a href={buildStatusHref("all")} className="action-button">
+            All
+          </a>
+          <a href={buildStatusHref("open")} className="action-button">
+            Open
+          </a>
+          <a href={buildStatusHref("awarded")} className="action-button">
+            Awarded
+          </a>
+        </div>
         <form method="GET" className="auth-form market-form">
           <div className="market-form__grid">
             <label className="auth-field">
