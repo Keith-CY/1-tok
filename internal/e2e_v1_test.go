@@ -5,14 +5,26 @@ package internal_test
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
+	"context"
 	"github.com/chenyu/1-tok/internal/bootstrap"
 	"github.com/chenyu/1-tok/internal/gateway"
+	"github.com/chenyu/1-tok/internal/integrations/iam"
 )
+
+type stubIAMClient struct {
+	actor iam.Actor
+}
+
+func (s *stubIAMClient) GetActor(_ context.Context, _ string) (iam.Actor, error) {
+	return s.actor, nil
+}
 
 func TestV1BusinessFlowE2E(t *testing.T) {
 	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
@@ -25,18 +37,26 @@ func TestV1BusinessFlowE2E(t *testing.T) {
 	t.Setenv("ONE_TOK_REQUIRE_EXTERNALS", "")
 
 	app, cleanup, err := bootstrap.LoadPlatformApp()
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer cleanup()
 
 	gw, err := gateway.NewServerWithOptionsE(gateway.Options{App: app})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Gateway uses NoopClient (IAM_UPSTREAM forced empty above).
 	// Auth enforcement tested separately in gateway/server_test.go.
 
 	get := func(path string) *httptest.ResponseRecorder { return gwRequest(t, gw, "GET", path, nil) }
-	post := func(path string, payload any) *httptest.ResponseRecorder { return gwRequest(t, gw, "POST", path, payload) }
-	patch := func(path string, payload any) *httptest.ResponseRecorder { return gwRequest(t, gw, "PATCH", path, payload) }
+	post := func(path string, payload any) *httptest.ResponseRecorder {
+		return gwRequest(t, gw, "POST", path, payload)
+	}
+	patch := func(path string, payload any) *httptest.ResponseRecorder {
+		return gwRequest(t, gw, "PATCH", path, payload)
+	}
 
 	extract := func(resp *httptest.ResponseRecorder, keys ...string) string {
 		t.Helper()
@@ -201,4 +221,183 @@ func TestV1BusinessFlowE2E(t *testing.T) {
 	expect(post("/api/v1/orders/"+orderID+"/rating", map[string]any{"score": 10}), 400)
 
 	t.Logf("=== V1 E2E: 38 test cases PASSED — all business lines covered ===")
+}
+
+func TestV1BusinessFlowE2E_DisputeLifecycle(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL not set")
+	}
+	t.Setenv("DATABASE_URL", dsn)
+	t.Setenv("NATS_URL", "")
+	t.Setenv("IAM_UPSTREAM", "")
+	t.Setenv("ONE_TOK_REQUIRE_EXTERNALS", "")
+
+	app, cleanup, err := bootstrap.LoadPlatformApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+
+	gw, err := gateway.NewServerWithOptionsE(gateway.Options{App: app})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	post := func(path string, payload any) *httptest.ResponseRecorder {
+		return gwRequest(t, gw, "POST", path, payload)
+	}
+	get := func(path string) *httptest.ResponseRecorder { return gwRequest(t, gw, "GET", path, nil) }
+
+	extra := func(resp *httptest.ResponseRecorder, keys ...string) string {
+		t.Helper()
+		var m map[string]any
+		if err := json.Unmarshal(resp.Body.Bytes(), &m); err != nil {
+			t.Fatalf("extract: json parse: %v (body=%s)", err, resp.Body.String())
+		}
+		cur := m
+		for i, k := range keys {
+			if i == len(keys)-1 {
+				v, ok := cur[k]
+				if !ok {
+					t.Fatalf("extract: missing key %q", k)
+				}
+				return fmt.Sprintf("%v", v)
+			}
+			next, ok := cur[k].(map[string]any)
+			if !ok {
+				t.Fatalf("extract: key %q is not object", k)
+			}
+			cur = next
+		}
+		return ""
+	}
+
+	expect := func(resp *httptest.ResponseRecorder, code int) {
+		t.Helper()
+		if resp.Code != code {
+			t.Fatalf("want %d got %d: %s", code, resp.Code, resp.Body.String())
+		}
+	}
+
+	r := post("/api/v1/rfqs", map[string]any{
+		"buyerOrgId": "org_1", "title": "E2E Dispute", "category": "agent-ops",
+		"scope": "test", "budgetCents": 100000,
+		"responseDeadlineAt": time.Now().Add(72 * time.Hour).Format(time.RFC3339),
+	})
+	expect(r, 201)
+	rfqID := extra(r, "rfq", "id")
+
+	r = post("/api/v1/rfqs/"+rfqID+"/bids", map[string]any{
+		"providerOrgId": "org_2", "message": "bid", "quoteCents": 90000,
+		"milestones": []map[string]any{
+			{"id": "ms_1", "title": "Setup", "basePriceCents": 30000, "budgetCents": 30000},
+			{"id": "ms_2", "title": "Exec", "basePriceCents": 30000, "budgetCents": 30000},
+			{"id": "ms_3", "title": "Done", "basePriceCents": 30000, "budgetCents": 30000},
+		},
+	})
+	expect(r, 201)
+	bidID := extra(r, "bid", "id")
+
+	r = post("/api/v1/rfqs/"+rfqID+"/award", map[string]any{"bidId": bidID, "fundingMode": "prepaid"})
+	expect(r, 200)
+	orderID := extra(r, "order", "id")
+
+	expect(post("/api/v1/orders/"+orderID+"/milestones/ms_1/settle", map[string]any{"milestoneId": "ms_1", "summary": "ok"}), 200)
+	r = post("/api/v1/orders/"+orderID+"/disputes", map[string]any{"milestoneId": "ms_1", "reason": "bad", "refundCents": 10000})
+	expect(r, 201)
+
+	dResp := get("/api/v1/disputes?status=open")
+	expect(dResp, 200)
+	type disputeItem struct {
+		ID string `json:"id"`
+	}
+	type disputesResp struct {
+		Disputes []disputeItem `json:"disputes"`
+	}
+	var list disputesResp
+	if err := json.Unmarshal(dResp.Body.Bytes(), &list); err != nil {
+		t.Fatalf("unmarshal disputes: %v", err)
+	}
+	if len(list.Disputes) == 0 {
+		t.Fatal("no open dispute found")
+	}
+	disputeID := list.Disputes[0].ID
+	if disputeID == "" {
+		t.Fatal("dispute id empty")
+	}
+
+	r = post("/api/v1/disputes/"+disputeID+"/resolve", map[string]any{"resolution": "approved", "resolvedBy": "ops_admin"})
+	expect(r, 200)
+
+	dResp = get("/api/v1/disputes?status=resolved")
+	expect(dResp, 200)
+	if !strings.Contains(dResp.Body.String(), disputeID) {
+		t.Fatalf("expected resolved dispute in response, body=%s", dResp.Body.String())
+	}
+}
+
+func TestV1BusinessFlowE2E_AuthAndStateGuards(t *testing.T) {
+	dsn := os.Getenv("ONE_TOK_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ONE_TOK_TEST_DATABASE_URL not set")
+	}
+	t.Setenv("DATABASE_URL", dsn)
+	t.Setenv("NATS_URL", "")
+	t.Setenv("IAM_UPSTREAM", "")
+	t.Setenv("ONE_TOK_REQUIRE_EXTERNALS", "")
+
+	app, cleanup, err := bootstrap.LoadPlatformApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+
+	actor := iam.Actor{
+		UserID:      "u_buyer",
+		Memberships: []iam.ActorMembership{{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "org_owner"}},
+	}
+	gw, err := gateway.NewServerWithOptionsE(gateway.Options{
+		App: app,
+		IAM: &stubIAMClient{actor: actor},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	post := func(path string, payload any) *httptest.ResponseRecorder {
+		return gwRequest(t, gw, "POST", path, payload)
+	}
+	get := func(path string) *httptest.ResponseRecorder { return gwRequest(t, gw, "GET", path, nil) }
+	assert := func(resp *httptest.ResponseRecorder, code int) {
+		t.Helper()
+		if resp.Code != code {
+			t.Fatalf("want %d got %d: %s", code, resp.Code, resp.Body.String())
+		}
+	}
+
+	// 401: ops resolve without token when IAM enabled
+	assert(post("/api/v1/disputes/disp_fake/resolve", map[string]any{"resolution": "x", "resolvedBy": "ops"}), http.StatusUnauthorized)
+
+	// 403: non-ops org trying to read disputes list
+	req := httptest.NewRequest("GET", "/api/v1/disputes", nil)
+	req.Header.Set("Authorization", "Bearer x")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	assert(rec, http.StatusForbidden)
+
+	// 404: nonexistent order
+	assert(get("/api/v1/orders/order_not_exists"), http.StatusNotFound)
+
+	// 409: illegal state transition (complete job before start)
+	bindResp := post("/api/v1/orders/ord_1/milestones/ms_1/bind-carrier", map[string]any{"carrierId": "c1", "capabilities": []string{"gpu"}})
+	assert(bindResp, http.StatusCreated)
+	var bindData map[string]any
+	json.Unmarshal(bindResp.Body.Bytes(), &bindData)
+	jobResp := post("/api/v1/orders/ord_1/milestones/ms_1/jobs", map[string]any{"bindingId": bindData["binding"].(map[string]any)["id"].(string), "input": "{}"})
+	assert(jobResp, http.StatusCreated)
+	var jobData map[string]any
+	json.Unmarshal(jobResp.Body.Bytes(), &jobData)
+	jobID := jobData["job"].(map[string]any)["id"].(string)
+	assert(post("/api/v1/jobs/"+jobID+"/complete", map[string]any{"output": "oops"}), http.StatusConflict)
 }
