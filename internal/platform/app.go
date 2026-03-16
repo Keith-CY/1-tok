@@ -425,6 +425,17 @@ func (a *App) CreateOrder(input CreateOrderInput) (*core.Order, error) {
 		return nil, ErrMissingRequiredFields
 	}
 
+	// Credit limit check
+	if input.FundingMode == "credit" {
+		var totalBudget int64
+		for _, ms := range input.Milestones {
+			totalBudget += ms.BudgetCents
+		}
+		if err := a.CheckCreditAvailability(input.BuyerOrgID, totalBudget); err != nil {
+			return nil, err
+		}
+	}
+
 	orderID, err := a.orders.NextID()
 	if err != nil {
 		return nil, err
@@ -2228,4 +2239,32 @@ func (a *App) GetFiberExposure() (FiberExposure, error) {
 	}
 	exp.TotalExposureCents = exp.TotalPrepaidUnsettledCents + exp.TotalCreditUnsettledCents
 	return exp, nil
+}
+
+// CheckCreditAvailability verifies a buyer has enough credit for a new order.
+func (a *App) CheckCreditAvailability(buyerOrgID string, requestedCents int64) error {
+	a.mu.Lock()
+	limit, ok := a.creditLimits[buyerOrgID]
+	a.mu.Unlock()
+	if !ok {
+		return nil // No limit set — no enforcement
+	}
+
+	// Recalculate used credit from active orders
+	orders, _ := a.orders.List()
+	var usedCents int64
+	for _, o := range orders {
+		if o.BuyerOrgID == buyerOrgID && o.FundingMode == "credit" &&
+			(o.Status == core.OrderStatusRunning || o.Status == core.OrderStatusAwaitingBudget) {
+			for _, ms := range o.Milestones {
+				usedCents += ms.BudgetCents
+			}
+		}
+	}
+
+	available := limit.LimitCents - usedCents
+	if available < requestedCents {
+		return fmt.Errorf("insufficient credit: available %d, requested %d", available, requestedCents)
+	}
+	return nil
 }
