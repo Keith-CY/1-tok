@@ -2022,12 +2022,20 @@ func (a *App) GetProviderCarrierBinding(providerOrgID string) (ProviderCarrierBi
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	for _, b := range a.carrierBindings {
-		if b.ProviderOrgID == providerOrgID {
-			return b, nil
-		}
+	if a.carrierBindingsByOrg == nil {
+		a.reindexCarrierBindings()
+	}
+	if idx, ok := a.carrierBindingsByOrg[providerOrgID]; ok && idx >= 0 && idx < len(a.carrierBindings) {
+		return a.carrierBindings[idx], nil
 	}
 	return ProviderCarrierBinding{}, fmt.Errorf("no carrier binding for provider %s", providerOrgID)
+}
+
+func (a *App) reindexCarrierBindings() {
+	a.carrierBindingsByOrg = make(map[string]int)
+	for i, binding := range a.carrierBindings {
+		a.carrierBindingsByOrg[binding.ProviderOrgID] = i
+	}
 }
 
 // VerifyCarrierBinding marks a binding as verified after successful health check.
