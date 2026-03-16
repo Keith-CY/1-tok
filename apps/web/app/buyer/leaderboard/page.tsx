@@ -1,4 +1,5 @@
 import { PortalShell } from "../../../components/portal-shell";
+import { EmptyState } from "../../../components/ui";
 import { formatStars, ratingColor } from "../../../lib/rating";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +10,33 @@ const leaderboard = [
   { providerId: "provider_2", name: "Kite Relay", rating: 4.2, ratingCount: 11, totalOrders: 8, reputationTier: "silver" },
 ];
 
-export default async function LeaderboardPage() {
+export default async function LeaderboardPage({
+  searchParams,
+}: {
+  searchParams?: { q?: string; tier?: string; sort?: string };
+}) {
+  const query = (searchParams?.q ?? "").trim().toLowerCase();
+  const tier = (searchParams?.tier ?? "all").toLowerCase();
+  const sort = (searchParams?.sort ?? "rating").toLowerCase();
+
+  const leaderboardData = leaderboard
+    .filter(
+      (entry) =>
+        (tier === "all" || entry.reputationTier === tier) &&
+        (!query || entry.name.toLowerCase().includes(query) || entry.providerId.toLowerCase().includes(query)),
+    )
+    .sort((a, b) => {
+      if (sort === "orders") {
+        return b.totalOrders - a.totalOrders;
+      }
+
+      if (sort === "reviews") {
+        return b.ratingCount - a.ratingCount;
+      }
+
+      return b.rating - a.rating;
+    });
+
   return (
     <PortalShell
       eyebrow="Marketplace"
@@ -24,25 +51,70 @@ export default async function LeaderboardPage() {
       asideItems={[]}
     >
       <div className="space-y-3">
-        {leaderboard.map((entry, i) => {
-          const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`;
-          return (
-            <div key={entry.providerId} className="border rounded-lg p-4 flex items-center gap-4">
-              <span className="text-2xl w-10 text-center">{medal}</span>
-              <div className="flex-1">
-                <h3 className="font-semibold text-lg">{entry.name}</h3>
-                <div className="flex items-center gap-3 text-sm text-gray-500">
-                  <span className={ratingColor(entry.rating)}>
-                    {formatStars(entry.rating)} {entry.rating.toFixed(1)}
-                  </span>
-                  <span>({entry.ratingCount} reviews)</span>
-                  <span>{entry.totalOrders} orders</span>
-                  <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-xs">{entry.reputationTier}</span>
+        <form method="GET" className="auth-form market-form">
+          <div className="market-form__grid">
+            <label className="auth-field">
+              <span>Search providers</span>
+              <input
+                name="q"
+                type="text"
+                placeholder="Search by name or provider id"
+                defaultValue={searchParams?.q ?? ""}
+              />
+            </label>
+            <label className="auth-field">
+              <span>Reputation tier</span>
+              <select name="tier" defaultValue={searchParams?.tier ?? "all"}>
+                <option value="all">All tiers</option>
+                <option value="gold">Gold</option>
+                <option value="silver">Silver</option>
+                <option value="bronze">Bronze</option>
+              </select>
+            </label>
+            <label className="auth-field">
+              <span>Sort by</span>
+              <select name="sort" defaultValue={searchParams?.sort ?? "rating"}>
+                <option value="rating">Rating</option>
+                <option value="reviews">Review count</option>
+                <option value="orders">Orders</option>
+              </select>
+            </label>
+          </div>
+          <button type="submit" className="auth-submit">
+            Filter leaderboard
+          </button>
+        </form>
+
+        {leaderboardData.length === 0 ? (
+          <EmptyState
+            icon="🏆"
+            message="No providers match your leaderboard filters."
+            actionLabel="Clear filters"
+            actionHref="/buyer/leaderboard"
+          />
+        ) : (
+          <div className="space-y-3">
+            {leaderboardData.map((entry, i) => {
+              const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`;
+              return (
+                <div key={entry.providerId} className="border rounded-lg p-4 flex items-center gap-4">
+                  <span className="text-2xl w-10 text-center">{medal}</span>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-lg">{entry.name}</h3>
+                    <div className="flex items-center gap-3 text-sm text-gray-500">
+                      <span className={ratingColor(entry.rating)}>
+                        {formatStars(entry.rating)} {entry.rating.toFixed(1)}
+                      </span>
+                      <span>({entry.ratingCount} reviews)</span>
+                      <span>{entry.totalOrders} orders</span>
+                      <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-xs">{entry.reputationTier}</span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-          );
-        })}
+              );
+            })}
+          </div>
+        )}
       </div>
     </PortalShell>
   );
