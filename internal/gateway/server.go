@@ -122,6 +122,19 @@ func NewServerWithOptionsE(options Options) (*Server, error) {
 		ledger:          carrier.NewEventLedger(),
 	}, nil
 }
+func trimRequiredFields(fields map[string]string) map[string]string {
+	errors := make(map[string]string)
+	for field, value := range fields {
+		if strings.TrimSpace(value) == "" {
+			errors[field] = "is required"
+		}
+	}
+	if len(errors) == 0 {
+		return nil
+	}
+	return errors
+}
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Method == http.MethodGet && r.URL.Path == "/healthz":
@@ -1091,6 +1104,16 @@ func (s *Server) handleCreateMessage(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteErrorWithDetails(w, http.StatusBadRequest, httputil.ErrCodeValidation, "validation failed", verr.Fields)
 		return
 	}
+	if fieldErrors := trimRequiredFields(map[string]string{"body": payload.Body}); len(fieldErrors) > 0 {
+		httputil.WriteErrorWithDetails(w, http.StatusBadRequest, httputil.ErrCodeValidation, "validation failed", fieldErrors)
+		return
+	}
+	if s.auth == nil || iamclient.IsNoop(s.auth) {
+		if fieldErrors := trimRequiredFields(map[string]string{"author": payload.Author}); len(fieldErrors) > 0 {
+			httputil.WriteErrorWithDetails(w, http.StatusBadRequest, httputil.ErrCodeValidation, "validation failed", fieldErrors)
+			return
+		}
+	}
 	if s.auth != nil && !iamclient.IsNoop(s.auth) {
 		actor, err := s.authenticatedActor(r)
 		if err != nil {
@@ -1527,6 +1550,10 @@ func (s *Server) handleCreateRFQMessage(w http.ResponseWriter, r *http.Request) 
 	author := payload.Author
 	if actorID != "" {
 		author = actorID // Use authenticated actor instead of payload
+	}
+	if fieldErrors := trimRequiredFields(map[string]string{"author": author, "body": payload.Body}); len(fieldErrors) > 0 {
+		httputil.WriteErrorWithDetails(w, http.StatusBadRequest, httputil.ErrCodeValidation, "validation failed", fieldErrors)
+		return
 	}
 	message, err := s.app.CreateRFQMessage(rfqID, author, payload.Body)
 	if err != nil {
