@@ -37,7 +37,7 @@ export default async function LeaderboardPage() {
                   </span>
                   <span>({entry.ratingCount} reviews)</span>
                   <span>{entry.totalOrders} orders</span>
-                  <span className="px-2 py-0.5 bg-gray-100 rounded text-xs">{entry.reputationTier}</span>
+                  <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-xs">{entry.reputationTier}</span>
                 </div>
               </div>
             </div>
