@@ -120,9 +120,19 @@ Required event types:
 - `execution.failed`
 - `execution.completed`
 
+### Callback callback auth and response mapping
+
+Carrier should expect these platform callback responses from `POST /v1/carrier/callbacks/events`:
+
+- `200` + `accepted=true`: callback accepted (new event or replay).
+- `200` + `accepted=false`: transient platform conflict; same `eventId` should be retried with backoff.
+- `400`: payload validation failed (missing required fields / malformed event / bad proof payload); Carrier should fix payload and retry only if the root cause is transient.
+- `401`: authentication mismatch (wrong/missing secret or keyId); treat as an integration misconfiguration and alert instead of blind retries.
+- `409`: sequence gap or out-of-order event; Carrier should replay missing earlier events to restore sequence continuity, preserving `eventId`/`sequence`.
+- `5xx`: transport/runtime side failures; safe to retry with exponential backoff while preserving idempotency keys.
+
 ### 5. Support durable execution evidence
 
-Carrier must expose:
 
 - execution status
 - machine-readable failure category and code
