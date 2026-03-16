@@ -1797,6 +1797,18 @@ func TestResolveDispute_InvalidJSON(t *testing.T) {
 	}
 }
 
+func postMessageRequest(t *testing.T, gw *Server, path string, body string, token ...string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	if len(token) > 0 {
+		req.Header.Set("Authorization", token[0])
+	}
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	return rec
+}
+
 func TestCreateMessage_ValidationMatrix_WithAuth_Gateway(t *testing.T) {
 	app := platform.NewAppWithMemory()
 	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
@@ -1837,11 +1849,7 @@ func TestCreateMessage_ValidationMatrix_WithAuth_Gateway(t *testing.T) {
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, tt.path, bytes.NewReader([]byte(tt.body)))
-			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("Authorization", "Bearer token")
-			rec := httptest.NewRecorder()
-			gw.ServeHTTP(rec, req)
+			rec := postMessageRequest(t, gw, tt.path, tt.body, "Bearer token")
 			if rec.Code != tt.want {
 				t.Fatalf("%s: expected %d, got %d: %s", tt.name, tt.want, rec.Code, rec.Body.String())
 			}
@@ -1879,10 +1887,7 @@ func TestCreateMessage_ValidationMatrix_Noop_Gateway(t *testing.T) {
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", bytes.NewReader([]byte(tt.body)))
-			req.Header.Set("Content-Type", "application/json")
-			rec := httptest.NewRecorder()
-			gw.ServeHTTP(rec, req)
+			rec := postMessageRequest(t, gw, "/api/v1/messages", tt.body)
 			if rec.Code != tt.want {
 				t.Fatalf("%s: expected %d, got %d: %s", tt.name, tt.want, rec.Code, rec.Body.String())
 			}
@@ -1912,10 +1917,7 @@ func TestCreateRFQMessage_ValidationMatrix_NoAuth_Gateway(t *testing.T) {
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs/"+rfq.ID+"/messages", bytes.NewReader([]byte(tt.body)))
-			req.Header.Set("Content-Type", "application/json")
-			rec := httptest.NewRecorder()
-			gw.ServeHTTP(rec, req)
+			rec := postMessageRequest(t, gw, "/api/v1/rfqs/"+rfq.ID+"/messages", tt.body)
 			if rec.Code != tt.want {
 				t.Fatalf("%s: expected %d, got %d: %s", tt.name, tt.want, rec.Code, rec.Body.String())
 			}
@@ -1925,10 +1927,7 @@ func TestCreateRFQMessage_ValidationMatrix_NoAuth_Gateway(t *testing.T) {
 
 func TestCreateMessage_InvalidJSON(t *testing.T) {
 	gw, _ := NewServerWithOptionsE(Options{App: platform.NewAppWithMemory()})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", bytes.NewReader([]byte("{broken")))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	gw.ServeHTTP(rec, req)
+	rec := postMessageRequest(t, gw, "/api/v1/messages", "{broken")
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", rec.Code)
 	}
@@ -1952,10 +1951,7 @@ func TestCreateMessage_MissingAuthorRejected_Gateway(t *testing.T) {
 		"orderId": order.ID,
 		"body":    "hello",
 	})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", bytes.NewReader(payload))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	gw.ServeHTTP(rec, req)
+	rec := postMessageRequest(t, gw, "/api/v1/messages", string(payload))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
@@ -1980,10 +1976,7 @@ func TestCreateMessage_WhitespaceAuthorRejected_Gateway(t *testing.T) {
 		"author":  "   ",
 		"body":    "hello",
 	})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", bytes.NewReader(payload))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	gw.ServeHTTP(rec, req)
+	rec := postMessageRequest(t, gw, "/api/v1/messages", string(payload))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
@@ -1997,10 +1990,7 @@ func TestCreateMessage_OrderIDWhitespaceRejected_Gateway(t *testing.T) {
 		"author":  "buyer",
 		"body":    "hello",
 	})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", bytes.NewReader(payload))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	gw.ServeHTTP(rec, req)
+	rec := postMessageRequest(t, gw, "/api/v1/messages", string(payload))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
@@ -2025,10 +2015,7 @@ func TestCreateMessage_WhitespaceBodyRejected_Gateway(t *testing.T) {
 		"author":  "buyer",
 		"body":    "   ",
 	})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", bytes.NewReader(payload))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	gw.ServeHTTP(rec, req)
+	rec := postMessageRequest(t, gw, "/api/v1/messages", string(payload))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
