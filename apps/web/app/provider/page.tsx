@@ -67,7 +67,14 @@ export default async function ProviderPage() {
           <span className="tag">Pipeline</span>
           <h3>What will move revenue in the next hour.</h3>
           <div className="feed-list">
-            {data.pipeline.length === 0 ? <EmptyState icon="⏱️" message="No active pipeline items at the moment." /> : null}
+            {data.pipeline.length === 0 ? (
+              <EmptyState
+                icon="⏱️"
+                message="No active pipeline items at the moment."
+                actionLabel="Track opportunities"
+                actionHref="#opportunities"
+              />
+            ) : null}
             {data.pipeline.map((item) => (
               <div key={item.id} className="feed-item">
                 <strong>{item.label}</strong>
@@ -82,8 +89,13 @@ export default async function ProviderPage() {
           <h3>Providers need a direct lane from opportunity to submitted bid.</h3>
           <div className="message-list">
             {data.marketOpportunities.length === 0 ? (
-                  <EmptyState icon="📡" message="No marketplace opportunities right now. Refresh soon for fresh RFQs." />
-                ) : null}
+              <EmptyState
+                icon="📡"
+                message="No marketplace opportunities right now. Refresh soon for fresh RFQs."
+                actionLabel="Review active pipeline"
+                actionHref="#pipeline"
+              />
+            ) : null}
                   {data.marketOpportunities.map((item) => (
               <div key={item.id} className="message-item">
                 <strong>{item.title}</strong>
@@ -124,7 +136,14 @@ export default async function ProviderPage() {
         <span className="tag">Submitted bids</span>
         <h3>Bid posture should sit next to payout posture.</h3>
         <div className="feed-list">
-          {data.marketQueue.length === 0 ? <EmptyState icon="🧾" message="No submitted bids to track yet; use the pipeline to submit." /> : null}
+          {data.marketQueue.length === 0 ? (
+              <EmptyState
+                icon="🧾"
+                message="No submitted bids to track yet; use the pipeline to submit."
+                actionLabel="Submit your first bid"
+                actionHref="#opportunities"
+              />
+            ) : null}
           {data.marketQueue.map((item) => (
             <div key={item.id} className="feed-item">
               <strong>{item.title}</strong>
@@ -140,7 +159,7 @@ export default async function ProviderPage() {
       </article>
 
       <article className="feed-card">
-        <span className="tag">Capabilities</span>
+                <span className="tag">Capabilities</span>
         <h3>What this provider can credibly sell.</h3>
         <div className="chip-list">
           {data.capabilities.map((capability) => (

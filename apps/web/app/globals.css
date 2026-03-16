@@ -785,6 +785,27 @@ select {
   opacity: 0.5;
 }
 
+
+.empty-state__action {
+  margin-top: 0.5rem;
+  padding: 0.55rem 1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(143, 246, 211, 0.45);
+  text-decoration: none;
+  color: #08110e;
+  background: linear-gradient(120deg, #8ff3d1, #d9fef0);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.empty-state__action:hover {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+}
+
+.empty-state__action:active {
+  transform: translateY(0);
+}
 /* ── Toast / notification ─────────────────────────────────── */
 .toast {
   position: fixed;

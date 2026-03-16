@@ -149,7 +149,9 @@ export default async function OpsPage({
           <span className="tag">Pending reviews</span>
           <h3>Items that require a human decision, not another dashboard filter.</h3>
           <div className="feed-list">
-            {data.pendingReviews.length === 0 ? <EmptyState icon="✅" message="No pending manual reviews right now." /> : null}
+            {data.pendingReviews.length === 0 ? (
+              <EmptyState icon="✅" message="No pending manual reviews right now." actionLabel="Check disputes" actionHref="#disputes" />
+            ) : null}
             {data.pendingReviews.map((review) => (
               <div key={review.id} className="feed-item">
                 <strong>{review.title}</strong>
@@ -163,7 +165,9 @@ export default async function OpsPage({
           <span className="tag">Treasury signals</span>
           <h3>Read the funding posture at a glance.</h3>
           <div className="chip-list">
-            {data.treasurySignals.length === 0 ? <EmptyState icon="🏦" message="No treasury signal changes in the last interval." /> : null}
+            {data.treasurySignals.length === 0 ? (
+              <EmptyState icon="🏦" message="No treasury signal changes in the last interval." actionLabel="Review disputes" actionHref="#disputes" />
+            ) : null}
             {data.treasurySignals.map((signal) => (
               <div key={signal.id} className="chip">
                 {signal.label}
@@ -178,7 +182,9 @@ export default async function OpsPage({
         <span className="tag">Risk feed</span>
         <h3>Today’s market pressure points.</h3>
         <div className="timeline">
-          {data.riskFeed.length === 0 ? <EmptyState icon="📈" message="No risk alerts in the last period." /> : null}
+          {data.riskFeed.length === 0 ? (
+            <EmptyState icon="📈" message="No risk alerts in the last period." actionLabel="Open treasury signals" actionHref="#treasury" />
+          ) : null}
           {data.riskFeed.map((item) => (
             <div key={item.id} className="timeline-item">
               <strong>{item.title}</strong>
@@ -192,7 +198,9 @@ export default async function OpsPage({
         <span className="tag">Dispute queue</span>
         <h3>Platform-first reimbursement only works if disputes stay visible.</h3>
         <div className="timeline">
-          {data.disputes.length === 0 ? <EmptyState icon="⚖️" message="No disputes in queue." /> : null}
+          {data.disputes.length === 0 ? (
+            <EmptyState icon="⚖️" message="No disputes in queue." actionLabel="View credit decision" actionHref="#credit-decision" />
+          ) : null}
           {data.disputes.map((dispute) => (
             <div key={dispute.id} className="timeline-item">
               <strong>
@@ -231,7 +239,9 @@ export default async function OpsPage({
         <span className="tag">Funding journal</span>
         <h3>Live money movement, not demo theater.</h3>
         <div className="timeline">
-          {data.fundingRecords.length === 0 ? <EmptyState icon="📚" message="No funding records to display yet." /> : null}
+          {data.fundingRecords.length === 0 ? (
+            <EmptyState icon="📚" message="No funding records to display yet." actionLabel="Open treasury controls" actionHref="#treasury" />
+          ) : null}
           {data.fundingRecords.map((record) => (
             <div key={record.id} className="timeline-item">
               <strong>

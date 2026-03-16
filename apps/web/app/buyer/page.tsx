@@ -97,7 +97,12 @@ export default async function BuyerPage() {
           <h3>Providers ranked for the current market temperature.</h3>
           <div className="feed-list">
             {data.recommendedListings.length === 0 ? (
-              <EmptyState icon="🔎" message="No live recommendations yet; open new RFQs to seed marketplace activity." />
+              <EmptyState
+                icon="🔎"
+                message="No live recommendations yet; open new RFQs to seed marketplace activity."
+                actionLabel="Create RFQ now"
+                actionHref="#create-rfq"
+              />
             ) : null}
             {data.recommendedListings.map((listing) => (
               <div key={listing.id} className="feed-item">
@@ -121,7 +126,14 @@ export default async function BuyerPage() {
           <span className="tag">RFQ book</span>
           <h3>Every open request should show bid pressure, not just status.</h3>
           <div className="message-list">
-            {data.rfqBook.length === 0 ? <EmptyState icon="🧾" message="No open RFQs to action. Create one above to start receiving bids." /> : null}
+            {data.rfqBook.length === 0 ? (
+              <EmptyState
+                icon="🧾"
+                message="No open RFQs to action. Create one above to start receiving bids."
+                actionLabel="Review RFQ book"
+                actionHref="#rfq-book"
+              />
+            ) : null}
             {data.rfqBook.map((rfq) => (
               <div key={rfq.id} className="message-item">
                 <strong>{rfq.title}</strong>
@@ -157,6 +169,14 @@ export default async function BuyerPage() {
         <span className="tag">Inbox</span>
         <h3>Messages that change buyer decisions.</h3>
         <div className="feed-list">
+          {data.inbox.length === 0 ? (
+            <EmptyState
+              icon="📭"
+              message="No messages yet. You’re all clear for now; messages will appear here once bidders engage."
+              actionLabel="Create RFQ now"
+              actionHref="#create-rfq"
+            />
+          ) : null}
           {data.inbox.map((message) => (
             <div key={message.id} className="feed-item">
               <strong>{message.title}</strong>
