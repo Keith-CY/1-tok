@@ -15,6 +15,19 @@ func newTestBot() *MarketplaceBot {
 	return NewMarketplaceBot(app)
 }
 
+func executeInteraction(t *testing.T, mb *MarketplaceBot, body string) InteractionResponse {
+	t.Helper()
+	req := httptest.NewRequest("POST", "/interactions", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	mb.HandleInteraction(w, req)
+
+	var resp InteractionResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	return resp
+}
+
 func TestMarketplaceBot_Listings(t *testing.T) {
 	mb := newTestBot()
 
@@ -243,13 +256,7 @@ func TestMarketplaceBot_Bids_MissingID(t *testing.T) {
 func TestMarketplaceBot_Stats(t *testing.T) {
 	mb := newTestBot()
 
-	body := `{"type":2,"data":{"name":"stats"}}`
-	req := httptest.NewRequest("POST", "/interactions", strings.NewReader(body))
-	w := httptest.NewRecorder()
-	mb.HandleInteraction(w, req)
-
-	var resp InteractionResponse
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	resp := executeInteraction(t, mb, `{"type":2,"data":{"name":"stats"}}`)
 	if len(resp.Data.Embeds) == 0 {
 		t.Fatal("expected embed")
 	}
@@ -261,13 +268,7 @@ func TestMarketplaceBot_Stats(t *testing.T) {
 func TestMarketplaceBot_Leaderboard(t *testing.T) {
 	mb := newTestBot()
 
-	body := `{"type":2,"data":{"name":"leaderboard"}}`
-	req := httptest.NewRequest("POST", "/interactions", strings.NewReader(body))
-	w := httptest.NewRecorder()
-	mb.HandleInteraction(w, req)
-
-	var resp InteractionResponse
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	resp := executeInteraction(t, mb, `{"type":2,"data":{"name":"leaderboard"}}`)
 	if len(resp.Data.Embeds) == 0 {
 		t.Fatal("expected embed")
 	}
