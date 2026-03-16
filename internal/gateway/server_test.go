@@ -6755,3 +6755,69 @@ func TestCarrierCallback_SequenceGapRejected(t *testing.T) {
 		t.Error("expected accepted=false for gap")
 	}
 }
+
+func TestDisputeList_StatusFilter(t *testing.T) {
+	srv := NewServer()
+
+	// Create order → settle → dispute
+	body := `{"buyerOrgId":"org_b","providerOrgId":"org_p","fundingMode":"prepaid","milestones":[{"id":"ms_1","title":"W","basePriceCents":1000,"budgetCents":1000}]}`
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	orderID := resp["order"].(map[string]any)["id"].(string)
+
+	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/milestones/ms_1/settle", strings.NewReader(`{"milestoneId":"ms_1","summary":"done"}`))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/disputes", strings.NewReader(`{"milestoneId":"ms_1","reason":"bad","refundCents":100}`))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	// Filter by status=open (new state after open)
+	req = httptest.NewRequest("GET", "/api/v1/disputes?status=open", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status filter: %d", w.Code) }
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	disputes := resp["disputes"].([]any)
+	if len(disputes) == 0 { t.Error("expected open disputes") }
+
+	// Filter by status=resolved (should be empty)
+	req = httptest.NewRequest("GET", "/api/v1/disputes?status=resolved", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	resolved := resp["disputes"].([]any)
+	if len(resolved) != 0 { t.Errorf("expected 0 resolved, got %d", len(resolved)) }
+}
+
+func TestExportRFQs_Gateway(t *testing.T) {
+	srv := NewServer()
+	body := `{"buyerOrgId":"org_b","title":"export","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2026-04-01T00:00:00Z"}`
+	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	req = httptest.NewRequest("GET", "/api/v1/export/rfqs", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	if w.Header().Get("Content-Type") != "text/csv" { t.Error("expected CSV") }
+}
+
+func TestExportApplications_Gateway(t *testing.T) {
+	srv := NewServer()
+	body := `{"orgId":"org_x","name":"X","capabilities":["a"]}`
+	req := httptest.NewRequest("POST", "/api/v1/provider-applications", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	req = httptest.NewRequest("GET", "/api/v1/export/applications", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK { t.Errorf("status = %d", w.Code) }
+	if w.Header().Get("Content-Type") != "text/csv" { t.Error("expected CSV") }
+}
