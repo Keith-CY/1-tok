@@ -6582,6 +6582,62 @@ func TestCarrierCallback_WithCallbackKeyIdAccepted(t *testing.T) {
 	}
 }
 
+func TestCarrierCallback_WithCallbackKeyIdAliasMismatchRejected(t *testing.T) {
+	srv := NewServer()
+
+	orderPayload := map[string]any{"buyerOrgId": "buyer_key_alias", "providerOrgId": "org_key_alias", "title": "Callback key id alias bad", "fundingMode": "prepaid", "milestones": []map[string]any{{"id": "ms_key_alias", "title": "Key alias bad", "basePriceCents": 1000, "budgetCents": 2000}}}
+	orderBody, _ := json.Marshal(orderPayload)
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(string(orderBody)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create order: %d %s", w.Code, w.Body.String())
+	}
+	var ord map[string]any
+	json.Unmarshal(w.Body.Bytes(), &ord)
+	orderID := ord["order"].(map[string]any)["id"].(string)
+
+	regBody := `{"providerOrgId":"org_key_alias","carrierBaseUrl":"https://carrier.test","hostId":"hk_alias","agentId":"a1","backend":"agent","workspaceRoot":"/tmp","callbackSecret":"secret-k-alias","callbackKeyId":"key-k-alias"}`
+	req = httptest.NewRequest("POST", "/api/v1/carrier-bindings", strings.NewReader(regBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("register binding: %d %s", w.Code, w.Body.String())
+	}
+
+	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/milestones/ms_key_alias/bind-carrier", strings.NewReader(`{"carrierId":"c_key_alias","capabilities":["gpu"]}`))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("bind: %d %s", w.Code, w.Body.String())
+	}
+	var bindResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &bindResp)
+	bindingID := bindResp["binding"].(map[string]any)["id"].(string)
+
+	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/milestones/ms_key_alias/jobs", strings.NewReader(fmt.Sprintf(`{"bindingId":"%s","input":"work"}`, bindingID)))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create job: %d %s", w.Code, w.Body.String())
+	}
+	var jobResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &jobResp)
+	jobID := jobResp["job"].(map[string]any)["id"].(string)
+
+	evt := carrier.CallbackEvent{Type: "job.started", JobID: jobID, BindingID: bindingID, Timestamp: time.Now().UTC().Format(time.RFC3339), Payload: map[string]any{"eventId": "ka-1", "sequence": float64(1)}}
+	evt.Signature = carrier.SignCallback("secret-k-alias", evt)
+	body, _ := json.Marshal(evt)
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callbacks/events", strings.NewReader(string(body)))
+	req.Header.Set("X-One-Tok-Key-Id", "wrong-key")
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unauthorized for mismatched alias key id, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestCarrierCallback_WithCallbackKeyIdMismatchRejected(t *testing.T) {
 	srv := NewServer()
 
