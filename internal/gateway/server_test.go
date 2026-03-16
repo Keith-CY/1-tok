@@ -1797,6 +1797,58 @@ func TestResolveDispute_InvalidJSON(t *testing.T) {
 	}
 }
 
+func TestCreateMessage_ValidationMatrix_WithAuth_Gateway(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Auth msg", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	bid, _ := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid", QuoteCents: 5000,
+		Milestones: []platform.BidMilestoneInput{{ID: "ms_1", Title: "Work", BasePriceCents: 5000, BudgetCents: 5000}},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, platform.AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	actor := iamclient.Actor{
+		UserID:      "u_buyer",
+		Memberships: []iamclient.ActorMembership{{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "org_owner"}},
+	}
+	gw, _ := NewServerWithOptionsE(Options{App: app, IAM: &stubIAMClient{actor: actor}})
+
+	type tc struct {
+		name   string
+		path   string
+		body   string
+		want   int
+		decode bool
+	}
+	cases := []tc{
+		{name: "missing orderId", path: "/api/v1/messages", body: `{"author":"buyer","body":"hello"}`, want: http.StatusBadRequest},
+		{name: "whitespace orderId", path: "/api/v1/messages", body: `{"orderId":"   ","author":"buyer","body":"hello"}`, want: http.StatusBadRequest},
+		{name: "missing body", path: "/api/v1/messages", body: `{"orderId":"` + order.ID + `","author":"buyer"}`, want: http.StatusBadRequest},
+		{name: "whitespace body", path: "/api/v1/messages", body: `{"orderId":"` + order.ID + `","author":"buyer","body":"   "}`, want: http.StatusBadRequest},
+		{name: "missing author", path: "/api/v1/messages", body: `{"orderId":"` + order.ID + `","body":"hello"}`, want: http.StatusCreated},
+		{name: "whitespace author", path: "/api/v1/messages", body: `{"orderId":"` + order.ID + `","author":"   ","body":"hello"}`, want: http.StatusCreated},
+		{name: "rfq valid message", path: "/api/v1/rfqs/" + rfq.ID + "/messages", body: `{"body":"hi"}`, want: http.StatusCreated},
+		{name: "rfq missing body", path: "/api/v1/rfqs/" + rfq.ID + "/messages", body: `{"author":"buyer"}`, want: http.StatusBadRequest},
+		{name: "rfq whitespace body", path: "/api/v1/rfqs/" + rfq.ID + "/messages", body: `{"author":"buyer","body":"   "}`, want: http.StatusBadRequest},
+		{name: "rfq whitespace author", path: "/api/v1/rfqs/" + rfq.ID + "/messages", body: `{"author":"   ","body":"hello"}`, want: http.StatusCreated},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, tt.path, bytes.NewReader([]byte(tt.body)))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", "Bearer token")
+			rec := httptest.NewRecorder()
+			gw.ServeHTTP(rec, req)
+			if rec.Code != tt.want {
+				t.Fatalf("%s: expected %d, got %d: %s", tt.name, tt.want, rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestCreateMessage_ValidationMatrix_Noop_Gateway(t *testing.T) {
 	app := platform.NewAppWithMemory()
 	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
