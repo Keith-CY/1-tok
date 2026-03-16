@@ -225,7 +225,7 @@ func (c *smokeClient) createRFQ(ctx context.Context, baseURL string, buyer actor
 		"category":           "agent-ops",
 		"scope":              "Need a carrier-ready operator to run a one-step smoke order.",
 		"budgetCents":        1800,
-		"responseDeadlineAt": "2026-03-15T12:00:00Z",
+		"responseDeadlineAt": time.Now().Add(24 * time.Hour).Format(time.RFC3339),
 	}
 	if strings.TrimSpace(buyer.Token) == "" {
 		payload["buyerOrgId"] = buyer.OrgID
