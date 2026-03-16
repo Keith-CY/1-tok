@@ -849,6 +849,7 @@ func TestListOrdersScopesProviderMembershipWhenIAMConfigured(t *testing.T) {
 
 func TestListRFQsScopesBuyerMembershipWhenIAMConfigured(t *testing.T) {
 	app := platform.NewAppWithMemory()
+	deadline1 := time.Now().Add(24 * time.Hour).UTC()
 	if _, err := app.CreateRFQ(platform.CreateRFQInput{
 		BuyerOrgID:         "buyer_1",
 		Title:              "Buyer one rfq",
@@ -865,7 +866,7 @@ func TestListRFQsScopesBuyerMembershipWhenIAMConfigured(t *testing.T) {
 		Category:           "agent-ops",
 		Scope:              "Scope two",
 		BudgetCents:        5200,
-		ResponseDeadlineAt: time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: deadline1,
 	}); err != nil {
 		t.Fatalf("create rfq 2: %v", err)
 	}
@@ -910,6 +911,8 @@ func TestListRFQsScopesBuyerMembershipWhenIAMConfigured(t *testing.T) {
 
 func TestListRFQsShowsOpenAndAwardedProviderRFQsWhenIAMConfigured(t *testing.T) {
 	app := platform.NewAppWithMemory()
+	deadline1 := time.Now().Add(24 * time.Hour).UTC()
+	deadline2 := time.Now().Add(48 * time.Hour).UTC()
 
 	openRFQ, err := app.CreateRFQ(platform.CreateRFQInput{
 		BuyerOrgID:         "buyer_1",
@@ -929,7 +932,7 @@ func TestListRFQsShowsOpenAndAwardedProviderRFQsWhenIAMConfigured(t *testing.T) 
 		Category:           "agent-ops",
 		Scope:              "Award scope one",
 		BudgetCents:        5200,
-		ResponseDeadlineAt: time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: deadline1,
 	})
 	if err != nil {
 		t.Fatalf("create awarded rfq 1: %v", err)
@@ -959,7 +962,7 @@ func TestListRFQsShowsOpenAndAwardedProviderRFQsWhenIAMConfigured(t *testing.T) 
 		Category:           "agent-ops",
 		Scope:              "Award scope two",
 		BudgetCents:        6200,
-		ResponseDeadlineAt: time.Date(2026, 3, 17, 12, 0, 0, 0, time.UTC),
+		ResponseDeadlineAt: deadline2,
 	})
 	if err != nil {
 		t.Fatalf("create awarded rfq 2: %v", err)
