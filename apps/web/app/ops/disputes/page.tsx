@@ -5,17 +5,50 @@ import { formatCents } from "../../../lib/currency";
 
 export const dynamic = "force-dynamic";
 
-export default async function OpsDisputesPage() {
+const DISPUTES = [
+  {
+    id: "disp_1",
+    orderId: "ord_14",
+    milestoneId: "ms_1",
+    reason: "Carrier summary did not match actual remediation.",
+    refundCents: 900,
+    status: "open",
+    buyerOrgId: "Buyer Ops",
+    createdAt: "2026-03-12T00:00:00Z",
+    resolvedAt: "",
+  },
+  {
+    id: "disp_2",
+    orderId: "ord_20",
+    milestoneId: "ms_2",
+    reason: "Service quality did not meet stated SLO.",
+    refundCents: 1700,
+    status: "resolved",
+    buyerOrgId: "Acme Retail",
+    createdAt: "2026-03-08T00:00:00Z",
+    resolvedAt: "2026-03-09T11:12:00Z",
+  },
+];
+
+export default async function OpsDisputesPage({
+  searchParams,
+}: {
+  searchParams?: { q?: string; status?: string };
+}) {
   const viewer = await requirePortalViewer("ops", "/ops/disputes");
 
-  // Demo data
-  const disputes = [
-    {
-      id: "disp_1", orderId: "ord_14", milestoneId: "ms_1",
-      reason: "Carrier summary did not match actual remediation.",
-      refundCents: 900, status: "open", createdAt: "2026-03-12T00:00:00Z",
-    },
-  ];
+  const query = (searchParams?.q ?? "").trim().toLowerCase();
+  const status = (searchParams?.status ?? "open").toLowerCase();
+
+  const disputes = DISPUTES.filter(
+    (d) =>
+      (status === "all" || d.status === status) &&
+      (!query ||
+        d.orderId.toLowerCase().includes(query) ||
+        d.milestoneId.toLowerCase().includes(query) ||
+        d.buyerOrgId.toLowerCase().includes(query) ||
+        d.reason.toLowerCase().includes(query)),
+  );
 
   return (
     <PortalShell
@@ -32,14 +65,39 @@ export default async function OpsDisputesPage() {
       asideItems={[]}
     >
       <div className="space-y-4">
-        <div className="flex gap-2 mb-4">
+        <form method="GET" className="auth-form market-form">
+          <div className="market-form__grid">
+            <label className="auth-field">
+              <span>Search disputes</span>
+              <input
+                name="q"
+                type="text"
+                placeholder="Search by order, milestone, buyer, reason"
+                defaultValue={searchParams?.q ?? ""}
+              />
+            </label>
+            <label className="auth-field">
+              <span>Status</span>
+              <select name="status" defaultValue={searchParams?.status ?? "open"}>
+                <option value="open">Open</option>
+                <option value="resolved">Resolved</option>
+                <option value="all">All</option>
+              </select>
+            </label>
+          </div>
+          <button type="submit" className="auth-submit">
+            Filter disputes
+          </button>
+        </form>
+
+        <div className="flex gap-2 mb-2">
           <a href="?status=open" className="action-button">Open</a>
           <a href="?status=resolved" className="action-button">Resolved</a>
           <a href="?status=all" className="action-button">All</a>
         </div>
 
         {disputes.length === 0 ? (
-          <EmptyState message="No disputes to review." actionLabel="Open dispute controls" actionHref="/ops" />
+          <EmptyState message="No disputes to review." actionLabel="Clear filters" actionHref="/ops/disputes" />
         ) : (
           <div className="space-y-3">
             {disputes.map((d) => (
@@ -51,8 +109,9 @@ export default async function OpsDisputesPage() {
                       <StatusBadge status={d.status} />
                     </div>
                     <p className="text-sm text-gray-600 mt-1">{d.reason}</p>
-                    <p className="text-xs text-gray-400 mt-1">
-                      Order: {d.orderId} / Milestone: {d.milestoneId}
+                    <p className="text-xs text-gray-400 mt-1">Order {d.orderId} · Milestone {d.milestoneId} · Buyer {d.buyerOrgId}</p>
+                    <p className="text-xs text-gray-400">
+                      {d.status === "resolved" ? `Resolved ${d.resolvedAt}` : `Opened ${d.createdAt.slice(0, 10)}`}
                     </p>
                   </div>
                   <div className="text-right">
@@ -60,13 +119,14 @@ export default async function OpsDisputesPage() {
                     <p className="text-xs text-gray-400">refund requested</p>
                   </div>
                 </div>
-                {d.status === "open" && (
+
+                {d.status === "open" ? (
                   <div className="flex gap-2 mt-3">
                     <button className="action-button">Approve Refund</button>
                     <button className="action-button">Reject</button>
                     <a href={`/ops/disputes/${d.id}/evidence`} className="action-button">View Evidence</a>
                   </div>
-                )}
+                ) : null}
               </div>
             ))}
           </div>
