@@ -2046,30 +2046,53 @@ func (s *Server) handleCarrierCallback(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) resolveCarrierCallbackSecret(r *http.Request, event carrier.CallbackEvent) (string, error) {
-	overrideKeyID := strings.TrimSpace(r.Header.Get("X-One-Tok-Callback-Key-Id"))
-	overrideSecret := strings.TrimSpace(r.Header.Get("X-One-Tok-Callback-Secret"))
-	if overrideSecret != "" {
+	if overrideSecret := strings.TrimSpace(r.Header.Get("X-One-Tok-Callback-Secret")); overrideSecret != "" {
 		return overrideSecret, nil
 	}
 
-	if event.BindingID != "" {
-		binding, err := s.carrier.GetBindingByID(event.BindingID)
-		if err == nil {
-			if order, err := s.app.GetOrder(binding.OrderID); err == nil {
-				if providerBinding, err := s.app.GetProviderCarrierBinding(order.ProviderOrgID); err == nil {
-					if overrideKeyID != "" && providerBinding.CallbackKeyID != "" && overrideKeyID != providerBinding.CallbackKeyID {
-						return "", fmt.Errorf("unknown callback key id")
-					}
-					if strings.TrimSpace(providerBinding.CallbackSecret) != "" {
-						return providerBinding.CallbackSecret, nil
-					}
-				}
-			}
+	overrideKeyID := strings.TrimSpace(r.Header.Get("X-One-Tok-Callback-Key-Id"))
+	if event.BindingID == "" {
+		if overrideKeyID != "" {
+			return "", fmt.Errorf("callback key id provided but no binding secret configured")
 		}
+		return os.Getenv("CARRIER_CALLBACK_SECRET"), nil
 	}
 
-	if overrideKeyID != "" {
+	binding, err := s.carrier.GetBindingByID(event.BindingID)
+	if err != nil {
+		if overrideKeyID != "" {
+			return "", fmt.Errorf("callback key id provided but no binding secret configured")
+		}
+		return os.Getenv("CARRIER_CALLBACK_SECRET"), nil
+	}
+
+	order, err := s.app.GetOrder(binding.OrderID)
+	if err != nil {
+		if overrideKeyID != "" {
+			return "", fmt.Errorf("callback key id provided but no binding secret configured")
+		}
+		return os.Getenv("CARRIER_CALLBACK_SECRET"), nil
+	}
+
+	providerBinding, err := s.app.GetProviderCarrierBinding(order.ProviderOrgID)
+	if err != nil {
+		if overrideKeyID != "" {
+			return "", fmt.Errorf("callback key id provided but no binding secret configured")
+		}
+		return os.Getenv("CARRIER_CALLBACK_SECRET"), nil
+	}
+
+	if overrideKeyID != "" && providerBinding.CallbackKeyID != "" && overrideKeyID != providerBinding.CallbackKeyID {
+		return "", fmt.Errorf("unknown callback key id")
+	}
+
+	secret := strings.TrimSpace(providerBinding.CallbackSecret)
+	if secret == "" && overrideKeyID != "" {
 		return "", fmt.Errorf("callback key id provided but no binding secret configured")
+	}
+
+	if secret != "" {
+		return secret, nil
 	}
 
 	return os.Getenv("CARRIER_CALLBACK_SECRET"), nil
