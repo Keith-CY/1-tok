@@ -5214,6 +5214,24 @@ func TestProviderRevenue(t *testing.T) {
 	assertGetStatusOK(t, srv, "/api/v1/providers/provider_1/revenue", http.StatusOK)
 }
 
+type createOrderTestResponse struct {
+	Order struct {
+		ID string `json:"id"`
+	} `json:"order"`
+}
+
+func parseOrderID(t *testing.T, b []byte) string {
+	t.Helper()
+	var resp createOrderTestResponse
+	if err := json.Unmarshal(b, &resp); err != nil {
+		t.Fatalf("failed to unmarshal create order response: %v", err)
+	}
+	if resp.Order.ID == "" {
+		t.Fatal("order id empty")
+	}
+	return resp.Order.ID
+}
+
 func TestOrderBudget(t *testing.T) {
 	srv := NewServer()
 	// Create an order first
@@ -5222,9 +5240,7 @@ func TestOrderBudget(t *testing.T) {
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
-	var resp map[string]any
-	json.Unmarshal(w.Body.Bytes(), &resp)
-	orderID := resp["order"].(map[string]any)["id"].(string)
+	orderID := parseOrderID(t, w.Body.Bytes())
 
 	req = httptest.NewRequest("GET", "/api/v1/orders/"+orderID+"/budget", nil)
 	w = httptest.NewRecorder()
@@ -5240,9 +5256,7 @@ func TestOrderTimeline(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	var resp map[string]any
-	json.Unmarshal(w.Body.Bytes(), &resp)
-	orderID := resp["order"].(map[string]any)["id"].(string)
+	orderID := parseOrderID(t, w.Body.Bytes())
 
 	req = httptest.NewRequest("GET", "/api/v1/orders/"+orderID+"/timeline", nil)
 	w = httptest.NewRecorder()
