@@ -91,7 +91,7 @@ export default async function OpsPage({
               <span>Lifetime spend cents</span>
               <input name="lifetimeSpendCents" type="number" min="0" step="1" defaultValue="480000" required />
             </label>
-            <button type="submit" className="auth-submit">
+            <button type="submit" className="action-button">
               Run credit decision
             </button>
           </form>
@@ -220,7 +220,7 @@ export default async function OpsPage({
                       required
                     />
                   </label>
-                  <button type="submit" className="auth-submit">
+                  <button type="submit" className="action-button">
                     Resolve dispute
                   </button>
                 </form>

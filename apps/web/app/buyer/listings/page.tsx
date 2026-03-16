@@ -38,21 +38,28 @@ export default async function BuyerListingsPage({
       asideItems={[]}
     >
       <div className="space-y-4">
-        <form method="GET" className="flex gap-2">
-          <input
-            name="q"
-            type="text"
-            placeholder="Search listings..."
-            defaultValue={params.q ?? ""}
-            className="border rounded px-3 py-2 flex-1"
-          />
-          <select name="category" defaultValue={params.category ?? ""} className="border rounded px-3 py-2">
-            <option value="">All categories</option>
-            <option value="agent-ops">Agent Ops</option>
-            <option value="agent-runtime">Agent Runtime</option>
-            <option value="compute">Compute</option>
-          </select>
-          <button type="submit" className="action-button">
+        <form method="GET" className="auth-form market-form">
+          <div className="market-form__grid">
+            <label className="auth-field">
+              <span>Search keyword</span>
+              <input
+                name="q"
+                type="text"
+                placeholder="Search listings..."
+                defaultValue={params.q ?? ""}
+              />
+            </label>
+            <label className="auth-field">
+              <span>Category</span>
+              <select name="category" defaultValue={params.category ?? ""}>
+                <option value="">All categories</option>
+                <option value="agent-ops">Agent Ops</option>
+                <option value="agent-runtime">Agent Runtime</option>
+                <option value="compute">Compute</option>
+              </select>
+            </label>
+          </div>
+          <button type="submit" className="auth-submit">
             Search
           </button>
         </form>
