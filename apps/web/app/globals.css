@@ -660,6 +660,12 @@ select:focus-visible {
   transform: translateY(-1px);
 }
 
+.action-button--active {
+  border-color: rgba(143, 246, 211, 0.55);
+  color: #08110e;
+  background: linear-gradient(135deg, rgba(143, 246, 211, 0.94), rgba(130, 230, 190, 0.92));
+}
+
 .action-button:active:not(:disabled) {
   transform: translateY(0);
 }

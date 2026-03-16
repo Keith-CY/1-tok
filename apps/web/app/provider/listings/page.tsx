@@ -42,6 +42,9 @@ export default async function ProviderListingsPage({
   const selectedTier = (searchParams?.tier ?? "all").toLowerCase();
   const sort = (searchParams?.sort ?? "title").toLowerCase();
 
+  const chipClass = (active: boolean) =>
+    active ? "action-button action-button--active" : "action-button";
+
   const buildTierHref = (nextTier: string) => {
     const params = new URLSearchParams();
 
@@ -113,16 +116,16 @@ export default async function ProviderListingsPage({
         </div>
 
         <div className="flex gap-2 mb-2">
-          <a href={buildTierHref("all")} className="action-button">
+          <a href={buildTierHref("all")} className={chipClass(selectedTier === "all")}>
             All tiers
           </a>
-          <a href={buildTierHref("gold")} className="action-button">
+          <a href={buildTierHref("gold")} className={chipClass(selectedTier === "gold")}>
             Gold
           </a>
-          <a href={buildTierHref("silver")} className="action-button">
+          <a href={buildTierHref("silver")} className={chipClass(selectedTier === "silver")}>
             Silver
           </a>
-          <a href={buildTierHref("bronze")} className="action-button">
+          <a href={buildTierHref("bronze")} className={chipClass(selectedTier === "bronze")}>
             Bronze
           </a>
         </div>

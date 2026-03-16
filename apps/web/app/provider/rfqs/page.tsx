@@ -24,6 +24,9 @@ export default async function ProviderRFQsPage({
   const sort = (searchParams?.sort ?? "deadline").toLowerCase();
 
   const categoryValue = categoryFilter !== "all" ? categoryFilter : "";
+
+  const chipClass = (active: boolean) => (active ? "action-button action-button--active" : "action-button");
+
   const sortValue = sort !== "deadline" ? sort : "";
 
   const buildCategoryHref = (nextCategory: string) => {
@@ -108,30 +111,30 @@ export default async function ProviderRFQsPage({
       <div className="space-y-4">
 
         <div className="flex gap-2 mb-2">
-          <a href={buildCategoryHref("all")} className="action-button">
+          <a href={buildCategoryHref("all")} className={chipClass(categoryFilter === 'all')}>
             All categories
           </a>
-          <a href={buildCategoryHref("agent-ops")} className="action-button">
+          <a href={buildCategoryHref("agent-ops")} className={chipClass(categoryFilter === 'agent-ops')}>
             Agent Ops
           </a>
-          <a href={buildCategoryHref("agent-runtime")} className="action-button">
+          <a href={buildCategoryHref("agent-runtime")} className={chipClass(categoryFilter === 'agent-runtime')}>
             Agent Runtime
           </a>
-          <a href={buildCategoryHref("data-pipeline")} className="action-button">
+          <a href={buildCategoryHref("data-pipeline")} className={chipClass(categoryFilter === 'data-pipeline')}>
             Data Pipeline
           </a>
-          <a href={buildCategoryHref("compute")} className="action-button">
+          <a href={buildCategoryHref("compute")} className={chipClass(categoryFilter === 'compute')}>
             Compute
           </a>
         </div>
         <div className="flex gap-2 mb-2">
-          <a href={buildStatusHref("all")} className="action-button">
+          <a href={buildStatusHref("all")} className={chipClass(statusFilter === 'all')}>
             All
           </a>
-          <a href={buildStatusHref("open")} className="action-button">
+          <a href={buildStatusHref("open")} className={chipClass(statusFilter === 'open')}>
             Open
           </a>
-          <a href={buildStatusHref("awarded")} className="action-button">
+          <a href={buildStatusHref("awarded")} className={chipClass(statusFilter === 'awarded')}>
             Awarded
           </a>
         </div>
@@ -139,11 +142,11 @@ export default async function ProviderRFQsPage({
           <div className="market-form__grid">
             <label className="auth-field">
               <span>Search opportunities</span>
-              <input name="q" type="text" placeholder="Search by title or category" defaultValue={searchParams?.q ?? ""} />
+              <input name="q" type="text" placeholder="Search by title or category" defaultValue={q} />
             </label>
             <label className="auth-field">
               <span>Category</span>
-              <select name="category" defaultValue={searchParams?.category ?? "all"}>
+              <select name="category" defaultValue={categoryFilter}>
                 <option value="all">All categories</option>
                 <option value="agent-ops">Agent Ops</option>
                 <option value="agent-runtime">Agent Runtime</option>
@@ -153,7 +156,7 @@ export default async function ProviderRFQsPage({
             </label>
             <label className="auth-field">
               <span>Status</span>
-              <select name="status" defaultValue={searchParams?.status ?? "all"}>
+              <select name="status" defaultValue={statusFilter}>
                 <option value="all">All</option>
                 <option value="open">Open</option>
                 <option value="awarded">Awarded</option>
