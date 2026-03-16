@@ -8,13 +8,48 @@ import { requirePortalViewer } from "../../lib/viewer";
 
 export const dynamic = "force-dynamic";
 
-export default async function ProviderPage() {
+export default async function ProviderPage({
+  searchParams,
+}: {
+  searchParams?: {
+    opportunityQ?: string;
+    queueQ?: string;
+    queueStatus?: string;
+  };
+}) {
   const viewer = await requirePortalViewer("provider", "/provider");
   const data = await getProviderDashboardData({
     authToken: viewer.token,
     providerOrgId: viewer.membership.organization.id,
     requireLive: true,
   });
+
+  const opportunityQ = (searchParams?.opportunityQ ?? "").trim().toLowerCase();
+  const queueQ = (searchParams?.queueQ ?? "").trim().toLowerCase();
+  const queueStatus = (searchParams?.queueStatus ?? "all").toLowerCase();
+
+  const filteredOpportunities = data.marketOpportunities.filter(
+    (item) =>
+      !opportunityQ ||
+      item.title.toLowerCase().includes(opportunityQ) ||
+      item.buyerOrgId.toLowerCase().includes(opportunityQ) ||
+      item.responseDeadlineAt.includes(opportunityQ),
+  );
+
+  const filteredQueue = data.marketQueue
+    .filter(
+      (item) =>
+        !queueQ ||
+        item.title.toLowerCase().includes(queueQ) ||
+        item.providerBidStatus.toLowerCase().includes(queueQ) ||
+        item.buyerOrgId.toLowerCase().includes(queueQ),
+    )
+    .filter(
+      (item) =>
+        queueStatus === "all" ||
+        (queueStatus === "active" && item.providerBidStatus !== "awarded") ||
+        item.providerBidStatus.toLowerCase() === queueStatus,
+    );
 
   return (
     <PortalShell
@@ -87,16 +122,33 @@ export default async function ProviderPage() {
         <aside className="message-card" id="opportunities">
           <span className="tag">Open RFQs</span>
           <h3>Providers need a direct lane from opportunity to submitted bid.</h3>
+          <form method="GET" className="auth-form market-form">
+            <div className="market-form__grid">
+              <label className="auth-field">
+                <span>Search opportunities</span>
+                <input
+                  name="opportunityQ"
+                  type="text"
+                  placeholder="Search by title, buyer, or date"
+                  defaultValue={searchParams?.opportunityQ ?? ""}
+                />
+              </label>
+            </div>
+            <button type="submit" className="auth-submit">
+              Search opportunities
+            </button>
+          </form>
+
           <div className="message-list">
-            {data.marketOpportunities.length === 0 ? (
+            {filteredOpportunities.length === 0 ? (
               <EmptyState
                 icon="📡"
-                message="No marketplace opportunities right now. Refresh soon for fresh RFQs."
-                actionLabel="Review active pipeline"
-                actionHref="#pipeline"
+                message="No marketplace opportunities match your filter."
+                actionLabel="Clear filter"
+                actionHref="#opportunities"
               />
             ) : null}
-                  {data.marketOpportunities.map((item) => (
+            {filteredOpportunities.map((item) => (
               <div key={item.id} className="message-item">
                 <strong>{item.title}</strong>
                 <p>
@@ -135,16 +187,44 @@ export default async function ProviderPage() {
       <article className="feed-card" id="payouts">
         <span className="tag">Submitted bids</span>
         <h3>Bid posture should sit next to payout posture.</h3>
-        <div className="feed-list">
-          {data.marketQueue.length === 0 ? (
-              <EmptyState
-                icon="🧾"
-                message="No submitted bids to track yet; use the pipeline to submit."
-                actionLabel="Submit your first bid"
-                actionHref="#opportunities"
+
+        <form method="GET" className="auth-form market-form">
+          <div className="market-form__grid">
+            <label className="auth-field">
+              <span>Search bids</span>
+              <input
+                name="queueQ"
+                type="text"
+                placeholder="Search by status, buyer, or title"
+                defaultValue={searchParams?.queueQ ?? ""}
               />
-            ) : null}
-          {data.marketQueue.map((item) => (
+            </label>
+            <label className="auth-field">
+              <span>Status</span>
+              <select name="queueStatus" defaultValue={searchParams?.queueStatus ?? "all"}>
+                <option value="all">All bids</option>
+                <option value="active">Active</option>
+                <option value="awarded">Awarded</option>
+                <option value="rejected">Rejected</option>
+                <option value="pending">Pending</option>
+              </select>
+            </label>
+          </div>
+          <button type="submit" className="auth-submit">
+            Filter bids
+          </button>
+        </form>
+
+        <div className="feed-list">
+          {filteredQueue.length === 0 ? (
+            <EmptyState
+              icon="🧾"
+              message="No submitted bids to track for this filter."
+              actionLabel="Review all opportunities"
+              actionHref="#opportunities"
+            />
+          ) : null}
+          {filteredQueue.map((item) => (
             <div key={item.id} className="feed-item">
               <strong>{item.title}</strong>
               <p>
@@ -159,7 +239,7 @@ export default async function ProviderPage() {
       </article>
 
       <article className="feed-card">
-                <span className="tag">Capabilities</span>
+        <span className="tag">Capabilities</span>
         <h3>What this provider can credibly sell.</h3>
         <div className="chip-list">
           {data.capabilities.map((capability) => (
@@ -181,7 +261,8 @@ export default async function ProviderPage() {
                   {order.id} · {milestone.title}
                 </strong>
                 <p>
-                  {milestone.state} · {formatMoney(milestone.basePriceCents)} base ·{" "}
+                  {milestone.state} · {formatMoney(milestone.basePriceCents)} base ·
+                  {" "}
                   {milestone.usageCharges.length} usage proof events
                 </p>
               </div>
