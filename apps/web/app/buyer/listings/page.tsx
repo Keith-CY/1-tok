@@ -31,6 +31,10 @@ export default async function BuyerListingsPage({
       copy="Search by capability, category, or price range. Compare providers and start an RFQ."
       signal="Listing discovery"
       asideTitle="Quick info"
+      quickActions={[
+        { label: "Back to buyer dashboard", href: "/buyer", tone: "secondary" },
+        { label: "Search RFQs", href: "/buyer/rfqs", tone: "primary" },
+      ]}
       asideItems={[]}
     >
       <div className="space-y-4">
@@ -48,7 +52,7 @@ export default async function BuyerListingsPage({
             <option value="agent-runtime">Agent Runtime</option>
             <option value="compute">Compute</option>
           </select>
-          <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded">
+          <button type="submit" className="action-button">
             Search
           </button>
         </form>

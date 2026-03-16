@@ -33,9 +33,9 @@ export default async function OpsDisputesPage() {
     >
       <div className="space-y-4">
         <div className="flex gap-2 mb-4">
-          <a href="?status=open" className="px-3 py-1 bg-red-100 text-red-800 rounded text-sm">Open</a>
-          <a href="?status=resolved" className="px-3 py-1 bg-green-100 text-green-800 rounded text-sm">Resolved</a>
-          <a href="?" className="px-3 py-1 bg-gray-100 text-gray-800 rounded text-sm">All</a>
+          <a href="?status=open" className="action-button">Open</a>
+          <a href="?status=resolved" className="action-button">Resolved</a>
+          <a href="?status=all" className="action-button">All</a>
         </div>
 
         {disputes.length === 0 ? (
