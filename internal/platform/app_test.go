@@ -2038,6 +2038,23 @@ func TestTopUpMilestone(t *testing.T) {
 	}
 }
 
+func TestTopUpMilestone_ValidationErrors(t *testing.T) {
+	app := NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(CreateRFQInput{BuyerOrgID: "org_b", Title: "TopUp", Category: "ai", Scope: "test", BudgetCents: 1000, ResponseDeadlineAt: time.Date(2099, 4, 1, 0, 0, 0, 0, time.UTC)})
+	bid, _ := app.CreateBid(rfq.ID, CreateBidInput{ProviderOrgID: "org_p", Message: "bid", QuoteCents: 1000, Milestones: []BidMilestoneInput{{ID: "ms_1", Title: "W", BasePriceCents: 1000, BudgetCents: 1000}}})
+	_, order, _ := app.AwardRFQ(rfq.ID, AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	if _, err := app.TopUpMilestone(order.ID, TopUpInput{MilestoneID: "", AdditionalCents: 100}); err == nil {
+		t.Fatalf("expected missing milestoneID error")
+	}
+	if _, err := app.TopUpMilestone(order.ID, TopUpInput{MilestoneID: "ms_1", AdditionalCents: 0}); err == nil {
+		t.Fatalf("expected invalid additional cents error")
+	}
+	if _, err := app.TopUpMilestone(order.ID, TopUpInput{MilestoneID: "ms_missing", AdditionalCents: 100}); err == nil {
+		t.Fatalf("expected milestone not found error")
+	}
+}
+
 func TestCreateListing(t *testing.T) {
 	app := NewAppWithMemory()
 	listing, err := app.CreateListing(CreateListingInput{

@@ -1925,13 +1925,25 @@ type TopUpInput struct {
 
 // TopUpMilestone increases the budget for a paused milestone.
 func (a *App) TopUpMilestone(orderID string, input TopUpInput) (*core.Order, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if input.MilestoneID == "" {
+		return nil, ErrMissingRequiredFields
+	}
+	if input.AdditionalCents <= 0 {
+		return nil, ErrMissingRequiredFields
+	}
+
 	order, err := a.orders.Get(orderID)
 	if err != nil {
 		return nil, err
 	}
 
+	found := false
 	for i := range order.Milestones {
 		if order.Milestones[i].ID == input.MilestoneID {
+			found = true
 			order.Milestones[i].BudgetCents += input.AdditionalCents
 			if order.Milestones[i].State == core.MilestoneStatePaused {
 				order.Milestones[i].State = core.MilestoneStateRunning
@@ -1939,6 +1951,9 @@ func (a *App) TopUpMilestone(orderID string, input TopUpInput) (*core.Order, err
 			}
 			break
 		}
+	}
+	if !found {
+		return nil, core.ErrMilestoneNotFound
 	}
 
 	if err := a.orders.Save(order); err != nil {
