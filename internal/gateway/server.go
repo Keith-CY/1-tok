@@ -15,6 +15,7 @@ import (
 	"github.com/chenyu/1-tok/internal/ratelimit"
 	"github.com/chenyu/1-tok/internal/runtimeconfig"
 	"github.com/chenyu/1-tok/internal/serviceauth"
+	"github.com/chenyu/1-tok/internal/usageproof"
 	"github.com/chenyu/1-tok/internal/validation"
 	"net/http"
 	"os"
@@ -2371,6 +2372,10 @@ func (s *Server) recordUsageFromCallback(event carrier.CallbackEvent) (*core.Ord
 		return nil, core.UsageCharge{}, err
 	}
 
+	if err := s.verifyUsageProofBindingSecret(&job, binding, kind, amountCents, proofRef, proofSig, proofTS); err != nil {
+		return nil, core.UsageCharge{}, err
+	}
+
 	return s.app.RecordUsageCharge(binding.OrderID, platform.RecordUsageChargeInput{
 		MilestoneID:    job.MilestoneID,
 		Kind:           kind,
@@ -2397,6 +2402,39 @@ func parseUsageProofPayload(payload map[string]any) (proofRef string, proofSig s
 		return "", "", "", fmt.Errorf("invalid usage proof payload: proofTimestamp must be RFC3339")
 	}
 	return strings.TrimSpace(proofRef), strings.TrimSpace(proofSig), strings.TrimSpace(proofTS), nil
+}
+
+func (s *Server) verifyUsageProofBindingSecret(job *carrier.ExecutionJob, binding carrier.Binding, kind core.UsageChargeKind, amountCents int64, proofRef, proofSig, proofTS string) error {
+	if proofRef == "" && proofSig == "" && proofTS == "" {
+		return nil
+	}
+
+	order, err := s.app.GetOrder(binding.OrderID)
+	if err != nil {
+		return nil
+	}
+
+	providerBinding, err := s.app.GetProviderCarrierBinding(order.ProviderOrgID)
+	if err != nil {
+		return nil
+	}
+
+	secret := strings.TrimSpace(providerBinding.CallbackSecret)
+	if secret == "" {
+		secret = os.Getenv("CARRIER_CALLBACK_SECRET")
+	}
+	if secret == "" {
+		return nil
+	}
+
+	return usageproof.Verify(secret, usageproof.Proof{
+		ExecutionID: job.ID,
+		MilestoneID: job.MilestoneID,
+		Kind:        string(kind),
+		AmountCents: amountCents,
+		Timestamp:   proofTS,
+		Signature:   proofSig,
+	})
 }
 
 func jobInputDefaultUsageKind(payload map[string]any) core.UsageChargeKind {
