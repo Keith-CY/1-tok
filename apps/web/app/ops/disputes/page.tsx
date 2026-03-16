@@ -37,17 +37,20 @@ export default async function OpsDisputesPage({
 }) {
   const viewer = await requirePortalViewer("ops", "/ops/disputes");
 
-  const query = (searchParams?.q ?? "").trim().toLowerCase();
+  const query = (searchParams?.q ?? "").trim();
+  const queryLower = query.toLowerCase();
   const status = (searchParams?.status ?? "open").toLowerCase();
+
+  const encodedQuery = encodeURIComponent(query);
 
   const disputes = DISPUTES.filter(
     (d) =>
       (status === "all" || d.status === status) &&
-      (!query ||
-        d.orderId.toLowerCase().includes(query) ||
-        d.milestoneId.toLowerCase().includes(query) ||
-        d.buyerOrgId.toLowerCase().includes(query) ||
-        d.reason.toLowerCase().includes(query)),
+      (!queryLower ||
+        d.orderId.toLowerCase().includes(queryLower) ||
+        d.milestoneId.toLowerCase().includes(queryLower) ||
+        d.buyerOrgId.toLowerCase().includes(queryLower) ||
+        d.reason.toLowerCase().includes(queryLower)),
   );
 
   return (
@@ -91,9 +94,9 @@ export default async function OpsDisputesPage({
         </form>
 
         <div className="flex gap-2 mb-2">
-          <a href="?status=open" className="action-button">Open</a>
-          <a href="?status=resolved" className="action-button">Resolved</a>
-          <a href="?status=all" className="action-button">All</a>
+          <a href={`/ops/disputes?status=open${query ? `&q=${encodedQuery}` : ""}`} className="action-button">Open</a>
+          <a href={`/ops/disputes?status=resolved${query ? `&q=${encodedQuery}` : ""}`} className="action-button">Resolved</a>
+          <a href={`/ops/disputes?status=all${query ? `&q=${encodedQuery}` : ""}`} className="action-button">All</a>
         </div>
 
         {disputes.length === 0 ? (

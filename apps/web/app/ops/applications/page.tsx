@@ -41,17 +41,20 @@ export default async function OpsApplicationsPage({
 }) {
   const viewer = await requirePortalViewer("ops", "/ops/applications");
 
-  const query = (searchParams?.q ?? "").trim().toLowerCase();
+  const query = (searchParams?.q ?? "").trim();
+  const queryLower = query.toLowerCase();
   const status = (searchParams?.status ?? "pending").toLowerCase();
+
+  const encodedQuery = encodeURIComponent(query);
 
   const applications = APPLICATIONS.filter(
     (application) =>
       (status === "all" || application.status === status) &&
-      (!query ||
-        application.providerOrg.toLowerCase().includes(query) ||
-        application.category.toLowerCase().includes(query) ||
-        application.contact.toLowerCase().includes(query) ||
-        application.notes.toLowerCase().includes(query)),
+      (!queryLower ||
+        application.providerOrg.toLowerCase().includes(queryLower) ||
+        application.category.toLowerCase().includes(queryLower) ||
+        application.contact.toLowerCase().includes(queryLower) ||
+        application.notes.toLowerCase().includes(queryLower)),
   );
 
   return (
@@ -96,10 +99,10 @@ export default async function OpsApplicationsPage({
         </form>
 
         <div className="flex gap-2 mb-2">
-          <a href="?status=pending" className="action-button">Pending</a>
-          <a href="?status=approved" className="action-button">Approved</a>
-          <a href="?status=rejected" className="action-button">Rejected</a>
-          <a href="?status=all" className="action-button">All</a>
+          <a href={`/ops/applications?status=pending${query ? `&q=${encodedQuery}` : ""}`} className="action-button">Pending</a>
+          <a href={`/ops/applications?status=approved${query ? `&q=${encodedQuery}` : ""}`} className="action-button">Approved</a>
+          <a href={`/ops/applications?status=rejected${query ? `&q=${encodedQuery}` : ""}`} className="action-button">Rejected</a>
+          <a href={`/ops/applications?status=all${query ? `&q=${encodedQuery}` : ""}`} className="action-button">All</a>
         </div>
 
         {applications.length === 0 ? (
