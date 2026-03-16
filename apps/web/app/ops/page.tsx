@@ -1,5 +1,6 @@
 import { PortalShell } from "../../components/portal-shell";
 import { SummaryCard } from "../../components/summary-card";
+import { EmptyState } from "../../components/ui";
 import { getOpsDashboardData } from "../../lib/api";
 import { requirePortalViewer } from "../../lib/viewer";
 
@@ -29,6 +30,11 @@ export default async function OpsPage({
       copy="This view keeps provider review, credit discipline, dispute payouts, and channel stress in the same sightline. It should feel like the place where market trust is actively manufactured."
       signal="Platform-first reimbursement, provider recovery second"
       asideTitle="Ops signal deck"
+      quickActions={[
+        { label: "Run credit decision", href: "#credit-decision", tone: "primary" },
+        { label: "Review disputes", href: "#disputes", tone: "secondary" },
+        { label: "Treasury controls", href: "#treasury", tone: "secondary" },
+      ]}
       asideItems={[
         { label: "Active orders", value: `${data.summary.activeOrders}`, tone: "warning" },
         { label: "Open disputes", value: `${data.summary.openDisputes}`, tone: "danger" },
@@ -59,7 +65,7 @@ export default async function OpsPage({
       </div>
 
       <div className="feed-grid">
-        <article className="feed-card">
+        <article className="feed-card" id="credit-decision">
           <span className="tag">Credit review</span>
           <h3>Ops should be able to re-price buyer trust without leaving the control plane.</h3>
           <form className="auth-form market-form" action="/ops/credits/decision" method="post">
@@ -91,7 +97,7 @@ export default async function OpsPage({
           </form>
         </article>
 
-        <aside className="message-card">
+        <aside className="message-card" id="dispute-result">
           <span className="tag">Decision result</span>
           <h3>Show the last recommendation with the exact reason returned by policy.</h3>
           <div className="message-list">
@@ -122,7 +128,7 @@ export default async function OpsPage({
           </div>
         </article>
 
-        <aside className="message-card">
+        <aside className="message-card" id="treasury">
           <span className="tag">Action posture</span>
           <h3>Open cases stay actionable, resolved cases stay legible.</h3>
           <div className="chip-list">
@@ -143,6 +149,7 @@ export default async function OpsPage({
           <span className="tag">Pending reviews</span>
           <h3>Items that require a human decision, not another dashboard filter.</h3>
           <div className="feed-list">
+            {data.pendingReviews.length === 0 ? <EmptyState icon="✅" message="No pending manual reviews right now." /> : null}
             {data.pendingReviews.map((review) => (
               <div key={review.id} className="feed-item">
                 <strong>{review.title}</strong>
@@ -156,6 +163,7 @@ export default async function OpsPage({
           <span className="tag">Treasury signals</span>
           <h3>Read the funding posture at a glance.</h3>
           <div className="chip-list">
+            {data.treasurySignals.length === 0 ? <EmptyState icon="🏦" message="No treasury signal changes in the last interval." /> : null}
             {data.treasurySignals.map((signal) => (
               <div key={signal.id} className="chip">
                 {signal.label}
@@ -166,10 +174,11 @@ export default async function OpsPage({
         </aside>
       </div>
 
-      <article className="timeline-card">
+      <article className="timeline-card" id="risk-feed">
         <span className="tag">Risk feed</span>
         <h3>Today’s market pressure points.</h3>
         <div className="timeline">
+          {data.riskFeed.length === 0 ? <EmptyState icon="📈" message="No risk alerts in the last period." /> : null}
           {data.riskFeed.map((item) => (
             <div key={item.id} className="timeline-item">
               <strong>{item.title}</strong>
@@ -179,10 +188,11 @@ export default async function OpsPage({
         </div>
       </article>
 
-      <article className="timeline-card">
+      <article className="timeline-card" id="disputes">
         <span className="tag">Dispute queue</span>
         <h3>Platform-first reimbursement only works if disputes stay visible.</h3>
         <div className="timeline">
+          {data.disputes.length === 0 ? <EmptyState icon="⚖️" message="No disputes in queue." /> : null}
           {data.disputes.map((dispute) => (
             <div key={dispute.id} className="timeline-item">
               <strong>
@@ -217,10 +227,11 @@ export default async function OpsPage({
         </div>
       </article>
 
-      <article className="timeline-card">
+      <article className="timeline-card" id="journal">
         <span className="tag">Funding journal</span>
         <h3>Live money movement, not demo theater.</h3>
         <div className="timeline">
+          {data.fundingRecords.length === 0 ? <EmptyState icon="📚" message="No funding records to display yet." /> : null}
           {data.fundingRecords.map((record) => (
             <div key={record.id} className="timeline-item">
               <strong>

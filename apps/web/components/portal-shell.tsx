@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { SiteHeader } from "./site-header";
@@ -9,6 +10,7 @@ interface PortalShellProps {
   signal: string;
   asideTitle: string;
   asideItems: Array<{ label: string; value: string; tone?: "default" | "mint" | "warning" | "danger" }>;
+  quickActions?: Array<{ label: string; href: string; tone?: "primary" | "secondary" }>;
   children: ReactNode;
 }
 
@@ -19,6 +21,7 @@ export function PortalShell({
   signal,
   asideTitle,
   asideItems,
+  quickActions = [],
   children,
 }: PortalShellProps) {
   return (
@@ -31,6 +34,21 @@ export function PortalShell({
           <h1 className="portal-title">{title}</h1>
           <p className="section-copy">{copy}</p>
           <span className="signal-pill">{signal}</span>
+          {quickActions.length > 0 ? (
+            <div className="portal-actions">
+              {quickActions.map((action) => (
+                <Link
+                  key={action.label}
+                  href={action.href}
+                  className={`portal-action-btn ${
+                    action.tone === "primary" ? "portal-action-btn--primary" : "portal-action-btn--secondary"
+                  }`}
+                >
+                  {action.label}
+                </Link>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         <aside className="hero__panel portal-hero__panel">

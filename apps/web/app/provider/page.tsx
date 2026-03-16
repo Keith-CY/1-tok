@@ -2,6 +2,7 @@ import { formatMoney } from "@1tok/contracts";
 
 import { PortalShell } from "../../components/portal-shell";
 import { SummaryCard } from "../../components/summary-card";
+import { EmptyState } from "../../components/ui";
 import { getProviderDashboardData } from "../../lib/api";
 import { requirePortalViewer } from "../../lib/viewer";
 
@@ -22,6 +23,11 @@ export default async function ProviderPage() {
       copy="Providers need a cockpit that treats milestones, usage proofs, payout hooks, and reputation as part of the same operational loop. This page stays close to that loop."
       signal="Immediate payout only when proof and policy agree"
       asideTitle="Provider signal deck"
+      quickActions={[
+        { label: "Review pipeline", href: "#pipeline", tone: "primary" },
+        { label: "Open opportunities", href: "#opportunities", tone: "secondary" },
+        { label: "Track payouts", href: "#payouts", tone: "secondary" },
+      ]}
       asideItems={[
         { label: "Provider", value: data.summary.providerName, tone: "mint" },
         { label: "Submitted bids", value: `${data.summary.submittedBids}`, tone: "warning" },
@@ -57,10 +63,11 @@ export default async function ProviderPage() {
       </div>
 
       <div className="feed-grid">
-        <article className="feed-card">
+        <article className="feed-card" id="pipeline">
           <span className="tag">Pipeline</span>
           <h3>What will move revenue in the next hour.</h3>
           <div className="feed-list">
+            {data.pipeline.length === 0 ? <EmptyState icon="⏱️" message="No active pipeline items at the moment." /> : null}
             {data.pipeline.map((item) => (
               <div key={item.id} className="feed-item">
                 <strong>{item.label}</strong>
@@ -70,11 +77,14 @@ export default async function ProviderPage() {
           </div>
         </article>
 
-        <aside className="message-card">
+        <aside className="message-card" id="opportunities">
           <span className="tag">Open RFQs</span>
           <h3>Providers need a direct lane from opportunity to submitted bid.</h3>
           <div className="message-list">
-            {data.marketOpportunities.map((item) => (
+            {data.marketOpportunities.length === 0 ? (
+                  <EmptyState icon="📡" message="No marketplace opportunities right now. Refresh soon for fresh RFQs." />
+                ) : null}
+                  {data.marketOpportunities.map((item) => (
               <div key={item.id} className="message-item">
                 <strong>{item.title}</strong>
                 <p>
@@ -110,10 +120,11 @@ export default async function ProviderPage() {
         </aside>
       </div>
 
-      <article className="feed-card">
+      <article className="feed-card" id="payouts">
         <span className="tag">Submitted bids</span>
         <h3>Bid posture should sit next to payout posture.</h3>
         <div className="feed-list">
+          {data.marketQueue.length === 0 ? <EmptyState icon="🧾" message="No submitted bids to track yet; use the pipeline to submit." /> : null}
           {data.marketQueue.map((item) => (
             <div key={item.id} className="feed-item">
               <strong>{item.title}</strong>

@@ -730,6 +730,45 @@ select {
   background: linear-gradient(90deg, var(--danger), #e04040);
 }
 
+
+.portal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.portal-action-btn {
+  padding: 0.75rem 1rem;
+  border-radius: 999px;
+  text-decoration: none;
+  font-weight: 500;
+  border: 1px solid transparent;
+  transition: transform 150ms ease, filter 150ms ease, opacity 150ms ease, border-color 150ms ease,
+    background 150ms ease;
+}
+
+.portal-action-btn--primary {
+  color: #08110e;
+  background: linear-gradient(120deg, #8ff3d1, #d9fef0);
+  border-color: rgba(143, 246, 211, 0.45);
+}
+
+.portal-action-btn--secondary {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.portal-action-btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.06);
+}
+
+.portal-action-btn:active {
+  transform: translateY(0);
+}
+
 /* ── Empty state ──────────────────────────────────────────── */
 .empty-state {
   display: flex;
