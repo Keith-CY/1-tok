@@ -17,6 +17,10 @@ export default async function LeaderboardPage() {
       copy="Top-rated providers by marketplace performance."
       signal="Rankings"
       asideTitle="Quick info"
+      quickActions={[
+        { label: "Open listings", href: "/buyer/listings", tone: "primary" },
+        { label: "Create RFQ", href: "/buyer/rfqs/create", tone: "secondary" },
+      ]}
       asideItems={[]}
     >
       <div className="space-y-3">

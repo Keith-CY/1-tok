@@ -10,6 +10,10 @@ export default async function CreateRFQPage() {
       copy="Describe the work you need done. Providers will submit bids with pricing and milestone breakdowns."
       signal="New RFQ"
       asideTitle="Quick info"
+      quickActions={[
+        { label: "Back to buyer portal", href: "/buyer", tone: "secondary" },
+        { label: "Open marketplace listings", href: "/buyer/listings", tone: "primary" },
+      ]}
       asideItems={[]}
     >
       <form method="POST" action="/buyer/rfqs/create/submit" className="space-y-6 max-w-2xl">
@@ -53,10 +57,10 @@ export default async function CreateRFQPage() {
         </div>
 
         <div className="flex gap-3">
-          <button type="submit" className="bg-blue-600 text-white px-6 py-2 rounded font-medium hover:bg-blue-700">
+          <button type="submit" className="auth-submit">
             Create RFQ
           </button>
-          <a href="/buyer" className="px-6 py-2 border rounded text-gray-600 hover:bg-gray-50">
+          <a href="/buyer" className="inline-flex items-center px-6 py-2 border rounded-full text-sm font-medium text-[#b3b7c2] hover:text-[#08110e]">
             Cancel
           </a>
         </div>
