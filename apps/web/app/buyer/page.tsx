@@ -206,7 +206,12 @@ export default async function BuyerPage() {
             </div>
           ))}
           {!data.activeOrders[0]?.milestones.length && (
-            <EmptyState icon="📋" message="No active milestones yet." />
+            <EmptyState
+              icon="📋"
+              message="No active milestones yet."
+              actionLabel="Create an RFQ"
+              actionHref="#create-rfq"
+            />
           )}
         </div>
       </article>

@@ -49,7 +49,7 @@ export default async function ProviderCarrierPage() {
 
         <section>
           <h2 className="text-xl font-semibold mb-3">Active Jobs</h2>
-          <EmptyState message="No active execution jobs." actionLabel="Register Carrier" actionHref="/provider/carrier/register" />
+          <EmptyState message="No active execution jobs." actionLabel="Register or refresh Carrier" actionHref="/provider/carrier/register" />
         </section>
       </div>
     </PortalShell>

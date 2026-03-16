@@ -25,7 +25,7 @@ export default async function OpsApplicationsPage() {
           <Link href="?" className="px-3 py-1 bg-gray-100 text-gray-800 rounded text-sm">All</Link>
         </div>
 
-        <EmptyState message="No applications to review." actionLabel="Open ops control panel" actionHref="/ops" />
+        <EmptyState message="No applications to review." actionLabel="Check new applications" actionHref="?status=pending" />
       </div>
     </PortalShell>
   );
