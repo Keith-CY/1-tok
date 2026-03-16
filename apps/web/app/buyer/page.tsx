@@ -10,13 +10,46 @@ export const dynamic = "force-dynamic";
 
 const PROGRESS_WARNING_THRESHOLD = 0.9;
 
-export default async function BuyerPage() {
+export default async function BuyerPage({
+  searchParams,
+}: {
+  searchParams?: Record<string, string | string[] | undefined>;
+}) {
   const viewer = await requirePortalViewer("buyer", "/buyer");
   const data = await getBuyerDashboardData({
     authToken: viewer.token,
     buyerOrgId: viewer.membership.organization.id,
     requireLive: true,
   });
+
+  const listingSearch = readSearchParam(searchParams, "listingSearch").toLowerCase();
+  const rfqSearch = readSearchParam(searchParams, "rfqSearch").toLowerCase();
+  const rfqStatusFilter = readSearchParam(searchParams, "rfqStatusFilter") || "all";
+  const messageSearch = readSearchParam(searchParams, "messageSearch").toLowerCase();
+
+  const filteredListings = data.recommendedListings.filter((listing) =>
+    listing.title.toLowerCase().includes(listingSearch) ||
+    listing.category.toLowerCase().includes(listingSearch) ||
+    listing.tags.some((tag) => tag.toLowerCase().includes(listingSearch)),
+  );
+
+  const filteredRFQs = data.rfqBook.filter((rfq) => {
+    const matchesStatus =
+      rfqStatusFilter === "all"
+        ? true
+        : rfqStatusFilter === "open"
+          ? rfq.status === "open"
+          : rfq.status === rfqStatusFilter;
+
+    const matchesSearch = rfq.title.toLowerCase().includes(rfqSearch);
+
+    return matchesStatus && matchesSearch;
+  });
+
+  const filteredMessages = data.inbox.filter((message) =>
+    message.title.toLowerCase().includes(messageSearch) ||
+    message.detail.toLowerCase().includes(messageSearch),
+  );
 
   return (
     <PortalShell
@@ -95,8 +128,25 @@ export default async function BuyerPage() {
         <article className="feed-card">
           <span className="tag">Recommended listings</span>
           <h3>Providers ranked for the current market temperature.</h3>
+          <form method="GET" className="auth-form market-form">
+            <input type="hidden" name="rfqSearch" value={rfqSearch} />
+            <input type="hidden" name="rfqStatusFilter" value={rfqStatusFilter} />
+            <input type="hidden" name="messageSearch" value={messageSearch} />
+            <label className="auth-field">
+              <span>Search listings</span>
+              <input
+                name="listingSearch"
+                type="text"
+                placeholder="Search by title, category, or tag"
+                defaultValue={listingSearch}
+              />
+            </label>
+            <button type="submit" className="auth-submit">
+              Filter listings
+            </button>
+          </form>
           <div className="feed-list">
-            {data.recommendedListings.length === 0 ? (
+            {filteredListings.length === 0 ? (
               <EmptyState
                 icon="🔎"
                 message="No live recommendations yet; open new RFQs to seed marketplace activity."
@@ -104,7 +154,7 @@ export default async function BuyerPage() {
                 actionHref="#create-rfq"
               />
             ) : null}
-            {data.recommendedListings.map((listing) => (
+            {filteredListings.map((listing) => (
               <div key={listing.id} className="feed-item">
                 <strong>{listing.title}</strong>
                 <p>
@@ -125,8 +175,37 @@ export default async function BuyerPage() {
         <aside className="message-card" id="rfq-book">
           <span className="tag">RFQ book</span>
           <h3>Every open request should show bid pressure, not just status.</h3>
+          <form method="GET" className="auth-form market-form">
+            <input type="hidden" name="listingSearch" value={listingSearch} />
+            <input type="hidden" name="messageSearch" value={messageSearch} />
+            <div className="market-form__grid">
+              <label className="auth-field">
+                <span>Search RFQ book</span>
+                <input
+                  name="rfqSearch"
+                  type="text"
+                  placeholder="Search by title"
+                  defaultValue={rfqSearch}
+                />
+              </label>
+              <label className="auth-field">
+                <span>Status</span>
+                <select
+                  name="rfqStatusFilter"
+                  defaultValue={rfqStatusFilter}
+                >
+                  <option value="all">All</option>
+                  <option value="open">Open</option>
+                  <option value="awarded">Awarded</option>
+                </select>
+              </label>
+            </div>
+            <button type="submit" className="auth-submit">
+              Filter RFQs
+            </button>
+          </form>
           <div className="message-list">
-            {data.rfqBook.length === 0 ? (
+            {filteredRFQs.length === 0 ? (
               <EmptyState
                 icon="🧾"
                 message="No open RFQs to action. Create one above to start receiving bids."
@@ -134,7 +213,7 @@ export default async function BuyerPage() {
                 actionHref="#rfq-book"
               />
             ) : null}
-            {data.rfqBook.map((rfq) => (
+            {filteredRFQs.map((rfq) => (
               <div key={rfq.id} className="message-item">
                 <strong>{rfq.title}</strong>
                 <p>
@@ -168,8 +247,25 @@ export default async function BuyerPage() {
       <article className="feed-card" id="message-inbox">
         <span className="tag">Inbox</span>
         <h3>Messages that change buyer decisions.</h3>
+        <form method="GET" className="auth-form market-form">
+          <input type="hidden" name="listingSearch" value={listingSearch} />
+          <input type="hidden" name="rfqSearch" value={rfqSearch} />
+          <input type="hidden" name="rfqStatusFilter" value={rfqStatusFilter} />
+          <label className="auth-field">
+            <span>Search messages</span>
+            <input
+              name="messageSearch"
+              type="text"
+              placeholder="Search inbox title or details"
+              defaultValue={messageSearch}
+            />
+          </label>
+          <button type="submit" className="auth-submit">
+            Filter messages
+          </button>
+        </form>
         <div className="feed-list">
-          {data.inbox.length === 0 ? (
+          {filteredMessages.length === 0 ? (
             <EmptyState
               icon="📭"
               message="No messages yet. You’re all clear for now; messages will appear here once bidders engage."
@@ -177,7 +273,7 @@ export default async function BuyerPage() {
               actionHref="#create-rfq"
             />
           ) : null}
-          {data.inbox.map((message) => (
+          {filteredMessages.map((message) => (
             <div key={message.id} className="feed-item">
               <strong>{message.title}</strong>
               <p>{message.detail}</p>
@@ -217,4 +313,13 @@ export default async function BuyerPage() {
       </article>
     </PortalShell>
   );
+}
+
+
+function readSearchParam(
+  searchParams: Record<string, string | string[] | undefined> | undefined,
+  key: string,
+): string {
+  const value = searchParams?.[key];
+  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
 }
