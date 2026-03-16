@@ -1,12 +1,56 @@
 import Link from "next/link";
+
 import { PortalShell } from "../../../components/portal-shell";
 import { StatusBadge, EmptyState } from "../../../components/ui";
 import { requirePortalViewer } from "../../../lib/viewer";
 
 export const dynamic = "force-dynamic";
 
-export default async function ProviderCarrierPage() {
+const CARRIER_JOBS = [
+  {
+    id: "job_19",
+    orderId: "ord_19",
+    title: "Log ingestion remediation",
+    status: "running",
+    progress: "7/10",
+    host: "carrier-runner-01",
+    lastSeen: "2m ago",
+  },
+  {
+    id: "job_20",
+    orderId: "ord_20",
+    title: "Pipeline burst scaling",
+    status: "paused",
+    progress: "3/6",
+    host: "carrier-runner-07",
+    lastSeen: "11m ago",
+  },
+  {
+    id: "job_21",
+    orderId: "ord_21",
+    title: "Agent runtime audit",
+    status: "pending",
+    progress: "0/4",
+    host: "carrier-runner-09",
+    lastSeen: "28m ago",
+  },
+];
+
+export default async function ProviderCarrierPage({
+  searchParams,
+}: {
+  searchParams?: { q?: string; status?: string };
+}) {
   const viewer = await requirePortalViewer("provider", "/provider/carrier");
+
+  const q = (searchParams?.q ?? "").trim().toLowerCase();
+  const status = (searchParams?.status ?? "all").toLowerCase();
+
+  const jobs = CARRIER_JOBS.filter(
+    (job) =>
+      (!q || job.title.toLowerCase().includes(q) || job.orderId.toLowerCase().includes(q) || job.host.toLowerCase().includes(q)) &&
+      (status === "all" || job.status === status),
+  );
 
   return (
     <PortalShell
@@ -17,7 +61,7 @@ export default async function ProviderCarrierPage() {
       asideTitle="Quick info"
       quickActions={[
         { label: "Open your listings", href: "/provider/listings", tone: "secondary" },
-        { label: "Register or refresh carrier", href: "/provider/carrier/register", tone: "primary" },
+        { label: "Review RFQ opportunities", href: "/provider/rfqs", tone: "primary" },
       ]}
       asideItems={[]}
     >
@@ -32,28 +76,80 @@ export default async function ProviderCarrierPage() {
               </div>
               <div>
                 <p className="text-sm text-gray-500">Host</p>
-                <p className="font-mono text-sm">—</p>
+                <p className="font-mono text-sm">carrier-prod.internal</p>
               </div>
               <div>
                 <p className="text-sm text-gray-500">Agent</p>
-                <p className="font-mono text-sm">—</p>
+                <p className="font-mono text-sm">{viewer.membership.organization.name}</p>
               </div>
               <div>
-                <p className="text-sm text-gray-500">Backend</p>
-                <p className="font-mono text-sm">—</p>
+                <p className="text-sm text-gray-500">Runtime</p>
+                <p className="font-mono text-sm">v0.9.2</p>
               </div>
-            </div>
-            <div className="mt-4">
-              <Link href="/provider/carrier/register" className="action-button">
-                Register Carrier
-              </Link>
             </div>
           </div>
         </section>
 
         <section>
-          <h2 className="text-xl font-semibold mb-3">Active Jobs</h2>
-          <EmptyState message="No active execution jobs." actionLabel="Register or refresh Carrier" actionHref="/provider/carrier/register" />
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-semibold mb-3">Active Jobs</h2>
+            <Link href="/provider/rfqs" className="action-button">
+              Browse opportunities
+            </Link>
+          </div>
+
+          <form method="GET" className="auth-form market-form">
+            <div className="market-form__grid">
+              <label className="auth-field">
+                <span>Search jobs</span>
+                <input
+                  name="q"
+                  type="text"
+                  defaultValue={searchParams?.q ?? ""}
+                  placeholder="Search by order id, host, or title"
+                />
+              </label>
+              <label className="auth-field">
+                <span>Status</span>
+                <select name="status" defaultValue={searchParams?.status ?? "all"}>
+                  <option value="all">All states</option>
+                  <option value="running">Running</option>
+                  <option value="pending">Pending</option>
+                  <option value="paused">Paused</option>
+                  <option value="completed">Completed</option>
+                </select>
+              </label>
+            </div>
+            <button type="submit" className="auth-submit">
+              Filter jobs
+            </button>
+          </form>
+
+          {jobs.length === 0 ? (
+            <EmptyState
+              message="No active jobs match your filters."
+              actionLabel="Clear filters"
+              actionHref="/provider/carrier"
+            />
+          ) : (
+            <div className="feed-list mt-4">
+              {jobs.map((job) => (
+                <div key={job.id} className="feed-item">
+                  <div className="flex justify-between items-start gap-4">
+                    <div>
+                      <strong>
+                        {job.title} · {job.orderId}
+                      </strong>
+                      <p>
+                        Host {job.host} · Progress {job.progress} · Last seen {job.lastSeen}
+                      </p>
+                    </div>
+                    <StatusBadge status={job.status} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       </div>
     </PortalShell>
