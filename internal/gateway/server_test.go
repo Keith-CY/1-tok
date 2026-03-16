@@ -7548,6 +7548,71 @@ func TestCarrierCallback_UsageReportedRejectsInvalidProofSignature(t *testing.T)
 	}
 }
 
+func TestCarrierCallback_UsageReportedRejectsIncompleteProofPayload(t *testing.T) {
+	srv := NewServer()
+
+	orderPayload := map[string]any{
+		"buyerOrgId":    "buyer_6",
+		"providerOrgId": "provider_6",
+		"title":         "Incomplete proof payload",
+		"fundingMode":   "prepaid",
+		"milestones":    []map[string]any{{"id": "ms_incomplete_proof", "title": "Incomplete", "basePriceCents": 1000, "budgetCents": 2000}},
+	}
+	orderBody, _ := json.Marshal(orderPayload)
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(string(orderBody)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create order: %d %s", w.Code, w.Body.String())
+	}
+	var orderResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &orderResp)
+	orderID := orderResp["order"].(map[string]any)["id"].(string)
+
+	bindBody := `{"providerOrgId":"provider_6","carrierBaseUrl":"https://carrier.test","hostId":"h6","agentId":"a1","backend":"agent","workspaceRoot":"/tmp","callbackSecret":"proof-secret-6","callbackKeyId":"proof-k-6"}`
+	req = httptest.NewRequest("POST", "/api/v1/carrier-bindings", strings.NewReader(bindBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("register binding: %d %s", w.Code, w.Body.String())
+	}
+
+	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/milestones/ms_incomplete_proof/bind-carrier", strings.NewReader(`{"carrierId":"c_incomplete_proof","capabilities":["gpu"]}`))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("bind: %d %s", w.Code, w.Body.String())
+	}
+	var bindResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &bindResp)
+	bindingID := bindResp["binding"].(map[string]any)["id"].(string)
+
+	jobBody := fmt.Sprintf(`{"bindingId":"%s","input":"incomplete proof"}`, bindingID)
+	req = httptest.NewRequest("POST", fmt.Sprintf("/api/v1/orders/%s/milestones/ms_incomplete_proof/jobs", orderID), strings.NewReader(jobBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create job: %d %s", w.Code, w.Body.String())
+	}
+	var jobResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &jobResp)
+	jobID := jobResp["job"].(map[string]any)["id"].(string)
+
+	evt := carrier.CallbackEvent{Type: "usage.reported", JobID: jobID, BindingID: bindingID, Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Payload: map[string]any{"kind": "step", "amountCents": float64(100), "proofRef": "r-incomplete", "proofSignature": "sig"},
+	}
+	evt.Signature = carrier.SignCallback("proof-secret-6", evt)
+	body, _ := json.Marshal(evt)
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callbacks/events", strings.NewReader(string(body)))
+	req.Header.Set("X-One-Tok-Callback-Key-Id", "proof-k-6")
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for incomplete proof payload, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestCarrierCallback_UsageReportedRejectsInvalidProof(t *testing.T) {
 	srv := NewServer()
 
