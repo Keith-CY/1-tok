@@ -5154,6 +5154,16 @@ func TestRateOrder_ValidationError(t *testing.T) {
 	}
 }
 
+func assertGetStatusOK(t *testing.T, srv *Server, path string, want int) {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != want {
+		t.Fatalf("GET %s status = %d, want %d", path, w.Code, want)
+	}
+}
+
 func TestRouteOrderSubResources(t *testing.T) {
 	srv := NewServer()
 
@@ -5181,52 +5191,27 @@ func TestRouteOrderSubResources(t *testing.T) {
 
 func TestMarketplaceStats(t *testing.T) {
 	srv := NewServer()
-	req := httptest.NewRequest("GET", "/api/v1/stats", nil)
-	w := httptest.NewRecorder()
-	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d", w.Code)
-	}
+	assertGetStatusOK(t, srv, "/api/v1/stats", http.StatusOK)
 }
 
 func TestLeaderboard(t *testing.T) {
 	srv := NewServer()
-	req := httptest.NewRequest("GET", "/api/v1/leaderboard", nil)
-	w := httptest.NewRecorder()
-	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d", w.Code)
-	}
+	assertGetStatusOK(t, srv, "/api/v1/leaderboard", http.StatusOK)
 }
 
 func TestGetProvider(t *testing.T) {
 	srv := NewServer()
-	req := httptest.NewRequest("GET", "/api/v1/providers/provider_1", nil)
-	w := httptest.NewRecorder()
-	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d", w.Code)
-	}
+	assertGetStatusOK(t, srv, "/api/v1/providers/provider_1", http.StatusOK)
 }
 
 func TestGetListing(t *testing.T) {
 	srv := NewServer()
-	req := httptest.NewRequest("GET", "/api/v1/listings/listing_1", nil)
-	w := httptest.NewRecorder()
-	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d", w.Code)
-	}
+	assertGetStatusOK(t, srv, "/api/v1/listings/listing_1", http.StatusOK)
 }
 
 func TestProviderRevenue(t *testing.T) {
 	srv := NewServer()
-	req := httptest.NewRequest("GET", "/api/v1/providers/provider_1/revenue", nil)
-	w := httptest.NewRecorder()
-	srv.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d", w.Code)
-	}
+	assertGetStatusOK(t, srv, "/api/v1/providers/provider_1/revenue", http.StatusOK)
 }
 
 func TestOrderBudget(t *testing.T) {
