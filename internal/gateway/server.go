@@ -1084,30 +1084,15 @@ func (s *Server) handleCreateMessage(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	if verr := validation.New().
+	validator := validation.New().
 		Required("orderId", payload.OrderID).
-		Required("body", payload.Body).
-		Build(); verr != nil {
+		Required("body", payload.Body)
+	if s.auth == nil || iamclient.IsNoop(s.auth) {
+		validator = validator.Required("author", payload.Author)
+	}
+	if verr := validator.Build(); verr != nil {
 		httputil.WriteErrorWithDetails(w, http.StatusBadRequest, httputil.ErrCodeValidation, "validation failed", verr.Fields)
 		return
-	}
-	if s.auth == nil || iamclient.IsNoop(s.auth) {
-		if verr := validation.New().
-			Required("orderId", payload.OrderID).
-			Required("body", payload.Body).
-			Required("author", payload.Author).
-			Build(); verr != nil {
-			httputil.WriteErrorWithDetails(w, http.StatusBadRequest, httputil.ErrCodeValidation, "validation failed", verr.Fields)
-			return
-		}
-	} else {
-		if verr := validation.New().
-			Required("orderId", payload.OrderID).
-			Required("body", payload.Body).
-			Build(); verr != nil {
-			httputil.WriteErrorWithDetails(w, http.StatusBadRequest, httputil.ErrCodeValidation, "validation failed", verr.Fields)
-			return
-		}
 	}
 	if s.auth != nil && !iamclient.IsNoop(s.auth) {
 		actor, err := s.authenticatedActor(r)
