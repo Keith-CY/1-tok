@@ -2130,6 +2130,7 @@ func (s *Server) handleRegisterCarrierBinding(w http.ResponseWriter, r *http.Req
 		writeGatewayError(w, err)
 		return
 	}
+	binding = sanitizeCarrierBindingForPublic(binding)
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{"binding": binding})
 }
 func sanitizeCarrierBindingForPublic(b platform.ProviderCarrierBinding) platform.ProviderCarrierBinding {

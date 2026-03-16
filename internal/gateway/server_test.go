@@ -7152,6 +7152,17 @@ func TestCarrierBinding_Register(t *testing.T) {
 	if w.Code != http.StatusCreated {
 		t.Errorf("register: %d %s", w.Code, w.Body.String())
 	}
+	var regResp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &regResp); err != nil {
+		t.Fatal(err)
+	}
+	regBinding := regResp["binding"].(map[string]any)
+	if _, ok := regBinding["callbackSecret"]; ok {
+		t.Fatal("callbackSecret should be redacted in register response")
+	}
+	if _, ok := regBinding["integrationToken"]; ok {
+		t.Fatal("integrationToken should be redacted in register response")
+	}
 }
 
 func TestCarrierBinding_GetIncludesCallbackKeyIdAndHidesSecrets(t *testing.T) {
