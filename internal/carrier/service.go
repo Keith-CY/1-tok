@@ -430,29 +430,37 @@ func (s *Service) CreateJobIdempotent(bindingID, milestoneID, input, idempotency
 	}
 
 	s.mu.Lock()
-	// Check if key was already used
-	if existingID, ok := s.idempotencyKeys[idempotencyKey]; ok {
-		job, exists := s.jobs[existingID]
-		s.mu.Unlock()
-		if exists {
-			return job, true, nil // replay
-		}
-	}
-	s.mu.Unlock()
+	defer s.mu.Unlock()
 
-	// Create new job
-	job, err := s.CreateJob(bindingID, milestoneID, input)
-	if err != nil {
-		return ExecutionJob{}, false, err
-	}
-
-	// Store idempotency key
-	s.mu.Lock()
 	if s.idempotencyKeys == nil {
 		s.idempotencyKeys = make(map[string]string)
 	}
+
+	// Check if key was already used
+	if existingID, ok := s.idempotencyKeys[idempotencyKey]; ok {
+		job, exists := s.jobs[existingID]
+		if exists {
+			return job, true, nil // replay
+		}
+		// stale entry; fall through and overwrite with a new idempotent job
+	}
+
+	if _, ok := s.bindings[bindingID]; !ok {
+		return ExecutionJob{}, false, ErrBindingNotFound
+	}
+
+	s.jobSeq++
+	job := ExecutionJob{
+		ID:          fmt.Sprintf("job_%d", s.jobSeq),
+		BindingID:   bindingID,
+		MilestoneID: milestoneID,
+		State:       JobStatePending,
+		Input:       input,
+		CreatedAt:   time.Now().UTC(),
+	}
+	s.jobs[job.ID] = job
+	s.jobsByBinding[bindingID] = append(s.jobsByBinding[bindingID], job.ID)
 	s.idempotencyKeys[idempotencyKey] = job.ID
-	s.mu.Unlock()
 
 	return job, false, nil
 }

@@ -1,6 +1,7 @@
 package carrier
 
 import (
+	"sync"
 	"testing"
 	"time"
 )
@@ -489,9 +490,15 @@ func TestCreateJobIdempotent_NewKey(t *testing.T) {
 	svc := NewService()
 	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
 	job, replay, err := svc.CreateJobIdempotent(b.ID, "ms_1", "input", "key_1")
-	if err != nil { t.Fatal(err) }
-	if replay { t.Error("should not be replay") }
-	if job.ID == "" { t.Error("expected job ID") }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replay {
+		t.Error("should not be replay")
+	}
+	if job.ID == "" {
+		t.Error("expected job ID")
+	}
 }
 
 func TestCreateJobIdempotent_Replay(t *testing.T) {
@@ -499,9 +506,70 @@ func TestCreateJobIdempotent_Replay(t *testing.T) {
 	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
 	job1, _, _ := svc.CreateJobIdempotent(b.ID, "ms_1", "input", "key_1")
 	job2, replay, err := svc.CreateJobIdempotent(b.ID, "ms_1", "input", "key_1")
-	if err != nil { t.Fatal(err) }
-	if !replay { t.Error("expected replay") }
-	if job2.ID != job1.ID { t.Errorf("expected same job, got %s vs %s", job1.ID, job2.ID) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !replay {
+		t.Error("expected replay")
+	}
+	if job2.ID != job1.ID {
+		t.Errorf("expected same job, got %s vs %s", job1.ID, job2.ID)
+	}
+}
+
+func TestCreateJobIdempotent_ConcurrentSameKey(t *testing.T) {
+	svc := NewService()
+	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
+
+	const n = 20
+	var wg sync.WaitGroup
+	wg.Add(n)
+	results := make(chan ExecutionJob, n)
+	replays := make(chan bool, n)
+	errCh := make(chan error, n)
+
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			job, replay, err := svc.CreateJobIdempotent(b.ID, "ms_1", "input", "same-key")
+			if err != nil {
+				errCh <- err
+				return
+			}
+			results <- job
+			replays <- replay
+		}()
+	}
+
+	wg.Wait()
+	close(results)
+	close(replays)
+	close(errCh)
+
+	if len(errCh) > 0 {
+		t.Fatalf("errors: %v", <-errCh)
+	}
+
+	var firstID string
+	for job := range results {
+		if firstID == "" {
+			firstID = job.ID
+			continue
+		}
+		if job.ID != firstID {
+			t.Fatalf("expected same job for concurrent idempotent calls, got %s and %s", firstID, job.ID)
+		}
+	}
+
+	replayCount := 0
+	for r := range replays {
+		if r {
+			replayCount++
+		}
+	}
+	if replayCount == 0 || replayCount == n {
+		t.Fatalf("expected mix of creator and replays, got replayCount=%d of %d", replayCount, n)
+	}
 }
 
 func TestCreateJobIdempotent_EmptyKey(t *testing.T) {
@@ -509,7 +577,9 @@ func TestCreateJobIdempotent_EmptyKey(t *testing.T) {
 	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
 	job1, _, _ := svc.CreateJobIdempotent(b.ID, "ms_1", "input", "")
 	job2, _, _ := svc.CreateJobIdempotent(b.ID, "ms_1", "input", "")
-	if job1.ID == job2.ID { t.Error("empty key should create separate jobs") }
+	if job1.ID == job2.ID {
+		t.Error("empty key should create separate jobs")
+	}
 }
 
 func TestCreateJobIdempotent_DifferentKeys(t *testing.T) {
@@ -517,7 +587,9 @@ func TestCreateJobIdempotent_DifferentKeys(t *testing.T) {
 	b, _ := svc.Bind("ord_1", "ms_1", "carrier_a", nil)
 	job1, _, _ := svc.CreateJobIdempotent(b.ID, "ms_1", "input", "key_1")
 	job2, _, _ := svc.CreateJobIdempotent(b.ID, "ms_1", "input", "key_2")
-	if job1.ID == job2.ID { t.Error("different keys should create different jobs") }
+	if job1.ID == job2.ID {
+		t.Error("different keys should create different jobs")
+	}
 }
 
 func TestIdempotentCancel(t *testing.T) {
@@ -554,9 +626,15 @@ func TestIdempotentComplete(t *testing.T) {
 }
 
 func TestIsValidFailureCategory(t *testing.T) {
-	if !IsValidFailureCategory("provider_fault") { t.Error("provider_fault should be valid") }
-	if !IsValidFailureCategory("timeout") { t.Error("timeout should be valid") }
-	if IsValidFailureCategory("made_up") { t.Error("made_up should be invalid") }
+	if !IsValidFailureCategory("provider_fault") {
+		t.Error("provider_fault should be valid")
+	}
+	if !IsValidFailureCategory("timeout") {
+		t.Error("timeout should be valid")
+	}
+	if IsValidFailureCategory("made_up") {
+		t.Error("made_up should be invalid")
+	}
 }
 
 func TestFailJobTyped(t *testing.T) {
@@ -567,16 +645,28 @@ func TestFailJobTyped(t *testing.T) {
 	svc.CreateAttempt(job.ID, "exec_1")
 
 	failed, err := svc.FailJobTyped(job.ID, FailureCategoryTimeout, "EXEC_TIMEOUT", "took too long")
-	if err != nil { t.Fatal(err) }
-	if failed.State != JobStateFailed { t.Errorf("state = %s", failed.State) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.State != JobStateFailed {
+		t.Errorf("state = %s", failed.State)
+	}
 
 	attempts := svc.ListAttempts(job.ID)
-	if len(attempts) == 0 { t.Fatal("expected attempts") }
+	if len(attempts) == 0 {
+		t.Fatal("expected attempts")
+	}
 	last := attempts[len(attempts)-1]
-	if last.FailureCategory != "timeout" { t.Errorf("category = %s", last.FailureCategory) }
-	if last.FailureCode != "EXEC_TIMEOUT" { t.Errorf("code = %s", last.FailureCode) }
+	if last.FailureCategory != "timeout" {
+		t.Errorf("category = %s", last.FailureCategory)
+	}
+	if last.FailureCode != "EXEC_TIMEOUT" {
+		t.Errorf("code = %s", last.FailureCode)
+	}
 }
 
 func TestValidFailureCategories(t *testing.T) {
-	if len(ValidFailureCategories) != 7 { t.Errorf("expected 7, got %d", len(ValidFailureCategories)) }
+	if len(ValidFailureCategories) != 7 {
+		t.Errorf("expected 7, got %d", len(ValidFailureCategories))
+	}
 }
