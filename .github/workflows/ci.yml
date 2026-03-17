@@ -128,6 +128,27 @@ jobs:
           echo "## Alpha Portal UX Audit Summary" >> "$GITHUB_STEP_SUMMARY"
           cat alpha-portal-ux-audit-summary.md >> "$GITHUB_STEP_SUMMARY"
 
+
+  portal_ux_config:
+    name: Portal UX Config Validation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - name: Install Dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Validate Portal UX Audit Config
+        run: bun run alpha:ux-audit:validate-config
+
   integration:
     name: Integration Smoke
     runs-on: ubuntu-latest
@@ -185,6 +206,7 @@ jobs:
       - unit
       - integration
       - portal_ux
+      - portal_ux_config
     if: always()
     permissions:
       contents: read
@@ -218,6 +240,7 @@ jobs:
           UNIT_RESULT: ${{ needs.unit.result }}
           INTEGRATION_RESULT: ${{ needs.integration.result }}
           PORTAL_RESULT: ${{ needs.portal_ux.result }}
+          PORTAL_CONFIG_RESULT: ${{ needs.portal_ux_config.result }}
           REPOSITORY: ${{ github.repository }}
           PORTAL_SUMMARY_PATH: .artifacts/portal-ux/alpha-portal-ux-audit-summary.md
           RUN_ID: ${{ github.run_id }}
@@ -245,6 +268,7 @@ jobs:
               f"- Unit and coverage: `{os.environ['UNIT_RESULT']}`",
               f"- Integration smoke: `{os.environ['INTEGRATION_RESULT']}`",
               f"- Portal UX check: `{os.environ['PORTAL_RESULT']}`",
+              f"- Portal UX config validation: `{os.environ['PORTAL_CONFIG_RESULT']}`",
               f"- Run: {run_url}",
               "",
               coverage,
