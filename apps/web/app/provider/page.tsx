@@ -90,12 +90,17 @@ export default async function ProviderPage({
         item.providerBidStatus.toLowerCase().includes(queueQ) ||
         item.buyerOrgId.toLowerCase().includes(queueQ),
     )
-    .filter(
-      (item) =>
-        queueStatus === "all" ||
-        (queueStatus === "active" && item.providerBidStatus !== "awarded") ||
-        item.providerBidStatus.toLowerCase() === queueStatus,
-    );
+    .filter((item) => {
+      if (queueStatus === "all") {
+        return true;
+      }
+
+      if (queueStatus === "active") {
+        return item.providerBidStatus.toLowerCase() === "pending";
+      }
+
+      return item.providerBidStatus.toLowerCase() === queueStatus;
+    });
 
   return (
     <PortalShell
