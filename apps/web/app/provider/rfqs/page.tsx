@@ -111,30 +111,30 @@ export default async function ProviderRFQsPage({
       <div className="space-y-4">
 
         <div className="flex gap-2 mb-2">
-          <a href={buildCategoryHref("all")} className={chipClass(categoryFilter === 'all')}>
+          <a href={buildCategoryHref("all")} className={chipClass(categoryFilter === 'all')} aria-current={categoryFilter === "all" ? "page" : undefined}>
             All categories
           </a>
-          <a href={buildCategoryHref("agent-ops")} className={chipClass(categoryFilter === 'agent-ops')}>
+          <a href={buildCategoryHref("agent-ops")} className={chipClass(categoryFilter === 'agent-ops')} aria-current={categoryFilter === "agent-ops" ? "page" : undefined}>
             Agent Ops
           </a>
-          <a href={buildCategoryHref("agent-runtime")} className={chipClass(categoryFilter === 'agent-runtime')}>
+          <a href={buildCategoryHref("agent-runtime")} className={chipClass(categoryFilter === 'agent-runtime')} aria-current={categoryFilter === "agent-runtime" ? "page" : undefined}>
             Agent Runtime
           </a>
-          <a href={buildCategoryHref("data-pipeline")} className={chipClass(categoryFilter === 'data-pipeline')}>
+          <a href={buildCategoryHref("data-pipeline")} className={chipClass(categoryFilter === 'data-pipeline')} aria-current={categoryFilter === "data-pipeline" ? "page" : undefined}>
             Data Pipeline
           </a>
-          <a href={buildCategoryHref("compute")} className={chipClass(categoryFilter === 'compute')}>
+          <a href={buildCategoryHref("compute")} className={chipClass(categoryFilter === 'compute')} aria-current={categoryFilter === "compute" ? "page" : undefined}>
             Compute
           </a>
         </div>
         <div className="flex gap-2 mb-2">
-          <a href={buildStatusHref("all")} className={chipClass(statusFilter === 'all')}>
+          <a href={buildStatusHref("all")} className={chipClass(statusFilter === 'all')} aria-current={statusFilter === "all" ? "page" : undefined}>
             All
           </a>
-          <a href={buildStatusHref("open")} className={chipClass(statusFilter === 'open')}>
+          <a href={buildStatusHref("open")} className={chipClass(statusFilter === 'open')} aria-current={statusFilter === "open" ? "page" : undefined}>
             Open
           </a>
-          <a href={buildStatusHref("awarded")} className={chipClass(statusFilter === 'awarded')}>
+          <a href={buildStatusHref("awarded")} className={chipClass(statusFilter === 'awarded')} aria-current={statusFilter === "awarded" ? "page" : undefined}>
             Awarded
           </a>
         </div>
@@ -164,7 +164,7 @@ export default async function ProviderRFQsPage({
             </label>
             <label className="auth-field">
               <span>Sort</span>
-              <select name="sort" defaultValue={searchParams?.sort ?? "deadline"}>
+              <select name="sort" defaultValue={sort}>
                 <option value="deadline">Deadline</option>
                 <option value="budget">Budget</option>
                 <option value="title">Title</option>
