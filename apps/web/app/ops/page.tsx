@@ -249,7 +249,7 @@ export default async function OpsPage({
           <h3>Read the funding posture at a glance.</h3>
           <div className="chip-list">
             {data.treasurySignals.length === 0 ? (
-              <EmptyState icon="🏦" message="No treasury signal changes in the last interval." actionLabel="Open treasury controls" actionHref="#treasury" />
+              <EmptyState icon="🏦" message="No treasury signal changes in the last interval." actionLabel="Open treasury controls" actionHref="/ops#treasury" />
             ) : null}
             {data.treasurySignals.map((signal) => (
               <div key={signal.id} className="chip">

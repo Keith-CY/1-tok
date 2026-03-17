@@ -232,7 +232,7 @@ export default async function BuyerPage({
                 icon="🔎"
                 message="No live recommendations yet; open new RFQs to seed marketplace activity."
                 actionLabel="Create RFQ now"
-                actionHref="#create-rfq"
+                actionHref="/buyer#create-rfq"
               />
             ) : null}
             {filteredListings.map((listing) => (
@@ -364,7 +364,7 @@ export default async function BuyerPage({
               icon="📭"
               message="No messages yet. You’re all clear for now; messages will appear here once bidders engage."
               actionLabel="Create RFQ now"
-              actionHref="#create-rfq"
+              actionHref="/buyer#create-rfq"
             />
           ) : null}
           {filteredMessages.map((message) => (
@@ -400,7 +400,7 @@ export default async function BuyerPage({
               icon="📋"
               message="No active milestones yet."
               actionLabel="Create an RFQ"
-              actionHref="#create-rfq"
+              actionHref="/buyer#create-rfq"
             />
           )}
         </div>

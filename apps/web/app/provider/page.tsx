@@ -153,7 +153,7 @@ export default async function ProviderPage({
                 icon="⏱️"
                 message="No active pipeline items at the moment."
                 actionLabel="Track opportunities"
-                actionHref="#opportunities"
+                actionHref="/provider#opportunities"
               />
             ) : null}
             {data.pipeline.map((item) => (
