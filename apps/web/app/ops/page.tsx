@@ -213,17 +213,17 @@ export default async function OpsPage({
           <span className="tag">Pending reviews</span>
           <h3>Items that require a human decision, not another dashboard filter.</h3>
           <form method="GET" className="auth-form market-form">
-            <input type="hidden" name="disputesSearch" value={searchParams?.disputesSearch ?? ""} />
-            <input type="hidden" name="disputeStatusFilter" value={searchParams?.disputeStatusFilter ?? "open"} />
-            <input type="hidden" name="riskSearch" value={searchParams?.riskSearch ?? ""} />
-            <input type="hidden" name="fundingSearch" value={searchParams?.fundingSearch ?? ""} />
+            <input type="hidden" name="disputesSearch" value={disputesSearch} />
+            <input type="hidden" name="disputeStatusFilter" value={disputeStatusFilter || "all"} />
+            <input type="hidden" name="riskSearch" value={riskSearch} />
+            <input type="hidden" name="fundingSearch" value={fundingSearch} />
             <label className="auth-field">
               <span>Search pending reviews</span>
               <input
                 name="pendingReviewSearch"
                 type="text"
                 placeholder="Search by title or detail"
-                defaultValue={searchParams?.pendingReviewSearch ?? ""}
+                defaultValue={pendingReviewSearch}
               />
             </label>
             <button type="submit" className="auth-submit">
@@ -265,17 +265,17 @@ export default async function OpsPage({
         <span className="tag">Risk feed</span>
         <h3>Today’s market pressure points.</h3>
         <form method="GET" className="auth-form market-form">
-          <input type="hidden" name="pendingReviewSearch" value={searchParams?.pendingReviewSearch ?? ""} />
-          <input type="hidden" name="disputesSearch" value={searchParams?.disputesSearch ?? ""} />
-          <input type="hidden" name="disputeStatusFilter" value={searchParams?.disputeStatusFilter ?? "open"} />
-          <input type="hidden" name="fundingSearch" value={searchParams?.fundingSearch ?? ""} />
+          <input type="hidden" name="pendingReviewSearch" value={pendingReviewSearch} />
+          <input type="hidden" name="disputesSearch" value={disputesSearch} />
+          <input type="hidden" name="disputeStatusFilter" value={disputeStatusFilter || "all"} />
+          <input type="hidden" name="fundingSearch" value={fundingSearch} />
           <label className="auth-field">
             <span>Search risk alerts</span>
             <input
               name="riskSearch"
               type="text"
               placeholder="Search risk title or detail"
-              defaultValue={searchParams?.riskSearch ?? ""}
+              defaultValue={riskSearch}
             />
           </label>
           <button type="submit" className="auth-submit">
@@ -310,7 +310,7 @@ export default async function OpsPage({
           </a>
         </div>
         <form method="GET" className="auth-form market-form">
-          <input type="hidden" name="pendingReviewSearch" value={searchParams?.pendingReviewSearch ?? ""} />
+          <input type="hidden" name="pendingReviewSearch" value={pendingReviewSearch} />
           <input type="hidden" name="riskSearch" value={riskSearch} />
           <input type="hidden" name="fundingSearch" value={fundingSearch} />
           <div className="market-form__grid">
@@ -378,17 +378,17 @@ export default async function OpsPage({
         <span className="tag">Funding journal</span>
         <h3>Live money movement, not demo theater.</h3>
         <form method="GET" className="auth-form market-form">
-          <input type="hidden" name="pendingReviewSearch" value={searchParams?.pendingReviewSearch ?? ""} />
-          <input type="hidden" name="disputesSearch" value={searchParams?.disputesSearch ?? ""} />
-          <input type="hidden" name="disputeStatusFilter" value={searchParams?.disputeStatusFilter ?? "open"} />
-          <input type="hidden" name="riskSearch" value={searchParams?.riskSearch ?? ""} />
+          <input type="hidden" name="pendingReviewSearch" value={pendingReviewSearch} />
+          <input type="hidden" name="disputesSearch" value={disputesSearch} />
+          <input type="hidden" name="disputeStatusFilter" value={disputeStatusFilter || "all"} />
+          <input type="hidden" name="riskSearch" value={riskSearch} />
           <label className="auth-field">
             <span>Search funding journal</span>
             <input
               name="fundingSearch"
               type="text"
               placeholder="Search kind, state, org, or invoice"
-              defaultValue={searchParams?.fundingSearch ?? ""}
+              defaultValue={fundingSearch}
             />
           </label>
           <button type="submit" className="auth-submit">
