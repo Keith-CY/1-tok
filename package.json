@@ -30,6 +30,7 @@
     "test:go": "CGO_ENABLED=0 go test ./...",
     "test:contracts": "bun --cwd packages/contracts test",
     "test:integration": "./scripts/ci/run-integration-suite.sh",
-    "lint:go": "golangci-lint run ./..."
+    "lint:go": "golangci-lint run ./...",
+    "alpha:ux-audit": "bun scripts/alpha-portal-ux-audit.mjs"
   }
 }

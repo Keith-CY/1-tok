@@ -124,9 +124,9 @@ function main() {
 
         const canonicalLabels = new Set(['Clear filters', 'Clear bid filters', 'Clear review filters', 'Clear risk filters', 'Clear dispute filters', 'Clear funding filters']);
         const canonicalHrefPatterns = [
-          /^\/buyer(?:#|$)/,
-          /^\/provider(?:#|$)/,
-          /^\/ops(?:#|$)/,
+          /^\/buyer(?:(?:#|\?|$).*)?/,
+          /^\/provider(?:(?:#|\?|$).*)?/,
+          /^\/ops(?:(?:#|\?|$).*)?/,
           /^\/login(?:$|\?)/,
           /^\/$/,
         ];
