@@ -1,6 +1,6 @@
 {
-  "strictMode": true,
-  "timestamp": "2026-03-17T05:20:53.921Z",
+  "strictMode": false,
+  "timestamp": "2026-03-17T05:41:12.848Z",
   "scope": [
     "buyer/*",
     "provider/*",

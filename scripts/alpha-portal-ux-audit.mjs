@@ -22,6 +22,80 @@ function walk(dir) {
   return files;
 }
 
+function formatSummaryText(report) {
+  const status = (report.summary.missingAriaCurrent ||
+    report.summary.missingEmptyStateActionLabel ||
+    report.summary.missingEmptyStateActionHref ||
+    report.summary.hashOnlyEmptyStateLinks ||
+    (report.strictMode && (report.summary.nonCanonicalActionLabels || report.summary.nonCanonicalActionHrefs)))
+    ? 'FAIL' : 'PASS';
+
+  const lines = [];
+  lines.push('# Alpha Portal UX Audit Summary');
+  lines.push('');
+  lines.push(`Status: **${status}**`);
+  lines.push(`Timestamp: ${report.timestamp}`);
+  lines.push('');
+  lines.push('## Scope');
+  lines.push(`- checkedFiles: ${report.summary.filesChecked}`);
+  lines.push(`- totalEmptyStates: ${report.summary.totalEmptyStates}`);
+  lines.push('');
+  lines.push('## Metrics');
+  lines.push(`- missingAriaCurrent: ${report.summary.missingAriaCurrent}`);
+  lines.push(`- missingEmptyStateActionLabel: ${report.summary.missingEmptyStateActionLabel}`);
+  lines.push(`- missingEmptyStateActionHref: ${report.summary.missingEmptyStateActionHref}`);
+  lines.push(`- hashOnlyEmptyStateLinks: ${report.summary.hashOnlyEmptyStateLinks}`);
+  lines.push(`- nonCanonicalActionLabels: ${report.summary.nonCanonicalActionLabels}`);
+  lines.push(`- nonCanonicalActionHrefs: ${report.summary.nonCanonicalActionHrefs}`);
+  lines.push(`- strictMode: ${report.strictMode}`);
+  lines.push('');
+
+  if (report.issues.length === 0) {
+    lines.push('## Issues');
+    lines.push('None');
+    return lines.join('\n');
+  }
+
+  const groups = [
+    ['chip-missing-aria-current', 'Missing aria-current'],
+    ['empty-state-missing-action-label', 'Missing EmptyState actionLabel'],
+    ['empty-state-missing-action-href', 'Missing EmptyState actionHref'],
+    ['empty-state-hash-only-link', 'Hash-only EmptyState href'],
+    ['non-canonical'],
+  ];
+
+  for (const [type, title] of groups) {
+    const items = report.issues.filter((i) =>
+      title === 'non-canonical'
+        ? (i.type === 'empty-state-nonCanonicalActionLabel' || i.type === 'empty-state-nonCanonicalActionHref')
+        : i.type === type
+    );
+    if (title === 'non-canonical') continue;
+    if (items.length === 0) continue;
+    lines.push(`## ${title}`);
+    for (const i of items) {
+      lines.push(`- ${i.file}:${i.line} :: ${i.type}`);
+    }
+    lines.push('');
+  }
+
+  if (report.nonCanonicalActionLabels.length) {
+    lines.push('## Non-canonical action labels');
+    for (const i of report.nonCanonicalActionLabels) {
+      lines.push(`- ${i.file}:${i.line} :: ${i.actionLabel}`);
+    }
+    lines.push('');
+  }
+  if (report.nonCanonicalActionHrefs.length) {
+    lines.push('## Non-canonical action hrefs');
+    for (const i of report.nonCanonicalActionHrefs) {
+      lines.push(`- ${i.file}:${i.line} :: ${i.actionHref}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
 function main() {
   const targetFiles = includeRoots.flatMap((r) => walk(path.join(root, r)));
 
@@ -183,8 +257,10 @@ function main() {
 
 
   const out = JSON.stringify(report, null, 2);
-
   writeFileSync('alpha-portal-ux-audit.json', out);
+
+  const summaryText = formatSummaryText(report);
+  writeFileSync('alpha-portal-ux-audit-summary.md', summaryText + '\n');
   console.log(out);
 
   if (
