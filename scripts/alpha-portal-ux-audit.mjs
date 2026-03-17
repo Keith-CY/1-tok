@@ -28,8 +28,8 @@ const DEFAULT_CANONICAL_HREF_PATTERNS = [
   /^\/$/,
 ];
 
-function loadConfig() {
-  const candidatePath = process.env.ALPHA_UX_AUDIT_CONFIG || process.env.ALPHA_UX_AUDIT_CONFIG_PATH || DEFAULT_CONFIG_PATH;
+function loadConfig(candidatePathOverride) {
+  const candidatePath = candidatePathOverride || process.env.ALPHA_UX_AUDIT_CONFIG || process.env.ALPHA_UX_AUDIT_CONFIG_PATH || DEFAULT_CONFIG_PATH;
   if (!existsSync(candidatePath)) {
     return {
       canonicalLabels: DEFAULT_CANONICAL_LABELS,
@@ -189,7 +189,25 @@ function getGitMeta() {
   }
 }
 
+
+function inspectConfig(configPath) {
+  const config = loadConfig(configPath);
+  console.log(JSON.stringify({
+    source: config.source,
+    configPath: config.configPath,
+    canonicalLabels: config.canonicalLabels,
+    canonicalHrefPatterns: config.canonicalHrefPatterns.map((pattern) => pattern.source),
+  }, null, 2));
+}
+
 function main() {
+  const args = new Set(process.argv.slice(2));
+  if (args.has('--validate-config')) {
+    const configPath = process.env.ALPHA_UX_AUDIT_CONFIG || process.env.ALPHA_UX_AUDIT_CONFIG_PATH || DEFAULT_CONFIG_PATH;
+    inspectConfig(configPath);
+    return;
+  }
+
   const targetFiles = includeRoots.flatMap((r) => walk(path.join(root, r)));
 
   const strictMode = process.env.ALPHA_UX_AUDIT_STRICT === '1';

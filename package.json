@@ -38,6 +38,7 @@
     "alpha:ux-audit:check": "bun scripts/alpha-portal-ux-audit.mjs",
     "portal:check:fast": "bun run lint:web && bun run test:web && bun run build:web && bun run alpha:ux-audit:check && bun run alpha:ux-audit:summary",
     "portal:check:strict": "bun run lint:web && bun run test:web && bun run build:web && bun run alpha:ux-audit:strict && bun run alpha:ux-audit:summary",
-    "portal:check:quick": "bun run alpha:ux-audit && bun run alpha:ux-audit:summary"
+    "portal:check:quick": "bun run alpha:ux-audit && bun run alpha:ux-audit:summary",
+    "alpha:ux-audit:validate-config": "bun scripts/alpha-portal-ux-audit.mjs --validate-config"
   }
 }

@@ -122,6 +122,8 @@ bun run portal:check:strict
 - Optional config schema: `alpha-portal-ux-audit.config.schema.json` (keep `canonicalLabels`/`canonicalHrefPatterns` as non-empty string arrays).
 - Edit `alpha-portal-ux-audit.config.example.json` and copy to repo root if you need a baseline template.
 - `alpha:ux-audit:strict` treats non-canonical EmptyState action targets as hard failures (for CI or gated pre-merge checks).
+
+- `alpha:ux-audit:validate-config` validates `alpha-portal-ux-audit.config.json` (or path via `ALPHA_UX_AUDIT_CONFIG/ALPHA_UX_AUDIT_CONFIG_PATH`) and prints the resolved label/pattern list.
 - In strict mode, canonical EmptyState action labels are constrained to: `Clear filters`, `Clear bid filters`, `Clear review filters`, `Clear risk filters`, `Clear dispute filters`, `Clear funding filters`, `Track opportunities`, `Create RFQ now`, `Create an RFQ`, `Open treasury controls`.
 - `alpha:ux-audit:summary` writes a human-readable markdown report to `alpha-portal-ux-audit-summary.md`.
 - `portal:check` runs `portal:check:strict` (full strict mode).
