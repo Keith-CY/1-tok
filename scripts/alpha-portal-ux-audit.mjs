@@ -50,29 +50,42 @@ function main() {
     report.summary.filesChecked += 1;
 
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
+      const startLine = lines[i];
+      if (startLine.includes('<a ')) {
+        let j = i;
+        let anchorBlock = '';
+        while (j < lines.length) {
+          anchorBlock += lines[j] + '\n';
+          if (lines[j].includes('/>') || lines[j].includes('>')) {
+            break;
+          }
+          j += 1;
+        }
 
-      if (line.includes('<a ') && line.includes('className={chipClass(') && !line.includes('aria-current')) {
-        report.summary.missingAriaCurrent += 1;
-        report.issues.push({
-          file: path.relative('.', file),
-          line: i + 1,
-          type: 'chip-missing-aria-current',
-          snippet: line.trim(),
-        });
+        if (anchorBlock.includes('className={chipClass(') && !anchorBlock.includes('aria-current')) {
+          report.summary.missingAriaCurrent += 1;
+          report.issues.push({
+            file: path.relative('.', file),
+            line: i + 1,
+            type: 'chip-missing-aria-current',
+            snippet: anchorBlock.trim().split('\n')[0],
+          });
+        }
+
+        i = j;
+        continue;
       }
 
-      if (line.includes('<EmptyState')) {
+      if (startLine.includes('<EmptyState')) {
         let j = i;
         let message;
         let actionLabel;
         let actionHref;
-
-        while (j < Math.min(i + 8, lines.length)) {
+        while (j < Math.min(i + 10, lines.length)) {
           const t = lines[j];
-          const m1 = t.match(/message=\"([^\"]*)\"/);
-          const m2 = t.match(/actionLabel=\"([^\"]*)\"/);
-          const m3 = t.match(/actionHref=\"([^\"]*)\"/);
+          const m1 = t.match(/message="([^"]*)"/);
+          const m2 = t.match(/actionLabel="([^"]*)"/);
+          const m3 = t.match(/actionHref="([^"]*)"/);
 
           if (m1) message = m1[1];
           if (m2) actionLabel = m2[1];
@@ -119,32 +132,55 @@ function main() {
           });
         }
 
-        report.emptyStates.push({ file: path.relative('.', file), line: i + 1, message, actionLabel, actionHref });
-
-
-        const canonicalLabels = new Set(['Clear filters', 'Clear bid filters', 'Clear review filters', 'Clear risk filters', 'Clear dispute filters', 'Clear funding filters']);
+        const canonicalLabels = new Set([
+          'Clear filters',
+          'Clear bid filters',
+          'Clear review filters',
+          'Clear risk filters',
+          'Clear dispute filters',
+          'Clear funding filters',
+        ]);
         const canonicalHrefPatterns = [
           /^\/buyer(?:(?:#|\?|$).*)?/,
           /^\/provider(?:(?:#|\?|$).*)?/,
           /^\/ops(?:(?:#|\?|$).*)?/,
-          /^\/login(?:$|\?)/,
+          /^\/login(?:(?:#|\?|$).*)?/,
           /^\/$/,
         ];
 
         if (actionLabel && !canonicalLabels.has(actionLabel) && !actionLabel.startsWith('Create') && !actionLabel.startsWith('Track') && !actionLabel.startsWith('Open')) {
           report.summary.nonCanonicalActionLabels += 1;
-          report.nonCanonicalActionLabels.push({ file: path.relative('.', file), line: i + 1, message, actionLabel, actionHref });
+          report.nonCanonicalActionLabels.push({
+            file: path.relative('.', file),
+            line: i + 1,
+            message,
+            actionLabel,
+            actionHref,
+          });
         }
 
         if (actionHref && !canonicalHrefPatterns.some((re) => re.test(actionHref)) && !actionHref.startsWith('http')) {
           report.summary.nonCanonicalActionHrefs += 1;
-          report.nonCanonicalActionHrefs.push({ file: path.relative('.', file), line: i + 1, message, actionLabel, actionHref });
+          report.nonCanonicalActionHrefs.push({
+            file: path.relative('.', file),
+            line: i + 1,
+            message,
+            actionLabel,
+            actionHref,
+          });
         }
+
+        report.emptyStates.push({ file: path.relative('.', file), line: i + 1, message, actionLabel, actionHref });
+
+        i = j;
+        continue;
       }
     }
   }
 
+
   const out = JSON.stringify(report, null, 2);
+
   writeFileSync('alpha-portal-ux-audit.json', out);
   console.log(out);
 
