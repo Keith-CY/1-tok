@@ -6,8 +6,22 @@ export const dynamic = "force-dynamic";
 
 // Demo data
 const leaderboard = [
-  { providerId: "provider_1", name: "Atlas Ops", rating: 4.8, ratingCount: 23, totalOrders: 15, reputationTier: "gold" },
-  { providerId: "provider_2", name: "Kite Relay", rating: 4.2, ratingCount: 11, totalOrders: 8, reputationTier: "silver" },
+  {
+    providerId: "provider_1",
+    name: "Atlas Ops",
+    rating: 4.8,
+    ratingCount: 23,
+    totalOrders: 15,
+    reputationTier: "gold",
+  },
+  {
+    providerId: "provider_2",
+    name: "Kite Relay",
+    rating: 4.2,
+    ratingCount: 11,
+    totalOrders: 8,
+    reputationTier: "silver",
+  },
 ];
 
 export default async function LeaderboardPage({
@@ -18,6 +32,7 @@ export default async function LeaderboardPage({
   const query = (searchParams?.q ?? "").trim().toLowerCase();
   const tier = (searchParams?.tier ?? "all").toLowerCase();
   const sort = (searchParams?.sort ?? "rating").toLowerCase();
+
   const chipClass = (active: boolean) =>
     active ? "action-button action-button--active" : "action-button";
 
@@ -105,6 +120,7 @@ export default async function LeaderboardPage({
             Bronze
           </a>
         </div>
+
         <div className="flex gap-2 mb-2">
           <a href={buildSortHref("rating")} className={chipClass(sort === "rating")} aria-current={sort === "rating" ? "page" : undefined}>
             Top rating
@@ -118,6 +134,7 @@ export default async function LeaderboardPage({
         </div>
 
         <form method="GET" className="auth-form market-form">
+          <input type="hidden" name="sort" value={sort} />
           <div className="market-form__grid">
             <label className="auth-field">
               <span>Search providers</span>
