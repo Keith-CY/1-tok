@@ -106,6 +106,14 @@ jobs:
       - name: Run Portal UX Check (strict + summary)
         run: bun run portal:check
 
+      - name: Upload Portal UX Audit Summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: alpha-portal-ux-audit-summary
+          path: alpha-portal-ux-audit-summary.md
+          if-no-files-found: error
+
   integration:
     name: Integration Smoke
     runs-on: ubuntu-latest
@@ -175,6 +183,14 @@ jobs:
           path: .artifacts/coverage
         continue-on-error: true
 
+
+      - name: Download Portal UX Audit Summary
+        uses: actions/download-artifact@v4
+        with:
+          name: alpha-portal-ux-audit-summary
+          path: .artifacts/portal-ux
+        continue-on-error: true
+
       - name: Build Report Body
         id: report_body
         env:
@@ -182,6 +198,7 @@ jobs:
           INTEGRATION_RESULT: ${{ needs.integration.result }}
           PORTAL_RESULT: ${{ needs.portal_ux.result }}
           REPOSITORY: ${{ github.repository }}
+          PORTAL_SUMMARY_PATH: .artifacts/portal-ux/alpha-portal-ux-audit-summary.md
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
@@ -193,6 +210,13 @@ jobs:
           coverage_path = Path(".artifacts/coverage/summary.md")
           coverage = coverage_path.read_text(encoding="utf-8").strip() if coverage_path.exists() else "## Coverage\n\nCoverage summary artifact was not available."
           run_url = f"https://github.com/{os.environ['REPOSITORY']}/actions/runs/{os.environ['RUN_ID']}/attempts/{os.environ['RUN_ATTEMPT']}"
+          portal_summary = ""
+          portal_summary_path = Path(os.environ["PORTAL_SUMMARY_PATH"])
+          if portal_summary_path.exists():
+            portal_summary = portal_summary_path.read_text(encoding="utf-8").strip()
+          else:
+            portal_summary = "## Alpha Portal UX Audit Summary\n\n(Not available)"
+
           body = "\n".join([
               marker,
               "## CI Report",
@@ -203,6 +227,8 @@ jobs:
               f"- Run: {run_url}",
               "",
               coverage,
+              "",
+              portal_summary,
           ]) + "\n"
           Path("ci-report.md").write_text(body, encoding="utf-8")
           PY
