@@ -204,8 +204,8 @@ export default async function ProviderPage({
               <EmptyState
                 icon="📡"
                 message="No marketplace opportunities match your filter."
-                actionLabel="Clear filter"
-                actionHref="#opportunities"
+                actionLabel="Clear filters"
+                actionHref="/provider?opportunityStatus=all"
               />
             ) : null}
             {filteredOpportunities.map((item) => (
@@ -299,8 +299,8 @@ export default async function ProviderPage({
             <EmptyState
               icon="🧾"
               message="No submitted bids to track for this filter."
-              actionLabel="Review all opportunities"
-              actionHref="#opportunities"
+              actionLabel="Clear bid filters"
+              actionHref="/provider?queueStatus=all"
             />
           ) : null}
           {filteredQueue.map((item) => (
