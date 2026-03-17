@@ -115,13 +115,13 @@ export default async function BuyerListingsPage({
         </div>
         <div className="flex gap-2 mb-2">
           <a href={buildSortHref("category")} className={chipClass(sort === "category")} aria-current={sort === "category" ? "page" : undefined}>
-            Sort: Category
+            Sort by category
           </a>
           <a href={buildSortHref("price-asc")} className={chipClass(sort === "price-asc")} aria-current={sort === "price-asc" ? "page" : undefined}>
-            Price: Low to high
+            Price low to high
           </a>
           <a href={buildSortHref("price-desc")} className={chipClass(sort === "price-desc")} aria-current={sort === "price-desc" ? "page" : undefined}>
-            Price: High to low
+            Price high to low
           </a>
         </div>
         <form method="GET" className="auth-form market-form">

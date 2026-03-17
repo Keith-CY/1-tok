@@ -235,21 +235,21 @@ export default async function ProviderListingsPage({
             className={chipClass(sort === "title")}
             aria-current={sort === "title" ? "page" : undefined}
           >
-            Sort: Title
+            Sort by title
           </a>
           <a
             href={buildSortHref("tier")}
             className={chipClass(sort === "tier")}
             aria-current={sort === "tier" ? "page" : undefined}
           >
-            Sort: Tier
+            Sort by tier
           </a>
           <a
             href={buildSortHref("capacity")}
             className={chipClass(sort === "capacity")}
             aria-current={sort === "capacity" ? "page" : undefined}
           >
-            Sort: Capacity
+            Sort by capacity
           </a>
         </div>
 
