@@ -146,9 +146,13 @@ It outputs a baseline JSON report in `alpha-portal-ux-audit.json`.
 
 CI currently runs:
 - `Portal UX Governance` (`portal_ux`) as a single job that:
-  - runs `alpha:ux-audit:validate-config` on config/script/CI rule changes,
-  - runs `portal:check` when `apps/web/app/{buyer,provider,ops}` files change,
-  - uploads portal UX summary + JSON artifacts only when the strict check runs.
+  - path-filters on portal UX pages and UX-audit governance files,
+  - can execute in 4 modes:
+    - `full` (page+config changes)
+    - `ui` (portal UX pages changed only)
+    - `config` (audit config/script/CI rule changed only)
+    - `none` (other files changed only, skipped)
+  - uploads portal UX summary + JSON artifacts only when the strict `portal:check` runs.
 
 The Docker-only end-to-end command can also be run directly:
 
