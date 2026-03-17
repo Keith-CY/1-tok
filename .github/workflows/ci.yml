@@ -131,6 +131,8 @@ jobs:
 
   portal_ux_config:
     name: Portal UX Config Validation
+    outputs:
+      skipped: ${{ steps.changed_status.outputs.skipped }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -163,6 +165,10 @@ jobs:
       - name: Skip Portal UX Audit Config Validation
         if: steps.changed.outputs.ux-audit-config != 'true'
         run: echo "No UX audit config/script changes detected; skipping."
+
+      - name: Record config validation status
+        id: changed_status
+        run: echo "skipped=${{ steps.changed.outputs.ux-audit-config != 'true' }}" >> "$GITHUB_OUTPUT"
 
       - name: Validate Portal UX Audit Config
         if: steps.changed.outputs.ux-audit-config == 'true'
@@ -260,6 +266,7 @@ jobs:
           INTEGRATION_RESULT: ${{ needs.integration.result }}
           PORTAL_RESULT: ${{ needs.portal_ux.result }}
           PORTAL_CONFIG_RESULT: ${{ needs.portal_ux_config.result }}
+          PORTAL_CONFIG_SKIPPED: ${{ needs.portal_ux_config.outputs.skipped }}
           REPOSITORY: ${{ github.repository }}
           PORTAL_SUMMARY_PATH: .artifacts/portal-ux/alpha-portal-ux-audit-summary.md
           RUN_ID: ${{ github.run_id }}
@@ -288,6 +295,7 @@ jobs:
               f"- Integration smoke: `{os.environ['INTEGRATION_RESULT']}`",
               f"- Portal UX check: `{os.environ['PORTAL_RESULT']}`",
               f"- Portal UX config validation: `{os.environ['PORTAL_CONFIG_RESULT']}`",
+              f"- Portal UX config validation skipped: `{os.environ['PORTAL_CONFIG_SKIPPED']}`",
               f"- Run: {run_url}",
               "",
               coverage,
