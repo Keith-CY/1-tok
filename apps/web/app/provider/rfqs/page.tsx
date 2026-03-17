@@ -122,7 +122,7 @@ export default async function ProviderRFQsPage({
     <PortalShell
       eyebrow="Provider portal / opportunities"
       title="Open RFQs."
-      copy="Browse open requests for quotes and submit bids."
+      copy="Browse open requests for quotes and review RFQs. Open each RFQ detail to take action."
       signal="RFQ discovery"
       asideTitle="Quick info"
       quickActions={[
@@ -235,8 +235,8 @@ export default async function ProviderRFQsPage({
                 </div>
                 <div className="flex justify-between items-center mt-3">
                   <span className="text-xs text-gray-500">Deadline: {new Date(rfq.deadline).toLocaleDateString()}</span>
-                  <a href="/provider#opportunities" className="action-button">
-                    Review in pipeline
+                  <a href={`/provider/rfqs/${rfq.id}`} className="action-button">
+                    View RFQ details
                   </a>
                 </div>
               </div>

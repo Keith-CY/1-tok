@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import path from 'node:path';
 
@@ -6,6 +6,8 @@ const root = path.resolve('apps/web/app');
 const includeRoots = ['buyer', 'provider', 'ops'];
 
 const DEFAULT_CONFIG_PATH = './alpha-portal-ux-audit.config.json';
+const REPORT_OUTPUT_DIR = process.env.ALPHA_UX_AUDIT_REPORT_DIR || '.artifacts/portal-ux';
+
 
 const DEFAULT_CANONICAL_LABELS = [
   'Clear filters',
@@ -361,10 +363,14 @@ function main() {
 
 
   const out = JSON.stringify(report, null, 2);
-  writeFileSync('alpha-portal-ux-audit.json', out);
+  mkdirSync(REPORT_OUTPUT_DIR, { recursive: true });
+  const jsonPath = `${REPORT_OUTPUT_DIR}/alpha-portal-ux-audit.json`;
+  const summaryPath = `${REPORT_OUTPUT_DIR}/alpha-portal-ux-audit-summary.md`;
+
+  writeFileSync(jsonPath, out);
 
   const summaryText = formatSummaryText(report);
-  writeFileSync('alpha-portal-ux-audit-summary.md', summaryText + '\n');
+  writeFileSync(summaryPath, summaryText + '\n');
   console.log(out);
 
   if (

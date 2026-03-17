@@ -117,7 +117,7 @@ bun run portal:check:fast
 bun run portal:check:strict
 ```
 
-- `alpha:ux-audit` runs a baseline consistency scan and writes `alpha-portal-ux-audit.json`.
+- `alpha:ux-audit` runs a baseline consistency scan and writes `.artifacts/portal-ux/alpha-portal-ux-audit.json`.
 - Default rules live in `alpha-portal-ux-audit.config.json`; you can override with `ALPHA_UX_AUDIT_CONFIG=...` (or `ALPHA_UX_AUDIT_CONFIG_PATH=...`) when needed.
 - Optional config schema: `alpha-portal-ux-audit.config.schema.json` (keep `canonicalLabels`/`canonicalHrefPatterns` as non-empty string arrays).
 - Edit `alpha-portal-ux-audit.config.example.json` and copy to repo root if you need a baseline template.
@@ -127,7 +127,7 @@ bun run portal:check:strict
 - `alpha:ux-audit:validate-config` is also executed in CI as part of the `Portal UX Governance` job (`portal_ux`) before/alongside full portal UX checks.
   - it runs only when relevant UX-audit config/script files change.
 - In strict mode, canonical EmptyState action labels are constrained to: `Clear filters`, `Clear bid filters`, `Clear review filters`, `Clear risk filters`, `Clear dispute filters`, `Clear funding filters`, `Track opportunities`, `Create RFQ now`, `Create an RFQ`, `Open treasury controls`.
-- `alpha:ux-audit:summary` writes a human-readable markdown report to `alpha-portal-ux-audit-summary.md`.
+- `alpha:ux-audit:summary` writes a human-readable markdown report to `.artifacts/portal-ux/alpha-portal-ux-audit-summary.md`.
 - `portal:check` runs `portal:check:strict` (full strict mode).
 - `portal:check:quick` runs only baseline portal UX audit (non-strict) + summary for
   very fast feedback when iterating on portal pages.
@@ -142,7 +142,7 @@ This command scans `apps/web/app/{buyer,provider,ops}` and validates:
 - hash-only action links
 - optionally surfaced non-canonical action targets
 
-It outputs a baseline JSON report in `alpha-portal-ux-audit.json`.
+It outputs a baseline JSON report in `.artifacts/portal-ux/alpha-portal-ux-audit.json`.
 
 CI currently runs:
 - `Portal UX Governance` (`portal_ux`) as a single job that:

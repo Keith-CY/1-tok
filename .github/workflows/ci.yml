@@ -116,6 +116,9 @@ jobs:
               - 'alpha-portal-ux-audit.config.schema.json'
               - 'scripts/alpha-portal-ux-audit.mjs'
               - '.github/workflows/ci.yml'
+              - 'apps/web/components/portal-shell.tsx'
+              - 'apps/web/components/ui.tsx'
+              - 'apps/web/app/globals.css'
 
       - name: Setup Bun
         if: steps.changed.outputs.ux-pages == 'true' || steps.changed.outputs.ux-audit-config == 'true'
@@ -182,7 +185,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: alpha-portal-ux-audit-summary
-          path: alpha-portal-ux-audit-summary.md
+          path: .artifacts/portal-ux/alpha-portal-ux-audit-summary.md
           if-no-files-found: error
 
       - name: Upload Portal UX Audit JSON
@@ -190,14 +193,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: alpha-portal-ux-audit-json
-          path: alpha-portal-ux-audit.json
+          path: .artifacts/portal-ux/alpha-portal-ux-audit.json
           if-no-files-found: error
 
       - name: Publish Portal UX Summary
         if: steps.governance.outputs.ranUiCheck == 'true'
         run: |
           echo "## Alpha Portal UX Audit Summary" >> "$GITHUB_STEP_SUMMARY"
-          cat alpha-portal-ux-audit-summary.md >> "$GITHUB_STEP_SUMMARY"
+          cat .artifacts/portal-ux/alpha-portal-ux-audit-summary.md >> "$GITHUB_STEP_SUMMARY"
 
   integration:
     name: Integration Smoke

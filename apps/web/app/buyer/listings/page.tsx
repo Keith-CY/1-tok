@@ -94,7 +94,7 @@ export default async function BuyerListingsPage({
       asideTitle="Quick info"
       quickActions={[
         { label: "Back to buyer dashboard", href: "/buyer", tone: "secondary" },
-        { label: "Search RFQs", href: "/buyer/rfqs", tone: "primary" },
+        { label: "Create RFQ", href: "/buyer/rfqs/create", tone: "primary" },
       ]}
       asideItems={[]}
     >
