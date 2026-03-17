@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-03-17T04:20:46.920Z",
+  "timestamp": "2026-03-17T04:30:28.746Z",
   "scope": [
     "buyer/*",
     "provider/*",
@@ -8,6 +8,8 @@
   "summary": {
     "filesChecked": 12,
     "missingAriaCurrent": 0,
+    "missingEmptyStateActionLabel": 0,
+    "missingEmptyStateActionHref": 0,
     "totalEmptyStates": 19,
     "hashOnlyEmptyStateLinks": 0
   },
