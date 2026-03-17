@@ -6,7 +6,8 @@ import (
 )
 
 func fixedTime() time.Time {
-	return time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC)
+	// Keep test deadlines always in the future to avoid date-based flakes in CI.
+	return time.Now().UTC().Add(24 * time.Hour)
 }
 
 func TestDefaultMilestoneSplit_SmallBudget(t *testing.T) {
