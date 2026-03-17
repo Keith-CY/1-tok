@@ -85,6 +85,27 @@ jobs:
             echo "Coverage summary was not generated." >> "$GITHUB_STEP_SUMMARY"
           fi
 
+
+  portal_ux:
+    name: Portal UX Consistency
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - name: Install Dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run Portal UX Check (strict + summary)
+        run: bun run portal:check
+
   integration:
     name: Integration Smoke
     runs-on: ubuntu-latest
@@ -141,6 +162,7 @@ jobs:
     needs:
       - unit
       - integration
+      - portal_ux
     if: always()
     permissions:
       contents: read
@@ -158,6 +180,7 @@ jobs:
         env:
           UNIT_RESULT: ${{ needs.unit.result }}
           INTEGRATION_RESULT: ${{ needs.integration.result }}
+          PORTAL_RESULT: ${{ needs.portal_ux.result }}
           REPOSITORY: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
@@ -176,6 +199,7 @@ jobs:
               "",
               f"- Unit and coverage: `{os.environ['UNIT_RESULT']}`",
               f"- Integration smoke: `{os.environ['INTEGRATION_RESULT']}`",
+              f"- Portal UX check: `{os.environ['PORTAL_RESULT']}`",
               f"- Run: {run_url}",
               "",
               coverage,
