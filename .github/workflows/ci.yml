@@ -138,15 +138,34 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Detect UX audit config changes
+        id: changed
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            ux-audit-config:
+              - 'alpha-portal-ux-audit.config.json'
+              - 'alpha-portal-ux-audit.config.example.json'
+              - 'alpha-portal-ux-audit.config.schema.json'
+              - 'scripts/alpha-portal-ux-audit.mjs'
+              - '.github/workflows/ci.yml'
+
       - name: Setup Bun
+        if: steps.changed.outputs.ux-audit-config == 'true'
         uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: package.json
 
       - name: Install Dependencies
+        if: steps.changed.outputs.ux-audit-config == 'true'
         run: bun install --frozen-lockfile
 
+      - name: Skip Portal UX Audit Config Validation
+        if: steps.changed.outputs.ux-audit-config != 'true'
+        run: echo "No UX audit config/script changes detected; skipping."
+
       - name: Validate Portal UX Audit Config
+        if: steps.changed.outputs.ux-audit-config == 'true'
         run: bun run alpha:ux-audit:validate-config
 
   integration:
