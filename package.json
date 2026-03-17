@@ -31,6 +31,7 @@
     "test:contracts": "bun --cwd packages/contracts test",
     "test:integration": "./scripts/ci/run-integration-suite.sh",
     "lint:go": "golangci-lint run ./...",
-    "alpha:ux-audit": "bun scripts/alpha-portal-ux-audit.mjs"
+    "alpha:ux-audit": "bun scripts/alpha-portal-ux-audit.mjs",
+    "alpha:ux-audit:strict": "ALPHA_UX_AUDIT_STRICT=1 bun run alpha:ux-audit"
   }
 }

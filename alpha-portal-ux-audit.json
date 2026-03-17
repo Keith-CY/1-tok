@@ -1,5 +1,6 @@
 {
-  "timestamp": "2026-03-17T05:10:38.980Z",
+  "strictMode": true,
+  "timestamp": "2026-03-17T05:20:53.921Z",
   "scope": [
     "buyer/*",
     "provider/*",
@@ -17,13 +18,6 @@
   },
   "issues": [],
   "emptyStates": [
-    {
-      "file": "apps/web/app/buyer/leaderboard/page.tsx",
-      "line": 171,
-      "message": "No providers match your leaderboard filters.",
-      "actionLabel": "Clear filters",
-      "actionHref": "/buyer/leaderboard"
-    },
     {
       "file": "apps/web/app/buyer/listings/page.tsx",
       "line": 165,
@@ -60,11 +54,11 @@
       "actionHref": "/buyer#create-rfq"
     },
     {
-      "file": "apps/web/app/provider/carrier/page.tsx",
-      "line": 169,
-      "message": "No active jobs match your filters.",
+      "file": "apps/web/app/buyer/leaderboard/page.tsx",
+      "line": 171,
+      "message": "No providers match your leaderboard filters.",
       "actionLabel": "Clear filters",
-      "actionHref": "/provider/carrier"
+      "actionHref": "/buyer/leaderboard"
     },
     {
       "file": "apps/web/app/provider/listings/page.tsx",
@@ -102,11 +96,11 @@
       "actionHref": "/provider/rfqs"
     },
     {
-      "file": "apps/web/app/ops/applications/page.tsx",
-      "line": 112,
-      "message": "No applications match this filter.",
+      "file": "apps/web/app/provider/carrier/page.tsx",
+      "line": 169,
+      "message": "No active jobs match your filters.",
       "actionLabel": "Clear filters",
-      "actionHref": "/ops/applications"
+      "actionHref": "/provider/carrier"
     },
     {
       "file": "apps/web/app/ops/disputes/page.tsx",
@@ -114,6 +108,13 @@
       "message": "No disputes to review.",
       "actionLabel": "Clear filters",
       "actionHref": "/ops/disputes"
+    },
+    {
+      "file": "apps/web/app/ops/applications/page.tsx",
+      "line": 112,
+      "message": "No applications match this filter.",
+      "actionLabel": "Clear filters",
+      "actionHref": "/ops/applications"
     },
     {
       "file": "apps/web/app/ops/page.tsx",

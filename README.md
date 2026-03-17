@@ -109,7 +109,11 @@ The portal-facing consistency checks for quick-filters and empty-state actions c
 
 ```bash
 bun run alpha:ux-audit
+bun run alpha:ux-audit:strict
 ```
+
+- `alpha:ux-audit` runs a baseline consistency scan and writes `alpha-portal-ux-audit.json`.
+- `alpha:ux-audit:strict` treats non-canonical EmptyState action targets as hard failures (for CI or gated pre-merge checks).
 
 This command scans `apps/web/app/{buyer,provider,ops}` and validates:
 - quick chip accessibility marker (`aria-current` with `chipClass`)

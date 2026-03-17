@@ -25,7 +25,10 @@ function walk(dir) {
 function main() {
   const targetFiles = includeRoots.flatMap((r) => walk(path.join(root, r)));
 
+  const strictMode = process.env.ALPHA_UX_AUDIT_STRICT === '1';
+
   const report = {
+    strictMode,
     timestamp: new Date().toISOString(),
     scope: ['buyer/*', 'provider/*', 'ops/*'],
     summary: {
@@ -188,7 +191,11 @@ function main() {
     report.summary.missingAriaCurrent ||
     report.summary.missingEmptyStateActionLabel ||
     report.summary.missingEmptyStateActionHref ||
-    report.summary.hashOnlyEmptyStateLinks
+    report.summary.hashOnlyEmptyStateLinks ||
+    (strictMode && (
+      report.summary.nonCanonicalActionLabels ||
+      report.summary.nonCanonicalActionHrefs
+    ))
   ) {
     process.exit(1);
   }
