@@ -66,6 +66,10 @@ export default async function BuyerPage({
       params.set("listingSearch", listingSearch);
     }
 
+    if (listingCategory !== "all") {
+      params.set("listingCategory", listingCategory);
+    }
+
     if (rfqSearch) {
       params.set("rfqSearch", rfqSearch);
     }
