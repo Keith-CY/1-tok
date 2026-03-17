@@ -19,6 +19,10 @@
 - [ ] PR description includes key commit changes
 - [ ] Issue/Task linkage is provided (if applicable)
 - [ ] Required discussions or follow-ups are documented
+- [ ] If this PR modifies any `alpha-portal-ux-audit*.{config,json,schema,example}` or `scripts/alpha-portal-ux-audit.mjs`, include:
+  - [ ] the exact list of allowed label/path changes
+  - [ ] why it is backward-compatible
+  - [ ] impact on strict-mode CI checks
 
 ## Notes
 
