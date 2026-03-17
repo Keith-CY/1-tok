@@ -55,6 +55,38 @@ export default async function OpsPage({
     return fundingSearch === "" || haystack.includes(fundingSearch);
   });
 
+  const chipClass = (active: boolean) =>
+    active ? "action-button action-button--active" : "action-button";
+
+  const buildDisputeStatusHref = (nextStatus: string) => {
+    const params = new URLSearchParams();
+
+    if (disputesSearch) {
+      params.set("disputesSearch", disputesSearch);
+    }
+
+    if (nextStatus === "all") {
+      params.delete("disputeStatusFilter");
+    } else {
+      params.set("disputeStatusFilter", nextStatus);
+    }
+
+    if (pendingReviewSearch) {
+      params.set("pendingReviewSearch", pendingReviewSearch);
+    }
+
+    if (riskSearch) {
+      params.set("riskSearch", riskSearch);
+    }
+
+    if (fundingSearch) {
+      params.set("fundingSearch", fundingSearch);
+    }
+
+    const queryString = params.toString();
+    return queryString ? `/ops?${queryString}` : "/ops";
+  };
+
   return (
     <PortalShell
       eyebrow="Ops portal / treasury + governance"
@@ -266,10 +298,21 @@ export default async function OpsPage({
       <article className="timeline-card" id="disputes">
         <span className="tag">Dispute queue</span>
         <h3>Platform-first reimbursement only works if disputes stay visible.</h3>
+        <div className="flex gap-2 mb-2">
+          <a href={buildDisputeStatusHref("all")} className={chipClass(disputeStatusFilter === "all" || disputeStatusFilter === "")} aria-current={disputeStatusFilter === "all" || disputeStatusFilter === "" ? "page" : undefined}>
+            All
+          </a>
+          <a href={buildDisputeStatusHref("open")} className={chipClass(disputeStatusFilter === "open")} aria-current={disputeStatusFilter === "open" ? "page" : undefined}>
+            Open
+          </a>
+          <a href={buildDisputeStatusHref("resolved")} className={chipClass(disputeStatusFilter === "resolved")} aria-current={disputeStatusFilter === "resolved" ? "page" : undefined}>
+            Resolved
+          </a>
+        </div>
         <form method="GET" className="auth-form market-form">
           <input type="hidden" name="pendingReviewSearch" value={searchParams?.pendingReviewSearch ?? ""} />
-          <input type="hidden" name="riskSearch" value={searchParams?.riskSearch ?? ""} />
-          <input type="hidden" name="fundingSearch" value={searchParams?.fundingSearch ?? ""} />
+          <input type="hidden" name="riskSearch" value={riskSearch} />
+          <input type="hidden" name="fundingSearch" value={fundingSearch} />
           <div className="market-form__grid">
             <label className="auth-field">
               <span>Search disputes</span>
@@ -277,12 +320,12 @@ export default async function OpsPage({
                 name="disputesSearch"
                 type="text"
                 placeholder="Search order, milestone or reason"
-                defaultValue={searchParams?.disputesSearch ?? ""}
+                defaultValue={disputesSearch}
               />
             </label>
             <label className="auth-field">
               <span>Status</span>
-              <select name="disputeStatusFilter" defaultValue={searchParams?.disputeStatusFilter ?? "open"}>
+              <select name="disputeStatusFilter" defaultValue={disputeStatusFilter || "all"}>
                 <option value="open">Open</option>
                 <option value="resolved">Resolved</option>
                 <option value="all">All</option>
