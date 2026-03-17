@@ -1600,9 +1600,7 @@ func TestCreateMessage(t *testing.T) {
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 }
 
 func TestCreateDispute(t *testing.T) {
@@ -1632,9 +1630,7 @@ func TestCreateDispute(t *testing.T) {
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 }
 
 func TestCreditDecision(t *testing.T) {
@@ -1797,15 +1793,227 @@ func TestResolveDispute_InvalidJSON(t *testing.T) {
 	}
 }
 
-func TestCreateMessage_InvalidJSON(t *testing.T) {
-	gw, _ := NewServerWithOptionsE(Options{App: platform.NewAppWithMemory()})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", bytes.NewReader([]byte("{broken")))
+func assertStatus(t *testing.T, got int, want int, body string) {
+	t.Helper()
+	if got != want {
+		t.Fatalf("expected %d, got %d: %s", want, got, body)
+	}
+}
+
+func postMessageRequest(t *testing.T, gw *Server, path string, body string, token ...string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	if len(token) > 0 {
+		req.Header.Set("Authorization", token[0])
+	}
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestCreateMessage_ValidationMatrix_WithAuth_Gateway(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Auth msg", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	bid, _ := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid", QuoteCents: 5000,
+		Milestones: []platform.BidMilestoneInput{{ID: "ms_1", Title: "Work", BasePriceCents: 5000, BudgetCents: 5000}},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, platform.AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	actor := iamclient.Actor{
+		UserID:      "u_buyer",
+		Memberships: []iamclient.ActorMembership{{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "org_owner"}},
+	}
+	gw, _ := NewServerWithOptionsE(Options{App: app, IAM: &stubIAMClient{actor: actor}})
+
+	type tc struct {
+		name   string
+		path   string
+		body   string
+		want   int
+		decode bool
+	}
+	cases := []tc{
+		{name: "missing orderId", path: "/api/v1/messages", body: `{"author":"buyer","body":"hello"}`, want: http.StatusBadRequest},
+		{name: "whitespace orderId", path: "/api/v1/messages", body: `{"orderId":"   ","author":"buyer","body":"hello"}`, want: http.StatusBadRequest},
+		{name: "missing body", path: "/api/v1/messages", body: `{"orderId":"` + order.ID + `","author":"buyer"}`, want: http.StatusBadRequest},
+		{name: "whitespace body", path: "/api/v1/messages", body: `{"orderId":"` + order.ID + `","author":"buyer","body":"   "}`, want: http.StatusBadRequest},
+		{name: "missing author", path: "/api/v1/messages", body: `{"orderId":"` + order.ID + `","body":"hello"}`, want: http.StatusCreated},
+		{name: "whitespace author", path: "/api/v1/messages", body: `{"orderId":"` + order.ID + `","author":"   ","body":"hello"}`, want: http.StatusCreated},
+		{name: "rfq valid message", path: "/api/v1/rfqs/" + rfq.ID + "/messages", body: `{"body":"hi"}`, want: http.StatusCreated},
+		{name: "rfq missing body", path: "/api/v1/rfqs/" + rfq.ID + "/messages", body: `{"author":"buyer"}`, want: http.StatusBadRequest},
+		{name: "rfq whitespace body", path: "/api/v1/rfqs/" + rfq.ID + "/messages", body: `{"author":"buyer","body":"   "}`, want: http.StatusBadRequest},
+		{name: "rfq whitespace author", path: "/api/v1/rfqs/" + rfq.ID + "/messages", body: `{"author":"   ","body":"hello"}`, want: http.StatusCreated},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := postMessageRequest(t, gw, tt.path, tt.body, "Bearer token")
+			if rec.Code != tt.want {
+				t.Fatalf("%s: expected %d, got %d: %s", tt.name, tt.want, rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestCreateMessage_ValidationMatrix_Noop_Gateway(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Msg auth", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	bid, _ := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid", QuoteCents: 5000,
+		Milestones: []platform.BidMilestoneInput{{ID: "ms_1", Title: "Work", BasePriceCents: 5000, BudgetCents: 5000}},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, platform.AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+
+	type tc struct {
+		name string
+		body string
+		want int
+	}
+	cases := []tc{
+		{name: "missing orderId", body: `{"author":"buyer","body":"hello"}`, want: http.StatusBadRequest},
+		{name: "whitespace orderId", body: `{"orderId":"   ","author":"buyer","body":"hello"}`, want: http.StatusBadRequest},
+		{name: "missing body", body: `{"orderId":"` + order.ID + `","author":"buyer"}`, want: http.StatusBadRequest},
+		{name: "whitespace body", body: `{"orderId":"` + order.ID + `","author":"buyer","body":"   "}`, want: http.StatusBadRequest},
+		{name: "missing author", body: `{"orderId":"` + order.ID + `","body":"hello"}`, want: http.StatusBadRequest},
+		{name: "whitespace author", body: `{"orderId":"` + order.ID + `","author":"   ","body":"hello"}`, want: http.StatusBadRequest},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := postMessageRequest(t, gw, "/api/v1/messages", tt.body)
+			if rec.Code != tt.want {
+				t.Fatalf("%s: expected %d, got %d: %s", tt.name, tt.want, rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestCreateRFQMessage_ValidationMatrix_NoAuth_Gateway(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Msg test", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+
+	type tc struct {
+		name string
+		body string
+		want int
+	}
+	cases := []tc{
+		{name: "missing body", body: `{"author":"buyer"}`, want: http.StatusBadRequest},
+		{name: "whitespace body", body: `{"author":"buyer","body":"   "}`, want: http.StatusBadRequest},
+		{name: "missing author", body: `{"body":"hello"}`, want: http.StatusBadRequest},
+		{name: "whitespace author", body: `{"author":"   ","body":"hello"}`, want: http.StatusBadRequest},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := postMessageRequest(t, gw, "/api/v1/rfqs/"+rfq.ID+"/messages", tt.body)
+			if rec.Code != tt.want {
+				t.Fatalf("%s: expected %d, got %d: %s", tt.name, tt.want, rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestCreateMessage_InvalidJSON(t *testing.T) {
+	gw, _ := NewServerWithOptionsE(Options{App: platform.NewAppWithMemory()})
+	rec := postMessageRequest(t, gw, "/api/v1/messages", "{broken")
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", rec.Code)
 	}
+}
+
+func TestCreateMessage_MissingAuthorRejected_Gateway(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Msg auth", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	bid, _ := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid", QuoteCents: 5000,
+		Milestones: []platform.BidMilestoneInput{{ID: "ms_1", Title: "Work", BasePriceCents: 5000, BudgetCents: 5000}},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, platform.AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+	payload, _ := json.Marshal(map[string]any{
+		"orderId": order.ID,
+		"body":    "hello",
+	})
+	rec := postMessageRequest(t, gw, "/api/v1/messages", string(payload))
+	assertStatus(t, rec.Code, http.StatusBadRequest, rec.Body.String())
+}
+
+func TestCreateMessage_WhitespaceAuthorRejected_Gateway(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Msg auth", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	bid, _ := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid", QuoteCents: 5000,
+		Milestones: []platform.BidMilestoneInput{{ID: "ms_1", Title: "Work", BasePriceCents: 5000, BudgetCents: 5000}},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, platform.AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+	payload, _ := json.Marshal(map[string]any{
+		"orderId": order.ID,
+		"author":  "   ",
+		"body":    "hello",
+	})
+	rec := postMessageRequest(t, gw, "/api/v1/messages", string(payload))
+	assertStatus(t, rec.Code, http.StatusBadRequest, rec.Body.String())
+}
+
+func TestCreateMessage_OrderIDWhitespaceRejected_Gateway(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+	payload, _ := json.Marshal(map[string]any{
+		"orderId": "   ",
+		"author":  "buyer",
+		"body":    "hello",
+	})
+	rec := postMessageRequest(t, gw, "/api/v1/messages", string(payload))
+	assertStatus(t, rec.Code, http.StatusBadRequest, rec.Body.String())
+}
+
+func TestCreateMessage_WhitespaceBodyRejected_Gateway(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Msg auth", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	bid, _ := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid", QuoteCents: 5000,
+		Milestones: []platform.BidMilestoneInput{{ID: "ms_1", Title: "Work", BasePriceCents: 5000, BudgetCents: 5000}},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, platform.AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	gw, _ := NewServerWithOptionsE(Options{App: app})
+	payload, _ := json.Marshal(map[string]any{
+		"orderId": order.ID,
+		"author":  "buyer",
+		"body":    "   ",
+	})
+	rec := postMessageRequest(t, gw, "/api/v1/messages", string(payload))
+	assertStatus(t, rec.Code, http.StatusBadRequest, rec.Body.String())
 }
 
 func TestCreditDecision_InvalidJSON(t *testing.T) {
@@ -1858,9 +2066,7 @@ func TestCreateOrder_Success(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 }
 
 func TestCreateRFQ_Success(t *testing.T) {
@@ -1876,9 +2082,7 @@ func TestCreateRFQ_Success(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 }
 
 func TestCreateBid_Success(t *testing.T) {
@@ -1900,9 +2104,7 @@ func TestCreateBid_Success(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 }
 
 func TestAwardRFQ_Success(t *testing.T) {
@@ -2055,9 +2257,7 @@ func TestCreateRFQ_WithBuyerAuth(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 }
 
 func TestCreateBid_WithProviderAuth(t *testing.T) {
@@ -2086,9 +2286,7 @@ func TestCreateBid_WithProviderAuth(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer prov-token")
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 }
 
 func TestGetOrder_WithBuyerAuth(t *testing.T) {
@@ -2146,9 +2344,7 @@ func TestCreateOrder_WithAuth(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer buyer-token")
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 }
 
 func TestListOrders_WithBuyerAuth(t *testing.T) {
@@ -2842,9 +3038,7 @@ func TestHandleCreateDispute_WithBuyerAuth(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer token")
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 }
 
 func TestHandleSettleMilestone_WithAuth(t *testing.T) {
@@ -3007,6 +3201,51 @@ func TestHandleAwardRFQ_WithAuth(t *testing.T) {
 	}
 }
 
+func TestCreateMessage_WhitespaceAuthorIgnoredForBuyerAuth(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "Msg auth", Category: "ai",
+		Scope: "test", BudgetCents: 5000,
+		ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	bid, _ := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid",
+		QuoteCents: 5000, Milestones: []platform.BidMilestoneInput{
+			{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000},
+		},
+	})
+	_, order, _ := app.AwardRFQ(rfq.ID, platform.AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+
+	actor := iamclient.Actor{
+		UserID: "u_buyer",
+		Memberships: []iamclient.ActorMembership{
+			{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "org_owner"},
+		},
+	}
+	gw, _ := NewServerWithOptionsE(Options{App: app, IAM: &stubIAMClient{actor: actor}})
+
+	payload, _ := json.Marshal(map[string]any{
+		"orderId": order.ID,
+		"author":  "   ",
+		"body":    "Hello from auth",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer buyer-token")
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, req)
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
+
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	msg := resp["message"].(map[string]any)
+	if msg["author"].(string) != "u_buyer" {
+		t.Fatalf("expected message author to be authenticated actor, got %v", msg["author"])
+	}
+}
+
 func TestHandleCreateMessage_WithBuyerAuth(t *testing.T) {
 	app := platform.NewAppWithMemory()
 	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
@@ -3038,9 +3277,7 @@ func TestHandleCreateMessage_WithBuyerAuth(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer buyer-token")
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 }
 
 func TestHandleCreditDecision_WithOpsAuth(t *testing.T) {
@@ -4005,9 +4242,7 @@ func TestCreateMessage_WithProviderAuth(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer token")
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 }
 
 func TestAwardRFQ_RateLimited(t *testing.T) {
@@ -4348,9 +4583,7 @@ func TestCreateRFQ_WithRateLimitAndAuth(t *testing.T) {
 	req.RemoteAddr = "10.0.0.1:12345"
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 	// Verify rate limit headers
 	if rec.Header().Get("X-RateLimit-Limit") == "" {
 		t.Log("rate limit headers not present (may not be set on success)")
@@ -4392,9 +4625,7 @@ func TestCreateBid_WithRateLimitAndAuth(t *testing.T) {
 	req.RemoteAddr = "10.0.0.2:54321"
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 }
 
 func TestCreateMessage_RateLimited(t *testing.T) {
@@ -4502,9 +4733,7 @@ func TestCreateOrder_ProviderOrgId_FromAuth(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer token")
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 }
 
 func TestResolveDispute_RateLimited(t *testing.T) {
@@ -4628,9 +4857,7 @@ func TestCreateDispute_WithBuyerAuthAndRateLimit(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer token")
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
+	assertStatus(t, rec.Code, http.StatusCreated, rec.Body.String())
 }
 
 func TestListRFQs_NoMembership(t *testing.T) {
@@ -7971,6 +8198,44 @@ func TestListNotifications_Gateway(t *testing.T) {
 	}
 }
 
+func TestCreateRFQMessage_WhitespaceAuthorIgnoredForBuyerAuth(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	rfq, _ := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID: "org_b", Title: "msg test", Category: "ai", Scope: "t",
+		BudgetCents: 5000, ResponseDeadlineAt: time.Now().Add(48 * time.Hour),
+	})
+	bid, _ := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "org_p", Message: "bid", QuoteCents: 5000,
+		Milestones: []platform.BidMilestoneInput{{ID: "ms_1", Title: "W", BasePriceCents: 5000, BudgetCents: 5000}},
+	})
+	actor := iamclient.Actor{
+		UserID:      "u_buyer",
+		Memberships: []iamclient.ActorMembership{{OrganizationID: "org_b", OrganizationKind: "buyer", Role: "org_owner"}},
+	}
+	gw, _ := NewServerWithOptionsE(Options{App: app, IAM: &stubIAMClient{actor: actor}})
+
+	_, _, err := app.AwardRFQ(rfq.ID, platform.AwardRFQInput{BidID: bid.ID, FundingMode: "prepaid"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	msgBody := `{"author":"   ","body":"ok"}`
+	req := httptest.NewRequest("POST", "/api/v1/rfqs/"+rfq.ID+"/messages", strings.NewReader(msgBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer buyer-token")
+	w := httptest.NewRecorder()
+	gw.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create msg: %d %s", w.Code, w.Body.String())
+	}
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	msg := resp["message"].(map[string]any)
+	if msg["author"].(string) != "u_buyer" {
+		t.Fatalf("expected actor user id, got %v", msg["author"])
+	}
+}
+
 func TestCreateRFQMessage_Gateway(t *testing.T) {
 	srv := NewServer()
 	rfqBody := `{"buyerOrgId":"org_b","title":"msg test","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2099-04-01T00:00:00Z"}`
@@ -7988,6 +8253,44 @@ func TestCreateRFQMessage_Gateway(t *testing.T) {
 	srv.ServeHTTP(w, req)
 	if w.Code != http.StatusCreated {
 		t.Errorf("create msg: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateRFQMessage_EmptyBodyRejected_Gateway(t *testing.T) {
+	srv := NewServer()
+	rfqBody := `{"buyerOrgId":"org_b","title":"msg test","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2099-04-01T00:00:00Z"}`
+	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(rfqBody))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	rfqID := resp["rfq"].(map[string]any)["id"].(string)
+
+	msgBody := `{"author":"buyer","body":"   "}`
+	req = httptest.NewRequest("POST", "/api/v1/rfqs/"+rfqID+"/messages", strings.NewReader(msgBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("create msg with empty body: %d", w.Code)
+	}
+}
+
+func TestCreateRFQMessage_WhitespaceAuthorRejected_Gateway(t *testing.T) {
+	srv := NewServer()
+	rfqBody := `{"buyerOrgId":"org_b","title":"msg test","category":"ai","scope":"t","budgetCents":5000,"responseDeadlineAt":"2099-04-01T00:00:00Z"}`
+	req := httptest.NewRequest("POST", "/api/v1/rfqs", strings.NewReader(rfqBody))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	rfqID := resp["rfq"].(map[string]any)["id"].(string)
+
+	msgBody := `{"author":"   ","body":"hello"}`
+	req = httptest.NewRequest("POST", "/api/v1/rfqs/"+rfqID+"/messages", strings.NewReader(msgBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("create msg with whitespace author: %d", w.Code)
 	}
 }
 

@@ -1,5 +1,6 @@
 import { PortalShell } from "../../components/portal-shell";
 import { SummaryCard } from "../../components/summary-card";
+import { EmptyState } from "../../components/ui";
 import { getOpsDashboardData } from "../../lib/api";
 import { requirePortalViewer } from "../../lib/viewer";
 
@@ -21,6 +22,70 @@ export default async function OpsPage({
   const resolvedDisputeId = readSearchParam(searchParams, "resolvedDisputeId");
   const disputeStatus = readSearchParam(searchParams, "disputeStatus");
   const error = readSearchParam(searchParams, "error");
+  const disputesSearch = readSearchParam(searchParams, "disputesSearch").trim().toLowerCase();
+  const disputeStatusFilter = readSearchParam(searchParams, "disputeStatusFilter").trim().toLowerCase();
+  const pendingReviewSearch = readSearchParam(searchParams, "pendingReviewSearch").trim().toLowerCase();
+  const riskSearch = readSearchParam(searchParams, "riskSearch").trim().toLowerCase();
+  const fundingSearch = readSearchParam(searchParams, "fundingSearch").trim().toLowerCase();
+
+  const filteredDisputes = data.disputes.filter((dispute) =>
+    (disputeStatusFilter === "" || disputeStatusFilter === "all" || dispute.status === disputeStatusFilter) &&
+    (
+      disputesSearch === "" ||
+      dispute.orderId.toLowerCase().includes(disputesSearch) ||
+      dispute.milestoneId.toLowerCase().includes(disputesSearch) ||
+      dispute.reason.toLowerCase().includes(disputesSearch)
+    ),
+  );
+
+  const filteredPendingReviews = data.pendingReviews.filter((review) =>
+    pendingReviewSearch === "" ||
+    review.title.toLowerCase().includes(pendingReviewSearch) ||
+    review.detail.toLowerCase().includes(pendingReviewSearch),
+  );
+
+  const filteredRiskFeed = data.riskFeed.filter((risk) =>
+    riskSearch === "" ||
+    risk.title.toLowerCase().includes(riskSearch) ||
+    risk.detail.toLowerCase().includes(riskSearch),
+  );
+
+  const filteredFunding = data.fundingRecords.filter((record) => {
+    const haystack = `${record.kind} ${record.state} ${record.amount ?? ""} ${record.providerOrgId ?? ""} ${record.buyerOrgId ?? ""} ${record.invoice ?? ""} ${record.externalId ?? ""} ${record.asset ?? ""}`.toLowerCase();
+    return fundingSearch === "" || haystack.includes(fundingSearch);
+  });
+
+  const chipClass = (active: boolean) =>
+    active ? "action-button action-button--active" : "action-button";
+
+  const buildDisputeStatusHref = (nextStatus: string) => {
+    const params = new URLSearchParams();
+
+    if (disputesSearch) {
+      params.set("disputesSearch", disputesSearch);
+    }
+
+    if (nextStatus === "all") {
+      params.delete("disputeStatusFilter");
+    } else {
+      params.set("disputeStatusFilter", nextStatus);
+    }
+
+    if (pendingReviewSearch) {
+      params.set("pendingReviewSearch", pendingReviewSearch);
+    }
+
+    if (riskSearch) {
+      params.set("riskSearch", riskSearch);
+    }
+
+    if (fundingSearch) {
+      params.set("fundingSearch", fundingSearch);
+    }
+
+    const queryString = params.toString();
+    return queryString ? `/ops?${queryString}` : "/ops";
+  };
 
   return (
     <PortalShell
@@ -29,6 +94,11 @@ export default async function OpsPage({
       copy="This view keeps provider review, credit discipline, dispute payouts, and channel stress in the same sightline. It should feel like the place where market trust is actively manufactured."
       signal="Platform-first reimbursement, provider recovery second"
       asideTitle="Ops signal deck"
+      quickActions={[
+        { label: "Run credit decision", href: "#credit-decision", tone: "primary" },
+        { label: "Review disputes", href: "#disputes", tone: "secondary" },
+        { label: "Treasury controls", href: "#treasury", tone: "secondary" },
+      ]}
       asideItems={[
         { label: "Active orders", value: `${data.summary.activeOrders}`, tone: "warning" },
         { label: "Open disputes", value: `${data.summary.openDisputes}`, tone: "danger" },
@@ -59,7 +129,7 @@ export default async function OpsPage({
       </div>
 
       <div className="feed-grid">
-        <article className="feed-card">
+        <article className="feed-card" id="credit-decision">
           <span className="tag">Credit review</span>
           <h3>Ops should be able to re-price buyer trust without leaving the control plane.</h3>
           <form className="auth-form market-form" action="/ops/credits/decision" method="post">
@@ -85,13 +155,13 @@ export default async function OpsPage({
               <span>Lifetime spend cents</span>
               <input name="lifetimeSpendCents" type="number" min="0" step="1" defaultValue="480000" required />
             </label>
-            <button type="submit" className="auth-submit">
+            <button type="submit" className="action-button">
               Run credit decision
             </button>
           </form>
         </article>
 
-        <aside className="message-card">
+        <aside className="message-card" id="dispute-result">
           <span className="tag">Decision result</span>
           <h3>Show the last recommendation with the exact reason returned by policy.</h3>
           <div className="message-list">
@@ -122,7 +192,7 @@ export default async function OpsPage({
           </div>
         </article>
 
-        <aside className="message-card">
+        <aside className="message-card" id="treasury">
           <span className="tag">Action posture</span>
           <h3>Open cases stay actionable, resolved cases stay legible.</h3>
           <div className="chip-list">
@@ -139,11 +209,33 @@ export default async function OpsPage({
       </div>
 
       <div className="feed-grid">
-        <article className="feed-card">
+        <article className="feed-card" id="pending-reviews">
           <span className="tag">Pending reviews</span>
           <h3>Items that require a human decision, not another dashboard filter.</h3>
+          <form method="GET" className="auth-form market-form">
+            <input type="hidden" name="disputesSearch" value={disputesSearch} />
+            <input type="hidden" name="disputeStatusFilter" value={disputeStatusFilter || "all"} />
+            <input type="hidden" name="riskSearch" value={riskSearch} />
+            <input type="hidden" name="fundingSearch" value={fundingSearch} />
+            <label className="auth-field">
+              <span>Search pending reviews</span>
+              <input
+                name="pendingReviewSearch"
+                type="text"
+                placeholder="Search by title or detail"
+                defaultValue={pendingReviewSearch}
+              />
+            </label>
+            <button type="submit" className="auth-submit">
+              Filter reviews
+            </button>
+          </form>
+
           <div className="feed-list">
-            {data.pendingReviews.map((review) => (
+            {filteredPendingReviews.length === 0 ? (
+              <EmptyState icon="✅" message="No pending manual reviews right now." actionLabel="Clear review filters" actionHref="/ops#pending-reviews" />
+            ) : null}
+            {filteredPendingReviews.map((review) => (
               <div key={review.id} className="feed-item">
                 <strong>{review.title}</strong>
                 <p>{review.detail}</p>
@@ -156,6 +248,9 @@ export default async function OpsPage({
           <span className="tag">Treasury signals</span>
           <h3>Read the funding posture at a glance.</h3>
           <div className="chip-list">
+            {data.treasurySignals.length === 0 ? (
+              <EmptyState icon="🏦" message="No treasury signal changes in the last interval." actionLabel="Open treasury controls" actionHref="/ops#treasury" />
+            ) : null}
             {data.treasurySignals.map((signal) => (
               <div key={signal.id} className="chip">
                 {signal.label}
@@ -166,11 +261,32 @@ export default async function OpsPage({
         </aside>
       </div>
 
-      <article className="timeline-card">
+      <article className="timeline-card" id="risk-feed">
         <span className="tag">Risk feed</span>
         <h3>Today’s market pressure points.</h3>
+        <form method="GET" className="auth-form market-form">
+          <input type="hidden" name="pendingReviewSearch" value={pendingReviewSearch} />
+          <input type="hidden" name="disputesSearch" value={disputesSearch} />
+          <input type="hidden" name="disputeStatusFilter" value={disputeStatusFilter || "all"} />
+          <input type="hidden" name="fundingSearch" value={fundingSearch} />
+          <label className="auth-field">
+            <span>Search risk alerts</span>
+            <input
+              name="riskSearch"
+              type="text"
+              placeholder="Search risk title or detail"
+              defaultValue={riskSearch}
+            />
+          </label>
+          <button type="submit" className="auth-submit">
+            Filter risk feed
+          </button>
+        </form>
         <div className="timeline">
-          {data.riskFeed.map((item) => (
+          {filteredRiskFeed.length === 0 ? (
+            <EmptyState icon="📈" message="No risk alerts in the last period." actionLabel="Clear risk filters" actionHref="/ops#risk-feed" />
+          ) : null}
+          {filteredRiskFeed.map((item) => (
             <div key={item.id} className="timeline-item">
               <strong>{item.title}</strong>
               <p>{item.detail}</p>
@@ -179,11 +295,52 @@ export default async function OpsPage({
         </div>
       </article>
 
-      <article className="timeline-card">
+      <article className="timeline-card" id="disputes">
         <span className="tag">Dispute queue</span>
         <h3>Platform-first reimbursement only works if disputes stay visible.</h3>
+        <div className="flex gap-2 mb-2">
+          <a href={buildDisputeStatusHref("all")} className={chipClass(disputeStatusFilter === "all" || disputeStatusFilter === "")} aria-current={disputeStatusFilter === "all" || disputeStatusFilter === "" ? "page" : undefined}>
+            All
+          </a>
+          <a href={buildDisputeStatusHref("open")} className={chipClass(disputeStatusFilter === "open")} aria-current={disputeStatusFilter === "open" ? "page" : undefined}>
+            Open
+          </a>
+          <a href={buildDisputeStatusHref("resolved")} className={chipClass(disputeStatusFilter === "resolved")} aria-current={disputeStatusFilter === "resolved" ? "page" : undefined}>
+            Resolved
+          </a>
+        </div>
+        <form method="GET" className="auth-form market-form">
+          <input type="hidden" name="pendingReviewSearch" value={pendingReviewSearch} />
+          <input type="hidden" name="riskSearch" value={riskSearch} />
+          <input type="hidden" name="fundingSearch" value={fundingSearch} />
+          <div className="market-form__grid">
+            <label className="auth-field">
+              <span>Search disputes</span>
+              <input
+                name="disputesSearch"
+                type="text"
+                placeholder="Search order, milestone or reason"
+                defaultValue={disputesSearch}
+              />
+            </label>
+            <label className="auth-field">
+              <span>Status</span>
+              <select name="disputeStatusFilter" defaultValue={disputeStatusFilter || "all"}>
+                <option value="open">Open</option>
+                <option value="resolved">Resolved</option>
+                <option value="all">All</option>
+              </select>
+            </label>
+          </div>
+          <button type="submit" className="auth-submit">
+            Filter disputes
+          </button>
+        </form>
         <div className="timeline">
-          {data.disputes.map((dispute) => (
+          {filteredDisputes.length === 0 ? (
+            <EmptyState icon="⚖️" message="No disputes in queue." actionLabel="Clear dispute filters" actionHref="/ops#disputes" />
+          ) : null}
+          {filteredDisputes.map((dispute) => (
             <div key={dispute.id} className="timeline-item">
               <strong>
                 {dispute.orderId} · {dispute.milestoneId} · {dispute.status}
@@ -202,7 +359,7 @@ export default async function OpsPage({
                       required
                     />
                   </label>
-                  <button type="submit" className="auth-submit">
+                  <button type="submit" className="action-button">
                     Resolve dispute
                   </button>
                 </form>
@@ -217,11 +374,32 @@ export default async function OpsPage({
         </div>
       </article>
 
-      <article className="timeline-card">
+      <article className="timeline-card" id="journal">
         <span className="tag">Funding journal</span>
         <h3>Live money movement, not demo theater.</h3>
+        <form method="GET" className="auth-form market-form">
+          <input type="hidden" name="pendingReviewSearch" value={pendingReviewSearch} />
+          <input type="hidden" name="disputesSearch" value={disputesSearch} />
+          <input type="hidden" name="disputeStatusFilter" value={disputeStatusFilter || "all"} />
+          <input type="hidden" name="riskSearch" value={riskSearch} />
+          <label className="auth-field">
+            <span>Search funding journal</span>
+            <input
+              name="fundingSearch"
+              type="text"
+              placeholder="Search kind, state, org, or invoice"
+              defaultValue={fundingSearch}
+            />
+          </label>
+          <button type="submit" className="auth-submit">
+            Filter funding
+          </button>
+        </form>
         <div className="timeline">
-          {data.fundingRecords.map((record) => (
+          {filteredFunding.length === 0 ? (
+            <EmptyState icon="📚" message="No funding records to display yet." actionLabel="Clear funding filters" actionHref="/ops#journal" />
+          ) : null}
+          {filteredFunding.map((record) => (
             <div key={record.id} className="timeline-item">
               <strong>
                 {record.kind.toUpperCase()} · {record.state}

@@ -45,13 +45,16 @@ export function ProgressBar({ current, total, tone }: ProgressBarProps) {
 interface EmptyStateProps {
   icon?: string;
   message: string;
+  actionLabel?: string;
+  actionHref?: string;
 }
 
-export function EmptyState({ icon = "📭", message }: EmptyStateProps) {
+export function EmptyState({ icon = "📭", message, actionLabel, actionHref }: EmptyStateProps) {
   return (
     <div className="empty-state">
       <span className="empty-state__icon">{icon}</span>
       <span>{message}</span>
+      {actionLabel && actionHref ? <a className="empty-state__action" href={actionHref}>{actionLabel}</a> : null}
     </div>
   );
 }

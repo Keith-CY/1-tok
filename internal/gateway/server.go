@@ -1084,10 +1084,13 @@ func (s *Server) handleCreateMessage(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	if verr := validation.New().
+	validator := validation.New().
 		Required("orderId", payload.OrderID).
-		Required("body", payload.Body).
-		Build(); verr != nil {
+		Required("body", payload.Body)
+	if s.auth == nil || iamclient.IsNoop(s.auth) {
+		validator = validator.Required("author", payload.Author)
+	}
+	if verr := validator.Build(); verr != nil {
 		httputil.WriteErrorWithDetails(w, http.StatusBadRequest, httputil.ErrCodeValidation, "validation failed", verr.Fields)
 		return
 	}
@@ -1527,6 +1530,13 @@ func (s *Server) handleCreateRFQMessage(w http.ResponseWriter, r *http.Request) 
 	author := payload.Author
 	if actorID != "" {
 		author = actorID // Use authenticated actor instead of payload
+	}
+	if verr := validation.New().
+		Required("body", payload.Body).
+		Required("author", author).
+		Build(); verr != nil {
+		httputil.WriteErrorWithDetails(w, http.StatusBadRequest, httputil.ErrCodeValidation, "validation failed", verr.Fields)
+		return
 	}
 	message, err := s.app.CreateRFQMessage(rfqID, author, payload.Body)
 	if err != nil {

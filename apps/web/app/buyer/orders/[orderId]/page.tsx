@@ -56,6 +56,9 @@ export default async function OrderDetailPage({ params }: { params: { orderId: s
       copy="Track milestone progress, budget consumption, and carrier execution status."
       signal={order.status}
       asideTitle="Order signal deck"
+      quickActions={[{ label: "Back to dashboard", href: "/buyer", tone: "secondary" },
+        { label: "Open listings", href: "/buyer/listings", tone: "secondary" },
+        { label: "Order messages", href: `/buyer/orders/${orderId}/messages`, tone: "primary" },]}
       asideItems={[
         { label: "Status", value: order.status, tone: orderStatusTone[order.status] ?? "default" },
         { label: "Funding", value: order.fundingMode },
@@ -103,15 +106,15 @@ export default async function OrderDetailPage({ params }: { params: { orderId: s
         </section>
 
         {/* Actions */}
-        <section className="flex gap-3">
-          <a href={`/buyer/orders/${orderId}/messages`} className="px-4 py-2 border rounded text-sm hover:bg-gray-50">
+        <section className="flex gap-3 flex-wrap">
+          <a href={`/buyer/orders/${orderId}/messages`} className="action-button">
             💬 Messages
           </a>
-          <a href={`/buyer/orders/${orderId}/timeline`} className="px-4 py-2 border rounded text-sm hover:bg-gray-50">
+          <a href={`/buyer/orders/${orderId}/timeline`} className="action-button">
             📋 Timeline
           </a>
           {order.status === "awaiting_budget" && (
-            <button className="bg-green-600 text-white px-4 py-2 rounded text-sm">
+            <button className="action-button">
               💰 Top Up Budget
             </button>
           )}

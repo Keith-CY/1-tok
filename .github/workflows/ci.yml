@@ -85,6 +85,123 @@ jobs:
             echo "Coverage summary was not generated." >> "$GITHUB_STEP_SUMMARY"
           fi
 
+
+  portal_ux:
+    name: Portal UX Governance
+    outputs:
+      skipped: ${{ steps.governance.outputs.skipped }}
+      ranUiCheck: ${{ steps.governance.outputs.ranUiCheck }}
+      ranConfigValidation: ${{ steps.governance.outputs.ranConfigValidation }}
+      runMode: ${{ steps.governance.outputs.runMode }}
+      details: ${{ steps.governance.outputs.details }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect UX governance relevant changes
+        id: changed
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            ux-pages:
+              - 'apps/web/app/buyer/**'
+              - 'apps/web/app/provider/**'
+              - 'apps/web/app/ops/**'
+            ux-audit-config:
+              - 'alpha-portal-ux-audit.config.json'
+              - 'alpha-portal-ux-audit.config.example.json'
+              - 'alpha-portal-ux-audit.config.schema.json'
+              - 'scripts/alpha-portal-ux-audit.mjs'
+              - '.github/workflows/ci.yml'
+              - 'apps/web/components/portal-shell.tsx'
+              - 'apps/web/components/ui.tsx'
+              - 'apps/web/app/globals.css'
+
+      - name: Setup Bun
+        if: steps.changed.outputs.ux-pages == 'true' || steps.changed.outputs.ux-audit-config == 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - name: Install Dependencies
+        if: steps.changed.outputs.ux-pages == 'true' || steps.changed.outputs.ux-audit-config == 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Run Portal UX Governance Checks
+        id: governance
+        run: |
+          if [[ "${{ steps.changed.outputs.ux-pages }}" != "true" && "${{ steps.changed.outputs.ux-audit-config }}" != "true" ]]; then
+            echo "No UX governance related file changes detected; skipping portal UX checks."
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            echo "ranUiCheck=false" >> "$GITHUB_OUTPUT"
+            echo "ranConfigValidation=false" >> "$GITHUB_OUTPUT"
+            echo "runMode=none" >> "$GITHUB_OUTPUT"
+            echo "details=No UX governance-related paths changed; nothing to run" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "skipped=false" >> "$GITHUB_OUTPUT"
+
+          if [[ "${{ steps.changed.outputs.ux-pages }}" == "true" ]]; then
+            echo "ranUiCheck=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ranUiCheck=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [[ "${{ steps.changed.outputs.ux-audit-config }}" == "true" ]]; then
+            echo "ranConfigValidation=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ranConfigValidation=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [[ "${{ steps.changed.outputs.ux-pages }}" == "true" && "${{ steps.changed.outputs.ux-audit-config }}" == "true" ]]; then
+            echo "runMode=full" >> "$GITHUB_OUTPUT"
+            echo "details=Portal UX pages and governance config changed; both strict portal:check and config validation executed" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ steps.changed.outputs.ux-pages }}" == "true" ]]; then
+            echo "runMode=ui" >> "$GITHUB_OUTPUT"
+            echo "details=Only portal UX pages changed; strict portal:check executed" >> "$GITHUB_OUTPUT"
+          else
+            echo "runMode=config" >> "$GITHUB_OUTPUT"
+            echo "details=Only UX-audit governance config/script files changed; validate-config executed" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [[ "${{ steps.changed.outputs.ux-pages }}" == "true" ]]; then
+            bun run portal:check
+          else
+            echo "Portal UX page scope not changed; skipping strict portal:check for this run."
+          fi
+
+          if [[ "${{ steps.changed.outputs.ux-audit-config }}" == "true" ]]; then
+            bun run alpha:ux-audit:validate-config
+          else
+            echo "No UX audit config/script changes; skipping config validation."
+          fi
+
+      - name: Upload Portal UX Audit Summary
+        if: steps.governance.outputs.ranUiCheck == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: alpha-portal-ux-audit-summary
+          path: .artifacts/portal-ux/alpha-portal-ux-audit-summary.md
+          if-no-files-found: error
+
+      - name: Upload Portal UX Audit JSON
+        if: steps.governance.outputs.ranUiCheck == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: alpha-portal-ux-audit-json
+          path: .artifacts/portal-ux/alpha-portal-ux-audit.json
+          if-no-files-found: error
+
+      - name: Publish Portal UX Summary
+        if: steps.governance.outputs.ranUiCheck == 'true'
+        run: |
+          echo "## Alpha Portal UX Audit Summary" >> "$GITHUB_STEP_SUMMARY"
+          cat .artifacts/portal-ux/alpha-portal-ux-audit-summary.md >> "$GITHUB_STEP_SUMMARY"
+
   integration:
     name: Integration Smoke
     runs-on: ubuntu-latest
@@ -141,6 +258,7 @@ jobs:
     needs:
       - unit
       - integration
+      - portal_ux
     if: always()
     permissions:
       contents: read
@@ -153,12 +271,34 @@ jobs:
           path: .artifacts/coverage
         continue-on-error: true
 
+
+      - name: Download Portal UX Audit Summary
+        uses: actions/download-artifact@v4
+        with:
+          name: alpha-portal-ux-audit-summary
+          path: .artifacts/portal-ux
+        continue-on-error: true
+
+      - name: Download Portal UX Audit JSON
+        uses: actions/download-artifact@v4
+        with:
+          name: alpha-portal-ux-audit-json
+          path: .artifacts/portal-ux
+        continue-on-error: true
+
       - name: Build Report Body
         id: report_body
         env:
           UNIT_RESULT: ${{ needs.unit.result }}
           INTEGRATION_RESULT: ${{ needs.integration.result }}
+          PORTAL_RESULT: ${{ needs.portal_ux.result }}
+          PORTAL_GOV_SKIPPED: ${{ needs.portal_ux.outputs.skipped }}
+          PORTAL_UI_CHECK_RUN: ${{ needs.portal_ux.outputs.ranUiCheck }}
+          PORTAL_CONFIG_VALIDATION_RUN: ${{ needs.portal_ux.outputs.ranConfigValidation }}
+          PORTAL_GOV_MODE: ${{ needs.portal_ux.outputs.runMode }}
+          PORTAL_GOV_DETAILS: ${{ needs.portal_ux.outputs.details }}
           REPOSITORY: ${{ github.repository }}
+          PORTAL_SUMMARY_PATH: .artifacts/portal-ux/alpha-portal-ux-audit-summary.md
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
@@ -170,15 +310,30 @@ jobs:
           coverage_path = Path(".artifacts/coverage/summary.md")
           coverage = coverage_path.read_text(encoding="utf-8").strip() if coverage_path.exists() else "## Coverage\n\nCoverage summary artifact was not available."
           run_url = f"https://github.com/{os.environ['REPOSITORY']}/actions/runs/{os.environ['RUN_ID']}/attempts/{os.environ['RUN_ATTEMPT']}"
+          portal_summary = ""
+          portal_summary_path = Path(os.environ["PORTAL_SUMMARY_PATH"])
+          if portal_summary_path.exists():
+            portal_summary = portal_summary_path.read_text(encoding="utf-8").strip()
+          else:
+            portal_summary = "## Alpha Portal UX Audit Summary\n\n(Not available)"
+
           body = "\n".join([
               marker,
               "## CI Report",
               "",
               f"- Unit and coverage: `{os.environ['UNIT_RESULT']}`",
               f"- Integration smoke: `{os.environ['INTEGRATION_RESULT']}`",
+              f"- Portal UX governance: `{os.environ['PORTAL_RESULT']}`",
+              f"- Portal UX consistency check run: `{os.environ['PORTAL_UI_CHECK_RUN']}`",
+              f"- Portal UX config validation run: `{os.environ['PORTAL_CONFIG_VALIDATION_RUN']}`",
+              f"- Portal UX governance skipped: `{os.environ['PORTAL_GOV_SKIPPED']}`",
+              f"- Portal UX governance mode: `{os.environ['PORTAL_GOV_MODE']}`",
+              f"- Portal UX governance details: `{os.environ['PORTAL_GOV_DETAILS']}`",
               f"- Run: {run_url}",
               "",
               coverage,
+              "",
+              portal_summary,
           ]) + "\n"
           Path("ci-report.md").write_text(body, encoding="utf-8")
           PY

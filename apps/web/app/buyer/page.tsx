@@ -10,13 +10,111 @@ export const dynamic = "force-dynamic";
 
 const PROGRESS_WARNING_THRESHOLD = 0.9;
 
-export default async function BuyerPage() {
+export default async function BuyerPage({
+  searchParams,
+}: {
+  searchParams?: Record<string, string | string[] | undefined>;
+}) {
   const viewer = await requirePortalViewer("buyer", "/buyer");
   const data = await getBuyerDashboardData({
     authToken: viewer.token,
     buyerOrgId: viewer.membership.organization.id,
     requireLive: true,
   });
+
+  const listingSearch = readSearchParam(searchParams, "listingSearch").toLowerCase();
+  const listingCategory = (readSearchParam(searchParams, "listingCategory") || "all").toLowerCase();
+  const rfqSearch = readSearchParam(searchParams, "rfqSearch").toLowerCase();
+  const rfqStatusFilter = readSearchParam(searchParams, "rfqStatusFilter") || "all";
+  const messageSearch = readSearchParam(searchParams, "messageSearch").toLowerCase();
+
+
+  const chipClass = (active: boolean) =>
+    active ? "action-button action-button--active" : "action-button";
+
+  const buildListingCategoryHref = (nextCategory: string) => {
+    const params = new URLSearchParams();
+
+    if (listingSearch) {
+      params.set("listingSearch", listingSearch);
+    }
+
+    if (nextCategory !== "all") {
+      params.set("listingCategory", nextCategory);
+    }
+
+    if (rfqSearch) {
+      params.set("rfqSearch", rfqSearch);
+    }
+
+    if (rfqStatusFilter && rfqStatusFilter !== "all") {
+      params.set("rfqStatusFilter", rfqStatusFilter);
+    }
+
+    if (messageSearch) {
+      params.set("messageSearch", messageSearch);
+    }
+
+    const queryString = params.toString();
+    return queryString ? `/buyer?${queryString}` : "/buyer";
+  };
+
+  const buildRFQStatusHref = (nextStatus: string) => {
+    const params = new URLSearchParams();
+
+    if (listingSearch) {
+      params.set("listingSearch", listingSearch);
+    }
+
+    if (listingCategory !== "all") {
+      params.set("listingCategory", listingCategory);
+    }
+
+    if (rfqSearch) {
+      params.set("rfqSearch", rfqSearch);
+    }
+
+    if (messageSearch) {
+      params.set("messageSearch", messageSearch);
+    }
+
+    if (nextStatus !== "all") {
+      params.set("rfqStatusFilter", nextStatus);
+    }
+
+    const queryString = params.toString();
+    return queryString ? `/buyer?${queryString}` : "/buyer";
+  };
+
+  const listingCategories = Array.from(new Set(data.recommendedListings.map((listing) => listing.category.toLowerCase())).values()).sort();
+
+  const filteredListings = data.recommendedListings.filter((listing) => {
+    const listingCategoryMatch = listingCategory === "all" || listing.category.toLowerCase() === listingCategory;
+    const searchMatch =
+      listing.title.toLowerCase().includes(listingSearch) ||
+      listing.category.toLowerCase().includes(listingSearch) ||
+      listing.tags.some((tag) => tag.toLowerCase().includes(listingSearch));
+
+    return listingCategoryMatch && searchMatch;
+  });
+
+  const filteredRFQs = data.rfqBook.filter((rfq) => {
+    const matchesStatus =
+      rfqStatusFilter === "all"
+        ? true
+        : rfqStatusFilter === "open"
+          ? rfq.status === "open"
+          : rfq.status === rfqStatusFilter;
+
+    const matchesSearch = rfq.title.toLowerCase().includes(rfqSearch);
+
+    return matchesStatus && matchesSearch;
+  });
+
+  const filteredMessages = data.inbox.filter((message) =>
+    message.title.toLowerCase().includes(messageSearch) ||
+    message.detail.toLowerCase().includes(messageSearch),
+  );
 
   return (
     <PortalShell
@@ -25,6 +123,11 @@ export default async function BuyerPage() {
       copy="This view keeps discovery, funding mode, milestone exposure, and pause recovery in one frame. Buyers should see exactly when Carrier requests more budget and what will happen if they ignore it."
       signal="Credit and prepaid capital share the same order frame"
       asideTitle="Buyer signal deck"
+      quickActions={[
+        { label: "Create RFQ", href: "#create-rfq", tone: "primary" },
+        { label: "Open RFQ book", href: "#rfq-book", tone: "secondary" },
+        { label: "Review inbox", href: "#message-inbox", tone: "secondary" },
+      ]}
       asideItems={[
         { label: "Buyer org", value: data.summary.buyerOrgId, tone: "mint" },
         { label: "Open RFQs", value: `${data.summary.openRFQs}` },
@@ -54,7 +157,7 @@ export default async function BuyerPage() {
         />
       </div>
 
-      <article className="feed-card">
+      <article className="feed-card" id="create-rfq">
         <span className="tag">Open an RFQ</span>
         <h3>Buyers should be able to turn intent into a priced market request immediately.</h3>
         <form className="auth-form market-form" action="/buyer/rfqs" method="post">
@@ -90,8 +193,49 @@ export default async function BuyerPage() {
         <article className="feed-card">
           <span className="tag">Recommended listings</span>
           <h3>Providers ranked for the current market temperature.</h3>
+          <div className="flex gap-2 mb-2 flex-wrap">
+            <a href={buildListingCategoryHref("all")} className={chipClass(listingCategory === "all")} aria-current={listingCategory === "all" ? "page" : undefined}>
+              All categories
+            </a>
+            {listingCategories.map((category) => (
+              <a
+                key={category}
+                href={buildListingCategoryHref(category)}
+                className={chipClass(listingCategory === category)}
+                aria-current={listingCategory === category ? "page" : undefined}
+              >
+                {category}
+              </a>
+            ))}
+          </div>
+          <form method="GET" className="auth-form market-form">
+            <input type="hidden" name="listingCategory" value={listingCategory} />
+            <input type="hidden" name="rfqSearch" value={rfqSearch} />
+            <input type="hidden" name="rfqStatusFilter" value={rfqStatusFilter} />
+            <input type="hidden" name="messageSearch" value={messageSearch} />
+            <label className="auth-field">
+              <span>Search listings</span>
+              <input
+                name="listingSearch"
+                type="text"
+                placeholder="Search by title, category, or tag"
+                defaultValue={listingSearch}
+              />
+            </label>
+            <button type="submit" className="auth-submit">
+              Filter listings
+            </button>
+          </form>
           <div className="feed-list">
-            {data.recommendedListings.map((listing) => (
+            {filteredListings.length === 0 ? (
+              <EmptyState
+                icon="🔎"
+                message="No live recommendations yet; open new RFQs to seed marketplace activity."
+                actionLabel="Create RFQ now"
+                actionHref="/buyer#create-rfq"
+              />
+            ) : null}
+            {filteredListings.map((listing) => (
               <div key={listing.id} className="feed-item">
                 <strong>{listing.title}</strong>
                 <p>
@@ -109,11 +253,60 @@ export default async function BuyerPage() {
           </div>
         </article>
 
-        <aside className="message-card">
+        <aside className="message-card" id="rfq-book">
           <span className="tag">RFQ book</span>
           <h3>Every open request should show bid pressure, not just status.</h3>
+          <div className="flex gap-2 mb-2">
+            <a href={buildRFQStatusHref("all")} className={chipClass(rfqStatusFilter === "all")} aria-current={rfqStatusFilter === "all" ? "page" : undefined}>
+              All
+            </a>
+            <a href={buildRFQStatusHref("open")} className={chipClass(rfqStatusFilter === "open")} aria-current={rfqStatusFilter === "open" ? "page" : undefined}>
+              Open
+            </a>
+            <a href={buildRFQStatusHref("awarded")} className={chipClass(rfqStatusFilter === "awarded")} aria-current={rfqStatusFilter === "awarded" ? "page" : undefined}>
+              Awarded
+            </a>
+          </div>
+          <form method="GET" className="auth-form market-form">
+            <input type="hidden" name="listingCategory" value={listingCategory} />
+            <input type="hidden" name="listingSearch" value={listingSearch} />
+            <input type="hidden" name="messageSearch" value={messageSearch} />
+            <div className="market-form__grid">
+              <label className="auth-field">
+                <span>Search RFQ book</span>
+                <input
+                  name="rfqSearch"
+                  type="text"
+                  placeholder="Search by title"
+                  defaultValue={rfqSearch}
+                />
+              </label>
+              <label className="auth-field">
+                <span>Status</span>
+                <select
+                  name="rfqStatusFilter"
+                  defaultValue={rfqStatusFilter}
+                >
+                  <option value="all">All</option>
+                  <option value="open">Open</option>
+                  <option value="awarded">Awarded</option>
+                </select>
+              </label>
+            </div>
+            <button type="submit" className="auth-submit">
+              Filter RFQs
+            </button>
+          </form>
           <div className="message-list">
-            {data.rfqBook.map((rfq) => (
+            {filteredRFQs.length === 0 ? (
+              <EmptyState
+                icon="🧾"
+                message="No open RFQs to action. Create one above to start receiving bids."
+                actionLabel="Clear filters"
+                actionHref="/buyer"
+              />
+            ) : null}
+            {filteredRFQs.map((rfq) => (
               <div key={rfq.id} className="message-item">
                 <strong>{rfq.title}</strong>
                 <p>
@@ -144,11 +337,37 @@ export default async function BuyerPage() {
         </aside>
       </div>
 
-      <article className="feed-card">
+      <article className="feed-card" id="message-inbox">
         <span className="tag">Inbox</span>
         <h3>Messages that change buyer decisions.</h3>
+        <form method="GET" className="auth-form market-form">
+          <input type="hidden" name="listingCategory" value={listingCategory} />
+          <input type="hidden" name="listingSearch" value={listingSearch} />
+          <input type="hidden" name="rfqSearch" value={rfqSearch} />
+          <input type="hidden" name="rfqStatusFilter" value={rfqStatusFilter} />
+          <label className="auth-field">
+            <span>Search messages</span>
+            <input
+              name="messageSearch"
+              type="text"
+              placeholder="Search inbox title or details"
+              defaultValue={messageSearch}
+            />
+          </label>
+          <button type="submit" className="auth-submit">
+            Filter messages
+          </button>
+        </form>
         <div className="feed-list">
-          {data.inbox.map((message) => (
+          {filteredMessages.length === 0 ? (
+            <EmptyState
+              icon="📭"
+              message="No messages yet. You’re all clear for now; messages will appear here once bidders engage."
+              actionLabel="Create RFQ now"
+              actionHref="/buyer#create-rfq"
+            />
+          ) : null}
+          {filteredMessages.map((message) => (
             <div key={message.id} className="feed-item">
               <strong>{message.title}</strong>
               <p>{message.detail}</p>
@@ -177,10 +396,24 @@ export default async function BuyerPage() {
             </div>
           ))}
           {!data.activeOrders[0]?.milestones.length && (
-            <EmptyState icon="📋" message="No active milestones yet." />
+            <EmptyState
+              icon="📋"
+              message="No active milestones yet."
+              actionLabel="Create an RFQ"
+              actionHref="/buyer#create-rfq"
+            />
           )}
         </div>
       </article>
     </PortalShell>
   );
+}
+
+
+function readSearchParam(
+  searchParams: Record<string, string | string[] | undefined> | undefined,
+  key: string,
+): string {
+  const value = searchParams?.[key];
+  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
 }

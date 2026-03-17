@@ -103,6 +103,73 @@ bun run test:coverage
 bun run test:integration
 ```
 
+## Alpha portal UX audit (governance)
+
+The portal-facing consistency checks for quick-filters and empty-state actions can be run locally with:
+
+```bash
+bun run alpha:ux-audit
+bun run alpha:ux-audit:strict
+bun run alpha:ux-audit:summary
+bun run alpha:ux-audit:summary:strict
+bun run portal:check
+bun run portal:check:quick
+bun run portal:check:fast
+bun run portal:check:strict
+```
+
+- `alpha:ux-audit` runs a baseline consistency scan and writes `.artifacts/portal-ux/alpha-portal-ux-audit.json`.
+- Default rules live in `alpha-portal-ux-audit.config.json`; you can override with `ALPHA_UX_AUDIT_CONFIG=...` (or `ALPHA_UX_AUDIT_CONFIG_PATH=...`) when needed.
+- Optional config schema: `alpha-portal-ux-audit.config.schema.json` (keep `canonicalLabels`/`canonicalHrefPatterns` as non-empty string arrays).
+- Edit `alpha-portal-ux-audit.config.example.json` and copy to repo root if you need a baseline template.
+- `alpha:ux-audit:strict` treats non-canonical EmptyState action targets as hard failures (for CI or gated pre-merge checks).
+
+- `alpha:ux-audit:validate-config` validates `alpha-portal-ux-audit.config.json` (or path via `ALPHA_UX_AUDIT_CONFIG/ALPHA_UX_AUDIT_CONFIG_PATH`) and prints the resolved label/pattern list.
+- `alpha:ux-audit:validate-config` is also executed in CI as part of the `Portal UX Governance` job (`portal_ux`) before/alongside full portal UX checks.
+  - it runs only when relevant UX-audit config/script files change.
+- In strict mode, canonical EmptyState action labels/patterns are sourced from `alpha-portal-ux-audit.config.json` and validated by script logic. Treat these as the source-of-truth for portal governance reviews.
+- `alpha:ux-audit:summary` prints the latest generated `.artifacts/portal-ux/alpha-portal-ux-audit-summary.md` without mutating audit artifacts.
+- `alpha:ux-audit:summary:strict` runs strict audit + summary in one step (for strict validation workflows).
+- `portal:check` runs `portal:check:strict` (full strict mode).
+- `portal:check:quick` runs only baseline portal UX audit (non-strict) + summary for
+  very fast feedback when iterating on portal pages.
+- `portal:check:fast` runs lint/test/build + baseline portal UX audit
+  and is useful for local verification.
+- `portal:check:strict` runs lint/test/build + strict portal UX audit
+  for CI-ready validation.
+
+This command scans `apps/web/app/{buyer,provider,ops}` and validates:
+- quick chip accessibility marker (`aria-current` with `chipClass`)
+- `EmptyState` action label/href presence
+- hash-only action links
+- optionally surfaced non-canonical action targets
+
+It outputs a baseline JSON report in `.artifacts/portal-ux/alpha-portal-ux-audit.json`.
+
+CI currently runs:
+- `Portal UX Governance` (`portal_ux`) as a single job that:
+  - path-filters on portal UX pages and UX-audit governance files,
+  - can execute in 4 modes:
+    - `full` (page+config changes)
+    - `ui` (portal UX pages changed only)
+    - `config` (audit config/script/CI rule changed only)
+    - `none` (other files changed only, skipped)
+  - runs and reports mode-specific checks:
+    - `ui`: `portal:check` (+ strict/summary output)
+    - `config`: `alpha:ux-audit:validate-config`
+    - `full`: both checks above
+  - uploads portal UX summary + JSON artifacts only when the strict `portal:check` runs.
+
+Suggested PR evidence by mode:
+- `ui`: include `bun run portal:check:strict` and artifacts link
+- `config`: include `bun run alpha:ux-audit:validate-config` and schema validation result
+- `full`: include both
+- `none`: CI should report `Portal UX governance mode: none`
+
+- For config/schema-heavy changes (`config`/`full`), attach the resolved rules by command output in PR description (example from `alpha:ux-audit:validate-config`).
+- If any strict rule change occurs, include the filled
+  `## Alpha Portal UX Audit Rule Change Impact Template` section.
+
 The Docker-only end-to-end command can also be run directly:
 
 ```bash
@@ -525,3 +592,14 @@ curl -X POST http://localhost:8080/api/v1/webhooks \
   -H "Content-Type: application/json" \
   -d '{"target":"org_buyer","url":"https://example.com/webhook"}'
 ```
+
+
+Example override:
+
+```bash
+ALPHA_UX_AUDIT_CONFIG=./scripts/alpha-ux-audit.config.local.json bun run alpha:ux-audit
+```
+
+
+
+Note: invalid local config files fail fast (exit code 2) with a clear message.
