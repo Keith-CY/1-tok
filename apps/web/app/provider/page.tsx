@@ -13,6 +13,7 @@ export default async function ProviderPage({
 }: {
   searchParams?: {
     opportunityQ?: string;
+    opportunityStatus?: string;
     queueQ?: string;
     queueStatus?: string;
   };
@@ -25,11 +26,27 @@ export default async function ProviderPage({
   });
 
   const opportunityQ = (searchParams?.opportunityQ ?? "").trim().toLowerCase();
+  const opportunityStatus = (searchParams?.opportunityStatus ?? "all").trim().toLowerCase();
   const queueQ = (searchParams?.queueQ ?? "").trim().toLowerCase();
   const queueStatus = (searchParams?.queueStatus ?? "all").toLowerCase();
 
   const chipClass = (active: boolean) =>
     active ? "action-button action-button--active" : "action-button";
+
+  const buildOpportunityStatusHref = (nextStatus: string) => {
+    const params = new URLSearchParams();
+
+    if (opportunityQ) {
+      params.set("opportunityQ", opportunityQ);
+    }
+
+    if (nextStatus !== "all") {
+      params.set("opportunityStatus", nextStatus);
+    }
+
+    const queryString = params.toString();
+    return queryString ? `/provider?${queryString}` : "/provider";
+  };
 
   const buildQueueStatusHref = (nextStatus: string) => {
     const params = new URLSearchParams();
@@ -46,16 +63,23 @@ export default async function ProviderPage({
       params.set("queueStatus", nextStatus);
     }
 
+    if (opportunityStatus && opportunityStatus !== "all") {
+      params.set("opportunityStatus", opportunityStatus);
+    }
+
     const queryString = params.toString();
     return queryString ? `/provider?${queryString}` : "/provider";
   };
 
   const filteredOpportunities = data.marketOpportunities.filter(
     (item) =>
-      !opportunityQ ||
-      item.title.toLowerCase().includes(opportunityQ) ||
-      item.buyerOrgId.toLowerCase().includes(opportunityQ) ||
-      item.responseDeadlineAt.includes(opportunityQ),
+      (!opportunityQ ||
+        item.title.toLowerCase().includes(opportunityQ) ||
+        item.buyerOrgId.toLowerCase().includes(opportunityQ) ||
+        item.responseDeadlineAt.includes(opportunityQ)) &&
+      (opportunityStatus === "all" ||
+        (opportunityStatus === "bidded" && item.hasProviderBid) ||
+        (opportunityStatus === "unbidded" && !item.hasProviderBid)),
   );
 
   const filteredQueue = data.marketQueue
@@ -144,7 +168,21 @@ export default async function ProviderPage({
         <aside className="message-card" id="opportunities">
           <span className="tag">Open RFQs</span>
           <h3>Providers need a direct lane from opportunity to submitted bid.</h3>
+          <div className="flex gap-2 mb-2">
+            <a href={buildOpportunityStatusHref("all")} className={chipClass(opportunityStatus === "all" || opportunityStatus === "")} aria-current={opportunityStatus === "all" || opportunityStatus === "" ? "page" : undefined}>
+              All opportunities
+            </a>
+            <a href={buildOpportunityStatusHref("bidded")} className={chipClass(opportunityStatus === "bidded")} aria-current={opportunityStatus === "bidded" ? "page" : undefined}>
+              Bidded
+            </a>
+            <a href={buildOpportunityStatusHref("unbidded")} className={chipClass(opportunityStatus === "unbidded")} aria-current={opportunityStatus === "unbidded" ? "page" : undefined}>
+              Not yet bid
+            </a>
+          </div>
           <form method="GET" className="auth-form market-form">
+            <input type="hidden" name="opportunityStatus" value={opportunityStatus} />
+            <input type="hidden" name="queueQ" value={queueQ} />
+            <input type="hidden" name="queueStatus" value={queueStatus} />
             <div className="market-form__grid">
               <label className="auth-field">
                 <span>Search opportunities</span>
@@ -228,6 +266,8 @@ export default async function ProviderPage({
           </a>
         </div>
         <form method="GET" className="auth-form market-form">
+          <input type="hidden" name="opportunityQ" value={opportunityQ} />
+          <input type="hidden" name="opportunityStatus" value={opportunityStatus} />
           <div className="market-form__grid">
             <label className="auth-field">
               <span>Search bids</span>
