@@ -112,11 +112,18 @@ bun run alpha:ux-audit
 bun run alpha:ux-audit:strict
 bun run alpha:ux-audit:summary
 bun run portal:check
+bun run portal:check:fast
+bun run portal:check:strict
 ```
 
 - `alpha:ux-audit` runs a baseline consistency scan and writes `alpha-portal-ux-audit.json`.
 - `alpha:ux-audit:strict` treats non-canonical EmptyState action targets as hard failures (for CI or gated pre-merge checks).
 - `alpha:ux-audit:summary` writes a human-readable markdown report to `alpha-portal-ux-audit-summary.md`.
+- `portal:check` runs `portal:check:strict` (full strict mode).
+- `portal:check:fast` runs lint/test/build + baseline portal UX audit
+  and is useful for quick local verification.
+- `portal:check:strict` runs lint/test/build + strict portal UX audit
+  for CI-ready validation.
 
 This command scans `apps/web/app/{buyer,provider,ops}` and validates:
 - quick chip accessibility marker (`aria-current` with `chipClass`)
