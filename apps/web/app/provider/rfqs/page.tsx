@@ -213,7 +213,7 @@ export default async function ProviderRFQsPage({
         {filteredRFQs.length === 0 ? (
           <EmptyState
             message="No RFQs match your filter."
-            actionLabel="Open all opportunities"
+            actionLabel="Clear filters"
             actionHref="/provider/rfqs"
           />
         ) : (
