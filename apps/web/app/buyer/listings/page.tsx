@@ -10,7 +10,7 @@ export default async function BuyerListingsPage({
   searchParams: { q?: string; category?: string; tag?: string };
 }) {
   const params = searchParams;
-  const q = (params?.q ?? "").trim();
+  const q = (params?.q ?? "").trim().toLowerCase();
   const category = (params?.category ?? "").trim();
   const tag = (params?.tag ?? "").trim();
   let listings: any[] = [];
@@ -27,6 +27,28 @@ export default async function BuyerListingsPage({
     error = e.message;
   }
 
+  const buildCategoryHref = (nextCategory: string) => {
+    const params = new URLSearchParams();
+
+    if (q) {
+      params.set("q", q);
+    }
+
+    if (tag) {
+      params.set("tag", tag);
+    }
+
+    if (nextCategory) {
+      params.set("category", nextCategory);
+    }
+
+    const queryString = params.toString();
+    return queryString ? `/buyer/listings?${queryString}` : "/buyer/listings";
+  };
+
+  const chipClass = (active: boolean) =>
+    active ? "action-button action-button--active" : "action-button";
+
   return (
     <PortalShell
       eyebrow="Buyer portal / discover"
@@ -41,6 +63,21 @@ export default async function BuyerListingsPage({
       asideItems={[]}
     >
       <div className="space-y-4">
+        <div className="flex gap-2 mb-2 flex-wrap">
+          <a href={buildCategoryHref("")} className={chipClass(category === "")} aria-current={category === "" ? "page" : undefined}>
+            All categories
+          </a>
+          <a href={buildCategoryHref("agent-ops")} className={chipClass(category === "agent-ops")} aria-current={category === "agent-ops" ? "page" : undefined}>
+            Agent Ops
+          </a>
+          <a href={buildCategoryHref("agent-runtime")} className={chipClass(category === "agent-runtime")} aria-current={category === "agent-runtime" ? "page" : undefined}>
+            Agent Runtime
+          </a>
+          <a href={buildCategoryHref("compute")} className={chipClass(category === "compute")} aria-current={category === "compute" ? "page" : undefined}>
+            Compute
+          </a>
+        </div>
+
         <form method="GET" className="auth-form market-form">
           <div className="market-form__grid">
             <label className="auth-field">
