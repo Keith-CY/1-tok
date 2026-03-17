@@ -9,6 +9,7 @@
 ## Verification
 
 - [ ] Relevant local checks run
+  - [ ] `bun run portal:check`
 
 ## PR Readiness Checklist
 

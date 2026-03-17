@@ -33,7 +33,7 @@
     "lint:go": "golangci-lint run ./...",
     "alpha:ux-audit": "bun scripts/alpha-portal-ux-audit.mjs",
     "alpha:ux-audit:strict": "ALPHA_UX_AUDIT_STRICT=1 bun run alpha:ux-audit",
-    "portal:check": "bun run lint:web && bun run test:web && bun run build:web && bun run alpha:ux-audit:strict",
+    "portal:check": "bun run lint:web && bun run test:web && bun run build:web && bun run alpha:ux-audit:strict && bun run alpha:ux-audit:summary",
     "alpha:ux-audit:summary": "bun run alpha:ux-audit && cat alpha-portal-ux-audit-summary.md"
   }
 }
