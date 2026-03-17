@@ -27,6 +27,33 @@ export default async function BuyerPage({
   const rfqStatusFilter = readSearchParam(searchParams, "rfqStatusFilter") || "all";
   const messageSearch = readSearchParam(searchParams, "messageSearch").toLowerCase();
 
+
+  const chipClass = (active: boolean) =>
+    active ? "action-button action-button--active" : "action-button";
+
+  const buildRFQStatusHref = (nextStatus: string) => {
+    const params = new URLSearchParams();
+
+    if (listingSearch) {
+      params.set("listingSearch", listingSearch);
+    }
+
+    if (rfqSearch) {
+      params.set("rfqSearch", rfqSearch);
+    }
+
+    if (messageSearch) {
+      params.set("messageSearch", messageSearch);
+    }
+
+    if (nextStatus !== "all") {
+      params.set("rfqStatusFilter", nextStatus);
+    }
+
+    const queryString = params.toString();
+    return queryString ? `/buyer?${queryString}` : "/buyer";
+  };
+
   const filteredListings = data.recommendedListings.filter((listing) =>
     listing.title.toLowerCase().includes(listingSearch) ||
     listing.category.toLowerCase().includes(listingSearch) ||
@@ -175,6 +202,17 @@ export default async function BuyerPage({
         <aside className="message-card" id="rfq-book">
           <span className="tag">RFQ book</span>
           <h3>Every open request should show bid pressure, not just status.</h3>
+          <div className="flex gap-2 mb-2">
+            <a href={buildRFQStatusHref("all")} className={chipClass(rfqStatusFilter === "all")} aria-current={rfqStatusFilter === "all" ? "page" : undefined}>
+              All
+            </a>
+            <a href={buildRFQStatusHref("open")} className={chipClass(rfqStatusFilter === "open")} aria-current={rfqStatusFilter === "open" ? "page" : undefined}>
+              Open
+            </a>
+            <a href={buildRFQStatusHref("awarded")} className={chipClass(rfqStatusFilter === "awarded")} aria-current={rfqStatusFilter === "awarded" ? "page" : undefined}>
+              Awarded
+            </a>
+          </div>
           <form method="GET" className="auth-form market-form">
             <input type="hidden" name="listingSearch" value={listingSearch} />
             <input type="hidden" name="messageSearch" value={messageSearch} />
