@@ -112,6 +112,7 @@ bun run alpha:ux-audit
 bun run alpha:ux-audit:strict
 bun run alpha:ux-audit:summary
 bun run portal:check
+bun run portal:check:quick
 bun run portal:check:fast
 bun run portal:check:strict
 ```
@@ -120,8 +121,10 @@ bun run portal:check:strict
 - `alpha:ux-audit:strict` treats non-canonical EmptyState action targets as hard failures (for CI or gated pre-merge checks).
 - `alpha:ux-audit:summary` writes a human-readable markdown report to `alpha-portal-ux-audit-summary.md`.
 - `portal:check` runs `portal:check:strict` (full strict mode).
+- `portal:check:quick` runs only baseline portal UX audit (non-strict) + summary for
+  very fast feedback when iterating on portal pages.
 - `portal:check:fast` runs lint/test/build + baseline portal UX audit
-  and is useful for quick local verification.
+  and is useful for local verification.
 - `portal:check:strict` runs lint/test/build + strict portal UX audit
   for CI-ready validation.
 

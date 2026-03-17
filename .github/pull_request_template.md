@@ -11,6 +11,7 @@
 - [ ] Relevant local checks run
   - [ ] `bun run portal:check`
   - [ ] `bun run portal:check:strict`
+  - [ ] `bun run portal:check:quick`
   - [ ] `bun run portal:check:fast`
 
 ## PR Readiness Checklist
