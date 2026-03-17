@@ -43,6 +43,8 @@ Add links to artifacts if CI comments contain failed/passing `Portal UX governan
 
 <!-- Fill this section only if this PR touches UX audit rules/config/script. -->
 
+> Treat `alpha-portal-ux-audit.config.json` (and schema/example variants) as the source-of-truth for canonical labels and href patterns; report only deltas vs current config.
+
 - Canonical labels changed:
   - Added:
   - Removed:
