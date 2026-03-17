@@ -1,9 +1,71 @@
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import path from 'node:path';
 
 const root = path.resolve('apps/web/app');
 const includeRoots = ['buyer', 'provider', 'ops'];
+
+const DEFAULT_CONFIG_PATH = './alpha-portal-ux-audit.config.json';
+
+const DEFAULT_CANONICAL_LABELS = [
+  'Clear filters',
+  'Clear bid filters',
+  'Clear review filters',
+  'Clear risk filters',
+  'Clear dispute filters',
+  'Clear funding filters',
+  'Track opportunities',
+  'Create RFQ now',
+  'Create an RFQ',
+  'Open treasury controls',
+];
+
+const DEFAULT_CANONICAL_HREF_PATTERNS = [
+  /^\/buyer(?:(?:#|\?|$).*)?/,
+  /^\/provider(?:(?:#|\?|$).*)?/,
+  /^\/ops(?:(?:#|\?|$).*)?/,
+  /^\/login(?:(?:#|\?|$).*)?/,
+  /^\/$/,
+];
+
+function loadConfig() {
+  const candidatePath = process.env.ALPHA_UX_AUDIT_CONFIG || process.env.ALPHA_UX_AUDIT_CONFIG_PATH || DEFAULT_CONFIG_PATH;
+  if (!existsSync(candidatePath)) {
+    return {
+      canonicalLabels: DEFAULT_CANONICAL_LABELS,
+      canonicalHrefPatterns: DEFAULT_CANONICAL_HREF_PATTERNS,
+      configPath: null,
+      source: 'default',
+    };
+  }
+
+  try {
+    const raw = readFileSync(candidatePath, 'utf8');
+    const parsed = JSON.parse(raw);
+    const canonicalLabels = Array.isArray(parsed.canonicalLabels) && parsed.canonicalLabels.length > 0
+      ? parsed.canonicalLabels
+      : DEFAULT_CANONICAL_LABELS;
+    const patterns = Array.isArray(parsed.canonicalHrefPatterns) && parsed.canonicalHrefPatterns.length > 0
+      ? parsed.canonicalHrefPatterns.map((pattern) => new RegExp(pattern))
+      : DEFAULT_CANONICAL_HREF_PATTERNS;
+
+    return {
+      canonicalLabels,
+      canonicalHrefPatterns: patterns,
+      configPath: candidatePath,
+      source: candidatePath,
+    };
+  } catch (error) {
+    console.warn(`[alpha:ux-audit] Failed reading config at ${candidatePath}, using defaults.`, error?.message || error);
+    return {
+      canonicalLabels: DEFAULT_CANONICAL_LABELS,
+      canonicalHrefPatterns: DEFAULT_CANONICAL_HREF_PATTERNS,
+      configPath: null,
+      source: 'default-fallback',
+    };
+  }
+}
+
 
 function walk(dir) {
   const entries = readdirSync(dir, { withFileTypes: true });
@@ -39,6 +101,7 @@ function formatSummaryText(report) {
   lines.push(`Status: **${status}**`);
   lines.push(`Timestamp: ${report.timestamp}`);
   lines.push(`Scope snapshot: ${branchInfo}@${revInfo}`);
+  lines.push(`Rule config: ${report.config.source}${report.config.path ? `@${report.config.path}` : ""}`);
   lines.push('');
   lines.push('## Scope');
   lines.push(`- checkedFiles: ${report.summary.filesChecked}`);
@@ -115,11 +178,16 @@ function main() {
   const targetFiles = includeRoots.flatMap((r) => walk(path.join(root, r)));
 
   const strictMode = process.env.ALPHA_UX_AUDIT_STRICT === '1';
+  const config = loadConfig();
 
   const report = {
     strictMode,
     timestamp: new Date().toISOString(),
     git: getGitMeta(),
+    config: {
+      source: config.source,
+      path: config.configPath,
+    },
     scope: ['buyer/*', 'provider/*', 'ops/*'],
     summary: {
       filesChecked: 0,
@@ -225,25 +293,8 @@ function main() {
           });
         }
 
-        const canonicalLabels = new Set([
-          'Clear filters',
-          'Clear bid filters',
-          'Clear review filters',
-          'Clear risk filters',
-          'Clear dispute filters',
-          'Clear funding filters',
-          'Track opportunities',
-          'Create RFQ now',
-          'Create an RFQ',
-          'Open treasury controls',
-        ]);
-        const canonicalHrefPatterns = [
-          /^\/buyer(?:(?:#|\?|$).*)?/,
-          /^\/provider(?:(?:#|\?|$).*)?/,
-          /^\/ops(?:(?:#|\?|$).*)?/,
-          /^\/login(?:(?:#|\?|$).*)?/,
-          /^\/$/,
-        ];
+        const canonicalLabels = new Set(config.canonicalLabels);
+        const canonicalHrefPatterns = config.canonicalHrefPatterns;
 
         if (actionLabel && !canonicalLabels.has(actionLabel)) {
           report.summary.nonCanonicalActionLabels += 1;

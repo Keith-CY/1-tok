@@ -118,6 +118,7 @@ bun run portal:check:strict
 ```
 
 - `alpha:ux-audit` runs a baseline consistency scan and writes `alpha-portal-ux-audit.json`.
+- Default rules live in `alpha-portal-ux-audit.config.json`; you can override with `ALPHA_UX_AUDIT_CONFIG=...` (or `ALPHA_UX_AUDIT_CONFIG_PATH=...`) when needed.
 - `alpha:ux-audit:strict` treats non-canonical EmptyState action targets as hard failures (for CI or gated pre-merge checks).
 - In strict mode, canonical EmptyState action labels are constrained to: `Clear filters`, `Clear bid filters`, `Clear review filters`, `Clear risk filters`, `Clear dispute filters`, `Clear funding filters`, `Track opportunities`, `Create RFQ now`, `Create an RFQ`, `Open treasury controls`.
 - `alpha:ux-audit:summary` writes a human-readable markdown report to `alpha-portal-ux-audit-summary.md`.
@@ -559,3 +560,11 @@ curl -X POST http://localhost:8080/api/v1/webhooks \
   -H "Content-Type: application/json" \
   -d '{"target":"org_buyer","url":"https://example.com/webhook"}'
 ```
+
+
+Example override:
+
+```bash
+ALPHA_UX_AUDIT_CONFIG=./scripts/alpha-ux-audit.config.local.json bun run alpha:ux-audit
+```
+
