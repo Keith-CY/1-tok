@@ -87,52 +87,11 @@ jobs:
 
 
   portal_ux:
-    name: Portal UX Consistency
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: package.json
-
-      - name: Install Dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Run Portal UX Check (strict + summary)
-        run: bun run portal:check
-
-      - name: Upload Portal UX Audit Summary
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: alpha-portal-ux-audit-summary
-          path: alpha-portal-ux-audit-summary.md
-          if-no-files-found: error
-
-      - name: Upload Portal UX Audit JSON
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: alpha-portal-ux-audit-json
-          path: alpha-portal-ux-audit.json
-          if-no-files-found: error
-
-      - name: Publish Portal UX Summary
-        if: always()
-        run: |
-          echo "## Alpha Portal UX Audit Summary" >> "$GITHUB_STEP_SUMMARY"
-          cat alpha-portal-ux-audit-summary.md >> "$GITHUB_STEP_SUMMARY"
-
-
-  portal_ux_config:
-    name: Portal UX Config Validation
+    name: Portal UX Governance
     outputs:
-      skipped: ${{ steps.changed_status.outputs.skipped }}
+      skipped: ${{ steps.governance.outputs.skipped }}
+      ranUiCheck: ${{ steps.governance.outputs.ranUiCheck }}
+      ranConfigValidation: ${{ steps.governance.outputs.ranConfigValidation }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -140,11 +99,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Detect UX audit config changes
+      - name: Detect UX governance relevant changes
         id: changed
         uses: dorny/paths-filter@v3
         with:
           filters: |
+            ux-pages:
+              - 'apps/web/app/buyer/**'
+              - 'apps/web/app/provider/**'
+              - 'apps/web/app/ops/**'
             ux-audit-config:
               - 'alpha-portal-ux-audit.config.json'
               - 'alpha-portal-ux-audit.config.example.json'
@@ -153,26 +116,63 @@ jobs:
               - '.github/workflows/ci.yml'
 
       - name: Setup Bun
-        if: steps.changed.outputs.ux-audit-config == 'true'
+        if: steps.changed.outputs.ux-pages == 'true' || steps.changed.outputs.ux-audit-config == 'true'
         uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: package.json
 
       - name: Install Dependencies
-        if: steps.changed.outputs.ux-audit-config == 'true'
+        if: steps.changed.outputs.ux-pages == 'true' || steps.changed.outputs.ux-audit-config == 'true'
         run: bun install --frozen-lockfile
 
-      - name: Skip Portal UX Audit Config Validation
-        if: steps.changed.outputs.ux-audit-config != 'true'
-        run: echo "No UX audit config/script changes detected; skipping."
+      - name: Run Portal UX Governance Checks
+        id: governance
+        run: |
+          if [[ "${{ steps.changed.outputs.ux-pages }}" != "true" && "${{ steps.changed.outputs.ux-audit-config }}" != "true" ]]; then
+            echo "No UX governance related file changes detected; skipping portal UX checks."
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            echo "ranUiCheck=false" >> "$GITHUB_OUTPUT"
+            echo "ranConfigValidation=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-      - name: Record config validation status
-        id: changed_status
-        run: echo "skipped=${{ steps.changed.outputs.ux-audit-config != 'true' }}" >> "$GITHUB_OUTPUT"
+          echo "skipped=false" >> "$GITHUB_OUTPUT"
+          echo "ranUiCheck=${{ steps.changed.outputs.ux-pages }}" >> "$GITHUB_OUTPUT"
+          echo "ranConfigValidation=${{ steps.changed.outputs.ux-audit-config }}" >> "$GITHUB_OUTPUT"
 
-      - name: Validate Portal UX Audit Config
-        if: steps.changed.outputs.ux-audit-config == 'true'
-        run: bun run alpha:ux-audit:validate-config
+          if [[ "${{ steps.changed.outputs.ux-pages }}" == "true" ]]; then
+            bun run portal:check
+          else
+            echo "Portal UX page scope not changed; skipping strict portal:check for this run."
+          fi
+
+          if [[ "${{ steps.changed.outputs.ux-audit-config }}" == "true" ]]; then
+            bun run alpha:ux-audit:validate-config
+          else
+            echo "No UX audit config/script changes; skipping config validation."
+          fi
+
+      - name: Upload Portal UX Audit Summary
+        if: steps.governance.outputs.ranUiCheck == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: alpha-portal-ux-audit-summary
+          path: alpha-portal-ux-audit-summary.md
+          if-no-files-found: error
+
+      - name: Upload Portal UX Audit JSON
+        if: steps.governance.outputs.ranUiCheck == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: alpha-portal-ux-audit-json
+          path: alpha-portal-ux-audit.json
+          if-no-files-found: error
+
+      - name: Publish Portal UX Summary
+        if: steps.governance.outputs.ranUiCheck == 'true'
+        run: |
+          echo "## Alpha Portal UX Audit Summary" >> "$GITHUB_STEP_SUMMARY"
+          cat alpha-portal-ux-audit-summary.md >> "$GITHUB_STEP_SUMMARY"
 
   integration:
     name: Integration Smoke
@@ -231,7 +231,6 @@ jobs:
       - unit
       - integration
       - portal_ux
-      - portal_ux_config
     if: always()
     permissions:
       contents: read
@@ -265,8 +264,9 @@ jobs:
           UNIT_RESULT: ${{ needs.unit.result }}
           INTEGRATION_RESULT: ${{ needs.integration.result }}
           PORTAL_RESULT: ${{ needs.portal_ux.result }}
-          PORTAL_CONFIG_RESULT: ${{ needs.portal_ux_config.result }}
-          PORTAL_CONFIG_SKIPPED: ${{ needs.portal_ux_config.outputs.skipped }}
+          PORTAL_GOV_SKIPPED: ${{ needs.portal_ux.outputs.skipped }}
+          PORTAL_UI_CHECK_RUN: ${{ needs.portal_ux.outputs.ranUiCheck }}
+          PORTAL_CONFIG_VALIDATION_RUN: ${{ needs.portal_ux.outputs.ranConfigValidation }}
           REPOSITORY: ${{ github.repository }}
           PORTAL_SUMMARY_PATH: .artifacts/portal-ux/alpha-portal-ux-audit-summary.md
           RUN_ID: ${{ github.run_id }}
@@ -293,9 +293,10 @@ jobs:
               "",
               f"- Unit and coverage: `{os.environ['UNIT_RESULT']}`",
               f"- Integration smoke: `{os.environ['INTEGRATION_RESULT']}`",
-              f"- Portal UX check: `{os.environ['PORTAL_RESULT']}`",
-              f"- Portal UX config validation: `{os.environ['PORTAL_CONFIG_RESULT']}`",
-              f"- Portal UX config validation skipped: `{os.environ['PORTAL_CONFIG_SKIPPED']}`",
+              f"- Portal UX governance: `{os.environ['PORTAL_RESULT']}`",
+              f"- Portal UX consistency check run: `{os.environ['PORTAL_UI_CHECK_RUN']}`",
+              f"- Portal UX config validation run: `{os.environ['PORTAL_CONFIG_VALIDATION_RUN']}`",
+              f"- Portal UX governance skipped: `{os.environ['PORTAL_GOV_SKIPPED']}`",
               f"- Run: {run_url}",
               "",
               coverage,

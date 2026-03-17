@@ -124,7 +124,7 @@ bun run portal:check:strict
 - `alpha:ux-audit:strict` treats non-canonical EmptyState action targets as hard failures (for CI or gated pre-merge checks).
 
 - `alpha:ux-audit:validate-config` validates `alpha-portal-ux-audit.config.json` (or path via `ALPHA_UX_AUDIT_CONFIG/ALPHA_UX_AUDIT_CONFIG_PATH`) and prints the resolved label/pattern list.
-- `alpha:ux-audit:validate-config` is also executed in CI before full portal UX checks (via `portal_ux_config` job).
+- `alpha:ux-audit:validate-config` is also executed in CI as part of the `Portal UX Governance` job (`portal_ux`) before/alongside full portal UX checks.
   - it runs only when relevant UX-audit config/script files change.
 - In strict mode, canonical EmptyState action labels are constrained to: `Clear filters`, `Clear bid filters`, `Clear review filters`, `Clear risk filters`, `Clear dispute filters`, `Clear funding filters`, `Track opportunities`, `Create RFQ now`, `Create an RFQ`, `Open treasury controls`.
 - `alpha:ux-audit:summary` writes a human-readable markdown report to `alpha-portal-ux-audit-summary.md`.
@@ -145,8 +145,10 @@ This command scans `apps/web/app/{buyer,provider,ops}` and validates:
 It outputs a baseline JSON report in `alpha-portal-ux-audit.json`.
 
 CI currently runs:
-- `Portal UX Config Validation` (lightweight config parse/validation, path-filtered)
-- `Portal UX Consistency` (`portal:check`, summary+artifacts).
+- `Portal UX Governance` (`portal_ux`) as a single job that:
+  - runs `alpha:ux-audit:validate-config` on config/script/CI rule changes,
+  - runs `portal:check` when `apps/web/app/{buyer,provider,ops}` files change,
+  - uploads portal UX summary + JSON artifacts only when the strict check runs.
 
 The Docker-only end-to-end command can also be run directly:
 
