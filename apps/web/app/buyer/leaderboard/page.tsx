@@ -123,13 +123,13 @@ export default async function LeaderboardPage({
 
         <div className="flex gap-2 mb-2">
           <a href={buildSortHref("rating")} className={chipClass(sort === "rating")} aria-current={sort === "rating" ? "page" : undefined}>
-            Top rating
+            Sort by rating
           </a>
           <a href={buildSortHref("reviews")} className={chipClass(sort === "reviews")} aria-current={sort === "reviews" ? "page" : undefined}>
-            Most reviews
+            Sort by reviews
           </a>
           <a href={buildSortHref("orders")} className={chipClass(sort === "orders")} aria-current={sort === "orders" ? "page" : undefined}>
-            Most orders
+            Sort by orders
           </a>
         </div>
 
