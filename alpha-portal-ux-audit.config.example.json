@@ -1,0 +1,21 @@
+{
+  "canonicalLabels": [
+    "Clear filters",
+    "Clear bid filters",
+    "Clear review filters",
+    "Clear risk filters",
+    "Clear dispute filters",
+    "Clear funding filters",
+    "Track opportunities",
+    "Create RFQ now",
+    "Create an RFQ",
+    "Open treasury controls"
+  ],
+  "canonicalHrefPatterns": [
+    "^\\/buyer(?:(?:#|\\?|$).*)?",
+    "^\\/provider(?:(?:#|\\?|$).*)?",
+    "^\\/ops(?:(?:#|\\?|$).*)?",
+    "^\\/login(?:(?:#|\\?|$).*)?",
+    "^\\/$"
+  ]
+}

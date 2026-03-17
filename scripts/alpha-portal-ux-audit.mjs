@@ -39,31 +39,46 @@ function loadConfig() {
     };
   }
 
+  let parsed;
+
   try {
     const raw = readFileSync(candidatePath, 'utf8');
-    const parsed = JSON.parse(raw);
-    const canonicalLabels = Array.isArray(parsed.canonicalLabels) && parsed.canonicalLabels.length > 0
-      ? parsed.canonicalLabels
-      : DEFAULT_CANONICAL_LABELS;
-    const patterns = Array.isArray(parsed.canonicalHrefPatterns) && parsed.canonicalHrefPatterns.length > 0
-      ? parsed.canonicalHrefPatterns.map((pattern) => new RegExp(pattern))
-      : DEFAULT_CANONICAL_HREF_PATTERNS;
-
-    return {
-      canonicalLabels,
-      canonicalHrefPatterns: patterns,
-      configPath: candidatePath,
-      source: candidatePath,
-    };
+    parsed = JSON.parse(raw);
   } catch (error) {
-    console.warn(`[alpha:ux-audit] Failed reading config at ${candidatePath}, using defaults.`, error?.message || error);
-    return {
-      canonicalLabels: DEFAULT_CANONICAL_LABELS,
-      canonicalHrefPatterns: DEFAULT_CANONICAL_HREF_PATTERNS,
-      configPath: null,
-      source: 'default-fallback',
-    };
+    throw new Error(`Cannot read or parse config: ${candidatePath}. ${error?.message || error}`);
   }
+
+  if (!Array.isArray(parsed.canonicalLabels) || !Array.isArray(parsed.canonicalHrefPatterns)) {
+    throw new Error(`Invalid config schema at ${candidatePath}: canonicalLabels and canonicalHrefPatterns must be arrays.`);
+  }
+
+  if (parsed.canonicalLabels.length === 0) {
+    throw new Error(`Invalid config schema at ${candidatePath}: canonicalLabels cannot be empty.`);
+  }
+
+  const invalidLabel = parsed.canonicalLabels.find((label) => typeof label !== 'string' || label.trim().length === 0);
+  if (invalidLabel) {
+    throw new Error(`Invalid config schema at ${candidatePath}: canonicalLabels contains invalid value ${JSON.stringify(invalidLabel)}.`);
+  }
+
+  const invalidPattern = parsed.canonicalHrefPatterns.find((pattern) => typeof pattern !== 'string' || pattern.trim().length === 0);
+  if (invalidPattern) {
+    throw new Error(`Invalid config schema at ${candidatePath}: canonicalHrefPatterns contains invalid value ${JSON.stringify(invalidPattern)}.`);
+  }
+
+  let canonicalHrefPatterns;
+  try {
+    canonicalHrefPatterns = parsed.canonicalHrefPatterns.map((pattern) => new RegExp(pattern));
+  } catch (error) {
+    throw new Error(`Invalid config schema at ${candidatePath}: canonicalHrefPatterns has invalid regex. ${error.message}`);
+  }
+
+  return {
+    canonicalLabels: parsed.canonicalLabels,
+    canonicalHrefPatterns,
+    configPath: candidatePath,
+    source: candidatePath,
+  };
 }
 
 
@@ -351,6 +366,6 @@ function main() {
 try {
   main();
 } catch (err) {
-  console.error(err);
+  console.error('[alpha:ux-audit] fatal:', err?.message || err);
   process.exit(2);
 }
