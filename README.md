@@ -164,6 +164,10 @@ Suggested PR evidence by mode:
 - `full`: include both
 - `none`: CI should report `Portal UX governance mode: none`
 
+- For config/schema-heavy changes (`config`/`full`), attach the resolved rules by command output in PR description (example from `alpha:ux-audit:validate-config`).
+- If any strict rule change occurs, include the filled
+  `## Alpha Portal UX Audit Rule Change Impact Template` section.
+
 The Docker-only end-to-end command can also be run directly:
 
 ```bash

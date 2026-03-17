@@ -59,6 +59,9 @@ Add links to artifacts if CI comments contain failed/passing `Portal UX governan
   - `bun run portal:check:strict`
   - `bun run portal:check:quick`
 
+<!-- Optional: if this PR only touches UX governance config (mode=config), this rule template can be omitted.
+     If touching both pages + governance config (mode=full), fill both this section and the mode evidence guide. -->
+
 ## Notes
 
 - If this PR is in response to an issue, add label `docs`, `bug`, `enhancement`, etc.
