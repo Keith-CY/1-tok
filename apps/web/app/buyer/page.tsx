@@ -23,6 +23,7 @@ export default async function BuyerPage({
   });
 
   const listingSearch = readSearchParam(searchParams, "listingSearch").toLowerCase();
+  const listingCategory = (readSearchParam(searchParams, "listingCategory") || "all").toLowerCase();
   const rfqSearch = readSearchParam(searchParams, "rfqSearch").toLowerCase();
   const rfqStatusFilter = readSearchParam(searchParams, "rfqStatusFilter") || "all";
   const messageSearch = readSearchParam(searchParams, "messageSearch").toLowerCase();
@@ -30,6 +31,33 @@ export default async function BuyerPage({
 
   const chipClass = (active: boolean) =>
     active ? "action-button action-button--active" : "action-button";
+
+  const buildListingCategoryHref = (nextCategory: string) => {
+    const params = new URLSearchParams();
+
+    if (listingSearch) {
+      params.set("listingSearch", listingSearch);
+    }
+
+    if (nextCategory !== "all") {
+      params.set("listingCategory", nextCategory);
+    }
+
+    if (rfqSearch) {
+      params.set("rfqSearch", rfqSearch);
+    }
+
+    if (rfqStatusFilter && rfqStatusFilter !== "all") {
+      params.set("rfqStatusFilter", rfqStatusFilter);
+    }
+
+    if (messageSearch) {
+      params.set("messageSearch", messageSearch);
+    }
+
+    const queryString = params.toString();
+    return queryString ? `/buyer?${queryString}` : "/buyer";
+  };
 
   const buildRFQStatusHref = (nextStatus: string) => {
     const params = new URLSearchParams();
@@ -54,11 +82,17 @@ export default async function BuyerPage({
     return queryString ? `/buyer?${queryString}` : "/buyer";
   };
 
-  const filteredListings = data.recommendedListings.filter((listing) =>
-    listing.title.toLowerCase().includes(listingSearch) ||
-    listing.category.toLowerCase().includes(listingSearch) ||
-    listing.tags.some((tag) => tag.toLowerCase().includes(listingSearch)),
-  );
+  const listingCategories = Array.from(new Set(data.recommendedListings.map((listing) => listing.category.toLowerCase())).values()).sort();
+
+  const filteredListings = data.recommendedListings.filter((listing) => {
+    const listingCategoryMatch = listingCategory === "all" || listing.category.toLowerCase() === listingCategory;
+    const searchMatch =
+      listing.title.toLowerCase().includes(listingSearch) ||
+      listing.category.toLowerCase().includes(listingSearch) ||
+      listing.tags.some((tag) => tag.toLowerCase().includes(listingSearch));
+
+    return listingCategoryMatch && searchMatch;
+  });
 
   const filteredRFQs = data.rfqBook.filter((rfq) => {
     const matchesStatus =
@@ -155,7 +189,23 @@ export default async function BuyerPage({
         <article className="feed-card">
           <span className="tag">Recommended listings</span>
           <h3>Providers ranked for the current market temperature.</h3>
+          <div className="flex gap-2 mb-2 flex-wrap">
+            <a href={buildListingCategoryHref("all")} className={chipClass(listingCategory === "all")} aria-current={listingCategory === "all" ? "page" : undefined}>
+              All categories
+            </a>
+            {listingCategories.map((category) => (
+              <a
+                key={category}
+                href={buildListingCategoryHref(category)}
+                className={chipClass(listingCategory === category)}
+                aria-current={listingCategory === category ? "page" : undefined}
+              >
+                {category}
+              </a>
+            ))}
+          </div>
           <form method="GET" className="auth-form market-form">
+            <input type="hidden" name="listingCategory" value={listingCategory} />
             <input type="hidden" name="rfqSearch" value={rfqSearch} />
             <input type="hidden" name="rfqStatusFilter" value={rfqStatusFilter} />
             <input type="hidden" name="messageSearch" value={messageSearch} />
@@ -214,6 +264,7 @@ export default async function BuyerPage({
             </a>
           </div>
           <form method="GET" className="auth-form market-form">
+            <input type="hidden" name="listingCategory" value={listingCategory} />
             <input type="hidden" name="listingSearch" value={listingSearch} />
             <input type="hidden" name="messageSearch" value={messageSearch} />
             <div className="market-form__grid">
@@ -286,6 +337,7 @@ export default async function BuyerPage({
         <span className="tag">Inbox</span>
         <h3>Messages that change buyer decisions.</h3>
         <form method="GET" className="auth-form market-form">
+          <input type="hidden" name="listingCategory" value={listingCategory} />
           <input type="hidden" name="listingSearch" value={listingSearch} />
           <input type="hidden" name="rfqSearch" value={rfqSearch} />
           <input type="hidden" name="rfqStatusFilter" value={rfqStatusFilter} />
