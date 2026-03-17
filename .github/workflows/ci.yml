@@ -114,6 +114,20 @@ jobs:
           path: alpha-portal-ux-audit-summary.md
           if-no-files-found: error
 
+      - name: Upload Portal UX Audit JSON
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: alpha-portal-ux-audit-json
+          path: alpha-portal-ux-audit.json
+          if-no-files-found: error
+
+      - name: Publish Portal UX Summary
+        if: always()
+        run: |
+          echo "## Alpha Portal UX Audit Summary" >> "$GITHUB_STEP_SUMMARY"
+          cat alpha-portal-ux-audit-summary.md >> "$GITHUB_STEP_SUMMARY"
+
   integration:
     name: Integration Smoke
     runs-on: ubuntu-latest
@@ -188,6 +202,13 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: alpha-portal-ux-audit-summary
+          path: .artifacts/portal-ux
+        continue-on-error: true
+
+      - name: Download Portal UX Audit JSON
+        uses: actions/download-artifact@v4
+        with:
+          name: alpha-portal-ux-audit-json
           path: .artifacts/portal-ux
         continue-on-error: true
 
