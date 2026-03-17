@@ -111,6 +111,7 @@ The portal-facing consistency checks for quick-filters and empty-state actions c
 bun run alpha:ux-audit
 bun run alpha:ux-audit:strict
 bun run alpha:ux-audit:summary
+bun run alpha:ux-audit:summary:strict
 bun run portal:check
 bun run portal:check:quick
 bun run portal:check:fast
@@ -127,7 +128,8 @@ bun run portal:check:strict
 - `alpha:ux-audit:validate-config` is also executed in CI as part of the `Portal UX Governance` job (`portal_ux`) before/alongside full portal UX checks.
   - it runs only when relevant UX-audit config/script files change.
 - In strict mode, canonical EmptyState action labels/patterns are sourced from `alpha-portal-ux-audit.config.json` and validated by script logic. Treat these as the source-of-truth for portal governance reviews.
-- `alpha:ux-audit:summary` writes a human-readable markdown report to `.artifacts/portal-ux/alpha-portal-ux-audit-summary.md`.
+- `alpha:ux-audit:summary` prints the latest generated `.artifacts/portal-ux/alpha-portal-ux-audit-summary.md` without mutating audit artifacts.
+- `alpha:ux-audit:summary:strict` runs strict audit + summary in one step (for strict validation workflows).
 - `portal:check` runs `portal:check:strict` (full strict mode).
 - `portal:check:quick` runs only baseline portal UX audit (non-strict) + summary for
   very fast feedback when iterating on portal pages.

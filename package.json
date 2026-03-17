@@ -34,11 +34,12 @@
     "alpha:ux-audit": "bun scripts/alpha-portal-ux-audit.mjs",
     "alpha:ux-audit:strict": "ALPHA_UX_AUDIT_STRICT=1 bun run alpha:ux-audit",
     "portal:check": "bun run portal:check:strict",
-    "alpha:ux-audit:summary": "bun run alpha:ux-audit && cat .artifacts/portal-ux/alpha-portal-ux-audit-summary.md",
+    "alpha:ux-audit:summary": "cat .artifacts/portal-ux/alpha-portal-ux-audit-summary.md",
     "alpha:ux-audit:check": "bun scripts/alpha-portal-ux-audit.mjs",
     "portal:check:fast": "bun run lint:web && bun run test:web && bun run build:web && bun run alpha:ux-audit:check && bun run alpha:ux-audit:summary",
-    "portal:check:strict": "bun run lint:web && bun run test:web && bun run build:web && bun run alpha:ux-audit:strict && bun run alpha:ux-audit:summary",
+    "portal:check:strict": "bun run lint:web && bun run test:web && bun run build:web && bun run alpha:ux-audit:strict && bun run alpha:ux-audit:summary:strict",
     "portal:check:quick": "bun run alpha:ux-audit && bun run alpha:ux-audit:summary",
-    "alpha:ux-audit:validate-config": "bun scripts/alpha-portal-ux-audit.mjs --validate-config"
+    "alpha:ux-audit:validate-config": "bun scripts/alpha-portal-ux-audit.mjs --validate-config",
+    "alpha:ux-audit:summary:strict": "bun run alpha:ux-audit:strict && bun run alpha:ux-audit:summary"
   }
 }
