@@ -43,6 +43,9 @@ export default async function OpsDisputesPage({
 
   const encodedQuery = encodeURIComponent(query);
 
+  const chipClass = (active: boolean) =>
+    active ? "action-button action-button--active" : "action-button";
+
   const disputes = DISPUTES.filter(
     (d) =>
       (status === "all" || d.status === status) &&
@@ -76,12 +79,12 @@ export default async function OpsDisputesPage({
                 name="q"
                 type="text"
                 placeholder="Search by order, milestone, buyer, reason"
-                defaultValue={searchParams?.q ?? ""}
+                defaultValue={query}
               />
             </label>
             <label className="auth-field">
               <span>Status</span>
-              <select name="status" defaultValue={searchParams?.status ?? "open"}>
+              <select name="status" defaultValue={status}>
                 <option value="open">Open</option>
                 <option value="resolved">Resolved</option>
                 <option value="all">All</option>
@@ -94,9 +97,9 @@ export default async function OpsDisputesPage({
         </form>
 
         <div className="flex gap-2 mb-2">
-          <a href={`/ops/disputes?status=open${query ? `&q=${encodedQuery}` : ""}`} className="action-button">Open</a>
-          <a href={`/ops/disputes?status=resolved${query ? `&q=${encodedQuery}` : ""}`} className="action-button">Resolved</a>
-          <a href={`/ops/disputes?status=all${query ? `&q=${encodedQuery}` : ""}`} className="action-button">All</a>
+          <a href={`/ops/disputes?status=open${query ? `&q=${encodedQuery}` : ""}`} className={chipClass(status === "open")} aria-current={status === "open" ? "page" : undefined}>Open</a>
+          <a href={`/ops/disputes?status=resolved${query ? `&q=${encodedQuery}` : ""}`} className={chipClass(status === "resolved")} aria-current={status === "resolved" ? "page" : undefined}>Resolved</a>
+          <a href={`/ops/disputes?status=all${query ? `&q=${encodedQuery}` : ""}`} className={chipClass(status === "all")} aria-current={status === "all" ? "page" : undefined}>All</a>
         </div>
 
         {disputes.length === 0 ? (

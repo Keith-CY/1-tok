@@ -47,6 +47,9 @@ export default async function OpsApplicationsPage({
 
   const encodedQuery = encodeURIComponent(query);
 
+  const chipClass = (active: boolean) =>
+    active ? "action-button action-button--active" : "action-button";
+
   const applications = APPLICATIONS.filter(
     (application) =>
       (status === "all" || application.status === status) &&
@@ -80,12 +83,12 @@ export default async function OpsApplicationsPage({
                 name="q"
                 type="text"
                 placeholder="Search provider, category, contact, notes"
-                defaultValue={searchParams?.q ?? ""}
+                defaultValue={query}
               />
             </label>
             <label className="auth-field">
               <span>Status</span>
-              <select name="status" defaultValue={searchParams?.status ?? "pending"}>
+              <select name="status" defaultValue={status}>
                 <option value="pending">Pending</option>
                 <option value="approved">Approved</option>
                 <option value="rejected">Rejected</option>
@@ -99,10 +102,10 @@ export default async function OpsApplicationsPage({
         </form>
 
         <div className="flex gap-2 mb-2">
-          <a href={`/ops/applications?status=pending${query ? `&q=${encodedQuery}` : ""}`} className="action-button">Pending</a>
-          <a href={`/ops/applications?status=approved${query ? `&q=${encodedQuery}` : ""}`} className="action-button">Approved</a>
-          <a href={`/ops/applications?status=rejected${query ? `&q=${encodedQuery}` : ""}`} className="action-button">Rejected</a>
-          <a href={`/ops/applications?status=all${query ? `&q=${encodedQuery}` : ""}`} className="action-button">All</a>
+          <a href={`/ops/applications?status=pending${query ? `&q=${encodedQuery}` : ""}`} className={chipClass(status === "pending")} aria-current={status === "pending" ? "page" : undefined}>Pending</a>
+          <a href={`/ops/applications?status=approved${query ? `&q=${encodedQuery}` : ""}`} className={chipClass(status === "approved")} aria-current={status === "approved" ? "page" : undefined}>Approved</a>
+          <a href={`/ops/applications?status=rejected${query ? `&q=${encodedQuery}` : ""}`} className={chipClass(status === "rejected")} aria-current={status === "rejected" ? "page" : undefined}>Rejected</a>
+          <a href={`/ops/applications?status=all${query ? `&q=${encodedQuery}` : ""}`} className={chipClass(status === "all")} aria-current={status === "all" ? "page" : undefined}>All</a>
         </div>
 
         {applications.length === 0 ? (
