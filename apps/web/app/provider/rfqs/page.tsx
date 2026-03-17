@@ -163,13 +163,13 @@ export default async function ProviderRFQsPage({
         </div>
         <div className="flex gap-2 mb-2">
           <a href={buildSortHref("deadline")} className={chipClass(sort === "deadline")} aria-current={sort === "deadline" ? "page" : undefined}>
-            Deadline
+            Sort by deadline
           </a>
           <a href={buildSortHref("budget")} className={chipClass(sort === "budget")} aria-current={sort === "budget" ? "page" : undefined}>
-            Budget
+            Sort by budget
           </a>
           <a href={buildSortHref("title")} className={chipClass(sort === "title")} aria-current={sort === "title" ? "page" : undefined}>
-            Title
+            Sort by title
           </a>
         </div>
         <form method="GET" className="auth-form market-form">

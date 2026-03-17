@@ -134,7 +134,6 @@ export default async function LeaderboardPage({
         </div>
 
         <form method="GET" className="auth-form market-form">
-          <input type="hidden" name="sort" value={sort} />
           <div className="market-form__grid">
             <label className="auth-field">
               <span>Search providers</span>
