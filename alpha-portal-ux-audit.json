@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-03-17T04:30:28.746Z",
+  "timestamp": "2026-03-17T04:40:31.162Z",
   "scope": [
     "buyer/*",
     "provider/*",
@@ -11,7 +11,9 @@
     "missingEmptyStateActionLabel": 0,
     "missingEmptyStateActionHref": 0,
     "totalEmptyStates": 19,
-    "hashOnlyEmptyStateLinks": 0
+    "hashOnlyEmptyStateLinks": 0,
+    "nonCanonicalActionLabels": 0,
+    "nonCanonicalActionHrefs": 9
   },
   "issues": [],
   "emptyStates": [
@@ -147,6 +149,72 @@
       "message": "No funding records to display yet.",
       "actionLabel": "Clear funding filters",
       "actionHref": "/ops#journal"
+    }
+  ],
+  "nonCanonicalActionLabels": [],
+  "nonCanonicalActionHrefs": [
+    {
+      "file": "apps/web/app/buyer/leaderboard/page.tsx",
+      "line": 171,
+      "message": "No providers match your leaderboard filters.",
+      "actionLabel": "Clear filters",
+      "actionHref": "/buyer/leaderboard"
+    },
+    {
+      "file": "apps/web/app/buyer/listings/page.tsx",
+      "line": 165,
+      "message": "No listings found. Try adjusting your search.",
+      "actionLabel": "Clear filters",
+      "actionHref": "/buyer/listings"
+    },
+    {
+      "file": "apps/web/app/provider/carrier/page.tsx",
+      "line": 169,
+      "message": "No active jobs match your filters.",
+      "actionLabel": "Clear filters",
+      "actionHref": "/provider/carrier"
+    },
+    {
+      "file": "apps/web/app/provider/listings/page.tsx",
+      "line": 301,
+      "message": "No listings match your filters.",
+      "actionLabel": "Clear filters",
+      "actionHref": "/provider/listings"
+    },
+    {
+      "file": "apps/web/app/provider/page.tsx",
+      "line": 204,
+      "message": "No marketplace opportunities match your filter.",
+      "actionLabel": "Clear filters",
+      "actionHref": "/provider?opportunityStatus=all"
+    },
+    {
+      "file": "apps/web/app/provider/page.tsx",
+      "line": 299,
+      "message": "No submitted bids to track for this filter.",
+      "actionLabel": "Clear bid filters",
+      "actionHref": "/provider?queueStatus=all"
+    },
+    {
+      "file": "apps/web/app/provider/rfqs/page.tsx",
+      "line": 214,
+      "message": "No RFQs match your filter.",
+      "actionLabel": "Clear filters",
+      "actionHref": "/provider/rfqs"
+    },
+    {
+      "file": "apps/web/app/ops/applications/page.tsx",
+      "line": 112,
+      "message": "No applications match this filter.",
+      "actionLabel": "Clear filters",
+      "actionHref": "/ops/applications"
+    },
+    {
+      "file": "apps/web/app/ops/disputes/page.tsx",
+      "line": 106,
+      "message": "No disputes to review.",
+      "actionLabel": "Clear filters",
+      "actionHref": "/ops/disputes"
     }
   ]
 }

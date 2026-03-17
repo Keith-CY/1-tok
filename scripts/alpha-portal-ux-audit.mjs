@@ -22,14 +22,6 @@ function walk(dir) {
   return files;
 }
 
-function ensureReportSection(section, obj, label) {
-  if (!section) {
-    obj.issues.push(label);
-    return true;
-  }
-  return false;
-}
-
 function main() {
   const targetFiles = includeRoots.flatMap((r) => walk(path.join(root, r)));
 
@@ -43,9 +35,13 @@ function main() {
       missingEmptyStateActionHref: 0,
       totalEmptyStates: 0,
       hashOnlyEmptyStateLinks: 0,
+      nonCanonicalActionLabels: 0,
+      nonCanonicalActionHrefs: 0,
     },
     issues: [],
     emptyStates: [],
+    nonCanonicalActionLabels: [],
+    nonCanonicalActionHrefs: [],
   };
 
   for (const file of targetFiles) {
@@ -124,6 +120,26 @@ function main() {
         }
 
         report.emptyStates.push({ file: path.relative('.', file), line: i + 1, message, actionLabel, actionHref });
+
+
+        const canonicalLabels = new Set(['Clear filters', 'Clear bid filters', 'Clear review filters', 'Clear risk filters', 'Clear dispute filters', 'Clear funding filters']);
+        const canonicalHrefPatterns = [
+          /^\/buyer(?:#|$)/,
+          /^\/provider(?:#|$)/,
+          /^\/ops(?:#|$)/,
+          /^\/login(?:$|\?)/,
+          /^\/$/,
+        ];
+
+        if (actionLabel && !canonicalLabels.has(actionLabel) && !actionLabel.startsWith('Create') && !actionLabel.startsWith('Track') && !actionLabel.startsWith('Open')) {
+          report.summary.nonCanonicalActionLabels += 1;
+          report.nonCanonicalActionLabels.push({ file: path.relative('.', file), line: i + 1, message, actionLabel, actionHref });
+        }
+
+        if (actionHref && !canonicalHrefPatterns.some((re) => re.test(actionHref)) && !actionHref.startsWith('http')) {
+          report.summary.nonCanonicalActionHrefs += 1;
+          report.nonCanonicalActionHrefs.push({ file: path.relative('.', file), line: i + 1, message, actionLabel, actionHref });
+        }
       }
     }
   }
