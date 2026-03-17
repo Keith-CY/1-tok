@@ -125,7 +125,6 @@ export default async function BuyerListingsPage({
           </a>
         </div>
         <form method="GET" className="auth-form market-form">
-          <input type="hidden" name="sort" value={sort} />
           <div className="market-form__grid">
             <label className="auth-field">
               <span>Search keyword</span>
