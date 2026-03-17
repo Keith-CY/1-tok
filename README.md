@@ -103,6 +103,22 @@ bun run test:coverage
 bun run test:integration
 ```
 
+## Alpha portal UX audit (governance)
+
+The portal-facing consistency checks for quick-filters and empty-state actions can be run locally with:
+
+```bash
+bun run alpha:ux-audit
+```
+
+This command scans `apps/web/app/{buyer,provider,ops}` and validates:
+- quick chip accessibility marker (`aria-current` with `chipClass`)
+- `EmptyState` action label/href presence
+- hash-only action links
+- optionally surfaced non-canonical action targets
+
+It outputs a baseline JSON report in `alpha-portal-ux-audit.json`.
+
 The Docker-only end-to-end command can also be run directly:
 
 ```bash
