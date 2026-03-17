@@ -18,6 +18,46 @@ export default async function LeaderboardPage({
   const query = (searchParams?.q ?? "").trim().toLowerCase();
   const tier = (searchParams?.tier ?? "all").toLowerCase();
   const sort = (searchParams?.sort ?? "rating").toLowerCase();
+  const chipClass = (active: boolean) =>
+    active ? "action-button action-button--active" : "action-button";
+
+  const buildTierHref = (nextTier: string) => {
+    const params = new URLSearchParams();
+
+    if (query) {
+      params.set("q", query);
+    }
+
+    if (nextTier !== "all") {
+      params.set("tier", nextTier);
+    }
+
+    if (sort !== "rating") {
+      params.set("sort", sort);
+    }
+
+    const queryString = params.toString();
+    return queryString ? `/buyer/leaderboard?${queryString}` : "/buyer/leaderboard";
+  };
+
+  const buildSortHref = (nextSort: string) => {
+    const params = new URLSearchParams();
+
+    if (query) {
+      params.set("q", query);
+    }
+
+    if (tier !== "all") {
+      params.set("tier", tier);
+    }
+
+    if (nextSort !== "rating") {
+      params.set("sort", nextSort);
+    }
+
+    const queryString = params.toString();
+    return queryString ? `/buyer/leaderboard?${queryString}` : "/buyer/leaderboard";
+  };
 
   const leaderboardData = leaderboard
     .filter(
@@ -51,6 +91,32 @@ export default async function LeaderboardPage({
       asideItems={[]}
     >
       <div className="space-y-3">
+        <div className="flex gap-2 mb-2">
+          <a href={buildTierHref("all")} className={chipClass(tier === "all")} aria-current={tier === "all" ? "page" : undefined}>
+            All tiers
+          </a>
+          <a href={buildTierHref("gold")} className={chipClass(tier === "gold")} aria-current={tier === "gold" ? "page" : undefined}>
+            Gold
+          </a>
+          <a href={buildTierHref("silver")} className={chipClass(tier === "silver")} aria-current={tier === "silver" ? "page" : undefined}>
+            Silver
+          </a>
+          <a href={buildTierHref("bronze")} className={chipClass(tier === "bronze")} aria-current={tier === "bronze" ? "page" : undefined}>
+            Bronze
+          </a>
+        </div>
+        <div className="flex gap-2 mb-2">
+          <a href={buildSortHref("rating")} className={chipClass(sort === "rating")} aria-current={sort === "rating" ? "page" : undefined}>
+            Top rating
+          </a>
+          <a href={buildSortHref("reviews")} className={chipClass(sort === "reviews")} aria-current={sort === "reviews" ? "page" : undefined}>
+            Most reviews
+          </a>
+          <a href={buildSortHref("orders")} className={chipClass(sort === "orders")} aria-current={sort === "orders" ? "page" : undefined}>
+            Most orders
+          </a>
+        </div>
+
         <form method="GET" className="auth-form market-form">
           <div className="market-form__grid">
             <label className="auth-field">
@@ -59,12 +125,12 @@ export default async function LeaderboardPage({
                 name="q"
                 type="text"
                 placeholder="Search by name or provider id"
-                defaultValue={searchParams?.q ?? ""}
+                defaultValue={query}
               />
             </label>
             <label className="auth-field">
               <span>Reputation tier</span>
-              <select name="tier" defaultValue={searchParams?.tier ?? "all"}>
+              <select name="tier" defaultValue={tier}>
                 <option value="all">All tiers</option>
                 <option value="gold">Gold</option>
                 <option value="silver">Silver</option>
@@ -73,7 +139,7 @@ export default async function LeaderboardPage({
             </label>
             <label className="auth-field">
               <span>Sort by</span>
-              <select name="sort" defaultValue={searchParams?.sort ?? "rating"}>
+              <select name="sort" defaultValue={sort}>
                 <option value="rating">Rating</option>
                 <option value="reviews">Review count</option>
                 <option value="orders">Orders</option>
