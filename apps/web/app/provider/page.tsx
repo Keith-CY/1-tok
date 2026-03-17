@@ -28,6 +28,28 @@ export default async function ProviderPage({
   const queueQ = (searchParams?.queueQ ?? "").trim().toLowerCase();
   const queueStatus = (searchParams?.queueStatus ?? "all").toLowerCase();
 
+  const chipClass = (active: boolean) =>
+    active ? "action-button action-button--active" : "action-button";
+
+  const buildQueueStatusHref = (nextStatus: string) => {
+    const params = new URLSearchParams();
+
+    if (opportunityQ) {
+      params.set("opportunityQ", opportunityQ);
+    }
+
+    if (queueQ) {
+      params.set("queueQ", queueQ);
+    }
+
+    if (nextStatus !== "all") {
+      params.set("queueStatus", nextStatus);
+    }
+
+    const queryString = params.toString();
+    return queryString ? `/provider?${queryString}` : "/provider";
+  };
+
   const filteredOpportunities = data.marketOpportunities.filter(
     (item) =>
       !opportunityQ ||
@@ -130,7 +152,7 @@ export default async function ProviderPage({
                   name="opportunityQ"
                   type="text"
                   placeholder="Search by title, buyer, or date"
-                  defaultValue={searchParams?.opportunityQ ?? ""}
+                  defaultValue={opportunityQ}
                 />
               </label>
             </div>
@@ -188,6 +210,23 @@ export default async function ProviderPage({
         <span className="tag">Submitted bids</span>
         <h3>Bid posture should sit next to payout posture.</h3>
 
+        <div className="flex gap-2 mb-2">
+          <a href={buildQueueStatusHref("all")} className={chipClass(queueStatus === "all" || queueStatus === "")} aria-current={queueStatus === "all" || queueStatus === "" ? "page" : undefined}>
+            All
+          </a>
+          <a href={buildQueueStatusHref("active")} className={chipClass(queueStatus === "active")} aria-current={queueStatus === "active" ? "page" : undefined}>
+            Active
+          </a>
+          <a href={buildQueueStatusHref("awarded")} className={chipClass(queueStatus === "awarded")} aria-current={queueStatus === "awarded" ? "page" : undefined}>
+            Awarded
+          </a>
+          <a href={buildQueueStatusHref("rejected")} className={chipClass(queueStatus === "rejected")} aria-current={queueStatus === "rejected" ? "page" : undefined}>
+            Rejected
+          </a>
+          <a href={buildQueueStatusHref("pending")} className={chipClass(queueStatus === "pending")} aria-current={queueStatus === "pending" ? "page" : undefined}>
+            Pending
+          </a>
+        </div>
         <form method="GET" className="auth-form market-form">
           <div className="market-form__grid">
             <label className="auth-field">
@@ -196,12 +235,12 @@ export default async function ProviderPage({
                 name="queueQ"
                 type="text"
                 placeholder="Search by status, buyer, or title"
-                defaultValue={searchParams?.queueQ ?? ""}
+                defaultValue={queueQ}
               />
             </label>
             <label className="auth-field">
               <span>Status</span>
-              <select name="queueStatus" defaultValue={searchParams?.queueStatus ?? "all"}>
+              <select name="queueStatus" defaultValue={queueStatus}>
                 <option value="all">All bids</option>
                 <option value="active">Active</option>
                 <option value="awarded">Awarded</option>
