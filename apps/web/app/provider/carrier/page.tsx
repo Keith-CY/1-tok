@@ -45,6 +45,9 @@ export default async function ProviderCarrierPage({
 
   const q = (searchParams?.q ?? "").trim().toLowerCase();
   const status = (searchParams?.status ?? "all").toLowerCase();
+  const encodedQuery = encodeURIComponent((searchParams?.q ?? ""));
+  const chipClass = (active: boolean) =>
+    active ? "action-button action-button--active" : "action-button";
 
   const jobs = CARRIER_JOBS.filter(
     (job) =>
@@ -98,6 +101,43 @@ export default async function ProviderCarrierPage({
             </Link>
           </div>
 
+          <div className="flex gap-2 mb-2">
+            <a
+              href={`/provider/carrier?status=all${q ? `&q=${encodedQuery}` : ""}`}
+              className={chipClass(status === "all")}
+              aria-current={status === "all" ? "page" : undefined}
+            >
+              All
+            </a>
+            <a
+              href={`/provider/carrier?status=running${q ? `&q=${encodedQuery}` : ""}`}
+              className={chipClass(status === "running")}
+              aria-current={status === "running" ? "page" : undefined}
+            >
+              Running
+            </a>
+            <a
+              href={`/provider/carrier?status=pending${q ? `&q=${encodedQuery}` : ""}`}
+              className={chipClass(status === "pending")}
+              aria-current={status === "pending" ? "page" : undefined}
+            >
+              Pending
+            </a>
+            <a
+              href={`/provider/carrier?status=paused${q ? `&q=${encodedQuery}` : ""}`}
+              className={chipClass(status === "paused")}
+              aria-current={status === "paused" ? "page" : undefined}
+            >
+              Paused
+            </a>
+            <a
+              href={`/provider/carrier?status=completed${q ? `&q=${encodedQuery}` : ""}`}
+              className={chipClass(status === "completed")}
+              aria-current={status === "completed" ? "page" : undefined}
+            >
+              Completed
+            </a>
+          </div>
           <form method="GET" className="auth-form market-form">
             <div className="market-form__grid">
               <label className="auth-field">
@@ -105,13 +145,13 @@ export default async function ProviderCarrierPage({
                 <input
                   name="q"
                   type="text"
-                  defaultValue={searchParams?.q ?? ""}
+                  defaultValue={q}
                   placeholder="Search by order id, host, or title"
                 />
               </label>
               <label className="auth-field">
                 <span>Status</span>
-                <select name="status" defaultValue={searchParams?.status ?? "all"}>
+                <select name="status" defaultValue={status}>
                   <option value="all">All states</option>
                   <option value="running">Running</option>
                   <option value="pending">Pending</option>
