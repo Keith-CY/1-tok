@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import path from 'node:path';
+import ts from 'typescript';
 
 const root = path.resolve('apps/web/app');
 const includeRoots = ['buyer', 'provider', 'ops'];
@@ -240,125 +241,98 @@ function main() {
     nonCanonicalActionHrefs: [],
   };
 
+  const canonicalLabels = new Set(config.canonicalLabels);
+  const canonicalHrefPatterns = config.canonicalHrefPatterns;
+
+  function getJsxAttr(openingLike, name) {
+    const attr = openingLike.attributes.properties.find((p) => ts.isJsxAttribute(p) && p.name?.escapedText === name);
+    if (!attr || !attr.initializer) return undefined;
+    if (ts.isStringLiteral(attr.initializer)) return attr.initializer.text;
+    if (ts.isJsxExpression(attr.initializer)) {
+      const expr = attr.initializer.expression;
+      if (!expr) return undefined;
+      if (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr)) return expr.text;
+    }
+    return undefined;
+  }
+
+  function hasJsxAttr(openingLike, name) {
+    return openingLike.attributes.properties.some((p) => ts.isJsxAttribute(p) && p.name?.escapedText === name);
+  }
+
+  function getLine(sf, node) {
+    return sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
+  }
+
+  function inspectEmptyState(relativeFile, sf, openingLike) {
+    const line = getLine(sf, openingLike);
+    const message = getJsxAttr(openingLike, 'message');
+    const actionLabel = getJsxAttr(openingLike, 'actionLabel');
+    const actionHref = getJsxAttr(openingLike, 'actionHref');
+
+    report.summary.totalEmptyStates += 1;
+
+    if (!actionLabel) {
+      report.summary.missingEmptyStateActionLabel += 1;
+      report.issues.push({ file: relativeFile, line, type: 'empty-state-missing-action-label', message });
+    }
+
+    if (!actionHref) {
+      report.summary.missingEmptyStateActionHref += 1;
+      report.issues.push({ file: relativeFile, line, type: 'empty-state-missing-action-href', message, actionLabel });
+    }
+
+    if ((actionHref || '').startsWith('#')) {
+      report.summary.hashOnlyEmptyStateLinks += 1;
+      report.issues.push({ file: relativeFile, line, type: 'empty-state-hash-only-link', message, actionLabel, actionHref });
+    }
+
+    if (actionLabel && !canonicalLabels.has(actionLabel)) {
+      report.summary.nonCanonicalActionLabels += 1;
+      report.nonCanonicalActionLabels.push({ file: relativeFile, line, message, actionLabel, actionHref });
+    }
+
+    if (actionHref && !canonicalHrefPatterns.some((re) => re.test(actionHref)) && !actionHref.startsWith('http')) {
+      report.summary.nonCanonicalActionHrefs += 1;
+      report.nonCanonicalActionHrefs.push({ file: relativeFile, line, message, actionLabel, actionHref });
+    }
+
+    report.emptyStates.push({ file: relativeFile, line, message, actionLabel, actionHref });
+  }
+
+  function inspectAnchor(relativeFile, sf, openingLike) {
+    if (openingLike.tagName?.escapedText !== 'a') return;
+    const classNameAttr = openingLike.attributes.properties.find((p) => ts.isJsxAttribute(p) && p.name?.escapedText === 'className');
+    if (!classNameAttr?.initializer || !ts.isJsxExpression(classNameAttr.initializer)) return;
+    const expr = classNameAttr.initializer.expression;
+    const isChipClassCall = !!expr && ts.isCallExpression(expr) && expr.expression.getText(sf) === 'chipClass';
+    if (!isChipClassCall) return;
+    if (!hasJsxAttr(openingLike, 'aria-current')) {
+      const line = getLine(sf, openingLike);
+      report.summary.missingAriaCurrent += 1;
+      report.issues.push({ file: relativeFile, line, type: 'chip-missing-aria-current', snippet: openingLike.getText(sf).split('\n')[0] });
+    }
+  }
+
   for (const file of targetFiles) {
     const text = readFileSync(file, 'utf8');
-    const lines = text.split('\n');
+    const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const relativeFile = path.relative('.', file);
     report.summary.filesChecked += 1;
 
-    for (let i = 0; i < lines.length; i++) {
-      const startLine = lines[i];
-      if (startLine.includes('<a ')) {
-        let j = i;
-        let anchorBlock = '';
-        while (j < lines.length) {
-          anchorBlock += lines[j] + '\n';
-          if (lines[j].includes('/>') || lines[j].includes('>')) {
-            break;
-          }
-          j += 1;
+    const visit = (node) => {
+      if (ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) {
+        const tagName = node.tagName?.escapedText;
+        if (tagName === 'EmptyState') {
+          inspectEmptyState(relativeFile, sf, node);
+        } else if (tagName === 'a') {
+          inspectAnchor(relativeFile, sf, node);
         }
-
-        if (anchorBlock.includes('className={chipClass(') && !anchorBlock.includes('aria-current')) {
-          report.summary.missingAriaCurrent += 1;
-          report.issues.push({
-            file: path.relative('.', file),
-            line: i + 1,
-            type: 'chip-missing-aria-current',
-            snippet: anchorBlock.trim().split('\n')[0],
-          });
-        }
-
-        i = j;
-        continue;
       }
+      ts.forEachChild(node, visit);
+    };
 
-      if (startLine.includes('<EmptyState')) {
-        let j = i;
-        let message;
-        let actionLabel;
-        let actionHref;
-        while (j < Math.min(i + 10, lines.length)) {
-          const t = lines[j];
-          const m1 = t.match(/message="([^"]*)"/);
-          const m2 = t.match(/actionLabel="([^"]*)"/);
-          const m3 = t.match(/actionHref="([^"]*)"/);
-
-          if (m1) message = m1[1];
-          if (m2) actionLabel = m2[1];
-          if (m3) actionHref = m3[1];
-
-          if (t.includes('/>') || t.includes('</EmptyState>')) {
-            break;
-          }
-          j += 1;
-        }
-
-        report.summary.totalEmptyStates += 1;
-
-        if (!actionLabel) {
-          report.summary.missingEmptyStateActionLabel += 1;
-          report.issues.push({
-            file: path.relative('.', file),
-            line: i + 1,
-            type: 'empty-state-missing-action-label',
-            message,
-          });
-        }
-
-        if (!actionHref) {
-          report.summary.missingEmptyStateActionHref += 1;
-          report.issues.push({
-            file: path.relative('.', file),
-            line: i + 1,
-            type: 'empty-state-missing-action-href',
-            message,
-            actionLabel,
-          });
-        }
-
-        if ((actionHref || '').startsWith('#')) {
-          report.summary.hashOnlyEmptyStateLinks += 1;
-          report.issues.push({
-            file: path.relative('.', file),
-            line: i + 1,
-            type: 'empty-state-hash-only-link',
-            message,
-            actionLabel,
-            actionHref,
-          });
-        }
-
-        const canonicalLabels = new Set(config.canonicalLabels);
-        const canonicalHrefPatterns = config.canonicalHrefPatterns;
-
-        if (actionLabel && !canonicalLabels.has(actionLabel)) {
-          report.summary.nonCanonicalActionLabels += 1;
-          report.nonCanonicalActionLabels.push({
-            file: path.relative('.', file),
-            line: i + 1,
-            message,
-            actionLabel,
-            actionHref,
-          });
-        }
-
-        if (actionHref && !canonicalHrefPatterns.some((re) => re.test(actionHref)) && !actionHref.startsWith('http')) {
-          report.summary.nonCanonicalActionHrefs += 1;
-          report.nonCanonicalActionHrefs.push({
-            file: path.relative('.', file),
-            line: i + 1,
-            message,
-            actionLabel,
-            actionHref,
-          });
-        }
-
-        report.emptyStates.push({ file: path.relative('.', file), line: i + 1, message, actionLabel, actionHref });
-
-        i = j;
-        continue;
-      }
-    }
+    visit(sf);
   }
 
 
