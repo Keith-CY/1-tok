@@ -75,6 +75,29 @@ export default async function ProviderRFQsPage({
     return queryString ? `/provider/rfqs?${queryString}` : "/provider/rfqs";
   };
 
+  const buildSortHref = (nextSort: string) => {
+    const params = new URLSearchParams();
+
+    if (q) {
+      params.set("q", q);
+    }
+
+    if (categoryValue) {
+      params.set("category", categoryValue);
+    }
+
+    if (statusFilter !== "all") {
+      params.set("status", statusFilter);
+    }
+
+    if (nextSort !== "deadline") {
+      params.set("sort", nextSort);
+    }
+
+    const queryString = params.toString();
+    return queryString ? `/provider/rfqs?${queryString}` : "/provider/rfqs";
+  };
+
   const filteredRFQs = openRFQs
     .filter(
       (rfq) =>
@@ -136,6 +159,17 @@ export default async function ProviderRFQsPage({
           </a>
           <a href={buildStatusHref("awarded")} className={chipClass(statusFilter === 'awarded')} aria-current={statusFilter === "awarded" ? "page" : undefined}>
             Awarded
+          </a>
+        </div>
+        <div className="flex gap-2 mb-2">
+          <a href={buildSortHref("deadline")} className={chipClass(sort === "deadline")} aria-current={sort === "deadline" ? "page" : undefined}>
+            Deadline
+          </a>
+          <a href={buildSortHref("budget")} className={chipClass(sort === "budget")} aria-current={sort === "budget" ? "page" : undefined}>
+            Budget
+          </a>
+          <a href={buildSortHref("title")} className={chipClass(sort === "title")} aria-current={sort === "title" ? "page" : undefined}>
+            Title
           </a>
         </div>
         <form method="GET" className="auth-form market-form">
