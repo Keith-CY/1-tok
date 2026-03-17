@@ -110,6 +110,7 @@ The portal-facing consistency checks for quick-filters and empty-state actions c
 ```bash
 bun run alpha:ux-audit
 bun run alpha:ux-audit:strict
+bun run portal:check
 ```
 
 - `alpha:ux-audit` runs a baseline consistency scan and writes `alpha-portal-ux-audit.json`.

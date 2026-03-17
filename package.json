@@ -32,6 +32,7 @@
     "test:integration": "./scripts/ci/run-integration-suite.sh",
     "lint:go": "golangci-lint run ./...",
     "alpha:ux-audit": "bun scripts/alpha-portal-ux-audit.mjs",
-    "alpha:ux-audit:strict": "ALPHA_UX_AUDIT_STRICT=1 bun run alpha:ux-audit"
+    "alpha:ux-audit:strict": "ALPHA_UX_AUDIT_STRICT=1 bun run alpha:ux-audit",
+    "portal:check": "bun run lint:web && bun run test:web && bun run build:web && bun run alpha:ux-audit:strict"
   }
 }
