@@ -152,7 +152,17 @@ CI currently runs:
     - `ui` (portal UX pages changed only)
     - `config` (audit config/script/CI rule changed only)
     - `none` (other files changed only, skipped)
+  - runs and reports mode-specific checks:
+    - `ui`: `portal:check` (+ strict/summary output)
+    - `config`: `alpha:ux-audit:validate-config`
+    - `full`: both checks above
   - uploads portal UX summary + JSON artifacts only when the strict `portal:check` runs.
+
+Suggested PR evidence by mode:
+- `ui`: include `bun run portal:check:strict` and artifacts link
+- `config`: include `bun run alpha:ux-audit:validate-config` and schema validation result
+- `full`: include both
+- `none`: CI should report `Portal UX governance mode: none`
 
 The Docker-only end-to-end command can also be run directly:
 

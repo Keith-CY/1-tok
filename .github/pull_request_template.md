@@ -25,6 +25,20 @@
   - [ ] impact on strict-mode CI checks
 
 
+
+## Portal UX Governance Evidence Guide (if applicable)
+
+When touching `buyer/provider/ops` pages or `alpha-portal-ux-audit*` governance files, pick the relevant row and fill verification artifacts inline:
+
+| CI Mode | What changed | Required checks |
+| --- | --- | --- |
+| `ui` | Portal page scope changed (`apps/web/app/{buyer,provider,ops}/...`) | `bun run portal:check:strict` (or `bun run portal:check`)
+| `config` | Audit config/schema/script/CI touched | `bun run alpha:ux-audit:validate-config` + `bun run alpha:ux-audit:strict`
+| `full` | Both scopes changed | `bun run portal:check:strict` + `bun run alpha:ux-audit:validate-config`
+| `none` | None of above scopes changed | N/A (CI governance mode should be `none`)
+
+Add links to artifacts if CI comments contain failed/passing `Portal UX governance mode`.
+
 ## Alpha Portal UX Audit Rule Change Impact Template
 
 <!-- Fill this section only if this PR touches UX audit rules/config/script. -->
