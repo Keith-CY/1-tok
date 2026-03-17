@@ -91,6 +91,29 @@ export default async function ProviderListingsPage({
     return queryString ? `/provider/listings?${queryString}` : "/provider/listings";
   };
 
+  const buildSortHref = (nextSort: string) => {
+    const params = new URLSearchParams();
+
+    if (q) {
+      params.set("q", q);
+    }
+
+    if (selectedCategory && selectedCategory !== "all") {
+      params.set("category", selectedCategory);
+    }
+
+    if (selectedTier && selectedTier !== "all") {
+      params.set("tier", selectedTier);
+    }
+
+    if (nextSort !== "title") {
+      params.set("sort", nextSort);
+    }
+
+    const queryString = params.toString();
+    return queryString ? `/provider/listings?${queryString}` : "/provider/listings";
+  };
+
   const filteredListings = MOCK_LISTINGS
     .filter(
       (item) =>
@@ -204,6 +227,29 @@ export default async function ProviderListingsPage({
             aria-current={selectedTier === "bronze" ? "page" : undefined}
           >
             Bronze
+          </a>
+        </div>
+        <div className="flex gap-2 mb-2">
+          <a
+            href={buildSortHref("title")}
+            className={chipClass(sort === "title")}
+            aria-current={sort === "title" ? "page" : undefined}
+          >
+            Sort: Title
+          </a>
+          <a
+            href={buildSortHref("tier")}
+            className={chipClass(sort === "tier")}
+            aria-current={sort === "tier" ? "page" : undefined}
+          >
+            Sort: Tier
+          </a>
+          <a
+            href={buildSortHref("capacity")}
+            className={chipClass(sort === "capacity")}
+            aria-current={sort === "capacity" ? "page" : undefined}
+          >
+            Sort: Capacity
           </a>
         </div>
 
