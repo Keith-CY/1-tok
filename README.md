@@ -119,6 +119,7 @@ bun run portal:check:strict
 
 - `alpha:ux-audit` runs a baseline consistency scan and writes `alpha-portal-ux-audit.json`.
 - `alpha:ux-audit:strict` treats non-canonical EmptyState action targets as hard failures (for CI or gated pre-merge checks).
+- In strict mode, canonical EmptyState action labels are constrained to: `Clear filters`, `Clear bid filters`, `Clear review filters`, `Clear risk filters`, `Clear dispute filters`, `Clear funding filters`, `Track opportunities`, `Create RFQ now`, `Create an RFQ`, `Open treasury controls`.
 - `alpha:ux-audit:summary` writes a human-readable markdown report to `alpha-portal-ux-audit-summary.md`.
 - `portal:check` runs `portal:check:strict` (full strict mode).
 - `portal:check:quick` runs only baseline portal UX audit (non-strict) + summary for

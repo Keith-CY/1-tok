@@ -232,6 +232,10 @@ function main() {
           'Clear risk filters',
           'Clear dispute filters',
           'Clear funding filters',
+          'Track opportunities',
+          'Create RFQ now',
+          'Create an RFQ',
+          'Open treasury controls',
         ]);
         const canonicalHrefPatterns = [
           /^\/buyer(?:(?:#|\?|$).*)?/,
@@ -241,7 +245,7 @@ function main() {
           /^\/$/,
         ];
 
-        if (actionLabel && !canonicalLabels.has(actionLabel) && !actionLabel.startsWith('Create') && !actionLabel.startsWith('Track') && !actionLabel.startsWith('Open')) {
+        if (actionLabel && !canonicalLabels.has(actionLabel)) {
           report.summary.nonCanonicalActionLabels += 1;
           report.nonCanonicalActionLabels.push({
             file: path.relative('.', file),
