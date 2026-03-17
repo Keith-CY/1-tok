@@ -302,8 +302,8 @@ export default async function BuyerPage({
               <EmptyState
                 icon="🧾"
                 message="No open RFQs to action. Create one above to start receiving bids."
-                actionLabel="Review RFQ book"
-                actionHref="#rfq-book"
+                actionLabel="Clear filters"
+                actionHref="/buyer"
               />
             ) : null}
             {filteredRFQs.map((rfq) => (
