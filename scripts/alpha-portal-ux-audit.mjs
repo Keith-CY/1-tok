@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 import path from 'node:path';
 
 const root = path.resolve('apps/web/app');
@@ -31,10 +32,13 @@ function formatSummaryText(report) {
     ? 'FAIL' : 'PASS';
 
   const lines = [];
+  const branchInfo = report?.git?.gitBranch || 'unknown';
+  const revInfo = report?.git?.gitRev || 'unknown';
   lines.push('# Alpha Portal UX Audit Summary');
   lines.push('');
   lines.push(`Status: **${status}**`);
   lines.push(`Timestamp: ${report.timestamp}`);
+  lines.push(`Scope snapshot: ${branchInfo}@${revInfo}`);
   lines.push('');
   lines.push('## Scope');
   lines.push(`- checkedFiles: ${report.summary.filesChecked}`);
@@ -96,6 +100,17 @@ function formatSummaryText(report) {
   return lines.join('\n');
 }
 
+
+function getGitMeta() {
+  try {
+    const gitRev = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
+    const gitBranch = execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf8' }).trim();
+    return { gitRev, gitBranch };
+  } catch {
+    return { gitRev: 'unknown', gitBranch: 'unknown' };
+  }
+}
+
 function main() {
   const targetFiles = includeRoots.flatMap((r) => walk(path.join(root, r)));
 
@@ -104,6 +119,7 @@ function main() {
   const report = {
     strictMode,
     timestamp: new Date().toISOString(),
+    git: getGitMeta(),
     scope: ['buyer/*', 'provider/*', 'ops/*'],
     summary: {
       filesChecked: 0,
