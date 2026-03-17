@@ -93,6 +93,7 @@ jobs:
       ranUiCheck: ${{ steps.governance.outputs.ranUiCheck }}
       ranConfigValidation: ${{ steps.governance.outputs.ranConfigValidation }}
       runMode: ${{ steps.governance.outputs.runMode }}
+      details: ${{ steps.governance.outputs.details }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -135,6 +136,7 @@ jobs:
             echo "ranUiCheck=false" >> "$GITHUB_OUTPUT"
             echo "ranConfigValidation=false" >> "$GITHUB_OUTPUT"
             echo "runMode=none" >> "$GITHUB_OUTPUT"
+            echo "details=No UX governance-related paths changed; nothing to run" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -154,10 +156,13 @@ jobs:
 
           if [[ "${{ steps.changed.outputs.ux-pages }}" == "true" && "${{ steps.changed.outputs.ux-audit-config }}" == "true" ]]; then
             echo "runMode=full" >> "$GITHUB_OUTPUT"
+            echo "details=Portal UX pages and governance config changed; both strict portal:check and config validation executed" >> "$GITHUB_OUTPUT"
           elif [[ "${{ steps.changed.outputs.ux-pages }}" == "true" ]]; then
             echo "runMode=ui" >> "$GITHUB_OUTPUT"
+            echo "details=Only portal UX pages changed; strict portal:check executed" >> "$GITHUB_OUTPUT"
           else
             echo "runMode=config" >> "$GITHUB_OUTPUT"
+            echo "details=Only UX-audit governance config/script files changed; validate-config executed" >> "$GITHUB_OUTPUT"
           fi
 
           if [[ "${{ steps.changed.outputs.ux-pages }}" == "true" ]]; then
@@ -288,6 +293,7 @@ jobs:
           PORTAL_UI_CHECK_RUN: ${{ needs.portal_ux.outputs.ranUiCheck }}
           PORTAL_CONFIG_VALIDATION_RUN: ${{ needs.portal_ux.outputs.ranConfigValidation }}
           PORTAL_GOV_MODE: ${{ needs.portal_ux.outputs.runMode }}
+          PORTAL_GOV_DETAILS: ${{ needs.portal_ux.outputs.details }}
           REPOSITORY: ${{ github.repository }}
           PORTAL_SUMMARY_PATH: .artifacts/portal-ux/alpha-portal-ux-audit-summary.md
           RUN_ID: ${{ github.run_id }}
@@ -319,6 +325,7 @@ jobs:
               f"- Portal UX config validation run: `{os.environ['PORTAL_CONFIG_VALIDATION_RUN']}`",
               f"- Portal UX governance skipped: `{os.environ['PORTAL_GOV_SKIPPED']}`",
               f"- Portal UX governance mode: `{os.environ['PORTAL_GOV_MODE']}`",
+              f"- Portal UX governance details: `{os.environ['PORTAL_GOV_DETAILS']}`",
               f"- Run: {run_url}",
               "",
               coverage,
