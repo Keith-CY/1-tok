@@ -1,0 +1,8 @@
+{
+  "name": "@1tok/e2e-screenshots",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "playwright": "1.55.0"
+  }
+}

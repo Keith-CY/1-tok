@@ -72,8 +72,8 @@ export default async function ProviderProposalsPage() {
                   </div>
                   <div className="mt-4 text-sm text-muted-foreground">Delivery window {formatDate(item.responseDeadlineAt)}</div>
                   <Button asChild variant="outline" className="mt-5 w-full justify-between">
-                    <Link href={`/provider/rfqs/${item.rfqId}`}>
-                      View request
+                    <Link href={item.orderId ? `/provider/orders/${item.orderId}` : `/provider/rfqs/${item.rfqId}`}>
+                      View delivery
                       <RiArrowRightUpLine className="size-4" />
                     </Link>
                   </Button>

@@ -203,3 +203,40 @@ services:
       - /bin/sh
       - -lc
       - /usr/local/bin/release-fnn-adapter-smoke && /usr/local/bin/release-smoke && /usr/local/bin/release-portal-smoke && /usr/local/bin/release-abuse-smoke
+
+  e2e-screenshot-runner:
+    build:
+      context: .
+      dockerfile: deploy/e2e-screenshots/Dockerfile
+    environment:
+      SCREENSHOT_OUTPUT_DIR: /artifacts
+      SCREENSHOT_WEB_BASE_URL: http://web:3000
+      SCREENSHOT_API_BASE_URL: http://api-gateway:8080
+      SCREENSHOT_IAM_BASE_URL: http://iam:8081
+      SCREENSHOT_SETTLEMENT_BASE_URL: http://settlement:8083
+      SCREENSHOT_SETTLEMENT_SERVICE_TOKEN: ${ONE_TOK_SETTLEMENT_SERVICE_TOKEN:-local-settlement-service-token}
+      SCREENSHOT_EXECUTION_BASE_URL: http://execution:8085
+      SCREENSHOT_EXECUTION_EVENT_TOKEN: ${ONE_TOK_EXECUTION_EVENT_TOKEN:-local-execution-event-token}
+    volumes:
+      - "${E2E_SCREENSHOT_HOST_OUTPUT_DIR:-./.artifacts/e2e-screenshots}:/artifacts"
+    depends_on:
+      mock-fiber:
+        condition: service_healthy
+      mock-carrier:
+        condition: service_healthy
+      iam:
+        condition: service_healthy
+      api-gateway:
+        condition: service_healthy
+      marketplace:
+        condition: service_healthy
+      settlement:
+        condition: service_healthy
+      execution:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+      mock-sentry:
+        condition: service_healthy
+      settlement-reconciler:
+        condition: service_started

@@ -252,6 +252,149 @@ jobs:
           echo "Integration Smoke failed after 2 attempts"
           exit 1
 
+  e2e_screenshots:
+    name: E2E Marketplace Screenshots
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare screenshot artifact dir
+        run: mkdir -p .artifacts/e2e-screenshots
+
+      - name: Capture marketplace screenshots
+        env:
+          E2E_SCREENSHOT_OUTPUT_DIR: ${{ github.workspace }}/.artifacts/e2e-screenshots
+        run: ./scripts/release-compose-e2e-screenshots.sh
+
+      - name: Upload screenshot artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-marketplace-screenshots
+          path: .artifacts/e2e-screenshots
+          if-no-files-found: error
+
+      - name: Push screenshots to ref
+        if: success() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        id: screenshot_ref
+        run: |
+          REF_NAME="screenshots/pr-${{ github.event.pull_request.number }}"
+          TMP_DIR="$(mktemp -d)"
+          cp -R .artifacts/e2e-screenshots/. "$TMP_DIR/"
+          rm -rf .artifacts
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan "$REF_NAME"
+          git rm -rf . >/dev/null 2>&1 || true
+          cp -R "$TMP_DIR"/. .
+          git add -A
+          git commit -m "Screenshots for ${{ github.sha }}" --allow-empty
+          git push origin "$REF_NAME" --force
+
+          echo "ref=$REF_NAME" >> "$GITHUB_OUTPUT"
+          echo "tmp_dir=$TMP_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Generate screenshot comment
+        if: success() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          REF_NAME: ${{ steps.screenshot_ref.outputs.ref }}
+          MANIFEST_PATH: ${{ steps.screenshot_ref.outputs.tmp_dir }}/manifest.json
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          manifest = json.loads(Path(os.environ["MANIFEST_PATH"]).read_text(encoding="utf-8"))
+          base = f"https://raw.githubusercontent.com/{os.environ['REPOSITORY']}/{os.environ['REF_NAME']}"
+          run_url = f"https://github.com/{os.environ['REPOSITORY']}/actions/runs/{os.environ['RUN_ID']}"
+          marker = "<!-- 1-tok-e2e-screenshots -->"
+          business_order = [("home", "Home"), ("buyer", "Buyer"), ("provider", "Provider")]
+          device_order = [("desktop", "Desktop"), ("mobile", "Mobile")]
+
+          def chunk(items, size):
+            for index in range(0, len(items), size):
+              yield items[index:index + size]
+
+          lines = [
+            marker,
+            "## E2E Marketplace Screenshots",
+            "",
+            f"- Run: {run_url}",
+            f"- Artifact: [e2e-marketplace-screenshots]({run_url})",
+            "",
+          ]
+
+          for business_key, business_label in business_order:
+            lines.append(f"### {business_label}")
+            lines.append("")
+            for device_key, device_label in device_order:
+              rows = [
+                item for item in manifest
+                if item["businessLine"] == business_key and item["device"] == device_key
+              ]
+              if not rows:
+                continue
+              rows.sort(key=lambda item: item["order"])
+              lines.append(f"#### {device_label}")
+              lines.append("")
+              for group in chunk(rows, 3):
+                headers = "| " + " | ".join(item["title"] for item in group) + " |"
+                align = "|" + "|".join([":---:"] * len(group)) + "|"
+                images = "| " + " | ".join(f"![{item['slug']}]({base}/{item['path']})" for item in group) + " |"
+                lines.extend([headers, align, images, ""])
+            lines.append("")
+
+          Path("e2e-screenshot-comment.md").write_text("\n".join(lines).strip() + "\n", encoding="utf-8")
+          PY
+
+      - name: Upsert screenshot PR comment
+        if: success() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("node:fs");
+            const body = fs.readFileSync("e2e-screenshot-comment.md", "utf8");
+            const marker = "<!-- 1-tok-e2e-screenshots -->";
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+            const existing = comments.find((comment) =>
+              comment.user?.login === "github-actions[bot]" &&
+              comment.body?.includes(marker),
+            );
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+              core.info(`Updated screenshot comment ${existing.id}`);
+            } else {
+              const created = await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body,
+              });
+              core.info(`Created screenshot comment ${created.data.id}`);
+            }
+
   report:
     name: Report
     runs-on: ubuntu-latest

@@ -186,7 +186,7 @@ export default async function ProviderPage({
                     price={formatMoney(item.quoteCents)}
                     deadline={formatDate(item.responseDeadlineAt)}
                     status="Awarded"
-                    href={`/provider/rfqs/${item.rfqId}`}
+                    href={item.orderId ? `/provider/orders/${item.orderId}` : `/provider/rfqs/${item.rfqId}`}
                   />
                 ))
               )}

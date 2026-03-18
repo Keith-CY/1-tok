@@ -51,6 +51,7 @@ export interface ProviderDashboardData {
   marketQueue: Array<{
     id: string;
     rfqId: string;
+    orderId?: string;
     title: string;
     buyerOrgId: string;
     budgetCents: number;
@@ -74,6 +75,12 @@ export interface ProviderDashboardData {
 export interface ProviderRFQDetail {
   rfq: RFQ;
   providerBid: Bid | null;
+}
+
+export interface ProviderOrderDetail {
+  order: Order;
+  rfq: RFQ | null;
+  fundingRecords: FundingRecord[];
 }
 
 export interface OpsDashboardData {
@@ -228,6 +235,7 @@ export async function getProviderDashboardData(options: {
       .map((bid) => ({
         id: `${rfq.id}:${bid.id}`,
         rfqId: rfq.id,
+        orderId: rfq.orderId,
         title: rfq.title,
         buyerOrgId: rfq.buyerOrgId,
         budgetCents: rfq.budgetCents,
@@ -295,6 +303,34 @@ export async function getProviderRFQDetail(options: {
   return {
     rfq,
     providerBid,
+  };
+}
+
+export async function getProviderOrderDetail(options: {
+  authToken: string;
+  providerOrgId: string;
+  orderId: string;
+  requireLive?: boolean;
+}): Promise<ProviderOrderDetail | null> {
+  const [orders, fundingRecords, rfqs] = await Promise.all([
+    getOrders({ authToken: options.authToken, requireLive: options.requireLive }),
+    getFundingRecords({ authToken: options.authToken, requireLive: options.requireLive }),
+    getRFQs({ authToken: options.authToken, requireLive: options.requireLive }),
+  ]);
+
+  const order = orders.find((candidate) => candidate.id === options.orderId && candidate.providerOrgId === options.providerOrgId);
+  if (!order) {
+    return null;
+  }
+
+  return {
+    order,
+    rfq: rfqs.find((candidate) => candidate.orderId === order.id) ?? null,
+    fundingRecords: fundingRecords.filter(
+      (record) =>
+        record.orderId === order.id &&
+        (!record.providerOrgId || record.providerOrgId === options.providerOrgId),
+    ),
   };
 }
 

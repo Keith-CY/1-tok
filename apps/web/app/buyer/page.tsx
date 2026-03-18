@@ -89,14 +89,17 @@ export default async function BuyerPage() {
                         <h3 className="text-lg font-semibold leading-tight tracking-tight break-words text-balance">{item.title}</h3>
                       </div>
                       <FeedMetric label="Budget" value={formatMoney(item.budgetCents)} emphasize />
-                      <FeedMetric label="Current low" value={low ? formatMoney(low) : "No price"} />
-                      <FeedMetric label="Spread" value={low ? formatMoney(Math.max(item.budgetCents - low, 0)) : "Open"} />
+                    <FeedMetric label="Current low" value={low ? formatMoney(low.quoteCents) : "No price"} />
+                    <FeedMetric label="Spread" value={low ? formatMoney(Math.max(item.budgetCents - low.quoteCents, 0)) : "Open"} />
                       <div className="space-y-1 text-sm text-muted-foreground">
                         <div>{formatProposalCount(item.bidCount)}</div>
                         <div>{formatDate(item.responseDeadlineAt)}</div>
                       </div>
                       {low ? (
                         <form action={`/buyer/rfqs/${item.id}/award`} method="post">
+                          <input type="hidden" name="bidId" value={low.id} />
+                          <input type="hidden" name="fundingMode" value="credit" />
+                          <input type="hidden" name="creditLineId" value="credit_1" />
                           <Button type="submit" className="w-full xl:w-auto">
                             Award low
                             <RiArrowRightUpLine className="size-4" />
@@ -125,12 +128,15 @@ export default async function BuyerPage() {
               <div className="space-y-4">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <SpotMetric label="Budget" value={formatMoney(topRequest.budgetCents)} />
-                  <SpotMetric label="Current low" value={getLowestBid(topRequest) ? formatMoney(getLowestBid(topRequest)!) : "No price"} />
+                  <SpotMetric label="Current low" value={getLowestBid(topRequest) ? formatMoney(getLowestBid(topRequest)!.quoteCents) : "No price"} />
                   <SpotMetric label="Proposal count" value={`${topRequest.bidCount}`} />
                   <SpotMetric label="Deadline" value={formatDate(topRequest.responseDeadlineAt)} />
                 </div>
                 {getLowestBid(topRequest) ? (
                   <form action={`/buyer/rfqs/${topRequest.id}/award`} method="post">
+                    <input type="hidden" name="bidId" value={getLowestBid(topRequest)!.id} />
+                    <input type="hidden" name="fundingMode" value="credit" />
+                    <input type="hidden" name="creditLineId" value="credit_1" />
                     <Button type="submit" className="w-full justify-between">
                       Award lowest proposal
                       <RiArrowRightUpLine className="size-4" />
@@ -238,10 +244,10 @@ function SpotMetric({ label, value }: { label: string; value: string }) {
 }
 
 function getLowestBid(item: {
-  bids: Array<{ quoteCents: number }>;
+  bids: Array<{ id: string; quoteCents: number }>;
 }) {
   if (item.bids.length === 0) return null;
-  return Math.min(...item.bids.map((bid) => bid.quoteCents));
+  return [...item.bids].sort((left, right) => left.quoteCents - right.quoteCents)[0] ?? null;
 }
 
 function marketSignal(bidCount: number, index: number) {

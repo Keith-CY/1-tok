@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export default async function OrderDetailPage({ params }: { params: Promise<{ orderId: string }> }) {
   const { orderId } = await params;
   const viewer = await requirePortalViewer("buyer", `/buyer/orders/${orderId}`);
-  const orders = await getOrders({ authToken: viewer.token, requireLive: false });
+  const orders = await getOrders({ authToken: viewer.token, requireLive: true });
   const order = orders.find((candidate) => candidate.id === orderId);
 
   if (!order) {
@@ -106,7 +106,12 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ or
 
   const totalBudget = order.milestones.reduce((sum, milestone) => sum + milestone.budgetCents, 0);
   const totalSpent = order.milestones.reduce(
-    (sum, milestone) => sum + milestone.settledCents + milestone.usageCharges.reduce((usage, charge) => usage + charge.amountCents, 0),
+    (sum, milestone) =>
+      sum +
+      milestone.settledCents +
+      (Array.isArray(milestone.usageCharges)
+        ? milestone.usageCharges.reduce((usage, charge) => usage + charge.amountCents, 0)
+        : 0),
     0,
   );
   const runningMilestone = order.milestones.find((milestone) => milestone.state === "running") ?? order.milestones[0] ?? null;
@@ -156,7 +161,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ or
         >
           <div className="space-y-4">
             {order.milestones.map((milestone) => {
-              const spent = milestone.usageCharges.reduce((sum, charge) => sum + charge.amountCents, 0) + milestone.settledCents;
+              const usageCharges = Array.isArray(milestone.usageCharges) ? milestone.usageCharges : [];
+              const spent = usageCharges.reduce((sum, charge) => sum + charge.amountCents, 0) + milestone.settledCents;
               const usage = milestone.budgetCents > 0 ? Math.min((spent / milestone.budgetCents) * 100, 100) : 0;
 
               return (

@@ -15,7 +15,7 @@ mkdir -p "${DATA_DIR}/ckb"
 
 if [ ! -s "${DATA_DIR}/ckb/key" ]; then
   echo "No wallet key found, generating ${DATA_DIR}/ckb/key"
-  openssl rand -hex 32 > "${DATA_DIR}/ckb/key"
+  head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "${DATA_DIR}/ckb/key"
   chmod 600 "${DATA_DIR}/ckb/key"
 fi
 
