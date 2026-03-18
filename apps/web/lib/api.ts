@@ -50,6 +50,7 @@ export interface ProviderDashboardData {
   activeOrders: Order[];
   marketQueue: Array<{
     id: string;
+    rfqId: string;
     title: string;
     buyerOrgId: string;
     budgetCents: number;
@@ -63,9 +64,16 @@ export interface ProviderDashboardData {
     buyerOrgId: string;
     budgetCents: number;
     responseDeadlineAt: string;
+    proposalCount: number;
+    lowestQuoteCents: number | null;
     hasProviderBid: boolean;
   }>;
   capabilities: string[];
+}
+
+export interface ProviderRFQDetail {
+  rfq: RFQ;
+  providerBid: Bid | null;
 }
 
 export interface OpsDashboardData {
@@ -219,6 +227,7 @@ export async function getProviderDashboardData(options: {
       .filter((bid) => bid.providerOrgId === options.providerOrgId)
       .map((bid) => ({
         id: `${rfq.id}:${bid.id}`,
+        rfqId: rfq.id,
         title: rfq.title,
         buyerOrgId: rfq.buyerOrgId,
         budgetCents: rfq.budgetCents,
@@ -235,6 +244,8 @@ export async function getProviderDashboardData(options: {
       buyerOrgId: rfq.buyerOrgId,
       budgetCents: rfq.budgetCents,
       responseDeadlineAt: rfq.responseDeadlineAt,
+      proposalCount: bids.length,
+      lowestQuoteCents: bids.length ? Math.min(...bids.map((bid) => bid.quoteCents)) : null,
       hasProviderBid: bids.some((bid) => bid.providerOrgId === options.providerOrgId),
     }));
 
@@ -257,6 +268,33 @@ export async function getProviderDashboardData(options: {
     marketQueue,
     marketOpportunities,
     capabilities: provider.capabilities,
+  };
+}
+
+export async function getProviderRFQDetail(options: {
+  authToken: string;
+  providerOrgId: string;
+  rfqId: string;
+  requireLive?: boolean;
+}): Promise<ProviderRFQDetail | null> {
+  const [rfqs, bids] = await Promise.all([
+    getRFQs({ authToken: options.authToken, requireLive: options.requireLive }),
+    getRFQBids(options.rfqId, { authToken: options.authToken, requireLive: options.requireLive }),
+  ]);
+
+  const rfq = rfqs.find((candidate) => candidate.id === options.rfqId);
+  if (!rfq) {
+    return null;
+  }
+
+  const providerBid = bids.find((bid) => bid.providerOrgId === options.providerOrgId) ?? null;
+  if (rfq.status !== "open" && !providerBid) {
+    return null;
+  }
+
+  return {
+    rfq,
+    providerBid,
   };
 }
 

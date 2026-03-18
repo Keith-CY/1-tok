@@ -1,39 +1,35 @@
-import { redirectToPath } from "../../../../../lib/redirect";
 import { postGatewayJSON, readRequestPortalViewer } from "../../../../../lib/marketplace-actions";
+import { redirectToPath } from "../../../../../lib/redirect";
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ disputeId: string }> },
-) {
-	const viewer = await readRequestPortalViewer(request, "ops");
-	if (!viewer) {
-		return redirectToPath("/login?next=%2Fops");
-	}
-
-	const form = await request.formData();
-	const resolution = String(form.get("resolution") ?? "").trim();
-	if (!resolution) {
-		return redirectToPath("/ops?error=missing-dispute-resolution");
-	}
+export async function POST(request: Request, { params }: { params: Promise<{ disputeId: string }> }) {
+  const viewer = await readRequestPortalViewer(request, "ops");
+  if (!viewer) {
+    return redirectToPath("/internal/login?next=%2Fops");
+  }
 
   const { disputeId } = await params;
+  const form = await request.formData();
+  const resolution = String(form.get("resolution") ?? "").trim();
+
+  if (!disputeId || !resolution) {
+    return redirectToPath("/ops?error=missing-dispute-resolution");
+  }
 
   try {
     const response = await postGatewayJSON(`/api/v1/disputes/${disputeId}/resolve`, viewer.token, {
       resolution,
       resolvedBy: viewer.actor.user.id,
     });
-    const result = (await response.json()) as {
+    const payload = (await response.json()) as {
       dispute?: {
-        id?: string;
         status?: string;
       };
     };
-		const nextURL = new URL("/ops", "http://portal.internal");
-		nextURL.searchParams.set("resolvedDisputeId", result.dispute?.id ?? disputeId);
-		nextURL.searchParams.set("disputeStatus", result.dispute?.status ?? "resolved");
-		return redirectToPath(`${nextURL.pathname}${nextURL.search}${nextURL.hash}`);
-	} catch {
-		return redirectToPath("/ops?error=dispute-resolution-failed");
-	}
+    const nextURL = new URL("/ops", request.url);
+    nextURL.searchParams.set("resolvedDisputeId", disputeId);
+    nextURL.searchParams.set("disputeStatus", payload.dispute?.status ?? "resolved");
+    return redirectToPath(`${nextURL.pathname}${nextURL.search}${nextURL.hash}`);
+  } catch {
+    return redirectToPath("/ops?error=dispute-resolution-failed");
+  }
 }

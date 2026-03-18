@@ -8,9 +8,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ rfq
 
   const { rfqId } = await params;
   const form = await request.formData();
-  const message = String(form.get("message") ?? "").trim();
+  const rawMessage = String(form.get("message") ?? "").trim();
+  const message = rawMessage || "We can take this on and deliver within the requested window.";
   const quoteCents = Number.parseInt(String(form.get("quoteCents") ?? "0"), 10);
-  const milestoneTitle = String(form.get("milestoneTitle") ?? "Execution").trim() || "Execution";
+  const milestoneTitle = String(form.get("milestoneTitle") ?? "Service delivery").trim() || "Service delivery";
   const rawMilestoneBasePriceCents = Number.parseInt(String(form.get("milestoneBasePriceCents") ?? ""), 10);
   const rawMilestoneBudgetCents = Number.parseInt(String(form.get("milestoneBudgetCents") ?? ""), 10);
   const milestoneBasePriceCents =
@@ -22,7 +23,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ rfq
 
   if (
     !rfqId ||
-    !message ||
     !Number.isFinite(quoteCents) ||
     quoteCents <= 0 ||
     !Number.isFinite(milestoneBasePriceCents) ||

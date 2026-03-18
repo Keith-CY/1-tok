@@ -274,9 +274,68 @@ describe("api fallback", () => {
     expect(data.summary.submittedBids).toBe(2);
     expect(data.summary.openRFQs).toBe(1);
     expect(data.marketQueue).toHaveLength(2);
+    expect((data.marketQueue[0] as { rfqId?: string } | undefined)?.rfqId).toBe("rfq_live_1");
     expect(data.marketQueue[0]?.providerBidStatus).toBe("open");
     expect(data.marketOpportunities).toHaveLength(1);
     expect(data.marketOpportunities[0]?.id).toBe("rfq_live_1");
+    expect(data.marketOpportunities[0]?.proposalCount).toBe(1);
+    expect(data.marketOpportunities[0]?.lowestQuoteCents).toBe(1800);
+  });
+
+  it("reads provider task detail from the same live rfq dataset", async () => {
+    process.env.NEXT_PUBLIC_API_BASE_URL = "http://localhost:8080";
+    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.endsWith("/api/v1/rfqs")) {
+        return new Response(
+          JSON.stringify({
+            rfqs: [
+              { id: "rfq_live_1", buyerOrgId: "buyer_1", title: "Live RFQ", category: "agent-ops", scope: "Investigate", budgetCents: 2200, status: "open", responseDeadlineAt: "2026-03-15T12:00:00Z", createdAt: "2026-03-12T00:00:00Z", updatedAt: "2026-03-12T00:00:00Z" },
+            ],
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          },
+        );
+      }
+
+      if (url.endsWith("/api/v1/rfqs/rfq_live_1/bids")) {
+        return new Response(
+          JSON.stringify({
+            bids: [{ id: "bid_live_1", rfqId: "rfq_live_1", providerOrgId: "provider_1", message: "Open bid", quoteCents: 1800, status: "open", milestones: [], createdAt: "2026-03-12T00:00:00Z", updatedAt: "2026-03-12T00:00:00Z" }],
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          },
+        );
+      }
+
+      throw new Error(`unexpected url ${url}`);
+    }) as unknown as typeof fetch;
+
+    const apiModule = await import("./api");
+    const detail = await (apiModule as { getProviderRFQDetail?: (options: {
+      authToken: string;
+      providerOrgId: string;
+      rfqId: string;
+      requireLive?: boolean;
+    }) => Promise<{
+      rfq: { id: string; status: string };
+      providerBid: { id: string; status: string } | null;
+    } | null> }).getProviderRFQDetail?.({
+      authToken: "tok_123",
+      providerOrgId: "provider_1",
+      rfqId: "rfq_live_1",
+      requireLive: true,
+    });
+
+    expect(detail).toEqual({
+      rfq: expect.objectContaining({ id: "rfq_live_1", status: "open" }),
+      providerBid: expect.objectContaining({ id: "bid_live_1", status: "open" }),
+    });
   });
 
   it("builds ops dashboard data from live disputes and funding records", async () => {

@@ -1,143 +1,92 @@
-import { PortalShell } from "../../../components/portal-shell";
-import { StatusBadge, EmptyState } from "../../../components/ui";
-import { requirePortalViewer } from "../../../lib/viewer";
-import { formatCents } from "../../../lib/currency";
+import { RiFilter3Line, RiShieldCheckLine } from "react-icons/ri";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Field, SectionCard, WorkspaceShell } from "@/components/workspace-shell";
+import { formatShortDate } from "@/lib/utils";
+import { getOpsDashboardData } from "@/lib/api";
+import { requirePortalViewer } from "@/lib/viewer";
 
 export const dynamic = "force-dynamic";
-
-const DISPUTES = [
-  {
-    id: "disp_1",
-    orderId: "ord_14",
-    milestoneId: "ms_1",
-    reason: "Carrier summary did not match actual remediation.",
-    refundCents: 900,
-    status: "open",
-    buyerOrgId: "Buyer Ops",
-    createdAt: "2026-03-12T00:00:00Z",
-    resolvedAt: "",
-  },
-  {
-    id: "disp_2",
-    orderId: "ord_20",
-    milestoneId: "ms_2",
-    reason: "Service quality did not meet stated SLO.",
-    refundCents: 1700,
-    status: "resolved",
-    buyerOrgId: "Acme Retail",
-    createdAt: "2026-03-08T00:00:00Z",
-    resolvedAt: "2026-03-09T11:12:00Z",
-  },
-];
 
 export default async function OpsDisputesPage({
   searchParams,
 }: {
-  searchParams?: { q?: string; status?: string };
+  searchParams?: Promise<{ q?: string; status?: string }>;
 }) {
   const viewer = await requirePortalViewer("ops", "/ops/disputes");
+  const data = await getOpsDashboardData({ authToken: viewer.token, requireLive: true });
+  const params = await searchParams;
+  const q = (params?.q ?? "").trim().toLowerCase();
+  const status = (params?.status ?? "open").trim().toLowerCase();
 
-  const query = (searchParams?.q ?? "").trim();
-  const queryLower = query.toLowerCase();
-  const status = (searchParams?.status ?? "open").toLowerCase();
-
-  const encodedQuery = encodeURIComponent(query);
-
-  const chipClass = (active: boolean) =>
-    active ? "action-button action-button--active" : "action-button";
-
-  const disputes = DISPUTES.filter(
-    (d) =>
-      (status === "all" || d.status === status) &&
-      (!queryLower ||
-        d.orderId.toLowerCase().includes(queryLower) ||
-        d.milestoneId.toLowerCase().includes(queryLower) ||
-        d.buyerOrgId.toLowerCase().includes(queryLower) ||
-        d.reason.toLowerCase().includes(queryLower)),
-  );
+  const disputes = data.disputes.filter((item) => (status === "all" ? true : status === "open" ? item.status !== "resolved" : item.status === status) && (!q || item.orderId.toLowerCase().includes(q) || item.milestoneId.toLowerCase().includes(q) || item.reason.toLowerCase().includes(q)));
 
   return (
-    <PortalShell
-      eyebrow="Ops portal / disputes"
-      title="Dispute arbitration."
-      copy="Review open disputes, examine evidence, and decide on refund/recovery."
-      signal="Dispute review"
-      asideTitle="Quick info"
-      quickActions={[
-        { label: "Review applications", href: "/ops/applications", tone: "secondary" },
-        { label: "Credit decision", href: "/ops#credit-decision", tone: "secondary" },
-        { label: "Dispute evidence", href: "/ops/disputes", tone: "primary" },
+    <WorkspaceShell
+      role="ops"
+      title="Dispute board"
+      description="This is the expanded arbitration view. The homepage only shows the most urgent open disputes."
+      actions={[
+        { href: "/ops", label: "Back to overview", icon: RiShieldCheckLine, variant: "outline" },
       ]}
-      asideItems={[]}
     >
-      <div className="space-y-4">
-        <form method="GET" className="auth-form market-form">
-          <div className="market-form__grid">
-            <label className="auth-field">
-              <span>Search disputes</span>
-              <input
-                name="q"
-                type="text"
-                placeholder="Search by order, milestone, buyer, reason"
-                defaultValue={query}
-              />
-            </label>
-            <label className="auth-field">
-              <span>Status</span>
-              <select name="status" defaultValue={status}>
-                <option value="open">Open</option>
-                <option value="resolved">Resolved</option>
-                <option value="all">All</option>
-              </select>
-            </label>
-          </div>
-          <button type="submit" className="auth-submit">
-            Filter disputes
-          </button>
+      <SectionCard eyebrow="Filter" title="Dispute queue" description="Search by order, milestone, buyer, or reason. Resolve directly from the row.">
+        <form method="GET" className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr_auto] lg:items-end">
+          <Field label="Search">
+            <Input name="q" placeholder="Search disputes" defaultValue={q} />
+          </Field>
+          <Field label="Status">
+            <Input name="status" placeholder="open | resolved | all" defaultValue={status === "open" ? "" : status} />
+          </Field>
+          <Button type="submit">
+            <RiFilter3Line className="size-4" />
+            Apply
+          </Button>
         </form>
+      </SectionCard>
 
-        <div className="flex gap-2 mb-2">
-          <a href={`/ops/disputes?status=open${query ? `&q=${encodedQuery}` : ""}`} className={chipClass(status === "open")} aria-current={status === "open" ? "page" : undefined}>Open</a>
-          <a href={`/ops/disputes?status=resolved${query ? `&q=${encodedQuery}` : ""}`} className={chipClass(status === "resolved")} aria-current={status === "resolved" ? "page" : undefined}>Resolved</a>
-          <a href={`/ops/disputes?status=all${query ? `&q=${encodedQuery}` : ""}`} className={chipClass(status === "all")} aria-current={status === "all" ? "page" : undefined}>All</a>
-        </div>
-
+      <section className="grid gap-4">
         {disputes.length === 0 ? (
-          <EmptyState message="No disputes to review." actionLabel="Clear filters" actionHref="/ops/disputes" />
+          <Card className="border-dashed bg-secondary/45 p-6 text-sm text-muted-foreground">No disputes match the current filter.</Card>
         ) : (
-          <div className="space-y-3">
-            {disputes.map((d) => (
-              <div key={d.id} className="border rounded-lg p-4">
-                <div className="flex justify-between items-start">
+          disputes.map((dispute) => (
+            <Card key={dispute.id} className="bg-white/82 p-5">
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
                     <div className="flex items-center gap-2">
-                      <h3 className="font-semibold">{d.id}</h3>
-                      <StatusBadge status={d.status} />
+                      <h3 className="font-medium text-foreground">{dispute.id}</h3>
+                      <Badge variant={dispute.status === "resolved" ? "success" : "danger"}>{dispute.status}</Badge>
                     </div>
-                    <p className="text-sm text-gray-600 mt-1">{d.reason}</p>
-                    <p className="text-xs text-gray-400 mt-1">Order {d.orderId} · Milestone {d.milestoneId} · Buyer {d.buyerOrgId}</p>
-                    <p className="text-xs text-gray-400">
-                      {d.status === "resolved" ? `Resolved ${d.resolvedAt}` : `Opened ${d.createdAt.slice(0, 10)}`}
-                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">Order {dispute.orderId} · Milestone {dispute.milestoneId}</p>
+                    <p className="mt-2 text-sm text-foreground">{dispute.reason}</p>
                   </div>
                   <div className="text-right">
-                    <p className="font-bold text-red-600">{formatCents(d.refundCents)}</p>
-                    <p className="text-xs text-gray-400">refund requested</p>
+                    <div className="font-display text-2xl tracking-[-0.04em]">{dispute.refundCents}</div>
+                    <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">refund cents</div>
+                    <div className="mt-2 text-xs text-muted-foreground">{dispute.status === "resolved" ? `Resolved ${formatShortDate(dispute.resolvedAt ?? dispute.createdAt)}` : `Opened ${formatShortDate(dispute.createdAt)}`}</div>
                   </div>
                 </div>
-
-                {d.status === "open" ? (
-                  <div className="flex gap-2 mt-3">
-                    <button className="action-button">Approve Refund</button>
-                    <button className="action-button">Reject</button>
-                    <a href={`/ops/disputes/${d.id}/evidence`} className="action-button">View Evidence</a>
+                {dispute.status !== "resolved" ? (
+                  <div className="flex flex-wrap gap-2">
+                    <form action={`/ops/disputes/${dispute.id}/resolve`} method="post">
+                      <input type="hidden" name="resolution" value="refund approved" />
+                      <Button type="submit" size="sm">Approve refund</Button>
+                    </form>
+                    <form action={`/ops/disputes/${dispute.id}/resolve`} method="post">
+                      <input type="hidden" name="resolution" value="claim rejected" />
+                      <Button type="submit" variant="outline" size="sm">Reject claim</Button>
+                    </form>
                   </div>
                 ) : null}
               </div>
-            ))}
-          </div>
+            </Card>
+          ))
         )}
-      </div>
-    </PortalShell>
+      </section>
+    </WorkspaceShell>
   );
 }

@@ -1,3 +1,5 @@
+import { Glyph, type GlyphName } from "./portal-visuals";
+
 interface StatusBadgeProps {
   status: string;
 }
@@ -42,6 +44,55 @@ export function ProgressBar({ current, total, tone }: ProgressBarProps) {
   );
 }
 
+export function InfoIcon({ label }: { label: string }) {
+  return (
+    <span className="info-dot" aria-label={label} title={label}>
+      <Glyph name="info" className="info-dot__icon" />
+    </span>
+  );
+}
+
+interface PanelHeaderProps {
+  icon: GlyphName;
+  tag: string;
+  title: string;
+  info?: string;
+}
+
+export function PanelHeader({ icon, tag, title, info }: PanelHeaderProps) {
+  return (
+    <>
+      <span className="tag tag--icon">
+        <Glyph name={icon} className="tag__icon" />
+        {tag}
+        {info ? <InfoIcon label={info} /> : null}
+      </span>
+      <h3 className="panel-heading">
+        <Glyph name={icon} className="panel-heading__icon" />
+        <span>{title}</span>
+      </h3>
+    </>
+  );
+}
+
+interface FieldLabelProps {
+  icon: GlyphName;
+  label: string;
+  info?: string;
+}
+
+export function FieldLabel({ icon, label, info }: FieldLabelProps) {
+  return (
+    <span className="field-label">
+      <span className="field-label__glyph">
+        <Glyph name={icon} className="field-label__glyph-icon" />
+      </span>
+      <span className="field-label__text">{label}</span>
+      {info ? <InfoIcon label={info} /> : null}
+    </span>
+  );
+}
+
 interface EmptyStateProps {
   icon?: string;
   message: string;
@@ -52,9 +103,17 @@ interface EmptyStateProps {
 export function EmptyState({ icon = "📭", message, actionLabel, actionHref }: EmptyStateProps) {
   return (
     <div className="empty-state">
-      <span className="empty-state__icon">{icon}</span>
-      <span>{message}</span>
-      {actionLabel && actionHref ? <a className="empty-state__action" href={actionHref}>{actionLabel}</a> : null}
+      <div className="empty-state__icon-wrap">
+        <span className="empty-state__icon">{icon}</span>
+      </div>
+      <div className="empty-state__body">
+        <span className="empty-state__message">{message}</span>
+        {actionLabel && actionHref ? (
+          <a className="empty-state__action" href={actionHref}>
+            {actionLabel}
+          </a>
+        ) : null}
+      </div>
     </div>
   );
 }

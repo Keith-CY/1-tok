@@ -1,138 +1,79 @@
-import { PortalShell } from "../../../components/portal-shell";
-import { EmptyState } from "../../../components/ui";
-import { requirePortalViewer } from "../../../lib/viewer";
+import Link from "next/link";
+import { RiArrowRightUpLine, RiFilter3Line, RiShieldCheckLine } from "react-icons/ri";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Field, SectionCard, WorkspaceShell } from "@/components/workspace-shell";
+import { opsApplications } from "@/lib/portal-mocks";
+import { requirePortalViewer } from "@/lib/viewer";
 
 export const dynamic = "force-dynamic";
-
-const APPLICATIONS = [
-  {
-    id: "app_1",
-    providerOrg: "Atlas Ops",
-    category: "agent-ops",
-    contact: "ops-support@atlas.io",
-    status: "pending",
-    submittedAt: "2026-03-15",
-    notes: "Carrier-first remediation experience with SLA commitments.",
-  },
-  {
-    id: "app_2",
-    providerOrg: "Kite Relay",
-    category: "agent-runtime",
-    contact: "ops@kiterelay.io",
-    status: "approved",
-    submittedAt: "2026-03-12",
-    notes: "Distributed execution and custom orchestration support.",
-  },
-  {
-    id: "app_3",
-    providerOrg: "Cloudline Runtime",
-    category: "compute",
-    contact: "infra@cloudline.run",
-    status: "rejected",
-    submittedAt: "2026-03-10",
-    notes: "Duplicate identity; follow-up requested.",
-  },
-];
 
 export default async function OpsApplicationsPage({
   searchParams,
 }: {
-  searchParams?: { q?: string; status?: string };
+  searchParams?: Promise<{ q?: string; status?: string }>;
 }) {
-  const viewer = await requirePortalViewer("ops", "/ops/applications");
+  await requirePortalViewer("ops", "/ops/applications");
+  const params = await searchParams;
+  const q = (params?.q ?? "").trim().toLowerCase();
+  const status = (params?.status ?? "pending").trim().toLowerCase();
 
-  const query = (searchParams?.q ?? "").trim();
-  const queryLower = query.toLowerCase();
-  const status = (searchParams?.status ?? "pending").toLowerCase();
-
-  const encodedQuery = encodeURIComponent(query);
-
-  const chipClass = (active: boolean) =>
-    active ? "action-button action-button--active" : "action-button";
-
-  const applications = APPLICATIONS.filter(
-    (application) =>
-      (status === "all" || application.status === status) &&
-      (!queryLower ||
-        application.providerOrg.toLowerCase().includes(queryLower) ||
-        application.category.toLowerCase().includes(queryLower) ||
-        application.contact.toLowerCase().includes(queryLower) ||
-        application.notes.toLowerCase().includes(queryLower)),
-  );
+  const applications = opsApplications.filter((application) => (status === "all" ? true : application.status === status) && (!q || application.providerOrg.toLowerCase().includes(q) || application.category.toLowerCase().includes(q) || application.contact.toLowerCase().includes(q) || application.notes.toLowerCase().includes(q)));
 
   return (
-    <PortalShell
-      eyebrow="Ops portal / vetting"
-      title="Provider application review."
-      copy="Review pending provider applications. Approve or reject with notes."
-      signal="Provider vetting"
-      asideTitle="Quick info"
-      quickActions={[
-        { label: "All applications", href: "/ops/applications", tone: "secondary" },
-        { label: "Resolved disputes", href: "/ops/disputes?status=resolved", tone: "secondary" },
-        { label: "Open disputes", href: "/ops/disputes", tone: "primary" },
+    <WorkspaceShell
+      role="ops"
+      title="Application review queue"
+      description="This stays focused on provider vetting. The only action exposed by default is opening the application detail."
+      actions={[
+        { href: "/ops", label: "Back to overview", icon: RiShieldCheckLine, variant: "outline" },
+        { href: "/ops/disputes", label: "Open disputes", icon: RiArrowRightUpLine, variant: "secondary" },
       ]}
-      asideItems={[]}
     >
-      <div className="space-y-4">
-        <form method="GET" className="auth-form market-form">
-          <div className="market-form__grid">
-            <label className="auth-field">
-              <span>Search applications</span>
-              <input
-                name="q"
-                type="text"
-                placeholder="Search provider, category, contact, notes"
-                defaultValue={query}
-              />
-            </label>
-            <label className="auth-field">
-              <span>Status</span>
-              <select name="status" defaultValue={status}>
-                <option value="pending">Pending</option>
-                <option value="approved">Approved</option>
-                <option value="rejected">Rejected</option>
-                <option value="all">All</option>
-              </select>
-            </label>
-          </div>
-          <button type="submit" className="auth-submit">
-            Filter applications
-          </button>
+      <SectionCard eyebrow="Filter" title="Provider applications" description="Filter by search and status, then open the application you need to review.">
+        <form method="GET" className="grid gap-4 lg:grid-cols-[1.1fr_0.8fr_auto] lg:items-end">
+          <Field label="Search">
+            <Input name="q" placeholder="Search provider, category, contact" defaultValue={q} />
+          </Field>
+          <Field label="Status">
+            <Input name="status" placeholder="pending | approved | rejected" defaultValue={status === "pending" ? "" : status} />
+          </Field>
+          <Button type="submit">
+            <RiFilter3Line className="size-4" />
+            Apply
+          </Button>
         </form>
+      </SectionCard>
 
-        <div className="flex gap-2 mb-2">
-          <a href={`/ops/applications?status=pending${query ? `&q=${encodedQuery}` : ""}`} className={chipClass(status === "pending")} aria-current={status === "pending" ? "page" : undefined}>Pending</a>
-          <a href={`/ops/applications?status=approved${query ? `&q=${encodedQuery}` : ""}`} className={chipClass(status === "approved")} aria-current={status === "approved" ? "page" : undefined}>Approved</a>
-          <a href={`/ops/applications?status=rejected${query ? `&q=${encodedQuery}` : ""}`} className={chipClass(status === "rejected")} aria-current={status === "rejected" ? "page" : undefined}>Rejected</a>
-          <a href={`/ops/applications?status=all${query ? `&q=${encodedQuery}` : ""}`} className={chipClass(status === "all")} aria-current={status === "all" ? "page" : undefined}>All</a>
-        </div>
-
+      <section className="grid gap-4">
         {applications.length === 0 ? (
-          <EmptyState message="No applications match this filter." actionLabel="Clear filters" actionHref="/ops/applications" />
+          <Card className="border-dashed bg-secondary/45 p-6 text-sm text-muted-foreground">No applications match the current filter.</Card>
         ) : (
-          <div className="space-y-3">
-            {applications.map((application) => (
-              <div key={application.id} className="border rounded-lg p-4">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="text-xs text-gray-500">{application.status.toUpperCase()}</p>
-                    <h3 className="font-semibold text-lg">{application.providerOrg}</h3>
-                    <p className="text-sm text-gray-500">
-                      {application.category} · {application.contact}
-                    </p>
-                    <p className="text-sm text-gray-500">Submitted {application.submittedAt}</p>
+          applications.map((application) => (
+            <Card key={application.id} className="bg-white/82 p-5">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-medium text-foreground">{application.providerOrg}</h3>
+                    <Badge variant={application.status === "approved" ? "success" : application.status === "rejected" ? "danger" : "warning"}>{application.status}</Badge>
                   </div>
-                  <a href={`/ops/applications/${application.id}`} className="action-button">
-                    Open application
-                  </a>
+                  <p className="mt-1 text-sm text-muted-foreground">{application.category} · {application.contact} · submitted {application.submittedAt}</p>
+                  <p className="mt-3 text-sm text-foreground">{application.notes}</p>
                 </div>
-                <p className="mt-2 text-sm">{application.notes}</p>
+                <Button asChild variant="outline">
+                  <Link href={`/ops/applications/${application.id}`}>
+                    Open application
+                    <RiArrowRightUpLine className="size-4" />
+                  </Link>
+                </Button>
               </div>
-            ))}
-          </div>
+            </Card>
+          ))
         )}
-      </div>
-    </PortalShell>
+      </section>
+    </WorkspaceShell>
   );
 }

@@ -1,68 +1,52 @@
-import Link from "next/link";
+import { redirect } from "next/navigation";
+import { RiPriceTag3Line } from "react-icons/ri";
 
-import { SiteHeader } from "../../components/site-header";
+import { PublicShell } from "@/components/workspace-shell";
+import { LoginLaneTabs } from "@/components/login-lane-tabs";
+import { RoleShowcase } from "@/components/role-showcase";
 
 export const dynamic = "force-dynamic";
 
 const errorMessages: Record<string, string> = {
-  "invalid-credentials": "Credentials were rejected by IAM. Check the email and password, then try again.",
-  "missing-fields": "Email and password are both required.",
+  "invalid-credentials": "Incorrect email or password.",
+  "missing-fields": "Enter both email and password.",
 };
 
-export default function LoginPage({
+export default async function LoginPage({
   searchParams,
 }: {
-  searchParams?: { error?: string; next?: string };
+  searchParams?: Promise<{ error?: string; next?: string }>;
 }) {
-  const error = searchParams?.error ? errorMessages[searchParams.error] ?? "Authentication failed." : null;
-  const next = searchParams?.next?.startsWith("/") ? searchParams.next : "/provider";
+  const params = await searchParams;
+  const nextValue = params?.next?.startsWith("/") ? params.next : "/buyer";
+
+  if (nextValue.startsWith("/ops")) {
+    redirect(`/internal/login?next=${encodeURIComponent(nextValue)}`);
+  }
+
+  const error = params?.error ? errorMessages[params.error] ?? "Sign in failed. Try again." : null;
+  const next = nextValue.startsWith("/provider") ? "/provider" : "/buyer";
 
   return (
-    <main className="page-frame">
-      <SiteHeader />
-
-      <section className="auth-shell">
-        <div className="auth-panel">
-          <span className="eyebrow">Access / session bootstrap</span>
-          <h1 className="portal-title">Enter the market with a server-held session.</h1>
-          <p className="section-copy">
-            The web shell does not keep the bearer token in client-side state. Login submits to a Next route,
-            the route talks to IAM, and the resulting session cookie stays httpOnly.
-          </p>
-
-          {error ? <p className="auth-error">{error}</p> : null}
-
-          <form className="auth-form" action="/auth/login" method="post">
-            <input type="hidden" name="next" value={next} />
-
-            <label className="auth-field">
-              <span>Email</span>
-              <input name="email" type="email" autoComplete="email" placeholder="owner@example.com" required />
-            </label>
-
-            <label className="auth-field">
-              <span>Password</span>
-              <input
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                placeholder="correct horse battery staple"
-                required
-              />
-            </label>
-
-            <button type="submit" className="auth-submit">
-              Create session
-            </button>
-          </form>
-
-          <p className="footer-note">
-            Default destination is the provider portal. Use direct links like{" "}
-            <Link href="/login?next=/ops">`/login?next=/ops`</Link> when you need a different landing page.
-          </p>
+    <PublicShell>
+      <div className="grid flex-1 gap-10 lg:grid-cols-[1.02fr_0.98fr] lg:items-start">
+        <div className="space-y-6">
+          <div className="space-y-4">
+            <div className="eyebrow-pill">
+              <RiPriceTag3Line className="size-3.5" />
+              Marketplace access
+            </div>
+            <h1 className="max-w-4xl text-5xl font-semibold leading-[1.04] text-balance sm:text-6xl">
+              Enter the market. Lead with budget. Decide with proposals.
+            </h1>
+            <p className="max-w-2xl text-base leading-8 text-muted-foreground text-pretty">
+              Clients post requests with a live budget. Providers respond with proposals and delivery windows. Sign in to continue where you belong.
+            </p>
+          </div>
+          <RoleShowcase compact />
         </div>
-      </section>
-    </main>
+        <LoginLaneTabs error={error} initialNext={next} />
+      </div>
+    </PublicShell>
   );
 }
-

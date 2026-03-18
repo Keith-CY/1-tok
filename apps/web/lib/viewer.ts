@@ -71,16 +71,20 @@ export async function getViewerSession(): Promise<ViewerSession | null> {
 export async function requirePortalViewer(kind: PortalKind, nextPath: string) {
   const viewer = await getViewerSession();
   if (!viewer) {
-    redirect(`/login?next=${encodeURIComponent(nextPath)}`);
+    redirect(`${loginPathFor(kind)}?next=${encodeURIComponent(nextPath)}`);
   }
 
   const membership = findPortalMembership(viewer.actor, kind);
   if (!membership) {
-    redirect("/");
+    redirect(kind === "ops" ? "/internal/login" : "/");
   }
 
   return {
     ...viewer,
     membership,
   };
+}
+
+function loginPathFor(kind: PortalKind) {
+  return kind === "ops" ? "/internal/login" : "/login";
 }

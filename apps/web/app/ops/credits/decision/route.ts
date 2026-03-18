@@ -1,24 +1,28 @@
-import { redirectToPath } from "../../../../lib/redirect";
 import { postGatewayJSON, readRequestPortalViewer } from "../../../../lib/marketplace-actions";
+import { redirectToPath } from "../../../../lib/redirect";
 
 export async function POST(request: Request) {
-	const viewer = await readRequestPortalViewer(request, "ops");
-	if (!viewer) {
-		return redirectToPath("/login?next=%2Fops");
-	}
+  const viewer = await readRequestPortalViewer(request, "ops");
+  if (!viewer) {
+    return redirectToPath("/internal/login?next=%2Fops");
+  }
 
   const form = await request.formData();
-  const payload = {
-    completedOrders: parseCount(form.get("completedOrders")),
-    successfulPayments: parseCount(form.get("successfulPayments")),
-    failedPayments: parseCount(form.get("failedPayments")),
-    disputedOrders: parseCount(form.get("disputedOrders")),
-    lifetimeSpendCents: parseCount(form.get("lifetimeSpendCents")),
-  };
+  const completedOrders = Number.parseInt(String(form.get("completedOrders") ?? "0"), 10);
+  const disputedOrders = Number.parseInt(String(form.get("disputedOrders") ?? "0"), 10);
+  const lifetimeSpendCents = Number.parseInt(String(form.get("lifetimeSpendCents") ?? "0"), 10);
+  const successfulPayments = Number.parseInt(String(form.get("successfulPayments") ?? "0"), 10);
+  const failedPayments = Number.parseInt(String(form.get("failedPayments") ?? "0"), 10);
 
   try {
-    const response = await postGatewayJSON("/api/v1/credits/decision", viewer.token, payload);
-    const result = (await response.json()) as {
+    const response = await postGatewayJSON("/api/v1/credits/decision", viewer.token, {
+      completedOrders,
+      successfulPayments,
+      failedPayments,
+      disputedOrders,
+      lifetimeSpendCents,
+    });
+    const payload = (await response.json()) as {
       decision?: {
         approved?: boolean;
         recommendedLimitCents?: number;
@@ -26,17 +30,14 @@ export async function POST(request: Request) {
       };
     };
 
-		const nextURL = new URL("/ops", "http://portal.internal");
-		nextURL.searchParams.set("creditApproved", String(Boolean(result.decision?.approved)));
-		nextURL.searchParams.set("recommendedLimitCents", String(result.decision?.recommendedLimitCents ?? 0));
-		nextURL.searchParams.set("creditReason", result.decision?.reason ?? "Decision unavailable");
-		return redirectToPath(`${nextURL.pathname}${nextURL.search}${nextURL.hash}`);
-	} catch {
-		return redirectToPath("/ops?error=credit-decision-failed");
-	}
-}
-
-function parseCount(value: FormDataEntryValue | null): number {
-  const parsed = Number.parseInt(String(value ?? "0"), 10);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+    const nextURL = new URL("/ops", request.url);
+    nextURL.searchParams.set("creditApproved", String(Boolean(payload.decision?.approved)));
+    nextURL.searchParams.set("recommendedLimitCents", String(payload.decision?.recommendedLimitCents ?? 0));
+    if (payload.decision?.reason) {
+      nextURL.searchParams.set("creditReason", payload.decision.reason);
+    }
+    return redirectToPath(`${nextURL.pathname}${nextURL.search}${nextURL.hash}`);
+  } catch {
+    return redirectToPath("/ops?error=credit-decision-failed");
+  }
 }
