@@ -82,7 +82,6 @@ export interface ProviderOrderDetail {
   rfq: RFQ | null;
   fundingRecords: FundingRecord[];
 }
-
 export interface OpsDashboardData {
   summary: {
     activeOrders: number;
@@ -333,7 +332,6 @@ export async function getProviderOrderDetail(options: {
     ),
   };
 }
-
 export async function getOpsDashboardData(options: { authToken: string; requireLive?: boolean }): Promise<OpsDashboardData> {
   const [providers, orders, fundingRecords, disputes] = await Promise.all([
     getProviders({ authToken: options.authToken, requireLive: options.requireLive }),

@@ -90,8 +90,8 @@ export default async function BuyerPage() {
                         <h3 className="text-lg font-semibold leading-tight tracking-tight break-words text-balance">{item.title}</h3>
                       </div>
                       <FeedMetric label="Budget" value={formatMoney(item.budgetCents)} emphasize />
-                    <FeedMetric label="Current low" value={low ? formatMoney(low.quoteCents) : "No price"} />
-                    <FeedMetric label="Spread" value={low ? formatMoney(Math.max(item.budgetCents - low.quoteCents, 0)) : "Open"} />
+                      <FeedMetric label="Current low" value={low ? formatMoney(low.quoteCents) : "No price"} />
+                      <FeedMetric label="Spread" value={low ? formatMoney(Math.max(item.budgetCents - low.quoteCents, 0)) : "Open"} />
                       <div className="space-y-1 text-sm text-muted-foreground">
                         <div>{formatProposalCount(item.bidCount)}</div>
                         <div>{formatDate(item.responseDeadlineAt)}</div>
@@ -244,9 +244,7 @@ function SpotMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function getLowestBid(item: {
-  bids: Array<{ id: string; quoteCents: number }>;
-}) {
+function getLowestBid(item: { bids: Array<{ id: string; quoteCents: number }> }) {
   if (item.bids.length === 0) return null;
   return [...item.bids].sort((left, right) => left.quoteCents - right.quoteCents)[0] ?? null;
 }
