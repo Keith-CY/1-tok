@@ -1,0 +1,290 @@
+[
+  {
+    "businessLine": "public",
+    "device": "desktop",
+    "order": 1,
+    "slug": "home",
+    "title": "Home",
+    "url": "/",
+    "path": "public/desktop/01-home.png"
+  },
+  {
+    "businessLine": "public",
+    "device": "desktop",
+    "order": 2,
+    "slug": "buyer-login",
+    "title": "Buyer login",
+    "url": "/login?next=/buyer",
+    "path": "public/desktop/02-buyer-login.png"
+  },
+  {
+    "businessLine": "public",
+    "device": "desktop",
+    "order": 3,
+    "slug": "provider-login",
+    "title": "Provider login",
+    "url": "/login?next=/provider",
+    "path": "public/desktop/03-provider-login.png"
+  },
+  {
+    "businessLine": "public",
+    "device": "desktop",
+    "order": 4,
+    "slug": "internal-login",
+    "title": "Internal login",
+    "url": "/internal/login?next=/ops",
+    "path": "public/desktop/04-internal-login.png"
+  },
+  {
+    "businessLine": "buyer",
+    "device": "desktop",
+    "order": 5,
+    "slug": "dashboard",
+    "title": "Buyer dashboard",
+    "url": "/buyer",
+    "path": "buyer/desktop/05-dashboard.png"
+  },
+  {
+    "businessLine": "buyer",
+    "device": "desktop",
+    "order": 6,
+    "slug": "post-request",
+    "title": "Buyer post request",
+    "url": "/buyer/rfqs/create",
+    "path": "buyer/desktop/06-post-request.png"
+  },
+  {
+    "businessLine": "buyer",
+    "device": "desktop",
+    "order": 7,
+    "slug": "order-detail",
+    "title": "Buyer order detail",
+    "url": "/buyer/orders/ord_1",
+    "path": "buyer/desktop/07-order-detail.png"
+  },
+  {
+    "businessLine": "provider",
+    "device": "desktop",
+    "order": 8,
+    "slug": "dashboard",
+    "title": "Provider dashboard",
+    "url": "/provider",
+    "path": "provider/desktop/08-dashboard.png"
+  },
+  {
+    "businessLine": "provider",
+    "device": "desktop",
+    "order": 9,
+    "slug": "rfqs",
+    "title": "Provider RFQs",
+    "url": "/provider/rfqs",
+    "path": "provider/desktop/09-rfqs.png"
+  },
+  {
+    "businessLine": "provider",
+    "device": "desktop",
+    "order": 10,
+    "slug": "rfq-detail",
+    "title": "Provider RFQ detail",
+    "url": "/provider/rfqs/rfq_1",
+    "path": "provider/desktop/10-rfq-detail.png"
+  },
+  {
+    "businessLine": "provider",
+    "device": "desktop",
+    "order": 11,
+    "slug": "proposals",
+    "title": "Provider proposals",
+    "url": "/provider/proposals",
+    "path": "provider/desktop/11-proposals.png"
+  },
+  {
+    "businessLine": "provider",
+    "device": "desktop",
+    "order": 12,
+    "slug": "order-detail",
+    "title": "Provider order detail",
+    "url": "/provider/orders/ord_1",
+    "path": "provider/desktop/12-order-detail.png"
+  },
+  {
+    "businessLine": "ops",
+    "device": "desktop",
+    "order": 13,
+    "slug": "dashboard",
+    "title": "Ops dashboard",
+    "url": "/ops",
+    "path": "ops/desktop/13-dashboard.png"
+  },
+  {
+    "businessLine": "ops",
+    "device": "desktop",
+    "order": 14,
+    "slug": "applications",
+    "title": "Ops applications",
+    "url": "/ops/applications",
+    "path": "ops/desktop/14-applications.png"
+  },
+  {
+    "businessLine": "ops",
+    "device": "desktop",
+    "order": 15,
+    "slug": "application-detail",
+    "title": "Ops application detail",
+    "url": "/ops/applications/app_1",
+    "path": "ops/desktop/15-application-detail.png"
+  },
+  {
+    "businessLine": "ops",
+    "device": "desktop",
+    "order": 16,
+    "slug": "disputes",
+    "title": "Ops disputes",
+    "url": "/ops/disputes",
+    "path": "ops/desktop/16-disputes.png"
+  },
+  {
+    "businessLine": "public",
+    "device": "mobile",
+    "order": 1,
+    "slug": "home",
+    "title": "Home",
+    "url": "/",
+    "path": "public/mobile/01-home.png"
+  },
+  {
+    "businessLine": "public",
+    "device": "mobile",
+    "order": 2,
+    "slug": "buyer-login",
+    "title": "Buyer login",
+    "url": "/login?next=/buyer",
+    "path": "public/mobile/02-buyer-login.png"
+  },
+  {
+    "businessLine": "public",
+    "device": "mobile",
+    "order": 3,
+    "slug": "provider-login",
+    "title": "Provider login",
+    "url": "/login?next=/provider",
+    "path": "public/mobile/03-provider-login.png"
+  },
+  {
+    "businessLine": "public",
+    "device": "mobile",
+    "order": 4,
+    "slug": "internal-login",
+    "title": "Internal login",
+    "url": "/internal/login?next=/ops",
+    "path": "public/mobile/04-internal-login.png"
+  },
+  {
+    "businessLine": "buyer",
+    "device": "mobile",
+    "order": 5,
+    "slug": "dashboard",
+    "title": "Buyer dashboard",
+    "url": "/buyer",
+    "path": "buyer/mobile/05-dashboard.png"
+  },
+  {
+    "businessLine": "buyer",
+    "device": "mobile",
+    "order": 6,
+    "slug": "post-request",
+    "title": "Buyer post request",
+    "url": "/buyer/rfqs/create",
+    "path": "buyer/mobile/06-post-request.png"
+  },
+  {
+    "businessLine": "buyer",
+    "device": "mobile",
+    "order": 7,
+    "slug": "order-detail",
+    "title": "Buyer order detail",
+    "url": "/buyer/orders/ord_1",
+    "path": "buyer/mobile/07-order-detail.png"
+  },
+  {
+    "businessLine": "provider",
+    "device": "mobile",
+    "order": 8,
+    "slug": "dashboard",
+    "title": "Provider dashboard",
+    "url": "/provider",
+    "path": "provider/mobile/08-dashboard.png"
+  },
+  {
+    "businessLine": "provider",
+    "device": "mobile",
+    "order": 9,
+    "slug": "rfqs",
+    "title": "Provider RFQs",
+    "url": "/provider/rfqs",
+    "path": "provider/mobile/09-rfqs.png"
+  },
+  {
+    "businessLine": "provider",
+    "device": "mobile",
+    "order": 10,
+    "slug": "rfq-detail",
+    "title": "Provider RFQ detail",
+    "url": "/provider/rfqs/rfq_1",
+    "path": "provider/mobile/10-rfq-detail.png"
+  },
+  {
+    "businessLine": "provider",
+    "device": "mobile",
+    "order": 11,
+    "slug": "proposals",
+    "title": "Provider proposals",
+    "url": "/provider/proposals",
+    "path": "provider/mobile/11-proposals.png"
+  },
+  {
+    "businessLine": "provider",
+    "device": "mobile",
+    "order": 12,
+    "slug": "order-detail",
+    "title": "Provider order detail",
+    "url": "/provider/orders/ord_1",
+    "path": "provider/mobile/12-order-detail.png"
+  },
+  {
+    "businessLine": "ops",
+    "device": "mobile",
+    "order": 13,
+    "slug": "dashboard",
+    "title": "Ops dashboard",
+    "url": "/ops",
+    "path": "ops/mobile/13-dashboard.png"
+  },
+  {
+    "businessLine": "ops",
+    "device": "mobile",
+    "order": 14,
+    "slug": "applications",
+    "title": "Ops applications",
+    "url": "/ops/applications",
+    "path": "ops/mobile/14-applications.png"
+  },
+  {
+    "businessLine": "ops",
+    "device": "mobile",
+    "order": 15,
+    "slug": "application-detail",
+    "title": "Ops application detail",
+    "url": "/ops/applications/app_1",
+    "path": "ops/mobile/15-application-detail.png"
+  },
+  {
+    "businessLine": "ops",
+    "device": "mobile",
+    "order": 16,
+    "slug": "disputes",
+    "title": "Ops disputes",
+    "url": "/ops/disputes",
+    "path": "ops/mobile/16-disputes.png"
+  }
+]
