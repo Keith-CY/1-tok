@@ -90,13 +90,13 @@ func RunPortalSmoke(ctx context.Context, cfg PortalConfig) (PortalSummary, error
 		return PortalSummary{}, err
 	}
 
-	if err := loginPortal(ctx, buyerClient, webBaseURL, buyer, "/buyer", "Buyer portal / orchestration budget"); err != nil {
+	if err := loginPortal(ctx, buyerClient, webBaseURL, buyer, "/buyer", "Open request board"); err != nil {
 		return PortalSummary{}, fmt.Errorf("buyer login: %w", err)
 	}
-	if err := loginPortal(ctx, providerClient, webBaseURL, provider, "/provider", "Provider portal / delivery + payouts"); err != nil {
+	if err := loginPortal(ctx, providerClient, webBaseURL, provider, "/provider", "Open request board"); err != nil {
 		return PortalSummary{}, fmt.Errorf("provider login: %w", err)
 	}
-	if err := loginPortal(ctx, opsClient, webBaseURL, ops, "/ops", "Ops portal / treasury + governance"); err != nil {
+	if err := loginPortal(ctx, opsClient, webBaseURL, ops, "/ops", "Put human review at the top. Push everything else down a layer."); err != nil {
 		return PortalSummary{}, fmt.Errorf("ops login: %w", err)
 	}
 
@@ -120,7 +120,7 @@ func RunPortalSmoke(ctx context.Context, cfg PortalConfig) (PortalSummary, error
 		"scope":              {"Investigate the failure, stabilize the runtime, and summarize next steps."},
 		"budgetCents":        {"4200"},
 		"responseDeadlineAt": {time.Now().Add(24 * time.Hour).Format(time.RFC3339Nano)},
-	}, "/buyer", "Buyer portal / orchestration budget"); err != nil {
+	}, "/buyer", "Open request board"); err != nil {
 		return PortalSummary{}, fmt.Errorf("create rfq: %w", err)
 	}
 
@@ -138,7 +138,7 @@ func RunPortalSmoke(ctx context.Context, cfg PortalConfig) (PortalSummary, error
 		"quoteCents":           {"3900"},
 		"milestoneTitle":       {"Execution"},
 		"milestoneBudgetCents": {"4200"},
-	}, "/provider", "Provider portal / delivery + payouts"); err != nil {
+	}, "/provider", "Open request board"); err != nil {
 		return PortalSummary{}, fmt.Errorf("create bid: %w", err)
 	}
 
@@ -154,7 +154,7 @@ func RunPortalSmoke(ctx context.Context, cfg PortalConfig) (PortalSummary, error
 		"bidId":        {bids[0].ID},
 		"fundingMode":  {"credit"},
 		"creditLineId": {"credit_1"},
-	}, "/buyer", "Buyer portal / orchestration budget"); err != nil {
+	}, "/buyer", "Open request board"); err != nil {
 		return PortalSummary{}, fmt.Errorf("award rfq: %w", err)
 	}
 
@@ -184,7 +184,7 @@ func RunPortalSmoke(ctx context.Context, cfg PortalConfig) (PortalSummary, error
 		"failedPayments":     {"1"},
 		"disputedOrders":     {"1"},
 		"lifetimeSpendCents": {"480000"},
-	}, "/ops", "Ops portal / treasury + governance")
+	}, "/ops", "Put human review at the top. Push everything else down a layer.")
 	if err != nil {
 		return PortalSummary{}, fmt.Errorf("credit decision: %w", err)
 	}
@@ -201,7 +201,7 @@ func RunPortalSmoke(ctx context.Context, cfg PortalConfig) (PortalSummary, error
 
 	resolveURL, err := submitForm(ctx, opsClient, fmt.Sprintf("%s/ops/disputes/%s/resolve", webBaseURL, dispute.ID), url.Values{
 		"resolution": {"Approved reimbursement after ops evidence review."},
-	}, "/ops", "Ops portal / treasury + governance")
+	}, "/ops", "Put human review at the top. Push everything else down a layer.")
 	if err != nil {
 		return PortalSummary{}, fmt.Errorf("resolve dispute: %w", err)
 	}

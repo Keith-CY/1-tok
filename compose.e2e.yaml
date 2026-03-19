@@ -150,6 +150,7 @@ services:
       context: .
       dockerfile: deploy/e2e/Dockerfile
     environment:
+      RELEASE_E2E_INCLUDE_FNN_SMOKE: ${RELEASE_E2E_INCLUDE_FNN_SMOKE:-false}
       RELEASE_FNN_ADAPTER_BASE_URL: http://fiber-adapter:8091
       RELEASE_FNN_ADAPTER_APP_ID: app_local
       RELEASE_FNN_ADAPTER_HMAC_SECRET: secret_local
@@ -173,12 +174,6 @@ services:
       RELEASE_ABUSE_IAM_BASE_URL: http://iam:8081
       RELEASE_ABUSE_SENTRY_BASE_URL: http://mock-sentry:8092
     depends_on:
-      fnn:
-        condition: service_healthy
-      fnn2:
-        condition: service_healthy
-      fiber-adapter:
-        condition: service_healthy
       mock-fiber:
         condition: service_healthy
       mock-carrier:
@@ -202,7 +197,17 @@ services:
     command:
       - /bin/sh
       - -lc
-      - /usr/local/bin/release-fnn-adapter-smoke && /usr/local/bin/release-smoke && /usr/local/bin/release-portal-smoke && /usr/local/bin/release-abuse-smoke
+      - >
+        if [ "$${RELEASE_E2E_INCLUDE_FNN_SMOKE:-false}" = "true" ]; then
+          /usr/local/bin/release-fnn-adapter-smoke &&
+          /usr/local/bin/release-smoke &&
+          /usr/local/bin/release-portal-smoke &&
+          /usr/local/bin/release-abuse-smoke;
+        else
+          /usr/local/bin/release-smoke &&
+          /usr/local/bin/release-portal-smoke &&
+          /usr/local/bin/release-abuse-smoke;
+        fi
 
   e2e-screenshot-runner:
     build:

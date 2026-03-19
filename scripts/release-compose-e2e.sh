@@ -6,6 +6,7 @@ BASE_COMPOSE_FILE="${ROOT_DIR}/compose.yaml"
 FNN_COMPOSE_FILE="${ROOT_DIR}/compose.fnn.yaml"
 E2E_COMPOSE_FILE="${ROOT_DIR}/compose.e2e.yaml"
 LOG_DIR="$(mktemp -d /tmp/1tok-compose-e2e.XXXXXX)"
+BUN_VERSION="${BUN_VERSION:-$(grep -o 'bun@[^"]*' "${ROOT_DIR}/package.json" | cut -d'@' -f2)}"
 
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-1tok-e2e}"
 ONE_TOK_EXECUTION_GATEWAY_TOKEN="${ONE_TOK_EXECUTION_GATEWAY_TOKEN:-local-execution-gateway-token}"
@@ -57,6 +58,7 @@ compose() {
     FNN_ASSET_SHA256="${FNN_ASSET_SHA256}" \
     FIBER_SECRET_KEY_PASSWORD="${FIBER_SECRET_KEY_PASSWORD}" \
     FNN_CKB_RPC_URL="${FNN_CKB_RPC_URL}" \
+    BUN_VERSION="${BUN_VERSION}" \
     docker compose -f "${BASE_COMPOSE_FILE}" -f "${FNN_COMPOSE_FILE}" -f "${E2E_COMPOSE_FILE}" "$@"
   )
 }

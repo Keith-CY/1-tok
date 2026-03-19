@@ -118,13 +118,13 @@ func TestRunPortalSmokeExercisesPortalForms(t *testing.T) {
 			http.Redirect(w, r, r.Form.Get("next"), http.StatusSeeOther)
 		case r.Method == http.MethodGet && r.URL.Path == "/buyer":
 			assertPortalCookie(t, r, "sess_buyer")
-			_, _ = w.Write([]byte("Buyer portal / orchestration budget"))
+			_, _ = w.Write([]byte("Open request board"))
 		case r.Method == http.MethodGet && r.URL.Path == "/provider":
 			assertPortalCookie(t, r, "sess_provider")
-			_, _ = w.Write([]byte("Provider portal / delivery + payouts"))
+			_, _ = w.Write([]byte("Open request board"))
 		case r.Method == http.MethodGet && r.URL.Path == "/ops":
 			assertPortalCookie(t, r, "sess_ops")
-			_, _ = w.Write([]byte("Ops portal / treasury + governance"))
+			_, _ = w.Write([]byte("Put human review at the top. Push everything else down a layer."))
 		case r.Method == http.MethodPost && r.URL.Path == "/buyer/rfqs":
 			assertPortalCookie(t, r, "sess_buyer")
 			if err := r.ParseForm(); err != nil {
