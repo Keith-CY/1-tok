@@ -23,19 +23,19 @@ const marketExamples = [
 export default function HomePage() {
   return (
     <PublicShell>
-      <div className="grid flex-1 gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-start">
-        <section className="space-y-8 pt-2">
-          <div className="space-y-6">
+      <div className="grid flex-1 gap-14 lg:grid-cols-[0.92fr_1.08fr] lg:items-start">
+        <section className="space-y-10 pt-3">
+          <div className="space-y-7">
             <div className="eyebrow-pill">
               <RiPriceTag3Line className="size-3.5" />
-              1-tok marketplace
+              The digital broadsheet
             </div>
-            <div className="space-y-4">
-              <h1 className="max-w-4xl text-5xl font-semibold leading-[1.02] tracking-tight text-balance sm:text-6xl">
-                Price wins the work.
+            <div className="space-y-5">
+              <h1 className="max-w-4xl font-display text-6xl leading-[0.94] tracking-tight text-balance text-foreground sm:text-7xl">
+                Price is visible. Delivery stays legible.
               </h1>
               <p className="max-w-2xl text-base leading-8 text-muted-foreground text-pretty">
-                1-tok turns carrier, dispute, settlement, and delivery support into open requests. Clients publish a budget. Providers answer with live proposals and delivery windows.
+                1-tok turns carrier, dispute, settlement, and delivery support into an editorial market surface. Clients publish a budget. Providers respond in public. Awards move directly into readable operational delivery.
               </p>
             </div>
           </div>
@@ -48,31 +48,33 @@ export default function HomePage() {
               </Link>
             </Button>
             <Button asChild variant="outline" size="lg">
-              <Link href="/login?next=/provider">View live requests</Link>
+              <Link href="/login?next=/provider">View the live request board</Link>
             </Button>
           </div>
 
-          <div className="rounded-md border border-border bg-card">
-            <div className="grid gap-px rounded-md bg-border sm:grid-cols-3">
-              {marketStats.map((item) => (
-                <div key={item.label} className="space-y-2 bg-card px-5 py-5">
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">{item.label}</div>
-                  <div className="font-mono text-3xl font-semibold tracking-tight tabular-nums text-foreground">{item.value}</div>
-                  <div className="text-sm text-muted-foreground">{item.detail}</div>
+          <div className="grid gap-6 border-t border-border/70 pt-6 sm:grid-cols-3">
+            {marketStats.map((item) => (
+              <div key={item.label} className="space-y-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">{item.label}</div>
+                <div className="font-display text-4xl leading-none tracking-tight text-foreground">{item.value}</div>
+                <div className="text-sm leading-7 text-muted-foreground">{item.detail}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="border-t border-border/70 pt-6">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-primary">Working set</div>
+            <div className="mt-4 flex flex-wrap gap-x-5 gap-y-3 text-sm text-muted-foreground">
+              {marketExamples.map((item) => (
+                <div key={item} className="inline-flex items-center gap-2">
+                  <span className="text-primary">/</span>
+                  <span>{item}</span>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            {marketExamples.map((item) => (
-              <div key={item} className="rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground shadow-[0_8px_18px_-16px_rgba(15,23,42,0.18)]">
-                {item}
-              </div>
-            ))}
-          </div>
-
-          <div className="rounded-md border border-border bg-card px-5 py-4">
+          <div className="market-card px-6 py-6">
             <div className="grid gap-4 sm:grid-cols-3">
               <InfoColumn
                 icon={RiAuctionLine}
@@ -110,7 +112,7 @@ function InfoColumn({
 }) {
   return (
     <div className="min-w-0 space-y-2">
-      <div className="inline-flex items-center gap-2 text-xs font-medium text-primary">
+      <div className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-primary">
         <Icon className="size-4" />
         {title}
       </div>

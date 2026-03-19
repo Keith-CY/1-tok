@@ -12,6 +12,7 @@ import {
 } from "react-icons/ri";
 
 import { cn } from "@/lib/utils";
+import { WorkspaceNav, type WorkspaceNavItem } from "@/components/workspace-nav";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -24,12 +25,6 @@ type ShellAction = {
   variant?: "default" | "secondary" | "outline" | "ghost" | "soft";
 };
 
-type NavItem = {
-  href: string;
-  label: string;
-  icon: IconType;
-};
-
 const shellConfig: Record<
   WorkspaceRole,
   {
@@ -37,7 +32,7 @@ const shellConfig: Record<
     subtitle: string;
     icon: IconType;
     homeHref: string;
-    nav: NavItem[];
+    nav: WorkspaceNavItem[];
   }
 > = {
   buyer: {
@@ -46,9 +41,9 @@ const shellConfig: Record<
     icon: RiStore2Line,
     homeHref: "/buyer",
     nav: [
-      { href: "/buyer", label: "Requests", icon: RiFolderChartLine },
-      { href: "/buyer/rfqs/create", label: "Post request", icon: RiAddLine },
-      { href: "/buyer", label: "Delivery", icon: RiTaskLine },
+      { href: "/buyer", label: "Requests", icon: "folderChart" },
+      { href: "/buyer/rfqs/create", label: "Post request", icon: "add" },
+      { href: "/buyer", label: "Delivery", icon: "task" },
     ],
   },
   provider: {
@@ -57,9 +52,9 @@ const shellConfig: Record<
     icon: RiTaskLine,
     homeHref: "/provider",
     nav: [
-      { href: "/provider", label: "Marketplace", icon: RiStore2Line },
-      { href: "/provider/rfqs", label: "Open requests", icon: RiFileList3Line },
-      { href: "/provider/proposals", label: "My proposals", icon: RiFolderChartLine },
+      { href: "/provider", label: "Marketplace", icon: "store" },
+      { href: "/provider/rfqs", label: "Open requests", icon: "fileList" },
+      { href: "/provider/proposals", label: "My proposals", icon: "folderChart" },
     ],
   },
   ops: {
@@ -68,9 +63,9 @@ const shellConfig: Record<
     icon: RiShieldCheckLine,
     homeHref: "/ops",
     nav: [
-      { href: "/ops", label: "Queue", icon: RiStore2Line },
-      { href: "/ops/applications", label: "Applications", icon: RiFileList3Line },
-      { href: "/ops/disputes", label: "Disputes", icon: RiFolderChartLine },
+      { href: "/ops", label: "Queue", icon: "store" },
+      { href: "/ops/applications", label: "Applications", icon: "fileList" },
+      { href: "/ops/disputes", label: "Disputes", icon: "folderChart" },
     ],
   },
 };
@@ -80,13 +75,16 @@ export function PublicShell({ children, mode = "public" }: { children: ReactNode
 
   return (
     <main className="min-h-dvh bg-background text-foreground">
-      <div className="mx-auto flex min-h-dvh max-w-7xl flex-col px-4 py-6 sm:px-6 lg:px-8">
-        <header className="mb-12 flex flex-wrap items-center justify-between gap-4 border-b border-border pb-5">
-          <Link href={isInternal ? "/internal/login" : "/"} className="space-y-1">
-            <div className="text-xs font-medium text-primary">1-tok</div>
-            <div className="text-lg font-semibold text-foreground">{isInternal ? "Operations" : "Marketplace"}</div>
+      <div className="mx-auto flex min-h-dvh max-w-[1520px] flex-col px-4 pb-10 pt-4 sm:px-6 lg:px-8">
+        <header className="sticky top-4 z-20 mb-12 flex h-16 flex-wrap items-center justify-between gap-4 rounded-full border border-border/70 bg-background/82 px-5 backdrop-blur-xl">
+          <Link href={isInternal ? "/internal/login" : "/"} className="flex min-w-0 flex-col">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.28em] text-primary">1-tok</div>
+            <div className="font-display text-[1.3rem] leading-none text-foreground">{isInternal ? "Operations" : "Marketplace"}</div>
           </Link>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="hidden text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground md:inline-flex">
+              {isInternal ? "Operational mode" : "Editorial mode"}
+            </div>
             {isInternal ? (
               <Button asChild variant="outline" size="sm">
                 <Link href="/">Back to marketplace</Link>
@@ -103,7 +101,7 @@ export function PublicShell({ children, mode = "public" }: { children: ReactNode
             )}
           </div>
         </header>
-        {children}
+        <div className="flex-1">{children}</div>
       </div>
     </main>
   );
@@ -130,35 +128,45 @@ export function WorkspaceShell({
 
   return (
     <main className="min-h-dvh bg-background text-foreground">
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <header className="mb-10 border-b border-border pb-5">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex flex-wrap items-center gap-4 lg:gap-8">
-              <Link href={config.homeHref} className="space-y-1">
-                <div className="text-xs font-medium text-primary">1-tok</div>
-                <div className="text-lg font-semibold text-foreground">Marketplace</div>
-              </Link>
-              <nav className="hidden flex-wrap items-center gap-2 md:flex">
-                {config.nav.map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <Link
-                      key={`${item.href}:${item.label}`}
-                      href={item.href}
-                      className="inline-flex items-center gap-2 rounded-md border border-transparent px-3 py-2 text-sm text-muted-foreground transition-[background-color,color,border-color] duration-150 hover:border-border hover:bg-secondary hover:text-foreground"
-                    >
-                      <Icon className="size-4" />
-                      {item.label}
-                    </Link>
-                  );
-                })}
-              </nav>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="hidden items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground shadow-sm md:inline-flex">
-                <RoleIcon className="size-4 text-primary" />
-                <span>{config.label}</span>
+      <div className="mx-auto flex min-h-dvh max-w-[1560px] flex-col gap-8 px-4 py-5 sm:px-6 lg:flex-row lg:gap-12 lg:px-8">
+        <aside className="hidden lg:flex lg:w-[220px] lg:flex-col lg:justify-between lg:pb-4 lg:pt-3">
+          <div className="space-y-8">
+            <Link href={config.homeHref} className="block space-y-2">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.28em] text-primary">1-tok</div>
+              <div className="font-display text-[1.9rem] leading-none text-foreground">Marketplace</div>
+              <div className="max-w-[18ch] text-sm leading-6 text-muted-foreground">{config.subtitle}</div>
+            </Link>
+
+            <div className="rounded-[1.25rem] border border-border/70 bg-card/85 p-4">
+              <div className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-primary">
+                <RoleIcon className="size-4" />
+                {config.label}
               </div>
+              {status ? <div className="mt-3 text-sm leading-6 text-muted-foreground">{status}</div> : null}
+            </div>
+
+            <WorkspaceNav items={config.nav} />
+          </div>
+
+          <div className="space-y-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">Signed in</div>
+            <form action="/auth/logout" method="post">
+              <input type="hidden" name="next" value={logoutTarget} />
+              <Button type="submit" variant="outline" size="sm" className="w-full justify-between">
+                Sign out
+                <RiLogoutBoxRLine className="size-4" />
+              </Button>
+            </form>
+          </div>
+        </aside>
+
+        <div className="min-w-0 flex-1">
+          <header className="border-b border-border/70 pb-8">
+            <div className="flex items-center justify-between gap-3 lg:hidden">
+              <Link href={config.homeHref} className="flex min-w-0 flex-col">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.28em] text-primary">1-tok</div>
+                <div className="font-display text-[1.35rem] leading-none text-foreground">{config.label}</div>
+              </Link>
               <form action="/auth/logout" method="post">
                 <input type="hidden" name="next" value={logoutTarget} />
                 <Button type="submit" variant="outline" size="sm">
@@ -167,53 +175,43 @@ export function WorkspaceShell({
                 </Button>
               </form>
             </div>
-          </div>
 
-          <div className="mt-6 flex gap-2 overflow-x-auto pb-1 md:hidden">
-            {config.nav.map((item) => {
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={`${item.href}:${item.label}`}
-                  href={item.href}
-                  className="inline-flex shrink-0 items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm text-muted-foreground shadow-sm"
-                >
-                  <Icon className="size-4" />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </div>
-
-          <div className="mt-8 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-4xl space-y-4">
-              <div className="eyebrow-pill">
-                <RoleIcon className="size-3.5" />
-                <span>{config.label}</span>
-                {status ? <span className="text-muted-foreground">· {status}</span> : null}
+            <div className="mt-6 flex flex-col gap-6 lg:mt-0 lg:flex-row lg:items-end lg:justify-between">
+              <div className="max-w-4xl space-y-4">
+                <div className="eyebrow-pill">
+                  <RoleIcon className="size-3.5" />
+                  <span>{config.label}</span>
+                  {status ? <span className="text-muted-foreground">/ {status}</span> : null}
+                </div>
+                <div className="space-y-4">
+                  <h1 className="max-w-4xl font-display text-5xl leading-[0.98] tracking-tight text-balance text-foreground sm:text-6xl">
+                    {title}
+                  </h1>
+                  <p className="max-w-3xl text-base leading-8 text-muted-foreground text-pretty">{description}</p>
+                </div>
               </div>
-              <div className="space-y-3">
-                <h1 className="max-w-4xl text-4xl font-semibold leading-tight text-balance sm:text-5xl">{title}</h1>
-                <p className="max-w-2xl text-base leading-7 text-muted-foreground text-pretty">{description}</p>
+              <div className="flex flex-wrap gap-3">
+                {actions.map((action) => {
+                  const Icon = action.icon;
+                  return (
+                    <Button key={action.href} asChild variant={action.variant ?? "outline"}>
+                      <Link href={action.href}>
+                        {Icon ? <Icon className="size-4" /> : null}
+                        {action.label}
+                      </Link>
+                    </Button>
+                  );
+                })}
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {actions.map((action) => {
-                const Icon = action.icon;
-                return (
-                  <Button key={action.href} asChild variant={action.variant ?? "outline"}>
-                    <Link href={action.href}>
-                      {Icon ? <Icon className="size-4" /> : null}
-                      {action.label}
-                    </Link>
-                  </Button>
-                );
-              })}
-            </div>
-          </div>
-        </header>
 
-        <div className="space-y-6">{children}</div>
+            <div className="mt-6 lg:hidden">
+              <WorkspaceNav items={config.nav} mobile />
+            </div>
+          </header>
+
+          <div className="space-y-8 py-8">{children}</div>
+        </div>
       </div>
     </main>
   );
@@ -233,23 +231,21 @@ export function StatCard({
   tone?: "default" | "success" | "warning" | "danger";
 }) {
   const toneClass = {
-    default: "bg-secondary text-primary",
-    success: "bg-emerald-50 text-emerald-700",
-    warning: "bg-amber-50 text-amber-700",
-    danger: "bg-rose-50 text-rose-700",
+    default: "text-primary",
+    success: "text-emerald-700",
+    warning: "text-amber-700",
+    danger: "text-rose-700",
   }[tone];
 
   return (
-    <Card className="market-card">
-      <CardContent className="flex items-start justify-between gap-4 p-6">
-        <div className="space-y-2">
-          <div className="text-xs text-muted-foreground">{label}</div>
-          <div className="font-mono text-3xl font-semibold tabular-nums text-foreground">{value}</div>
-          <p className="text-sm leading-6 text-muted-foreground text-pretty">{detail}</p>
+    <Card className="border-border/70 bg-card/90">
+      <CardContent className="space-y-5 p-6">
+        <div className="flex items-center justify-between gap-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">{label}</div>
+          <Icon className={cn("size-5", toneClass)} />
         </div>
-        <div className={cn("flex size-10 items-center justify-center rounded-md", toneClass)}>
-          <Icon className="size-5" />
-        </div>
+        <div className="font-display text-4xl leading-none tracking-tight text-foreground">{value}</div>
+        <p className="max-w-[28ch] text-sm leading-6 text-muted-foreground text-pretty">{detail}</p>
       </CardContent>
     </Card>
   );
@@ -269,13 +265,13 @@ export function SectionCard({
   children: ReactNode;
 }) {
   return (
-    <Card>
-      <CardHeader className="gap-4 border-b border-border/80">
-        <div className="flex items-start justify-between gap-3">
-          <div className="space-y-2">
-            {eyebrow ? <div className="text-xs font-medium text-primary">{eyebrow}</div> : null}
-            <CardTitle className="text-2xl">{title}</CardTitle>
-            {description ? <CardDescription>{description}</CardDescription> : null}
+    <Card className="border-border/70 bg-card/90">
+      <CardHeader className="gap-4 border-b border-border/70 pb-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-3">
+            {eyebrow ? <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-primary">{eyebrow}</div> : null}
+            <CardTitle className="font-display text-[2rem] leading-[1.02]">{title}</CardTitle>
+            {description ? <CardDescription className="max-w-3xl text-base leading-7">{description}</CardDescription> : null}
           </div>
           {action}
         </div>
@@ -295,28 +291,28 @@ export function Field({
   children: ReactNode;
 }) {
   return (
-    <label className="grid gap-2">
-      <span className="text-sm font-medium text-foreground">{label}</span>
+    <label className="grid gap-3">
+      <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">{label}</span>
       {children}
-      {hint ? <span className="text-xs leading-5 text-muted-foreground text-pretty">{hint}</span> : null}
+      {hint ? <span className="text-xs leading-6 text-muted-foreground text-pretty">{hint}</span> : null}
     </label>
   );
 }
 
 export function MetaLine({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-t border-border/80 pt-3 text-sm">
+    <div className="flex items-center justify-between gap-4 border-t border-border/70 pt-4 text-sm">
       <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium text-foreground">{value}</span>
+      <span className="font-semibold text-foreground">{value}</span>
     </div>
   );
 }
 
 export function DetailChip({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-border bg-card px-4 py-4 shadow-sm">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-2 font-mono text-xl font-semibold tabular-nums text-foreground">{value}</div>
+    <div className="rounded-[1rem] border border-border/70 bg-secondary/75 px-4 py-4">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">{label}</div>
+      <div className="mt-3 font-mono text-xl font-semibold tabular-nums text-foreground">{value}</div>
     </div>
   );
 }

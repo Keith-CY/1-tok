@@ -39,41 +39,41 @@ export function LoginLaneTabs({
   const Icon = lane.icon;
 
   return (
-    <Card>
-      <CardHeader className="gap-5 border-b border-border/80">
+    <Card className="overflow-hidden">
+      <CardHeader className="gap-6 border-b border-border/70">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-3">
             <div className="eyebrow-pill">{lane.label}</div>
-            <div className="space-y-2">
-              <CardTitle className="text-3xl">{lane.title}</CardTitle>
-              <CardDescription>{lane.detail}</CardDescription>
+            <div className="space-y-3">
+              <CardTitle className="font-display text-[2.4rem] leading-[0.98]">{lane.title}</CardTitle>
+              <CardDescription className="max-w-[34ch] text-base leading-7">{lane.detail}</CardDescription>
             </div>
           </div>
-          <div className="flex size-11 items-center justify-center rounded-md border border-border bg-secondary text-primary shadow-sm">
+          <div className="flex size-11 items-center justify-center rounded-full bg-[var(--ink-accent-weak)] text-primary">
             <Icon className="size-5" />
           </div>
         </div>
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-3">
           {lane.features.map((feature) => (
-            <div key={feature} className="rounded-md border border-border bg-secondary/60 px-3 py-2 text-sm text-foreground">
+            <div key={feature} className="border-t border-border/70 pt-3 text-sm leading-6 text-foreground">
               {feature}
             </div>
           ))}
         </div>
       </CardHeader>
-      <CardContent className="space-y-6 p-6">
-        <form action="/auth/login" method="post" className="space-y-4">
+      <CardContent className="space-y-8 p-6">
+        <form action="/auth/login" method="post" className="space-y-5">
           <input type="hidden" name="next" value={lane.next} />
           <label className="grid gap-2">
-            <span className="text-sm font-medium text-foreground">Email</span>
+            <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">Email</span>
             <Input name="email" type="email" autoComplete="email" placeholder="name@example.com" required />
           </label>
           <label className="grid gap-2">
-            <span className="text-sm font-medium text-foreground">Password</span>
+            <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">Password</span>
             <Input name="password" type="password" autoComplete="current-password" placeholder="Enter your password" required />
           </label>
 
-          {error ? <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div> : null}
+          {error ? <div className="rounded-[1rem] bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
 
           <div className="flex flex-wrap items-center gap-3">
             <Button type="submit" className="min-w-[180px] justify-center">
@@ -87,7 +87,7 @@ export function LoginLaneTabs({
           </div>
         </form>
 
-        <div className="flex items-center justify-between border-t border-border/80 pt-4 text-sm">
+        <div className="flex items-center justify-between border-t border-border/70 pt-5 text-sm">
           <span className="text-muted-foreground">Wrong role?</span>
           <Button asChild variant="ghost" size="sm">
             <Link href={lane.switchHref}>

@@ -29,18 +29,18 @@ export default async function LoginPage({
 
   return (
     <PublicShell>
-      <div className="grid flex-1 gap-10 lg:grid-cols-[1.02fr_0.98fr] lg:items-start">
-        <div className="space-y-6">
-          <div className="space-y-4">
+      <div className="grid flex-1 gap-12 lg:grid-cols-[0.96fr_1.04fr] lg:items-start">
+        <div className="space-y-8">
+          <div className="space-y-5">
             <div className="eyebrow-pill">
               <RiPriceTag3Line className="size-3.5" />
               Marketplace access
             </div>
-            <h1 className="max-w-4xl text-5xl font-semibold leading-[1.04] text-balance sm:text-6xl">
-              Enter the market. Lead with budget. Decide with proposals.
+            <h1 className="max-w-4xl font-display text-6xl leading-[0.94] tracking-tight text-balance text-foreground sm:text-7xl">
+              Enter the market. Lead with budget. Decide with legible motion.
             </h1>
             <p className="max-w-2xl text-base leading-8 text-muted-foreground text-pretty">
-              Clients post requests with a live budget. Providers respond with proposals and delivery windows. Sign in to continue where you belong.
+              Clients publish requests with a visible budget. Providers answer with proposals and delivery windows. Sign in and the right workspace opens as an operational extension of the same system.
             </p>
           </div>
           <RoleShowcase compact />

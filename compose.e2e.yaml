@@ -214,6 +214,7 @@ services:
       context: .
       dockerfile: deploy/e2e-screenshots/Dockerfile
     environment:
+      SCREENSHOT_CAPTURE_MODE: ${SCREENSHOT_CAPTURE_MODE:-journey}
       SCREENSHOT_OUTPUT_DIR: /artifacts
       SCREENSHOT_WEB_BASE_URL: http://web:3000
       SCREENSHOT_API_BASE_URL: http://api-gateway:8080

@@ -2,26 +2,35 @@
 @import "tw-animate-css";
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(0.998 0.001 264);
-  --foreground: oklch(0.19 0.02 264);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.19 0.02 264);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.19 0.02 264);
-  --primary: oklch(0.55 0.19 257);
-  --primary-foreground: oklch(0.995 0.002 264);
-  --secondary: oklch(0.976 0.006 255);
-  --secondary-foreground: oklch(0.22 0.02 264);
-  --muted: oklch(0.982 0.004 255);
-  --muted-foreground: oklch(0.53 0.03 264);
-  --accent: oklch(0.96 0.014 257);
-  --accent-foreground: oklch(0.24 0.02 264);
-  --destructive: oklch(0.61 0.2 27);
-  --destructive-foreground: oklch(0.99 0.002 264);
-  --border: oklch(0.89 0.01 255);
-  --input: oklch(0.89 0.01 255);
-  --ring: oklch(0.56 0.2 258);
+  --radius: 0.875rem;
+  --background: #f9f8f5;
+  --foreground: #1a1c1c;
+  --card: rgba(255, 255, 255, 0.84);
+  --card-foreground: #1a1c1c;
+  --popover: #ffffff;
+  --popover-foreground: #1a1c1c;
+  --primary: #8b2c2c;
+  --primary-foreground: #faf7f3;
+  --secondary: #f1efea;
+  --secondary-foreground: #232526;
+  --muted: #ece8e1;
+  --muted-foreground: #5f6364;
+  --accent: #f3efe9;
+  --accent-foreground: #1a1c1c;
+  --destructive: #9d3b3b;
+  --destructive-foreground: #fff8f5;
+  --border: rgba(26, 28, 28, 0.08);
+  --input: rgba(26, 28, 28, 0.18);
+  --ring: #8b2c2c;
+  --ink-accent: #8b2c2c;
+  --ink-accent-weak: rgba(139, 44, 44, 0.08);
+  --ink-accent-medium: rgba(139, 44, 44, 0.16);
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 32px;
+  --space-5: 48px;
+  --space-6: 64px;
 }
 
 @theme inline {
@@ -59,11 +68,14 @@
   }
 
   html {
-    background: hsl(var(--background));
+    background: var(--background);
   }
 
   body {
-    @apply min-h-dvh bg-background text-foreground antialiased;
+    @apply min-h-dvh text-foreground antialiased;
+    background:
+      radial-gradient(circle at top left, rgba(255, 255, 255, 0.9), transparent 28%),
+      linear-gradient(180deg, #fcfbf8 0%, #f3f1ec 100%);
   }
 
   a {
@@ -71,13 +83,20 @@
   }
 
   ::selection {
-    @apply bg-primary/15 text-foreground;
+    background: var(--ink-accent-medium);
+    color: var(--foreground);
   }
 }
 
 @layer components {
   .market-card {
-    @apply rounded-md border border-border bg-card shadow-[0_10px_30px_-18px_rgba(15,23,42,0.16)] transition-[transform,box-shadow,border-color] duration-150 hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[0_18px_40px_-20px_rgba(37,99,235,0.24)];
+    @apply rounded-[1.25rem] border border-border bg-card backdrop-blur-sm transition-[transform,background-color,border-color] duration-150;
+    box-shadow: 0 24px 60px -44px rgba(26, 28, 28, 0.22);
+  }
+
+  .market-card:hover {
+    background: color-mix(in srgb, var(--card) 92%, white);
+    transform: translateY(-1px);
   }
 
   .price-display {
@@ -89,15 +108,20 @@
   }
 
   .eyebrow-pill {
-    @apply inline-flex items-center gap-2 rounded-md border border-primary/15 bg-primary/5 px-3 py-1 text-xs font-medium text-primary;
+    @apply inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-primary;
   }
 
   .market-row {
-    @apply rounded-md border border-border bg-card px-4 py-4 shadow-[0_10px_30px_-18px_rgba(15,23,42,0.16)] transition-[transform,box-shadow,border-color] duration-150 hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[0_18px_40px_-20px_rgba(37,99,235,0.22)];
+    @apply border-t border-border px-1 py-5 transition-colors duration-150;
+  }
+
+  .market-row:hover {
+    background: var(--ink-accent-weak);
   }
 
   .market-metric {
-    @apply rounded-md border border-border bg-card px-4 py-4 shadow-[0_10px_24px_-18px_rgba(15,23,42,0.14)];
+    @apply rounded-[1rem] border border-border bg-card px-4 py-4 backdrop-blur-sm;
+    box-shadow: 0 20px 50px -44px rgba(26, 28, 28, 0.2);
   }
 }
 

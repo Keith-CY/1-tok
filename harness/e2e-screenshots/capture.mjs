@@ -2,6 +2,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { chromium, devices } from "playwright";
 
+import {
+  buildCaptureRunGroups,
+  buildFullPagesPlan,
+  renderLocalComment,
+  resolveCaptureMode,
+} from "./catalog.mjs";
+
 const OUTPUT_DIR = process.env.SCREENSHOT_OUTPUT_DIR || "/artifacts";
 const WEB_BASE_URL = trimTrailingSlash(process.env.SCREENSHOT_WEB_BASE_URL || "http://web:3000");
 const API_BASE_URL = trimTrailingSlash(process.env.SCREENSHOT_API_BASE_URL || "http://api-gateway:8080");
@@ -12,6 +19,7 @@ const SETTLEMENT_INVOICE_ASSET = process.env.SCREENSHOT_INVOICE_ASSET || "CKB";
 const SETTLEMENT_INVOICE_AMOUNT = process.env.SCREENSHOT_INVOICE_AMOUNT || "12.5";
 const EXECUTION_BASE_URL = trimTrailingSlash(process.env.SCREENSHOT_EXECUTION_BASE_URL || "http://execution:8085");
 const EXECUTION_EVENT_TOKEN = process.env.SCREENSHOT_EXECUTION_EVENT_TOKEN || "local-execution-event-token";
+const CAPTURE_MODE = resolveCaptureMode(process.env.SCREENSHOT_CAPTURE_MODE);
 const PASSWORD = "correct horse battery staple 123";
 const SERVICE_TOKEN_HEADER = "X-One-Tok-Service-Token";
 
@@ -39,8 +47,24 @@ async function main() {
   const browser = await chromium.launch({ headless: true });
 
   try {
-    for (const device of DEVICE_PRESETS) {
-      await runFlowForDevice(browser, device);
+    const runGroups = buildCaptureRunGroups({
+      mode: CAPTURE_MODE,
+      deviceKeys: DEVICE_PRESETS.map((device) => device.key),
+    });
+
+    for (const runGroup of runGroups) {
+      const groupDevices = DEVICE_PRESETS.filter((device) => runGroup.deviceKeys.includes(device.key));
+
+      if (CAPTURE_MODE === "full-pages") {
+        const seededScenario = await seedFullPagesScenario(browser, runGroup.seedKey, groupDevices[0]);
+        for (const device of groupDevices) {
+          await captureFullPagesForDevice(browser, device, seededScenario);
+        }
+      } else {
+        for (const device of groupDevices) {
+          await runJourneyForDevice(browser, device);
+        }
+      }
     }
 
     await fs.writeFile(path.join(OUTPUT_DIR, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n", "utf8");
@@ -51,7 +75,7 @@ async function main() {
   }
 }
 
-async function runFlowForDevice(browser, device) {
+async function runJourneyForDevice(browser, device) {
   const suffix = `${device.key}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const buyer = await createUser("buyer", suffix);
   const provider = await createUser("provider", suffix);
@@ -122,6 +146,7 @@ async function runFlowForDevice(browser, device) {
       providerPage.waitForURL(/\/provider$/),
       providerPage.getByRole("button", { name: /submit proposal/i }).click(),
     ]);
+    await waitForHydration(providerPage);
     await waitForRequestBids(buyer.token, requestTitle, 1);
 
     await goto(buyerPage, `${WEB_BASE_URL}/buyer`);
@@ -191,6 +216,150 @@ async function runFlowForDevice(browser, device) {
   }
 }
 
+async function seedFullPagesScenario(browser, seedKey, device) {
+  const suffix = `${seedKey}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const buyer = await createUser("buyer", suffix);
+  const provider = await createUser("provider", suffix);
+  const ops = await createUser("ops", suffix);
+  const requestTitle = `Live request ${suffix}`;
+  const requestBudgetCents = 285000;
+  const quoteCents = 241000;
+  const buyerContext = await browser.newContext(device.contextOptions);
+  const buyerPage = await buyerContext.newPage();
+  const providerContext = await browser.newContext(device.contextOptions);
+  const providerPage = await providerContext.newPage();
+
+  try {
+    await goto(buyerPage, `${WEB_BASE_URL}/login?next=/buyer`);
+    await login(buyerPage, buyer.email, buyer.password, /\/buyer$/);
+    await goto(buyerPage, `${WEB_BASE_URL}/buyer/rfqs/create`);
+    await createRequest(buyerPage, requestTitle, requestBudgetCents);
+
+    await goto(providerPage, `${WEB_BASE_URL}/login?next=/provider`);
+    await login(providerPage, provider.email, provider.password, /\/provider$/);
+
+    const rfqId = await openProviderRequest(providerPage, requestTitle);
+    await providerPage.locator('input[name="quoteCents"]').fill(String(quoteCents));
+    await Promise.all([
+      providerPage.waitForURL(/\/provider$/),
+      providerPage.getByRole("button", { name: /submit proposal/i }).click(),
+    ]);
+    await waitForHydration(providerPage);
+    await waitForRequestBids(buyer.token, requestTitle, 1);
+
+    await goto(buyerPage, `${WEB_BASE_URL}/buyer`);
+    await waitForText(buyerPage, requestTitle);
+    await clickAwardForRequest(buyerPage, requestTitle);
+    const orderId = await waitForAwardedOrderId(buyer.token, requestTitle);
+
+    const settledOrder = await settleOrderFlow(provider.token, orderId);
+    await createInvoice(settledOrder);
+    await syncSettledFeed();
+    await waitForSettledInvoice(provider.token, orderId);
+
+    return { buyer, provider, ops, requestTitle, rfqId, orderId };
+  } finally {
+    await buyerContext.close();
+    await providerContext.close();
+  }
+}
+
+async function captureFullPagesForDevice(browser, device, seededScenario) {
+  const entries = buildFullPagesEntryMap(device.key, {
+    rfqId: seededScenario.rfqId,
+    orderId: seededScenario.orderId,
+  });
+
+  const publicContext = await browser.newContext(device.contextOptions);
+  const publicPage = await publicContext.newPage();
+  const buyerContext = await browser.newContext(device.contextOptions);
+  const buyerPage = await buyerContext.newPage();
+  const providerContext = await browser.newContext(device.contextOptions);
+  const providerPage = await providerContext.newPage();
+  const opsContext = await browser.newContext(device.contextOptions);
+  const opsPage = await opsContext.newPage();
+
+  try {
+    await goto(publicPage, `${WEB_BASE_URL}${getEntry(entries, "public", "home").url}`);
+    await capture(publicPage, getEntry(entries, "public", "home"), { fullPage: true });
+
+    await goto(publicPage, `${WEB_BASE_URL}${getEntry(entries, "public", "buyer-login").url}`);
+    await capture(publicPage, getEntry(entries, "public", "buyer-login"), { fullPage: true });
+
+    await goto(publicPage, `${WEB_BASE_URL}${getEntry(entries, "public", "provider-login").url}`);
+    await capture(publicPage, getEntry(entries, "public", "provider-login"), { fullPage: true });
+
+    await goto(publicPage, `${WEB_BASE_URL}${getEntry(entries, "public", "internal-login").url}`);
+    await capture(publicPage, getEntry(entries, "public", "internal-login"), { fullPage: true });
+
+    await goto(buyerPage, `${WEB_BASE_URL}/login?next=/buyer`);
+    await login(buyerPage, seededScenario.buyer.email, seededScenario.buyer.password, /\/buyer$/);
+    await goto(buyerPage, `${WEB_BASE_URL}${getEntry(entries, "buyer", "dashboard").url}`);
+    await capture(buyerPage, getEntry(entries, "buyer", "dashboard"), { fullPage: true });
+
+    await goto(buyerPage, `${WEB_BASE_URL}${getEntry(entries, "buyer", "post-request").url}`);
+    await capture(buyerPage, getEntry(entries, "buyer", "post-request"), { fullPage: true });
+
+    await goto(buyerPage, `${WEB_BASE_URL}${getEntry(entries, "buyer", "order-detail").url}`);
+    await capture(buyerPage, getEntry(entries, "buyer", "order-detail"), { fullPage: true });
+
+    await goto(providerPage, `${WEB_BASE_URL}/login?next=/provider`);
+    await login(providerPage, seededScenario.provider.email, seededScenario.provider.password, /\/provider$/);
+    await goto(providerPage, `${WEB_BASE_URL}${getEntry(entries, "provider", "dashboard").url}`);
+    await capture(providerPage, getEntry(entries, "provider", "dashboard"), { fullPage: true });
+
+    await goto(providerPage, `${WEB_BASE_URL}${getEntry(entries, "provider", "rfqs").url}`);
+    await capture(providerPage, getEntry(entries, "provider", "rfqs"), { fullPage: true });
+
+    await goto(providerPage, `${WEB_BASE_URL}${getEntry(entries, "provider", "rfq-detail").url}`);
+    await capture(providerPage, getEntry(entries, "provider", "rfq-detail"), { fullPage: true });
+
+    await goto(providerPage, `${WEB_BASE_URL}${getEntry(entries, "provider", "proposals").url}`);
+    await capture(providerPage, getEntry(entries, "provider", "proposals"), { fullPage: true });
+
+    await goto(providerPage, `${WEB_BASE_URL}${getEntry(entries, "provider", "order-detail").url}`);
+    await capture(providerPage, getEntry(entries, "provider", "order-detail"), { fullPage: true });
+
+    await goto(opsPage, `${WEB_BASE_URL}/internal/login?next=/ops`);
+    await login(opsPage, seededScenario.ops.email, seededScenario.ops.password, /\/ops$/);
+    await goto(opsPage, `${WEB_BASE_URL}${getEntry(entries, "ops", "dashboard").url}`);
+    await capture(opsPage, getEntry(entries, "ops", "dashboard"), { fullPage: true });
+
+    await goto(opsPage, `${WEB_BASE_URL}${getEntry(entries, "ops", "applications").url}`);
+    await capture(opsPage, getEntry(entries, "ops", "applications"), { fullPage: true });
+
+    await goto(opsPage, `${WEB_BASE_URL}${getEntry(entries, "ops", "application-detail").url}`);
+    await capture(opsPage, getEntry(entries, "ops", "application-detail"), { fullPage: true });
+
+    await goto(opsPage, `${WEB_BASE_URL}${getEntry(entries, "ops", "disputes").url}`);
+    await capture(opsPage, getEntry(entries, "ops", "disputes"), { fullPage: true });
+  } finally {
+    await publicContext.close();
+    await buyerContext.close();
+    await providerContext.close();
+    await opsContext.close();
+  }
+}
+
+function buildFullPagesEntryMap(device, ids = {}) {
+  return new Map(
+    buildFullPagesPlan({
+      device,
+      rfqId: ids.rfqId ?? "rfq_pending",
+      orderId: ids.orderId ?? "ord_pending",
+      applicationId: ids.applicationId ?? "app_1",
+    }).map((entry) => [`${entry.businessLine}:${entry.slug}`, entry]),
+  );
+}
+
+function getEntry(entries, businessLine, slug) {
+  const entry = entries.get(`${businessLine}:${slug}`);
+  if (!entry) {
+    throw new Error(`missing capture entry for ${businessLine}:${slug}`);
+  }
+  return entry;
+}
+
 async function createUser(kind, suffix) {
   const email = `${kind}-screenshot-${suffix}@example.com`;
   const response = await fetch(`${IAM_BASE_URL}/v1/signup`, {
@@ -216,11 +385,11 @@ async function createUser(kind, suffix) {
   return { email, password: PASSWORD, token: payload.session?.token ?? "" };
 }
 
-async function login(page, email, password) {
+async function login(page, email, password, destinationPattern = /\/(buyer|provider)$/) {
   await page.locator('input[name="email"]').fill(email);
   await page.locator('input[name="password"]').fill(password);
   await Promise.all([
-    page.waitForURL(/\/(buyer|provider)$/),
+    page.waitForURL(destinationPattern),
     page.locator('form[action="/auth/login"] button[type="submit"]').click(),
   ]);
   await waitForHydration(page);
@@ -246,6 +415,7 @@ async function openProviderRequest(page, title) {
     row.getByRole("link", { name: /open request/i }).click(),
   ]);
   await waitForHydration(page);
+  return page.url().split("/").pop() ?? "";
 }
 
 async function clickAwardForRequest(page, title) {
@@ -424,7 +594,7 @@ async function listFundingRecords(token) {
 }
 
 async function goto(page, url) {
-  await page.goto(url, { waitUntil: "networkidle" });
+  await page.goto(url, { waitUntil: "load" });
   await waitForHydration(page);
 }
 
@@ -437,12 +607,12 @@ async function waitForText(page, text) {
   await page.getByText(text, { exact: false }).first().waitFor({ state: "visible", timeout: 20000 });
 }
 
-async function capture(page, entry) {
+async function capture(page, entry, options = {}) {
   const fileName = `${String(entry.order).padStart(2, "0")}-${entry.slug}.png`;
   const relativePath = path.join(entry.businessLine, entry.device, fileName);
   const absolutePath = path.join(OUTPUT_DIR, relativePath);
   await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-  await page.screenshot({ path: absolutePath });
+  await page.screenshot({ path: absolutePath, ...(options.fullPage ? { fullPage: true } : {}) });
   manifest.push({ ...entry, path: relativePath.replaceAll(path.sep, "/") });
   console.log(`captured ${relativePath}`);
 }
@@ -473,39 +643,6 @@ function trimTrailingSlash(value) {
 
 function capitalize(value) {
   return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-function renderLocalComment(entries) {
-  const businessOrder = [
-    ["home", "Home"],
-    ["buyer", "Buyer"],
-    ["provider", "Provider"],
-  ];
-  const deviceOrder = [
-    ["desktop", "Desktop"],
-    ["mobile", "Mobile"],
-  ];
-  const lines = [
-    "# E2E Marketplace Screenshots",
-    "",
-  ];
-
-  for (const [businessKey, businessLabel] of businessOrder) {
-    lines.push(`## ${businessLabel}`, "");
-    for (const [deviceKey, deviceLabel] of deviceOrder) {
-      const rows = entries
-        .filter((entry) => entry.businessLine === businessKey && entry.device === deviceKey)
-        .sort((left, right) => left.order - right.order);
-      if (rows.length === 0) continue;
-      lines.push(`### ${deviceLabel}`, "");
-      for (const row of rows) {
-        lines.push(`- ${row.title}: \`${row.path}\``);
-      }
-      lines.push("");
-    }
-  }
-
-  return `${lines.join("\n").trim()}\n`;
 }
 
 main().catch((error) => {

@@ -270,6 +270,7 @@ jobs:
       - name: Capture marketplace screenshots
         env:
           E2E_SCREENSHOT_OUTPUT_DIR: ${{ github.workspace }}/.artifacts/e2e-screenshots
+          SCREENSHOT_CAPTURE_MODE: full-pages
         run: ./scripts/release-compose-e2e-screenshots.sh
 
       - name: Upload screenshot artifact
@@ -304,58 +305,14 @@ jobs:
       - name: Generate screenshot comment
         if: success() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         env:
+          SCREENSHOT_COMMENT_FORMAT: github-pr
           REPOSITORY: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           REF_NAME: ${{ steps.screenshot_ref.outputs.ref }}
           MANIFEST_PATH: ${{ steps.screenshot_ref.outputs.tmp_dir }}/manifest.json
+          COMMENT_OUTPUT_PATH: e2e-screenshot-comment.md
         run: |
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          manifest = json.loads(Path(os.environ["MANIFEST_PATH"]).read_text(encoding="utf-8"))
-          base = f"https://raw.githubusercontent.com/{os.environ['REPOSITORY']}/{os.environ['REF_NAME']}"
-          run_url = f"https://github.com/{os.environ['REPOSITORY']}/actions/runs/{os.environ['RUN_ID']}"
-          marker = "<!-- 1-tok-e2e-screenshots -->"
-          business_order = [("home", "Home"), ("buyer", "Buyer"), ("provider", "Provider")]
-          device_order = [("desktop", "Desktop"), ("mobile", "Mobile")]
-
-          def chunk(items, size):
-            for index in range(0, len(items), size):
-              yield items[index:index + size]
-
-          lines = [
-            marker,
-            "## E2E Marketplace Screenshots",
-            "",
-            f"- Run: {run_url}",
-            f"- Artifact: [e2e-marketplace-screenshots]({run_url})",
-            "",
-          ]
-
-          for business_key, business_label in business_order:
-            lines.append(f"### {business_label}")
-            lines.append("")
-            for device_key, device_label in device_order:
-              rows = [
-                item for item in manifest
-                if item["businessLine"] == business_key and item["device"] == device_key
-              ]
-              if not rows:
-                continue
-              rows.sort(key=lambda item: item["order"])
-              lines.append(f"#### {device_label}")
-              lines.append("")
-              for group in chunk(rows, 3):
-                headers = "| " + " | ".join(item["title"] for item in group) + " |"
-                align = "|" + "|".join([":---:"] * len(group)) + "|"
-                images = "| " + " | ".join(f"![{item['slug']}]({base}/{item['path']})" for item in group) + " |"
-                lines.extend([headers, align, images, ""])
-            lines.append("")
-
-          Path("e2e-screenshot-comment.md").write_text("\n".join(lines).strip() + "\n", encoding="utf-8")
-          PY
+          node ./harness/e2e-screenshots/render-comment.mjs
 
       - name: Upsert screenshot PR comment
         if: success() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository

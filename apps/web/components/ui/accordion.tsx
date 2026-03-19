@@ -11,7 +11,7 @@ function Accordion({ ...props }: React.ComponentProps<typeof AccordionPrimitive.
 }
 
 function AccordionItem({ className, ...props }: React.ComponentProps<typeof AccordionPrimitive.Item>) {
-  return <AccordionPrimitive.Item className={cn("rounded-3xl border border-border/70 bg-secondary/45 px-4", className)} {...props} />;
+  return <AccordionPrimitive.Item className={cn("rounded-[1rem] border border-border/70 bg-secondary/60 px-4", className)} {...props} />;
 }
 
 function AccordionTrigger({ className, children, ...props }: React.ComponentProps<typeof AccordionPrimitive.Trigger>) {
@@ -19,7 +19,7 @@ function AccordionTrigger({ className, children, ...props }: React.ComponentProp
     <AccordionPrimitive.Header className="flex">
       <AccordionPrimitive.Trigger
         className={cn(
-          "group flex flex-1 items-center justify-between py-4 text-left text-sm font-medium text-foreground transition hover:text-primary",
+          "group flex flex-1 items-center justify-between py-4 text-left text-sm font-semibold text-foreground transition hover:text-primary",
           className,
         )}
         {...props}
