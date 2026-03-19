@@ -129,13 +129,27 @@ export function WorkspaceShell({
   return (
     <main className="min-h-dvh bg-background text-foreground">
       <div className="mx-auto flex min-h-dvh max-w-[1560px] flex-col gap-8 px-4 py-5 sm:px-6 lg:flex-row lg:gap-12 lg:px-8">
-        <aside className="hidden lg:flex lg:w-[220px] lg:flex-col lg:justify-between lg:pb-4 lg:pt-3">
+        <aside className="hidden lg:flex lg:w-[220px] lg:flex-col lg:pb-4 lg:pt-3">
           <div className="space-y-8">
             <Link href={config.homeHref} className="block space-y-2">
               <div className="text-[10px] font-semibold uppercase tracking-[0.28em] text-primary">1-tok</div>
               <div className="font-display text-[1.9rem] leading-none text-foreground">Marketplace</div>
               <div className="max-w-[18ch] text-sm leading-6 text-muted-foreground">{config.subtitle}</div>
             </Link>
+
+            <div className="rounded-[1.25rem] border border-border/70 bg-card/85 p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">Account</div>
+              <div className="mt-3 space-y-3">
+                <div className="text-sm leading-6 text-muted-foreground">Keep role switching visible and intentional from the top of the workspace.</div>
+                <form action="/auth/logout" method="post">
+                  <input type="hidden" name="next" value={logoutTarget} />
+                  <Button type="submit" variant="outline" size="sm" className="w-full justify-between">
+                    Sign out
+                    <RiLogoutBoxRLine className="size-4" />
+                  </Button>
+                </form>
+              </div>
+            </div>
 
             <div className="rounded-[1.25rem] border border-border/70 bg-card/85 p-4">
               <div className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-primary">
@@ -146,17 +160,6 @@ export function WorkspaceShell({
             </div>
 
             <WorkspaceNav items={config.nav} />
-          </div>
-
-          <div className="space-y-3">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">Signed in</div>
-            <form action="/auth/logout" method="post">
-              <input type="hidden" name="next" value={logoutTarget} />
-              <Button type="submit" variant="outline" size="sm" className="w-full justify-between">
-                Sign out
-                <RiLogoutBoxRLine className="size-4" />
-              </Button>
-            </form>
           </div>
         </aside>
 

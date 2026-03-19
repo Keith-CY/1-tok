@@ -20,6 +20,22 @@ export function formatCentsCompact(cents: number): string {
 }
 
 /**
+ * Parses a dollar input string into integer cents.
+ * Returns null when the input is blank, malformed, or non-positive.
+ */
+export function parseCurrencyInputToCents(value: string): number | null {
+  const normalized = value.trim().replaceAll(",", "").replace(/^\$/, "");
+  if (!/^\d+(?:\.\d{1,2})?$/.test(normalized)) return null;
+
+  const [wholePart, fractionalPart = ""] = normalized.split(".");
+  const dollars = Number.parseInt(wholePart, 10);
+  const cents = Number.parseInt(fractionalPart.padEnd(2, "0"), 10);
+  const totalCents = dollars * 100 + cents;
+
+  return totalCents > 0 ? totalCents : null;
+}
+
+/**
  * Formats a milestone budget usage as a percentage.
  * @example formatBudgetUsage(500, 1000) → "50%"
  */

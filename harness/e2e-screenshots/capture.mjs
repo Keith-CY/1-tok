@@ -8,6 +8,7 @@ import {
   renderLocalComment,
   resolveCaptureMode,
 } from "./catalog.mjs";
+import { buildScenarioPreset } from "./scenario.mjs";
 
 const OUTPUT_DIR = process.env.SCREENSHOT_OUTPUT_DIR || "/artifacts";
 const WEB_BASE_URL = trimTrailingSlash(process.env.SCREENSHOT_WEB_BASE_URL || "http://web:3000");
@@ -77,11 +78,10 @@ async function main() {
 
 async function runJourneyForDevice(browser, device) {
   const suffix = `${device.key}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const scenario = buildScenarioPreset(device.key);
   const buyer = await createUser("buyer", suffix);
   const provider = await createUser("provider", suffix);
-  const requestTitle = `Live request ${suffix}`;
-  const requestBudgetCents = 285000;
-  const quoteCents = 241000;
+  const requestTitle = scenario.requestTitle;
 
   const homeContext = await browser.newContext(device.contextOptions);
   const homePage = await homeContext.newPage();
@@ -107,7 +107,10 @@ async function runJourneyForDevice(browser, device) {
       slug: "post-request",
       title: "Buyer post request",
     });
-    await createRequest(buyerPage, requestTitle, requestBudgetCents);
+    await createRequest(buyerPage, requestTitle, scenario.requestBudgetDollars);
+    const requestRecord = await waitForBuyerRequest(buyer.token, buyer.organizationId, requestTitle);
+    const rfqId = requestRecord.id;
+    await waitForText(buyerPage, requestTitle);
     await capture(buyerPage, {
       businessLine: "buyer",
       device: device.key,
@@ -126,7 +129,8 @@ async function runJourneyForDevice(browser, device) {
     });
     await login(providerPage, provider.email, provider.password);
 
-    await openProviderRequest(providerPage, requestTitle);
+    await goto(providerPage, `${WEB_BASE_URL}/provider/rfqs/${rfqId}`);
+    await waitForText(providerPage, requestTitle);
     await capture(providerPage, {
       businessLine: "provider",
       device: device.key,
@@ -134,7 +138,7 @@ async function runJourneyForDevice(browser, device) {
       slug: "open-request",
       title: "Provider open request",
     });
-    await providerPage.locator('input[name="quoteCents"]').fill(String(quoteCents));
+    await providerPage.locator('input[name="quoteDollars"]').fill(scenario.quoteDollars);
     await capture(providerPage, {
       businessLine: "provider",
       device: device.key,
@@ -147,7 +151,7 @@ async function runJourneyForDevice(browser, device) {
       providerPage.getByRole("button", { name: /submit proposal/i }).click(),
     ]);
     await waitForHydration(providerPage);
-    await waitForRequestBids(buyer.token, requestTitle, 1);
+    await waitForRequestBids(buyer.token, rfqId, 1);
 
     await goto(buyerPage, `${WEB_BASE_URL}/buyer`);
     await waitForText(buyerPage, requestTitle);
@@ -159,7 +163,7 @@ async function runJourneyForDevice(browser, device) {
       title: "Buyer award request",
     });
     await clickAwardForRequest(buyerPage, requestTitle);
-    const orderId = await waitForAwardedOrderId(buyer.token, requestTitle);
+    const orderId = await waitForAwardedOrderId(buyer.token, rfqId);
 
     await goto(providerPage, `${WEB_BASE_URL}/provider/proposals`);
     await capture(providerPage, {
@@ -218,12 +222,11 @@ async function runJourneyForDevice(browser, device) {
 
 async function seedFullPagesScenario(browser, seedKey, device) {
   const suffix = `${seedKey}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const scenario = buildScenarioPreset(seedKey);
   const buyer = await createUser("buyer", suffix);
   const provider = await createUser("provider", suffix);
   const ops = await createUser("ops", suffix);
-  const requestTitle = `Live request ${suffix}`;
-  const requestBudgetCents = 285000;
-  const quoteCents = 241000;
+  const requestTitle = scenario.requestTitle;
   const buyerContext = await browser.newContext(device.contextOptions);
   const buyerPage = await buyerContext.newPage();
   const providerContext = await browser.newContext(device.contextOptions);
@@ -233,24 +236,27 @@ async function seedFullPagesScenario(browser, seedKey, device) {
     await goto(buyerPage, `${WEB_BASE_URL}/login?next=/buyer`);
     await login(buyerPage, buyer.email, buyer.password, /\/buyer$/);
     await goto(buyerPage, `${WEB_BASE_URL}/buyer/rfqs/create`);
-    await createRequest(buyerPage, requestTitle, requestBudgetCents);
+    await createRequest(buyerPage, requestTitle, scenario.requestBudgetDollars);
+    const requestRecord = await waitForBuyerRequest(buyer.token, buyer.organizationId, requestTitle);
+    const rfqId = requestRecord.id;
 
     await goto(providerPage, `${WEB_BASE_URL}/login?next=/provider`);
     await login(providerPage, provider.email, provider.password, /\/provider$/);
 
-    const rfqId = await openProviderRequest(providerPage, requestTitle);
-    await providerPage.locator('input[name="quoteCents"]').fill(String(quoteCents));
+    await goto(providerPage, `${WEB_BASE_URL}/provider/rfqs/${rfqId}`);
+    await waitForText(providerPage, requestTitle);
+    await providerPage.locator('input[name="quoteDollars"]').fill(scenario.quoteDollars);
     await Promise.all([
       providerPage.waitForURL(/\/provider$/),
       providerPage.getByRole("button", { name: /submit proposal/i }).click(),
     ]);
     await waitForHydration(providerPage);
-    await waitForRequestBids(buyer.token, requestTitle, 1);
+    await waitForRequestBids(buyer.token, rfqId, 1);
 
     await goto(buyerPage, `${WEB_BASE_URL}/buyer`);
     await waitForText(buyerPage, requestTitle);
     await clickAwardForRequest(buyerPage, requestTitle);
-    const orderId = await waitForAwardedOrderId(buyer.token, requestTitle);
+    const orderId = await waitForAwardedOrderId(buyer.token, rfqId);
 
     const settledOrder = await settleOrderFlow(provider.token, orderId);
     await createInvoice(settledOrder);
@@ -382,7 +388,12 @@ async function createUser(kind, suffix) {
   }
 
   const payload = await response.json();
-  return { email, password: PASSWORD, token: payload.session?.token ?? "" };
+  return {
+    email,
+    password: PASSWORD,
+    token: payload.session?.token ?? "",
+    organizationId: payload.organization?.id ?? "",
+  };
 }
 
 async function login(page, email, password, destinationPattern = /\/(buyer|provider)$/) {
@@ -395,27 +406,15 @@ async function login(page, email, password, destinationPattern = /\/(buyer|provi
   await waitForHydration(page);
 }
 
-async function createRequest(page, title, budgetCents) {
+async function createRequest(page, title, budgetDollars) {
   await page.locator('input[name="title"]').fill(title);
-  await page.locator('input[name="budgetCents"]').fill(String(budgetCents));
+  await page.locator('input[name="budgetDollars"]').fill(budgetDollars);
   await page.locator('input[name="responseDeadlineAt"]').fill(datetimeLocalPlusDays(5));
   await Promise.all([
     page.waitForURL(/\/buyer$/),
     page.getByRole("button", { name: /^post request$/i }).click(),
   ]);
   await waitForHydration(page);
-}
-
-async function openProviderRequest(page, title) {
-  await goto(page, `${WEB_BASE_URL}/provider/rfqs`);
-  await waitForText(page, title);
-  const row = page.locator(".market-row", { hasText: title }).first();
-  await Promise.all([
-    page.waitForURL(/\/provider\/rfqs\//),
-    row.getByRole("link", { name: /open request/i }).click(),
-  ]);
-  await waitForHydration(page);
-  return page.url().split("/").pop() ?? "";
 }
 
 async function clickAwardForRequest(page, title) {
@@ -427,26 +426,39 @@ async function clickAwardForRequest(page, title) {
   await waitForHydration(page);
 }
 
-async function waitForRequestBids(token, title, minCount) {
+async function waitForBuyerRequest(token, buyerOrgId, title) {
+  let requestRecord = null;
+
   await poll(async () => {
     const rfqs = await listRFQs(token);
-    const item = rfqs.find((candidate) => candidate.title === title);
-    if (!item?.id) return false;
-    const bids = await listBids(token, item.id);
-    return bids.length >= minCount;
-  }, 25000, `wait for bids on ${title}`);
+    const matches = rfqs
+      .filter((candidate) => candidate.buyerOrgId === buyerOrgId && candidate.title === title)
+      .sort((left, right) => Date.parse(right.createdAt ?? "") - Date.parse(left.createdAt ?? ""));
+
+    requestRecord = matches[0] ?? null;
+    return Boolean(requestRecord?.id);
+  }, 25000, `wait for request ${title}`);
+
+  return requestRecord;
 }
 
-async function waitForAwardedOrderId(token, title) {
+async function waitForRequestBids(token, rfqId, minCount) {
+  await poll(async () => {
+    const bids = await listBids(token, rfqId);
+    return bids.length >= minCount;
+  }, 25000, `wait for bids on ${rfqId}`);
+}
+
+async function waitForAwardedOrderId(token, rfqId) {
   let awardedOrderId = "";
 
   await poll(async () => {
     const rfqs = await listRFQs(token);
-    const item = rfqs.find((candidate) => candidate.title === title);
+    const item = rfqs.find((candidate) => candidate.id === rfqId);
     if (!item?.orderId) return false;
     awardedOrderId = item.orderId;
     return true;
-  }, 25000, `wait for awarded order on ${title}`);
+  }, 25000, `wait for awarded order on ${rfqId}`);
 
   return awardedOrderId;
 }

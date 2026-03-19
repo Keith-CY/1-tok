@@ -50,7 +50,7 @@ describe("buyer rfq route", () => {
     form.set("title", "Need live triage");
     form.set("category", "agent-ops");
     form.set("scope", "Investigate and stabilize");
-    form.set("budgetCents", "4200");
+    form.set("budgetDollars", "42.00");
     form.set("responseDeadlineAt", "2026-03-15T12:00");
 
     const response = await POST(

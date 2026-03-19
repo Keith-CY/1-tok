@@ -82,6 +82,11 @@ export interface ProviderOrderDetail {
   rfq: RFQ | null;
   fundingRecords: FundingRecord[];
 }
+
+export interface BuyerOrderDetail {
+  order: Order;
+  rfq: RFQ | null;
+}
 export interface OpsDashboardData {
   summary: {
     activeOrders: number;
@@ -330,6 +335,28 @@ export async function getProviderOrderDetail(options: {
         record.orderId === order.id &&
         (!record.providerOrgId || record.providerOrgId === options.providerOrgId),
     ),
+  };
+}
+
+export async function getBuyerOrderDetail(options: {
+  authToken: string;
+  buyerOrgId: string;
+  orderId: string;
+  requireLive?: boolean;
+}): Promise<BuyerOrderDetail | null> {
+  const [orders, rfqs] = await Promise.all([
+    getOrders({ authToken: options.authToken, requireLive: options.requireLive }),
+    getRFQs({ authToken: options.authToken, requireLive: options.requireLive }),
+  ]);
+
+  const order = orders.find((candidate) => candidate.id === options.orderId && candidate.buyerOrgId === options.buyerOrgId);
+  if (!order) {
+    return null;
+  }
+
+  return {
+    order,
+    rfq: rfqs.find((candidate) => candidate.orderId === order.id && candidate.buyerOrgId === options.buyerOrgId) ?? null,
   };
 }
 export async function getOpsDashboardData(options: { authToken: string; requireLive?: boolean }): Promise<OpsDashboardData> {

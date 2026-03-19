@@ -62,8 +62,8 @@ export default async function CreateRFQPage() {
               </Field>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Budget" hint="Enter the full request amount in cents.">
-                  <Input name="budgetCents" type="number" min="1" step="1" placeholder="6800" required />
+                <Field label="Budget" hint="Enter the full request amount in dollars.">
+                  <Input name="budgetDollars" type="number" min="0.01" step="0.01" inputMode="decimal" placeholder="68.00" required />
                 </Field>
                 <Field label="Delivery window" hint="This is the date providers will price against.">
                   <Input name="responseDeadlineAt" type="datetime-local" required />

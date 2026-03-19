@@ -1,4 +1,5 @@
 import { redirectToPortal, normalizeDateTimeInput, postGatewayJSON, readRequestPortalViewer } from "../../../lib/marketplace-actions";
+import { parseCurrencyInputToCents } from "../../../lib/currency";
 
 export async function POST(request: Request) {
   const viewer = await readRequestPortalViewer(request, "buyer");
@@ -11,10 +12,12 @@ export async function POST(request: Request) {
   const category = String(form.get("category") ?? "service-request").trim() || "service-request";
   const rawScope = String(form.get("scope") ?? "").trim();
   const scope = rawScope || title;
-  const budgetCents = Number.parseInt(String(form.get("budgetCents") ?? "0"), 10);
+  const budgetDollars = String(form.get("budgetDollars") ?? "").trim();
+  const legacyBudgetCents = Number.parseInt(String(form.get("budgetCents") ?? "0"), 10);
+  const budgetCents = budgetDollars ? parseCurrencyInputToCents(budgetDollars) : Number.isFinite(legacyBudgetCents) ? legacyBudgetCents : null;
   const responseDeadlineAt = normalizeDateTimeInput(String(form.get("responseDeadlineAt") ?? ""));
 
-  if (!title || !category || !scope || !Number.isFinite(budgetCents) || budgetCents <= 0 || !responseDeadlineAt) {
+  if (!title || !category || !scope || budgetCents === null || budgetCents <= 0 || !responseDeadlineAt) {
     return redirectToPortal(request, "/buyer", "rfq-invalid");
   }
 

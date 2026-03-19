@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { SectionCard, WorkspaceShell } from "@/components/workspace-shell";
-import { getOrders } from "@/lib/api";
+import { getBuyerOrderDetail } from "@/lib/api";
 import { requirePortalViewer } from "@/lib/viewer";
 
 export const dynamic = "force-dynamic";
@@ -14,8 +14,13 @@ export const dynamic = "force-dynamic";
 export default async function OrderDetailPage({ params }: { params: Promise<{ orderId: string }> }) {
   const { orderId } = await params;
   const viewer = await requirePortalViewer("buyer", `/buyer/orders/${orderId}`);
-  const orders = await getOrders({ authToken: viewer.token, requireLive: true });
-  const order = orders.find((candidate) => candidate.id === orderId);
+  const detail = await getBuyerOrderDetail({
+    authToken: viewer.token,
+    buyerOrgId: viewer.membership.organization.id,
+    orderId,
+    requireLive: true,
+  });
+  const order = detail?.order ?? null;
 
   if (!order) {
     return (
@@ -119,7 +124,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ or
   return (
     <WorkspaceShell
       role="buyer"
-      title={`Closed on price · ${order.id}`}
+      title={detail?.rfq?.title ?? "Delivery in motion"}
       description="The pricing phase is over. This page only shows delivery progress, spend, and what needs your attention."
       status={orderStatusLabel(order.status)}
       actions={[{ href: "/buyer", label: "Back to requests", icon: RiArrowLeftLine, variant: "outline" }]}
@@ -195,6 +200,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ or
               <SpotMetric label="Status" value={orderStatusLabel(order.status)} />
               <SpotMetric label="Provider" value={order.providerOrgId} />
               <SpotMetric label="Funding mode" value={order.fundingMode} />
+              <SpotMetric label="Order record" value={order.id} />
               <SpotMetric label="Current milestone" value={runningMilestone ? runningMilestone.title : "None"} />
             </div>
           </SectionCard>
@@ -213,12 +219,6 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ or
                     : "Delivery is progressing through milestones. No extra action is needed right now."}
                 </p>
               </Card>
-              <Button asChild variant="outline" className="w-full justify-between">
-                <Link href="/buyer">
-                  Back to requests
-                  <RiArrowLeftLine className="size-4" />
-                </Link>
-              </Button>
             </div>
           </SectionCard>
         </div>

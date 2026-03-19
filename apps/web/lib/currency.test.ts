@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { formatCents, formatCentsCompact, formatBudgetUsage, budgetUsageColor } from "./currency";
+import { budgetUsageColor, formatBudgetUsage, formatCents, formatCentsCompact, parseCurrencyInputToCents } from "./currency";
 
 describe("currency utilities", () => {
   it("formats cents as dollars", () => {
@@ -30,5 +30,20 @@ describe("currency utilities", () => {
     expect(budgetUsageColor(600, 1000)).toBe("text-yellow-500");
     expect(budgetUsageColor(300, 1000)).toBe("text-green-600");
     expect(budgetUsageColor(0, 0)).toBe("text-gray-400");
+  });
+
+  it("parses dollar-form inputs into cents", () => {
+    expect(parseCurrencyInputToCents("68")).toBe(6800);
+    expect(parseCurrencyInputToCents("68.4")).toBe(6840);
+    expect(parseCurrencyInputToCents("68.40")).toBe(6840);
+    expect(parseCurrencyInputToCents(" 2410.00 ")).toBe(241000);
+  });
+
+  it("rejects malformed currency input", () => {
+    expect(parseCurrencyInputToCents("")).toBeNull();
+    expect(parseCurrencyInputToCents("0")).toBeNull();
+    expect(parseCurrencyInputToCents("-1")).toBeNull();
+    expect(parseCurrencyInputToCents("12.345")).toBeNull();
+    expect(parseCurrencyInputToCents("abc")).toBeNull();
   });
 });

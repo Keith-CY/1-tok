@@ -1,4 +1,5 @@
 import { redirectToPortal, postGatewayJSON, readRequestPortalViewer } from "../../../../../lib/marketplace-actions";
+import { parseCurrencyInputToCents } from "../../../../../lib/currency";
 
 export async function POST(request: Request, { params }: { params: Promise<{ rfqId: string }> }) {
   const viewer = await readRequestPortalViewer(request, "provider");
@@ -10,20 +11,22 @@ export async function POST(request: Request, { params }: { params: Promise<{ rfq
   const form = await request.formData();
   const rawMessage = String(form.get("message") ?? "").trim();
   const message = rawMessage || "We can take this on and deliver within the requested window.";
-  const quoteCents = Number.parseInt(String(form.get("quoteCents") ?? "0"), 10);
+  const quoteDollars = String(form.get("quoteDollars") ?? "").trim();
+  const legacyQuoteCents = Number.parseInt(String(form.get("quoteCents") ?? "0"), 10);
+  const quoteCents = quoteDollars ? parseCurrencyInputToCents(quoteDollars) : Number.isFinite(legacyQuoteCents) ? legacyQuoteCents : null;
   const milestoneTitle = String(form.get("milestoneTitle") ?? "Service delivery").trim() || "Service delivery";
   const rawMilestoneBasePriceCents = Number.parseInt(String(form.get("milestoneBasePriceCents") ?? ""), 10);
   const rawMilestoneBudgetCents = Number.parseInt(String(form.get("milestoneBudgetCents") ?? ""), 10);
   const milestoneBasePriceCents =
-    Number.isFinite(rawMilestoneBasePriceCents) && rawMilestoneBasePriceCents > 0 ? rawMilestoneBasePriceCents : quoteCents;
+    Number.isFinite(rawMilestoneBasePriceCents) && rawMilestoneBasePriceCents > 0 ? rawMilestoneBasePriceCents : quoteCents ?? 0;
   const milestoneBudgetCents =
     Number.isFinite(rawMilestoneBudgetCents) && rawMilestoneBudgetCents > 0
       ? rawMilestoneBudgetCents
-      : Math.max(quoteCents, milestoneBasePriceCents);
+      : Math.max(quoteCents ?? 0, milestoneBasePriceCents);
 
   if (
     !rfqId ||
-    !Number.isFinite(quoteCents) ||
+    quoteCents === null ||
     quoteCents <= 0 ||
     !Number.isFinite(milestoneBasePriceCents) ||
     milestoneBasePriceCents <= 0 ||

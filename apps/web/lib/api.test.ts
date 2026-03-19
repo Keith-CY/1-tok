@@ -338,6 +338,64 @@ describe("api fallback", () => {
     });
   });
 
+  it("reads buyer order detail with the linked request title", async () => {
+    process.env.NEXT_PUBLIC_API_BASE_URL = "http://localhost:8080";
+    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.endsWith("/api/v1/orders")) {
+        return new Response(
+          JSON.stringify({
+            orders: [
+              { id: "ord_live_1", buyerOrgId: "buyer_1", providerOrgId: "provider_1", fundingMode: "credit", platformWallet: "platform_main", status: "running", milestones: [] },
+            ],
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          },
+        );
+      }
+
+      if (url.endsWith("/api/v1/rfqs")) {
+        return new Response(
+          JSON.stringify({
+            rfqs: [
+              { id: "rfq_live_1", buyerOrgId: "buyer_1", orderId: "ord_live_1", title: "Carrier dispute triage package", category: "agent-ops", scope: "Investigate", budgetCents: 2200, status: "awarded", responseDeadlineAt: "2026-03-15T12:00:00Z", createdAt: "2026-03-12T00:00:00Z", updatedAt: "2026-03-12T00:00:00Z" },
+            ],
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          },
+        );
+      }
+
+      throw new Error(`unexpected url ${url}`);
+    }) as unknown as typeof fetch;
+
+    const apiModule = await import("./api");
+    const detail = await (apiModule as { getBuyerOrderDetail?: (options: {
+      authToken: string;
+      buyerOrgId: string;
+      orderId: string;
+      requireLive?: boolean;
+    }) => Promise<{
+      order: { id: string };
+      rfq: { id: string; title: string } | null;
+    } | null> }).getBuyerOrderDetail?.({
+      authToken: "tok_123",
+      buyerOrgId: "buyer_1",
+      orderId: "ord_live_1",
+      requireLive: true,
+    });
+
+    expect(detail).toEqual({
+      order: expect.objectContaining({ id: "ord_live_1" }),
+      rfq: expect.objectContaining({ id: "rfq_live_1", title: "Carrier dispute triage package" }),
+    });
+  });
+
   it("builds ops dashboard data from live disputes and funding records", async () => {
     process.env.NEXT_PUBLIC_API_BASE_URL = "http://localhost:8080";
     process.env.NEXT_PUBLIC_SETTLEMENT_BASE_URL = "http://localhost:8083";

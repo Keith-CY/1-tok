@@ -34,7 +34,7 @@ describe("provider bid route", () => {
         providerOrgId: "provider_auth_1",
         message: "We can take this today",
         quoteCents: 3900,
-        milestones: [{ id: "ms_1", title: "Triage", basePriceCents: 3900, budgetCents: 4200 }],
+        milestones: [{ id: "ms_1", title: "Triage", basePriceCents: 3900, budgetCents: 3900 }],
       });
 
       return new Response(JSON.stringify({ bid: { id: "bid_1" } }), {
@@ -45,10 +45,8 @@ describe("provider bid route", () => {
 
     const form = new FormData();
     form.set("message", "We can take this today");
-    form.set("quoteCents", "3900");
+    form.set("quoteDollars", "39.00");
     form.set("milestoneTitle", "Triage");
-    form.set("milestoneBasePriceCents", "3900");
-    form.set("milestoneBudgetCents", "4200");
 
     const response = await POST(
       new Request("http://web-7f9c6d4f8c-abcde:3000/provider/rfqs/rfq_1/bids", {

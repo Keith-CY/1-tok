@@ -89,13 +89,14 @@ export default async function ProviderRFQDetailsPage({ params }: { params: Promi
             </div>
 
             <form action={`/provider/rfqs/${rfq.id}/bids`} method="post" className="space-y-4">
-              <Field label="Proposal price" hint="Enter the full proposal amount.">
+              <Field label="Proposal price" hint="Enter the full proposal amount in dollars.">
                 <Input
-                  name="quoteCents"
+                  name="quoteDollars"
                   type="number"
-                  min="1"
-                  step="1"
-                  defaultValue={String(suggestedQuote)}
+                  min="0.01"
+                  step="0.01"
+                  inputMode="decimal"
+                  defaultValue={(suggestedQuote / 100).toFixed(2)}
                   className="h-14 text-2xl font-mono font-semibold tabular-nums"
                   required
                 />
