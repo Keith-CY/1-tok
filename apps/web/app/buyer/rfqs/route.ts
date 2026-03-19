@@ -8,8 +8,9 @@ export async function POST(request: Request) {
 
   const form = await request.formData();
   const title = String(form.get("title") ?? "").trim();
-  const category = String(form.get("category") ?? "agent-ops").trim();
-  const scope = String(form.get("scope") ?? "").trim();
+  const category = String(form.get("category") ?? "service-request").trim();
+  const rawScope = String(form.get("scope") ?? "").trim();
+  const scope = rawScope || title;
   const budgetCents = Number.parseInt(String(form.get("budgetCents") ?? "0"), 10);
   const responseDeadlineAt = normalizeDateTimeInput(String(form.get("responseDeadlineAt") ?? ""));
 

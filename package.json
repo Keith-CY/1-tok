@@ -13,6 +13,7 @@
     "dev:web": "bun --cwd apps/web dev",
     "release:compose-smoke": "./scripts/release-compose-smoke.sh",
     "release:compose-e2e": "./scripts/release-compose-e2e.sh",
+    "release:compose-e2e-screenshots": "./scripts/release-compose-e2e-screenshots.sh",
     "release:compose-fnn-smoke": "./scripts/release-compose-fnn-smoke.sh",
     "release:compose-fnn-dual-node-smoke": "./scripts/release-compose-fnn-dual-node-smoke.sh",
     "release:external-deps-smoke": "./scripts/release-external-deps-smoke.sh",

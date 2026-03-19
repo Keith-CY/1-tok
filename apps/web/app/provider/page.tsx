@@ -1,22 +1,24 @@
-import { formatMoney } from "@1tok/contracts";
+import Link from "next/link";
+import { RiArrowRightUpLine, RiAuctionLine, RiFlashlightLine, RiPriceTag3Line, RiTimeLine } from "react-icons/ri";
 
-import { PortalShell } from "../../components/portal-shell";
-import { SummaryCard } from "../../components/summary-card";
-import { EmptyState } from "../../components/ui";
-import { getProviderDashboardData } from "../../lib/api";
-import { requirePortalViewer } from "../../lib/viewer";
+import { formatMoney } from "@1tok/contracts";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { SectionCard, WorkspaceShell } from "@/components/workspace-shell";
+import { getProviderDashboardData } from "@/lib/api";
+import { requirePortalViewer } from "@/lib/viewer";
 
 export const dynamic = "force-dynamic";
+
+const errorMessages: Record<string, string> = {
+  "bid-invalid": "Enter a price before submitting.",
+  "bid-submit-failed": "Proposal submission failed. Try again.",
+};
 
 export default async function ProviderPage({
   searchParams,
 }: {
-  searchParams?: {
-    opportunityQ?: string;
-    opportunityStatus?: string;
-    queueQ?: string;
-    queueStatus?: string;
-  };
+  searchParams?: Promise<{ error?: string }>;
 }) {
   const viewer = await requirePortalViewer("provider", "/provider");
   const data = await getProviderDashboardData({
@@ -24,336 +26,277 @@ export default async function ProviderPage({
     providerOrgId: viewer.membership.organization.id,
     requireLive: true,
   });
+  const params = await searchParams;
+  const error = params?.error ? errorMessages[params.error] ?? "Something went wrong. Try again." : null;
 
-  const opportunityQ = (searchParams?.opportunityQ ?? "").trim().toLowerCase();
-  const opportunityStatus = (searchParams?.opportunityStatus ?? "all").trim().toLowerCase();
-  const queueQ = (searchParams?.queueQ ?? "").trim().toLowerCase();
-  const queueStatus = (searchParams?.queueStatus ?? "all").toLowerCase();
-
-  const chipClass = (active: boolean) =>
-    active ? "action-button action-button--active" : "action-button";
-
-  const buildOpportunityStatusHref = (nextStatus: string) => {
-    const params = new URLSearchParams();
-
-    if (opportunityQ) {
-      params.set("opportunityQ", opportunityQ);
-    }
-
-    if (nextStatus !== "all") {
-      params.set("opportunityStatus", nextStatus);
-    }
-
-    const queryString = params.toString();
-    return queryString ? `/provider?${queryString}` : "/provider";
-  };
-
-  const buildQueueStatusHref = (nextStatus: string) => {
-    const params = new URLSearchParams();
-
-    if (opportunityQ) {
-      params.set("opportunityQ", opportunityQ);
-    }
-
-    if (queueQ) {
-      params.set("queueQ", queueQ);
-    }
-
-    if (nextStatus !== "all") {
-      params.set("queueStatus", nextStatus);
-    }
-
-    if (opportunityStatus && opportunityStatus !== "all") {
-      params.set("opportunityStatus", opportunityStatus);
-    }
-
-    const queryString = params.toString();
-    return queryString ? `/provider?${queryString}` : "/provider";
-  };
-
-  const filteredOpportunities = data.marketOpportunities.filter(
-    (item) =>
-      (!opportunityQ ||
-        item.title.toLowerCase().includes(opportunityQ) ||
-        item.buyerOrgId.toLowerCase().includes(opportunityQ) ||
-        item.responseDeadlineAt.includes(opportunityQ)) &&
-      (opportunityStatus === "all" ||
-        (opportunityStatus === "bidded" && item.hasProviderBid) ||
-        (opportunityStatus === "unbidded" && !item.hasProviderBid)),
-  );
-
-  const filteredQueue = data.marketQueue
-    .filter(
-      (item) =>
-        !queueQ ||
-        item.title.toLowerCase().includes(queueQ) ||
-        item.providerBidStatus.toLowerCase().includes(queueQ) ||
-        item.buyerOrgId.toLowerCase().includes(queueQ),
-    )
-    .filter((item) => {
-      if (queueStatus === "all") {
-        return true;
-      }
-
-      if (queueStatus === "active") {
-        return item.providerBidStatus.toLowerCase() === "pending";
-      }
-
-      return item.providerBidStatus.toLowerCase() === queueStatus;
-    });
+  const available = [...data.marketOpportunities]
+    .filter((item) => !item.hasProviderBid)
+    .sort(
+      (left, right) =>
+        right.budgetCents - left.budgetCents ||
+        (left.lowestQuoteCents ?? Number.MAX_SAFE_INTEGER) - (right.lowestQuoteCents ?? Number.MAX_SAFE_INTEGER) ||
+        Date.parse(left.responseDeadlineAt) - Date.parse(right.responseDeadlineAt),
+    );
+  const submitted = data.marketQueue.filter((item) => item.providerBidStatus !== "awarded" && item.providerBidStatus !== "rejected").slice(0, 4);
+  const active = data.marketQueue.filter((item) => item.providerBidStatus === "awarded").slice(0, 3);
+  const topBudget = available[0]?.budgetCents ?? null;
+  const liveFloor = available
+    .map((item) => item.lowestQuoteCents)
+    .filter((value): value is number => value !== null)
+    .sort((left, right) => left - right)[0] ?? null;
+  const closingSoon = available.filter((item) => Date.parse(item.responseDeadlineAt) - Date.now() <= 1000 * 60 * 60 * 72).length;
+  const topRequest = available[0] ?? null;
 
   return (
-    <PortalShell
-      eyebrow="Provider portal / delivery + payouts"
-      title="Run Carrier like a performance engine with cash already watching."
-      copy="Providers need a cockpit that treats milestones, usage proofs, payout hooks, and reputation as part of the same operational loop. This page stays close to that loop."
-      signal="Immediate payout only when proof and policy agree"
-      asideTitle="Provider signal deck"
-      quickActions={[
-        { label: "Review pipeline", href: "#pipeline", tone: "primary" },
-        { label: "Open opportunities", href: "#opportunities", tone: "secondary" },
-        { label: "Track payouts", href: "#payouts", tone: "secondary" },
-      ]}
-      asideItems={[
-        { label: "Provider", value: data.summary.providerName, tone: "mint" },
-        { label: "Submitted bids", value: `${data.summary.submittedBids}`, tone: "warning" },
-        { label: "Tier", value: data.summary.reputationTier.toUpperCase() },
+    <WorkspaceShell
+      role="provider"
+      title="Open request board"
+      description="A sharp pricing view: budget, low proposal, proposal count, and deadline in one place."
+      status={`${available.length} live requests`}
+      actions={[
+        { href: "/provider/rfqs", label: "Full request feed" },
+        { href: "/provider/proposals", label: "My proposals", variant: "outline" },
       ]}
     >
-      <div className="stat-grid">
-        <SummaryCard
-          kicker="Active orders"
-          value={`${data.summary.activeOrders}`}
-          hint="Orders where Carrier callbacks are still responsible for keeping budget and settlement in sync."
-        />
-        <SummaryCard
-          kicker="Open RFQs"
-          value={`${data.summary.openRFQs}`}
-          hint="Visible RFQs still open for provider responses across the marketplace."
-        />
-        <SummaryCard
-          kicker="Submitted bids"
-          value={`${data.summary.submittedBids}`}
-          hint="Bids this provider currently has in play or already won."
-        />
-        <SummaryCard
-          kicker="Withdrawals in flight"
-          value={`${data.summary.inFlightWithdrawals}`}
-          hint="Withdrawal records that still need dashboard sync or final settlement."
-        />
-        <SummaryCard
-          kicker="Reputation"
-          value={data.summary.reputationTier.toUpperCase()}
-          hint="Tier influences ranking, RFQ visibility, and ops posture."
-        />
-      </div>
+      {error ? <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div> : null}
 
-      <div className="feed-grid">
-        <article className="feed-card" id="pipeline">
-          <span className="tag">Pipeline</span>
-          <h3>What will move revenue in the next hour.</h3>
-          <div className="feed-list">
-            {data.pipeline.length === 0 ? (
-              <EmptyState
-                icon="⏱️"
-                message="No active pipeline items at the moment."
-                actionLabel="Track opportunities"
-                actionHref="/provider#opportunities"
-              />
-            ) : null}
-            {data.pipeline.map((item) => (
-              <div key={item.id} className="feed-item">
-                <strong>{item.label}</strong>
-                <p>{item.detail}</p>
-              </div>
-            ))}
-          </div>
-        </article>
+      <section className="rounded-md border border-border bg-card">
+        <div className="grid gap-px bg-border lg:grid-cols-[1.15fr_0.95fr_0.9fr_0.9fr]">
+          <MetricStrip
+            icon={RiFlashlightLine}
+            label="Live market read"
+            value={available.length ? `${available.length} requests` : "No live requests"}
+            detail="Sorted for fast pricing decisions."
+          />
+          <MetricStrip
+            icon={RiPriceTag3Line}
+            label="Highest open budget"
+            value={topBudget ? formatMoney(topBudget) : "-"}
+            detail={topRequest?.title ?? "No open request"}
+          />
+          <MetricStrip
+            icon={RiAuctionLine}
+            label="Lowest live proposal"
+            value={liveFloor ? formatMoney(liveFloor) : "-"}
+            detail={liveFloor ? "Current market floor" : "No live floor yet"}
+          />
+          <MetricStrip
+            icon={RiTimeLine}
+            label="Closing in 72 hrs"
+            value={`${closingSoon}`}
+            detail="Requests nearing decision"
+          />
+        </div>
+      </section>
 
-        <aside className="message-card" id="opportunities">
-          <span className="tag">Open RFQs</span>
-          <h3>Providers need a direct lane from opportunity to submitted bid.</h3>
-          <div className="flex gap-2 mb-2">
-            <a href={buildOpportunityStatusHref("all")} className={chipClass(opportunityStatus === "all" || opportunityStatus === "")} aria-current={opportunityStatus === "all" || opportunityStatus === "" ? "page" : undefined}>
-              All opportunities
-            </a>
-            <a href={buildOpportunityStatusHref("bidded")} className={chipClass(opportunityStatus === "bidded")} aria-current={opportunityStatus === "bidded" ? "page" : undefined}>
-              Bidded
-            </a>
-            <a href={buildOpportunityStatusHref("unbidded")} className={chipClass(opportunityStatus === "unbidded")} aria-current={opportunityStatus === "unbidded" ? "page" : undefined}>
-              Not yet bid
-            </a>
-          </div>
-          <form method="GET" className="auth-form market-form">
-            <input type="hidden" name="opportunityStatus" value={opportunityStatus} />
-            <input type="hidden" name="queueQ" value={queueQ} />
-            <input type="hidden" name="queueStatus" value={queueStatus} />
-            <div className="market-form__grid">
-              <label className="auth-field">
-                <span>Search opportunities</span>
-                <input
-                  name="opportunityQ"
-                  type="text"
-                  placeholder="Search by title, buyer, or date"
-                  defaultValue={opportunityQ}
-                />
-              </label>
-            </div>
-            <button type="submit" className="auth-submit">
-              Search opportunities
-            </button>
-          </form>
-
-          <div className="message-list">
-            {filteredOpportunities.length === 0 ? (
-              <EmptyState
-                icon="📡"
-                message="No marketplace opportunities match your filter."
-                actionLabel="Clear filters"
-                actionHref="/provider?opportunityStatus=all"
-              />
-            ) : null}
-            {filteredOpportunities.map((item) => (
-              <div key={item.id} className="message-item">
-                <strong>{item.title}</strong>
-                <p>
-                  budget {formatMoney(item.budgetCents)} · buyer {item.buyerOrgId} · deadline {item.responseDeadlineAt.slice(0, 10)}
-                </p>
-                {item.hasProviderBid ? (
-                  <p>Bid already submitted from this provider session.</p>
-                ) : (
-                  <form className="auth-form market-form" action={`/provider/rfqs/${item.id}/bids`} method="post">
-                    <label className="auth-field">
-                      <span>Message</span>
-                      <textarea name="message" rows={2} placeholder="Carrier-ready response, availability, and outcome." required />
-                    </label>
-                    <div className="market-form__grid">
-                      <label className="auth-field">
-                        <span>Quote cents</span>
-                        <input name="quoteCents" type="number" min="1" step="1" placeholder="3900" required />
-                      </label>
-                      <label className="auth-field">
-                        <span>Milestone title</span>
-                        <input name="milestoneTitle" type="text" defaultValue="Execution" />
-                      </label>
+      <section className="grid gap-6 xl:grid-cols-[1.62fr_0.82fr] xl:items-start">
+        <SectionCard
+          eyebrow="Live request feed"
+          title="Price-first request feed"
+          description="The main market view stays dense, not dashboard-like. Budgets stay loud. Proposal pressure stays visible."
+        >
+          <div className="space-y-3">
+            {available.length === 0 ? (
+              <Card className="border-dashed p-6 text-sm text-muted-foreground">No new open requests match you right now. Your live proposals are still on the right.</Card>
+            ) : (
+              available.slice(0, 8).map((item, index) => (
+                <div key={item.id} className="market-row">
+                  <div className="grid gap-4 xl:grid-cols-[1.7fr_0.72fr_0.72fr_0.62fr_0.62fr_auto] xl:items-center">
+                    <div className="min-w-0 space-y-2">
+                      <div className="text-xs font-medium text-primary">{marketSignal(item.budgetCents, item.proposalCount, index)}</div>
+                      <h3 className="text-lg font-semibold leading-tight tracking-tight break-words text-balance">{item.title}</h3>
                     </div>
-                    <input type="hidden" name="milestoneBudgetCents" value={item.budgetCents} />
-                    <button type="submit" className="action-button">
-                      Submit bid
-                    </button>
-                  </form>
-                )}
-              </div>
-            ))}
+                    <FeedMetric label="Budget" value={formatMoney(item.budgetCents)} emphasize />
+                    <FeedMetric label="Current low" value={item.lowestQuoteCents ? formatMoney(item.lowestQuoteCents) : "Be first"} />
+                    <FeedMetric label="Spread" value={spread(item.budgetCents, item.lowestQuoteCents)} />
+                    <div className="space-y-1 text-sm text-muted-foreground">
+                      <div>{formatProposalCount(item.proposalCount)}</div>
+                      <div>{formatDate(item.responseDeadlineAt)}</div>
+                    </div>
+                    <Button asChild className="w-full xl:w-auto">
+                      <Link href={`/provider/rfqs/${item.id}`}>
+                        Open request
+                        <RiArrowRightUpLine className="size-4" />
+                      </Link>
+                    </Button>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
-        </aside>
-      </div>
+        </SectionCard>
 
-      <article className="feed-card" id="payouts">
-        <span className="tag">Submitted bids</span>
-        <h3>Bid posture should sit next to payout posture.</h3>
-
-        <div className="flex gap-2 mb-2">
-          <a href={buildQueueStatusHref("all")} className={chipClass(queueStatus === "all" || queueStatus === "")} aria-current={queueStatus === "all" || queueStatus === "" ? "page" : undefined}>
-            All
-          </a>
-          <a href={buildQueueStatusHref("active")} className={chipClass(queueStatus === "active")} aria-current={queueStatus === "active" ? "page" : undefined}>
-            Active
-          </a>
-          <a href={buildQueueStatusHref("awarded")} className={chipClass(queueStatus === "awarded")} aria-current={queueStatus === "awarded" ? "page" : undefined}>
-            Awarded
-          </a>
-          <a href={buildQueueStatusHref("rejected")} className={chipClass(queueStatus === "rejected")} aria-current={queueStatus === "rejected" ? "page" : undefined}>
-            Rejected
-          </a>
-          <a href={buildQueueStatusHref("pending")} className={chipClass(queueStatus === "pending")} aria-current={queueStatus === "pending" ? "page" : undefined}>
-            Pending
-          </a>
-        </div>
-        <form method="GET" className="auth-form market-form">
-          <input type="hidden" name="opportunityQ" value={opportunityQ} />
-          <input type="hidden" name="opportunityStatus" value={opportunityStatus} />
-          <div className="market-form__grid">
-            <label className="auth-field">
-              <span>Search bids</span>
-              <input
-                name="queueQ"
-                type="text"
-                placeholder="Search by status, buyer, or title"
-                defaultValue={queueQ}
-              />
-            </label>
-            <label className="auth-field">
-              <span>Status</span>
-              <select name="queueStatus" defaultValue={queueStatus}>
-                <option value="all">All bids</option>
-                <option value="active">Active</option>
-                <option value="awarded">Awarded</option>
-                <option value="rejected">Rejected</option>
-                <option value="pending">Pending</option>
-              </select>
-            </label>
-          </div>
-          <button type="submit" className="auth-submit">
-            Filter bids
-          </button>
-        </form>
-
-        <div className="feed-list">
-          {filteredQueue.length === 0 ? (
-            <EmptyState
-              icon="🧾"
-              message="No submitted bids to track for this filter."
-              actionLabel="Clear bid filters"
-              actionHref="/provider?queueStatus=all"
-            />
-          ) : null}
-          {filteredQueue.map((item) => (
-            <div key={item.id} className="feed-item">
-              <strong>{item.title}</strong>
-              <p>
-                {item.providerBidStatus} · quote {formatMoney(item.quoteCents)} · budget {formatMoney(item.budgetCents)}
-              </p>
-              <p>
-                buyer {item.buyerOrgId} · deadline {item.responseDeadlineAt.slice(0, 10)}
-              </p>
-            </div>
-          ))}
-        </div>
-      </article>
-
-      <article className="feed-card">
-        <span className="tag">Capabilities</span>
-        <h3>What this provider can credibly sell.</h3>
-        <div className="chip-list">
-          {data.capabilities.map((capability) => (
-            <div key={capability} className="chip">
-              {capability}
-            </div>
-          ))}
-        </div>
-      </article>
-
-      <article className="timeline-card">
-        <span className="tag">Live order trace</span>
-        <h3>Operators should never wonder why money did or did not move.</h3>
-        <div className="timeline">
-          {data.activeOrders.flatMap((order) =>
-            order.milestones.map((milestone) => (
-              <div key={`${order.id}-${milestone.id}`} className="timeline-item">
-                <strong>
-                  {order.id} · {milestone.title}
-                </strong>
-                <p>
-                  {milestone.state} · {formatMoney(milestone.basePriceCents)} base ·
-                  {" "}
-                  {milestone.usageCharges.length} usage proof events
-                </p>
+        <div className="space-y-6">
+          <SectionCard
+            eyebrow="Top request now"
+            title={topRequest?.title ?? "No live request"}
+            description="This is the clearest current entry point for a provider scanning the market."
+          >
+            {topRequest ? (
+              <div className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <SpotMetric label="Budget" value={formatMoney(topRequest.budgetCents)} />
+                  <SpotMetric
+                    label="Current low"
+                    value={topRequest.lowestQuoteCents ? formatMoney(topRequest.lowestQuoteCents) : "Be first"}
+                  />
+                  <SpotMetric label="Proposal count" value={`${topRequest.proposalCount}`} />
+                  <SpotMetric label="Deadline" value={formatDate(topRequest.responseDeadlineAt)} />
+                </div>
+                <Button asChild className="w-full justify-between">
+                  <Link href={`/provider/rfqs/${topRequest.id}`}>
+                    Open top request
+                    <RiArrowRightUpLine className="size-4" />
+                  </Link>
+                </Button>
               </div>
-            )),
-          )}
+            ) : (
+              <Card className="border-dashed p-6 text-sm text-muted-foreground">No live request is available right now.</Card>
+            )}
+          </SectionCard>
+
+          <SectionCard eyebrow="My proposals" title="Already in comparison" description="Prices the client is already weighing against other providers.">
+            <div className="grid gap-4">
+              {submitted.length === 0 ? (
+                <Card className="border-dashed p-6 text-sm text-muted-foreground">No live proposals waiting for a client decision.</Card>
+              ) : (
+                submitted.map((item) => (
+                  <CompactProposalCard
+                    key={item.id}
+                    title={item.title}
+                    price={formatMoney(item.quoteCents)}
+                    deadline={formatDate(item.responseDeadlineAt)}
+                    status="Live proposal"
+                    href={`/provider/rfqs/${item.rfqId}`}
+                  />
+                ))
+              )}
+            </div>
+          </SectionCard>
+
+          <SectionCard eyebrow="Awarded work" title="Closed on price" description="These requests already moved out of market pricing and into delivery.">
+            <div className="grid gap-4">
+              {active.length === 0 ? (
+                <Card className="border-dashed p-6 text-sm text-muted-foreground">No awarded requests yet.</Card>
+              ) : (
+                active.map((item) => (
+                  <CompactProposalCard
+                    key={item.id}
+                    title={item.title}
+                    price={formatMoney(item.quoteCents)}
+                    deadline={formatDate(item.responseDeadlineAt)}
+                    status="Awarded"
+                    href={item.orderId ? `/provider/orders/${item.orderId}` : `/provider/rfqs/${item.rfqId}`}
+                  />
+                ))
+              )}
+            </div>
+          </SectionCard>
         </div>
-      </article>
-    </PortalShell>
+      </section>
+    </WorkspaceShell>
   );
+}
+
+function MetricStrip({
+  icon: Icon,
+  label,
+  value,
+  detail,
+}: {
+  icon: typeof RiFlashlightLine;
+  label: string;
+  value: string;
+  detail: string;
+}) {
+  return (
+    <div className="space-y-2 bg-card px-5 py-5">
+      <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+        <Icon className="size-4 text-primary" />
+        {label}
+      </div>
+      <div className="font-mono text-3xl font-semibold tracking-tight tabular-nums text-foreground">{value}</div>
+      <div className="text-sm text-muted-foreground">{detail}</div>
+    </div>
+  );
+}
+
+function FeedMetric({
+  label,
+  value,
+  emphasize = false,
+}: {
+  label: string;
+  value: string;
+  emphasize?: boolean;
+}) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">{label}</div>
+      <div className={emphasize ? "price-inline mt-2 break-words" : "mt-2 font-mono text-xl font-semibold leading-tight tracking-tight tabular-nums break-words text-foreground"}>{value}</div>
+    </div>
+  );
+}
+
+function SpotMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-border bg-secondary/50 px-4 py-4">
+      <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">{label}</div>
+      <div className="mt-2 font-mono text-2xl font-semibold tracking-tight tabular-nums text-foreground">{value}</div>
+    </div>
+  );
+}
+
+function CompactProposalCard({
+  title,
+  price,
+  deadline,
+  status,
+  href,
+}: {
+  title: string;
+  price: string;
+  deadline: string;
+  status: string;
+  href: string;
+}) {
+  return (
+    <div className="market-card p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="space-y-2">
+          <div className="text-xs text-primary">{status}</div>
+          <h3 className="text-lg font-semibold tracking-tight text-balance">{title}</h3>
+        </div>
+        <div className="font-mono text-xl font-semibold tabular-nums text-foreground">{price}</div>
+      </div>
+      <div className="mt-4 text-sm text-muted-foreground">Delivery window {deadline}</div>
+      <Button asChild variant="outline" className="mt-5 w-full justify-between">
+        <Link href={href}>
+          View request
+          <RiArrowRightUpLine className="size-4" />
+        </Link>
+      </Button>
+    </div>
+  );
+}
+
+function marketSignal(budgetCents: number, proposalCount: number, index: number) {
+  if (index === 0) return "Top budget now";
+  if (proposalCount >= 6) return "Crowded pricing";
+  if (budgetCents >= 500000) return "High budget";
+  if (proposalCount === 0) return "First proposal wins";
+  return "Open for pricing";
+}
+
+function formatProposalCount(count: number) {
+  return count === 1 ? "1 live proposal" : `${count} live proposals`;
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(value));
+}
+
+function spread(budgetCents: number, lowestQuoteCents: number | null) {
+  if (!lowestQuoteCents) return "Open";
+  return formatMoney(Math.max(budgetCents - lowestQuoteCents, 0));
 }

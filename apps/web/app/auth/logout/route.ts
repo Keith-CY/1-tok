@@ -7,8 +7,9 @@ export async function POST(request: Request) {
     await revokeIAMSession(token);
   }
 
-	const response = redirectToPath("/login");
-	response.cookies.set({
+  const next = await readNextPath(request);
+  const response = redirectToPath(next);
+  response.cookies.set({
     name: SESSION_COOKIE_NAME,
     value: "",
     httpOnly: true,
@@ -16,6 +17,27 @@ export async function POST(request: Request) {
     secure: shouldUseSecureSessionCookie(),
     path: "/",
     maxAge: 0,
-	});
-	return response;
+  });
+  return response;
+}
+
+function sanitizeNextPath(value: string): string {
+  if (!value.startsWith("/") || value.startsWith("//")) {
+    return "/login";
+  }
+  return value;
+}
+
+async function readNextPath(request: Request) {
+  const contentType = request.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/x-www-form-urlencoded") && !contentType.includes("multipart/form-data")) {
+    return "/login";
+  }
+
+  try {
+    const form = await request.formData();
+    return sanitizeNextPath(String(form.get("next") ?? "/login"));
+  } catch {
+    return "/login";
+  }
 }

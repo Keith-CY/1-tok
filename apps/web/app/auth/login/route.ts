@@ -5,15 +5,16 @@ export async function POST(request: Request) {
   const form = await request.formData();
   const email = String(form.get("email") ?? "").trim();
   const password = String(form.get("password") ?? "");
-	const next = sanitizeNextPath(String(form.get("next") ?? "/"));
+  const next = sanitizeNextPath(String(form.get("next") ?? "/"));
+  const loginPath = getLoginPath(next);
 
-	if (!email || !password) {
-		return redirectToPath(`/login?error=missing-fields&next=${encodeURIComponent(next)}`);
-	}
+  if (!email || !password) {
+    return redirectToPath(`${loginPath}?error=missing-fields&next=${encodeURIComponent(next)}`);
+  }
 
-	try {
-		const result = await createIAMSession(email, password);
-		const response = redirectToPath(next);
+  try {
+    const result = await createIAMSession(email, password);
+    const response = redirectToPath(next);
 
     response.cookies.set({
       name: SESSION_COOKIE_NAME,
@@ -25,10 +26,10 @@ export async function POST(request: Request) {
       maxAge: SESSION_MAX_AGE_SECONDS,
     });
 
-		return response;
-	} catch {
-		return redirectToPath(`/login?error=invalid-credentials&next=${encodeURIComponent(next)}`);
-	}
+    return response;
+  } catch {
+    return redirectToPath(`${loginPath}?error=invalid-credentials&next=${encodeURIComponent(next)}`);
+  }
 }
 
 function sanitizeNextPath(value: string): string {
@@ -36,4 +37,8 @@ function sanitizeNextPath(value: string): string {
     return "/";
   }
   return value;
+}
+
+function getLoginPath(next: string) {
+  return next.startsWith("/ops") ? "/internal/login" : "/login";
 }

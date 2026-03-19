@@ -1,249 +1,91 @@
-import { PortalShell } from "../../../components/portal-shell";
-import { StatusBadge, EmptyState } from "../../../components/ui";
-import { requirePortalViewer } from "../../../lib/viewer";
-import { formatCents } from "../../../lib/currency";
+import Link from "next/link";
+import { RiArrowRightUpLine } from "react-icons/ri";
+
+import { formatMoney } from "@1tok/contracts";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { SectionCard, WorkspaceShell } from "@/components/workspace-shell";
+import { getProviderDashboardData } from "@/lib/api";
+import { requirePortalViewer } from "@/lib/viewer";
 
 export const dynamic = "force-dynamic";
 
-export default async function ProviderRFQsPage({
-  searchParams,
-}: {
-  searchParams?: { q?: string; category?: string; status?: string; sort?: string };
-}) {
+export default async function ProviderRFQsPage() {
   const viewer = await requirePortalViewer("provider", "/provider/rfqs");
+  const data = await getProviderDashboardData({
+    authToken: viewer.token,
+    providerOrgId: viewer.membership.organization.id,
+    requireLive: true,
+  });
 
-  // Demo data — will be replaced with API
-  const openRFQs = [
-    { id: "rfq_1", title: "Agent runtime triage", category: "agent-ops", status: "open", budgetCents: 5400, deadline: "2026-03-15T12:00:00Z" },
-    { id: "rfq_2", title: "Data pipeline cleanup", category: "data-pipeline", status: "awarded", budgetCents: 8200, deadline: "2026-03-18T12:00:00Z" },
-  ];
-
-  const q = (searchParams?.q ?? "").trim().toLowerCase();
-  const categoryFilter = (searchParams?.category ?? "all").toLowerCase();
-  const statusFilter = (searchParams?.status ?? "all").toLowerCase();
-  const sort = (searchParams?.sort ?? "deadline").toLowerCase();
-
-  const categoryValue = categoryFilter !== "all" ? categoryFilter : "";
-
-  const chipClass = (active: boolean) => (active ? "action-button action-button--active" : "action-button");
-
-  const sortValue = sort !== "deadline" ? sort : "";
-
-  const buildCategoryHref = (nextCategory: string) => {
-    const params = new URLSearchParams();
-
-    if (q) {
-      params.set("q", q);
-    }
-
-    if (statusFilter !== "all") {
-      params.set("status", statusFilter);
-    }
-
-    if (sortValue) {
-      params.set("sort", sortValue);
-    }
-
-    if (nextCategory !== "all") {
-      params.set("category", nextCategory);
-    }
-
-    const queryString = params.toString();
-    return queryString ? `/provider/rfqs?${queryString}` : "/provider/rfqs";
-  };
-
-  const buildStatusHref = (nextStatus: string) => {
-    const params = new URLSearchParams();
-
-    if (q) {
-      params.set("q", q);
-    }
-
-    if (categoryValue) {
-      params.set("category", categoryValue);
-    }
-
-    if (sortValue) {
-      params.set("sort", sortValue);
-    }
-
-    if (nextStatus !== "all") {
-      params.set("status", nextStatus);
-    }
-
-    const queryString = params.toString();
-    return queryString ? `/provider/rfqs?${queryString}` : "/provider/rfqs";
-  };
-
-  const buildSortHref = (nextSort: string) => {
-    const params = new URLSearchParams();
-
-    if (q) {
-      params.set("q", q);
-    }
-
-    if (categoryValue) {
-      params.set("category", categoryValue);
-    }
-
-    if (statusFilter !== "all") {
-      params.set("status", statusFilter);
-    }
-
-    if (nextSort !== "deadline") {
-      params.set("sort", nextSort);
-    }
-
-    const queryString = params.toString();
-    return queryString ? `/provider/rfqs?${queryString}` : "/provider/rfqs";
-  };
-
-  const filteredRFQs = openRFQs
-    .filter(
-      (rfq) =>
-        (!q || rfq.title.toLowerCase().includes(q) || rfq.category.toLowerCase().includes(q) || rfq.status.toLowerCase().includes(q)) &&
-        (categoryFilter === "all" || rfq.category === categoryFilter) &&
-        (statusFilter === "all" || rfq.status === statusFilter),
-    )
-    .sort((a, b) => {
-      if (sort === "budget") {
-        return b.budgetCents - a.budgetCents;
-      }
-      if (sort === "title") {
-        return a.title.localeCompare(b.title);
-      }
-      if (sort === "deadline") {
-        return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
-      }
-      return 0;
-    });
+  const available = [...data.marketOpportunities]
+    .filter((item) => !item.hasProviderBid)
+    .sort((left, right) => right.budgetCents - left.budgetCents || Date.parse(left.responseDeadlineAt) - Date.parse(right.responseDeadlineAt));
 
   return (
-    <PortalShell
-      eyebrow="Provider portal / opportunities"
-      title="Open RFQs."
-      copy="Browse open requests for quotes and review RFQs. Open each RFQ detail to take action."
-      signal="RFQ discovery"
-      asideTitle="Quick info"
-      quickActions={[
-        { label: "Back to provider dashboard", href: "/provider", tone: "secondary" },
-        { label: "Carrier operations", href: "/provider/carrier", tone: "secondary" },
+    <WorkspaceShell
+      role="provider"
+      title="All open requests"
+      description="The full 1-tok request board, sorted for fast pricing decisions."
+      actions={[
+        { href: "/provider", label: "Back to marketplace", variant: "outline" },
+        { href: "/provider/proposals", label: "My proposals" },
       ]}
-      asideItems={[]}
     >
-      <div className="space-y-4">
-
-        <div className="flex gap-2 mb-2">
-          <a href={buildCategoryHref("all")} className={chipClass(categoryFilter === 'all')} aria-current={categoryFilter === "all" ? "page" : undefined}>
-            All categories
-          </a>
-          <a href={buildCategoryHref("agent-ops")} className={chipClass(categoryFilter === 'agent-ops')} aria-current={categoryFilter === "agent-ops" ? "page" : undefined}>
-            Agent Ops
-          </a>
-          <a href={buildCategoryHref("agent-runtime")} className={chipClass(categoryFilter === 'agent-runtime')} aria-current={categoryFilter === "agent-runtime" ? "page" : undefined}>
-            Agent Runtime
-          </a>
-          <a href={buildCategoryHref("data-pipeline")} className={chipClass(categoryFilter === 'data-pipeline')} aria-current={categoryFilter === "data-pipeline" ? "page" : undefined}>
-            Data Pipeline
-          </a>
-          <a href={buildCategoryHref("compute")} className={chipClass(categoryFilter === 'compute')} aria-current={categoryFilter === "compute" ? "page" : undefined}>
-            Compute
-          </a>
-        </div>
-        <div className="flex gap-2 mb-2">
-          <a href={buildStatusHref("all")} className={chipClass(statusFilter === 'all')} aria-current={statusFilter === "all" ? "page" : undefined}>
-            All
-          </a>
-          <a href={buildStatusHref("open")} className={chipClass(statusFilter === 'open')} aria-current={statusFilter === "open" ? "page" : undefined}>
-            Open
-          </a>
-          <a href={buildStatusHref("awarded")} className={chipClass(statusFilter === 'awarded')} aria-current={statusFilter === "awarded" ? "page" : undefined}>
-            Awarded
-          </a>
-        </div>
-        <div className="flex gap-2 mb-2">
-          <a href={buildSortHref("deadline")} className={chipClass(sort === "deadline")} aria-current={sort === "deadline" ? "page" : undefined}>
-            Sort by deadline
-          </a>
-          <a href={buildSortHref("budget")} className={chipClass(sort === "budget")} aria-current={sort === "budget" ? "page" : undefined}>
-            Sort by budget
-          </a>
-          <a href={buildSortHref("title")} className={chipClass(sort === "title")} aria-current={sort === "title" ? "page" : undefined}>
-            Sort by title
-          </a>
-        </div>
-        <form method="GET" className="auth-form market-form">
-          <div className="market-form__grid">
-            <label className="auth-field">
-              <span>Search opportunities</span>
-              <input name="q" type="text" placeholder="Search by title or category" defaultValue={q} />
-            </label>
-            <label className="auth-field">
-              <span>Category</span>
-              <select name="category" defaultValue={categoryFilter}>
-                <option value="all">All categories</option>
-                <option value="agent-ops">Agent Ops</option>
-                <option value="agent-runtime">Agent Runtime</option>
-                <option value="data-pipeline">Data Pipeline</option>
-                <option value="compute">Compute</option>
-              </select>
-            </label>
-            <label className="auth-field">
-              <span>Status</span>
-              <select name="status" defaultValue={statusFilter}>
-                <option value="all">All</option>
-                <option value="open">Open</option>
-                <option value="awarded">Awarded</option>
-              </select>
-            </label>
-            <label className="auth-field">
-              <span>Sort</span>
-              <select name="sort" defaultValue={sort}>
-                <option value="deadline">Deadline</option>
-                <option value="budget">Budget</option>
-                <option value="title">Title</option>
-              </select>
-            </label>
-          </div>
-          <button type="submit" className="auth-submit">
-            Find opportunities
-          </button>
-        </form>
-
-        {filteredRFQs.length === 0 ? (
-          <EmptyState
-            message="No RFQs match your filter."
-            actionLabel="Clear filters"
-            actionHref="/provider/rfqs"
-          />
-        ) : (
-          <div className="space-y-3">
-            {filteredRFQs.map((rfq) => (
-              <div key={rfq.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
-                <div className="flex justify-between items-start">
+      <SectionCard eyebrow="All open requests" title="Full request feed" description="Budget first, then live proposal pressure, then delivery window.">
+        <div className="space-y-3">
+          {available.length === 0 ? (
+            <Card className="border-dashed p-6 text-sm text-muted-foreground">No open requests right now.</Card>
+          ) : (
+            available.map((item, index) => (
+              <div key={item.id} className="market-row">
+                <div className="grid gap-4 xl:grid-cols-[1.5fr_0.72fr_0.72fr_0.72fr_auto] xl:items-center">
+                  <div className="space-y-2">
+                    <div className="text-xs text-primary">{marketSignal(item.budgetCents, item.proposalCount, index)}</div>
+                    <h3 className="text-xl font-semibold text-balance">{item.title}</h3>
+                  </div>
                   <div>
-                    <h3 className="font-semibold text-lg">{rfq.title}</h3>
-                    <p className="text-sm text-gray-500">{rfq.category}</p>
-                    <div className="mt-1 text-xs">
-                      <StatusBadge status={rfq.status} />
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Budget</div>
+                    <div className="price-inline mt-2">{formatMoney(item.budgetCents)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Current low</div>
+                    <div className="mt-2 font-mono text-xl font-semibold tracking-tight tabular-nums text-foreground">
+                      {item.lowestQuoteCents ? formatMoney(item.lowestQuoteCents) : "No proposal yet"}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-bold text-lg">{formatCents(rfq.budgetCents)}</p>
-                    <p className="text-xs text-gray-400">budget</p>
+                  <div className="space-y-1 text-sm text-muted-foreground">
+                    <div>{formatProposalCount(item.proposalCount)}</div>
+                    <div>{formatDate(item.responseDeadlineAt)}</div>
                   </div>
-                </div>
-                <div className="flex justify-between items-center mt-3">
-                  <span className="text-xs text-gray-500">Deadline: {new Date(rfq.deadline).toLocaleDateString()}</span>
-                  <a href={`/provider/rfqs/${rfq.id}`} className="action-button">
-                    View RFQ details
-                  </a>
+                  <Button asChild className="w-full xl:w-auto">
+                    <Link href={`/provider/rfqs/${item.id}`}>
+                      Open request
+                      <RiArrowRightUpLine className="size-4" />
+                    </Link>
+                  </Button>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </PortalShell>
+            ))
+          )}
+        </div>
+      </SectionCard>
+    </WorkspaceShell>
   );
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(value));
+}
+
+function formatProposalCount(count: number) {
+  return count === 1 ? "1 live proposal" : `${count} live proposals`;
+}
+
+function marketSignal(budgetCents: number, proposalCount: number, index: number) {
+  if (index === 0) return "Top budget now";
+  if (proposalCount >= 6) return "Crowded pricing";
+  if (budgetCents >= 500000) return "High budget";
+  if (proposalCount === 0) return "First proposal wins";
+  return "Open for pricing";
 }

@@ -1,426 +1,173 @@
-import { PortalShell } from "../../components/portal-shell";
-import { SummaryCard } from "../../components/summary-card";
-import { EmptyState } from "../../components/ui";
-import { getOpsDashboardData } from "../../lib/api";
-import { requirePortalViewer } from "../../lib/viewer";
+import Link from "next/link";
+import { RiArrowRightUpLine, RiBankCardLine, RiCheckboxCircleLine, RiFundsLine, RiSearchEyeLine, RiShieldCheckLine, RiSparklingLine, RiTimeLine } from "react-icons/ri";
+
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { SectionCard, StatCard, WorkspaceShell, Field } from "@/components/workspace-shell";
+import { formatShortDate } from "@/lib/utils";
+import { getOpsDashboardData } from "@/lib/api";
+import { requirePortalViewer } from "@/lib/viewer";
 
 export const dynamic = "force-dynamic";
 
 export default async function OpsPage({
   searchParams,
 }: {
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const viewer = await requirePortalViewer("ops", "/ops");
-  const data = await getOpsDashboardData({
-    authToken: viewer.token,
-    requireLive: true,
-  });
-  const creditApproved = readSearchParam(searchParams, "creditApproved");
-  const recommendedLimitCents = readSearchParam(searchParams, "recommendedLimitCents");
-  const creditReason = readSearchParam(searchParams, "creditReason");
-  const resolvedDisputeId = readSearchParam(searchParams, "resolvedDisputeId");
-  const disputeStatus = readSearchParam(searchParams, "disputeStatus");
-  const error = readSearchParam(searchParams, "error");
-  const disputesSearch = readSearchParam(searchParams, "disputesSearch").trim().toLowerCase();
-  const disputeStatusFilter = readSearchParam(searchParams, "disputeStatusFilter").trim().toLowerCase();
-  const pendingReviewSearch = readSearchParam(searchParams, "pendingReviewSearch").trim().toLowerCase();
-  const riskSearch = readSearchParam(searchParams, "riskSearch").trim().toLowerCase();
-  const fundingSearch = readSearchParam(searchParams, "fundingSearch").trim().toLowerCase();
+  const data = await getOpsDashboardData({ authToken: viewer.token, requireLive: true });
+  const params = await searchParams;
+  const creditApproved = String(params?.creditApproved ?? "");
+  const recommendedLimitCents = String(params?.recommendedLimitCents ?? "0");
+  const creditReason = String(params?.creditReason ?? "");
+  const resolvedDisputeId = String(params?.resolvedDisputeId ?? "");
+  const disputeStatus = String(params?.disputeStatus ?? "");
+  const error = String(params?.error ?? "");
 
-  const filteredDisputes = data.disputes.filter((dispute) =>
-    (disputeStatusFilter === "" || disputeStatusFilter === "all" || dispute.status === disputeStatusFilter) &&
-    (
-      disputesSearch === "" ||
-      dispute.orderId.toLowerCase().includes(disputesSearch) ||
-      dispute.milestoneId.toLowerCase().includes(disputesSearch) ||
-      dispute.reason.toLowerCase().includes(disputesSearch)
-    ),
-  );
-
-  const filteredPendingReviews = data.pendingReviews.filter((review) =>
-    pendingReviewSearch === "" ||
-    review.title.toLowerCase().includes(pendingReviewSearch) ||
-    review.detail.toLowerCase().includes(pendingReviewSearch),
-  );
-
-  const filteredRiskFeed = data.riskFeed.filter((risk) =>
-    riskSearch === "" ||
-    risk.title.toLowerCase().includes(riskSearch) ||
-    risk.detail.toLowerCase().includes(riskSearch),
-  );
-
-  const filteredFunding = data.fundingRecords.filter((record) => {
-    const haystack = `${record.kind} ${record.state} ${record.amount ?? ""} ${record.providerOrgId ?? ""} ${record.buyerOrgId ?? ""} ${record.invoice ?? ""} ${record.externalId ?? ""} ${record.asset ?? ""}`.toLowerCase();
-    return fundingSearch === "" || haystack.includes(fundingSearch);
-  });
-
-  const chipClass = (active: boolean) =>
-    active ? "action-button action-button--active" : "action-button";
-
-  const buildDisputeStatusHref = (nextStatus: string) => {
-    const params = new URLSearchParams();
-
-    if (disputesSearch) {
-      params.set("disputesSearch", disputesSearch);
-    }
-
-    if (nextStatus === "all") {
-      params.delete("disputeStatusFilter");
-    } else {
-      params.set("disputeStatusFilter", nextStatus);
-    }
-
-    if (pendingReviewSearch) {
-      params.set("pendingReviewSearch", pendingReviewSearch);
-    }
-
-    if (riskSearch) {
-      params.set("riskSearch", riskSearch);
-    }
-
-    if (fundingSearch) {
-      params.set("fundingSearch", fundingSearch);
-    }
-
-    const queryString = params.toString();
-    return queryString ? `/ops?${queryString}` : "/ops";
-  };
+  const openDisputes = data.disputes.filter((item) => item.status !== "resolved").slice(0, 3);
 
   return (
-    <PortalShell
-      eyebrow="Ops portal / treasury + governance"
-      title="The platform only looks graceful if the ugly parts are observable."
-      copy="This view keeps provider review, credit discipline, dispute payouts, and channel stress in the same sightline. It should feel like the place where market trust is actively manufactured."
-      signal="Platform-first reimbursement, provider recovery second"
-      asideTitle="Ops signal deck"
-      quickActions={[
-        { label: "Run credit decision", href: "#credit-decision", tone: "primary" },
-        { label: "Review disputes", href: "#disputes", tone: "secondary" },
-        { label: "Treasury controls", href: "#treasury", tone: "secondary" },
-      ]}
-      asideItems={[
-        { label: "Active orders", value: `${data.summary.activeOrders}`, tone: "warning" },
-        { label: "Open disputes", value: `${data.summary.openDisputes}`, tone: "danger" },
-        { label: "Settled invoices", value: `${data.summary.settledInvoices}` },
+    <WorkspaceShell
+      role="ops"
+      title="Put human review at the top. Push everything else down a layer."
+      description="The ops homepage stays opinionated: review queue first, credit panel second, treasury summary third. Dense audit surfaces move to secondary routes."
+      status={`${data.summary.openDisputes} open disputes`}
+      actions={[
+        { href: "/ops/applications", label: "Review queue", icon: RiSearchEyeLine },
+        { href: "/ops/disputes", label: "Disputes", icon: RiShieldCheckLine, variant: "outline" },
       ]}
     >
-      <div className="stat-grid">
-        <SummaryCard
-          kicker="Active orders"
-          value={`${data.summary.activeOrders}`}
-          hint="Orders currently visible to the ops control plane."
-        />
-        <SummaryCard
-          kicker="Open disputes"
-          value={`${data.summary.openDisputes}`}
-          hint="Disputes currently waiting on reimbursement, recovery, or manual ops review."
-        />
-        <SummaryCard
-          kicker="Settled invoices"
-          value={`${data.summary.settledInvoices}`}
-          hint="Funding records already marked settled by the settlement service."
-        />
-        <SummaryCard
-          kicker="Pending withdrawals"
-          value={`${data.summary.pendingWithdrawals}`}
-          hint="Withdrawal records still moving through the settlement queue."
-        />
-      </div>
+      <section className="grid gap-4 xl:grid-cols-4">
+        <StatCard icon={RiSearchEyeLine} label="Needs review" value={`${data.pendingReviews.length + data.summary.openDisputes}`} detail="Combined manual queue across applications, treasury, and disputes." />
+        <StatCard icon={RiFundsLine} label="Funding records" value={`${data.summary.fundingRecords}`} detail="Treasury records visible in the control plane." />
+        <StatCard icon={RiCheckboxCircleLine} label="Settled invoices" value={`${data.summary.settledInvoices}`} detail="Settlement entries already cleared." tone="success" />
+        <StatCard icon={RiTimeLine} label="Pending withdrawals" value={`${data.summary.pendingWithdrawals}`} detail="Cash movement still in flight." tone={data.summary.pendingWithdrawals > 0 ? "warning" : "default"} />
+      </section>
 
-      <div className="feed-grid">
-        <article className="feed-card" id="credit-decision">
-          <span className="tag">Credit review</span>
-          <h3>Ops should be able to re-price buyer trust without leaving the control plane.</h3>
-          <form className="auth-form market-form" action="/ops/credits/decision" method="post">
-            <div className="market-form__grid">
-              <label className="auth-field">
-                <span>Completed orders</span>
-                <input name="completedOrders" type="number" min="0" step="1" defaultValue="12" required />
-              </label>
-              <label className="auth-field">
-                <span>Successful payments</span>
-                <input name="successfulPayments" type="number" min="0" step="1" defaultValue="11" required />
-              </label>
-              <label className="auth-field">
-                <span>Failed payments</span>
-                <input name="failedPayments" type="number" min="0" step="1" defaultValue="1" required />
-              </label>
-              <label className="auth-field">
-                <span>Disputed orders</span>
-                <input name="disputedOrders" type="number" min="0" step="1" defaultValue={data.summary.openDisputes} required />
-              </label>
-            </div>
-            <label className="auth-field">
-              <span>Lifetime spend cents</span>
-              <input name="lifetimeSpendCents" type="number" min="0" step="1" defaultValue="480000" required />
-            </label>
-            <button type="submit" className="action-button">
-              Run credit decision
-            </button>
-          </form>
-        </article>
-
-        <aside className="message-card" id="dispute-result">
-          <span className="tag">Decision result</span>
-          <h3>Show the last recommendation with the exact reason returned by policy.</h3>
-          <div className="message-list">
-            <div className="message-item">
-              <strong>{creditApproved === "true" ? "Approved" : creditApproved === "false" ? "Rejected" : "No decision yet"}</strong>
-              <p>Recommended limit {recommendedLimitCents || "0"} cents</p>
-              <p>{creditReason || "Submit buyer history to generate a live recommendation."}</p>
-            </div>
-          </div>
-        </aside>
-      </div>
-
-      <div className="feed-grid">
-        <article className="feed-card">
-          <span className="tag">Dispute action result</span>
-          <h3>Ops actions should echo back into the queue immediately.</h3>
-          <div className="feed-list">
-            <div className="feed-item">
-              <strong>{resolvedDisputeId ? `Resolved ${resolvedDisputeId}` : "No dispute action yet"}</strong>
-              <p>
-                {resolvedDisputeId
-                  ? `Latest dispute action returned status ${disputeStatus || "resolved"}.`
-                  : error === "dispute-resolution-failed"
-                    ? "The dispute action failed. Retry from the queue below."
-                    : "Resolve an open dispute from the queue to write a live ops action into the system."}
-              </p>
-            </div>
-          </div>
-        </article>
-
-        <aside className="message-card" id="treasury">
-          <span className="tag">Action posture</span>
-          <h3>Open cases stay actionable, resolved cases stay legible.</h3>
-          <div className="chip-list">
-            <div className="chip">
-              Open queue
-              <span>{data.summary.openDisputes}</span>
-            </div>
-            <div className="chip">
-              Resolved visible
-              <span>{data.disputes.filter((dispute) => dispute.status === "resolved").length}</span>
-            </div>
-          </div>
-        </aside>
-      </div>
-
-      <div className="feed-grid">
-        <article className="feed-card" id="pending-reviews">
-          <span className="tag">Pending reviews</span>
-          <h3>Items that require a human decision, not another dashboard filter.</h3>
-          <form method="GET" className="auth-form market-form">
-            <input type="hidden" name="disputesSearch" value={disputesSearch} />
-            <input type="hidden" name="disputeStatusFilter" value={disputeStatusFilter || "all"} />
-            <input type="hidden" name="riskSearch" value={riskSearch} />
-            <input type="hidden" name="fundingSearch" value={fundingSearch} />
-            <label className="auth-field">
-              <span>Search pending reviews</span>
-              <input
-                name="pendingReviewSearch"
-                type="text"
-                placeholder="Search by title or detail"
-                defaultValue={pendingReviewSearch}
-              />
-            </label>
-            <button type="submit" className="auth-submit">
-              Filter reviews
-            </button>
-          </form>
-
-          <div className="feed-list">
-            {filteredPendingReviews.length === 0 ? (
-              <EmptyState icon="✅" message="No pending manual reviews right now." actionLabel="Clear review filters" actionHref="/ops#pending-reviews" />
-            ) : null}
-            {filteredPendingReviews.map((review) => (
-              <div key={review.id} className="feed-item">
-                <strong>{review.title}</strong>
-                <p>{review.detail}</p>
+      <section className="grid gap-6 xl:grid-cols-[1.02fr_0.98fr]">
+        <SectionCard eyebrow="Primary queue" title="Needs review now" description="Disputes and operational review items share one surface so ops starts from action, not from tabs.">
+          <div className="space-y-3">
+            {openDisputes.map((dispute) => (
+              <div key={dispute.id} className="space-y-3 rounded-[26px] border border-border/70 bg-white/82 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-medium text-foreground">{dispute.id}</h3>
+                      <Badge variant="danger">open</Badge>
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">Order {dispute.orderId} · Milestone {dispute.milestoneId} · {formatShortDate(dispute.createdAt)}</p>
+                    <p className="mt-2 text-sm text-foreground">{dispute.reason}</p>
+                  </div>
+                  <div className="font-display text-2xl tracking-[-0.04em] text-foreground">{dispute.refundCents}</div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <form action={`/ops/disputes/${dispute.id}/resolve`} method="post">
+                    <input type="hidden" name="resolution" value="refund approved" />
+                    <Button type="submit" size="sm">Approve refund</Button>
+                  </form>
+                  <form action={`/ops/disputes/${dispute.id}/resolve`} method="post">
+                    <input type="hidden" name="resolution" value="claim rejected" />
+                    <Button type="submit" variant="outline" size="sm">Reject claim</Button>
+                  </form>
+                </div>
+              </div>
+            ))}
+            {data.pendingReviews.map((review) => (
+              <div key={review.id} className="rounded-[24px] border border-border/70 bg-secondary/45 p-4">
+                <div className="font-medium text-foreground">{review.title}</div>
+                <div className="mt-1 text-sm text-muted-foreground">{review.detail}</div>
               </div>
             ))}
           </div>
-        </article>
+        </SectionCard>
 
-        <aside className="message-card">
-          <span className="tag">Treasury signals</span>
-          <h3>Read the funding posture at a glance.</h3>
-          <div className="chip-list">
-            {data.treasurySignals.length === 0 ? (
-              <EmptyState icon="🏦" message="No treasury signal changes in the last interval." actionLabel="Open treasury controls" actionHref="/ops#treasury" />
-            ) : null}
+        <SectionCard eyebrow="Decisioning" title="Run credit decision" description="Keep the default input set short. Advanced scoring factors stay collapsed until needed.">
+          <form action="/ops/credits/decision" method="post" className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Completed orders"><Input name="completedOrders" type="number" min="0" step="1" defaultValue="12" required /></Field>
+              <Field label="Disputed orders"><Input name="disputedOrders" type="number" min="0" step="1" defaultValue={String(data.summary.openDisputes)} required /></Field>
+            </div>
+            <Field label="Lifetime spend"><Input name="lifetimeSpendCents" type="number" min="0" step="1" defaultValue="480000" required /></Field>
+            <Accordion type="single" collapsible>
+              <AccordionItem value="advanced-credit">
+                <AccordionTrigger>Advanced scoring factors</AccordionTrigger>
+                <AccordionContent>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <Field label="Successful payments"><Input name="successfulPayments" type="number" min="0" step="1" defaultValue="11" required /></Field>
+                    <Field label="Failed payments"><Input name="failedPayments" type="number" min="0" step="1" defaultValue="1" required /></Field>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+            <div className="flex flex-wrap gap-3">
+              <Button type="submit">Run credit decision</Button>
+              <Button asChild variant="outline">
+                <Link href="/ops/disputes">Open disputes board</Link>
+              </Button>
+            </div>
+          </form>
+        </SectionCard>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
+        <SectionCard eyebrow="Latest output" title="Decision + resolution" description="Small feedback cards keep the homepage readable after an action completes.">
+          <div className="grid gap-3">
+            <Card className="bg-white/82 p-5">
+              <div className="flex items-center gap-3">
+                <RiSparklingLine className="size-5 text-primary" />
+                <div>
+                  <div className="font-medium text-foreground">Credit result</div>
+                  <div className="mt-1 text-sm text-muted-foreground">
+                    {creditApproved === "true"
+                      ? `Approved with recommended limit ${recommendedLimitCents} cents.`
+                      : creditApproved === "false"
+                        ? `Rejected. ${creditReason || "No reason supplied."}`
+                        : "No fresh decision yet."}
+                  </div>
+                </div>
+              </div>
+            </Card>
+            <Card className="bg-white/82 p-5">
+              <div className="flex items-center gap-3">
+                <RiShieldCheckLine className="size-5 text-primary" />
+                <div>
+                  <div className="font-medium text-foreground">Dispute action</div>
+                  <div className="mt-1 text-sm text-muted-foreground">
+                    {resolvedDisputeId
+                      ? `Resolved ${resolvedDisputeId} with status ${disputeStatus || "resolved"}.`
+                      : error
+                        ? `The last dispute action returned ${error}.`
+                        : "No dispute action has been recorded in this session."}
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </div>
+        </SectionCard>
+
+        <SectionCard eyebrow="Treasury + risk" title="Short posture strip" description="Only the top-level posture lives here. Full treasury browsing moves to secondary pages.">
+          <div className="grid gap-3 md:grid-cols-3">
             {data.treasurySignals.map((signal) => (
-              <div key={signal.id} className="chip">
-                {signal.label}
-                <span>{signal.value}</span>
+              <Card key={signal.id} className="bg-white/82 p-5">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">{signal.label}</div>
+                <div className="mt-2 font-display text-3xl tracking-[-0.04em]">{signal.value}</div>
+              </Card>
+            ))}
+          </div>
+          <div className="grid gap-3 pt-2">
+            {data.riskFeed.map((item) => (
+              <div key={item.id} className="rounded-[24px] border border-border/70 bg-secondary/45 p-4">
+                <div className="font-medium text-foreground">{item.title}</div>
+                <div className="mt-1 text-sm text-muted-foreground">{item.detail}</div>
               </div>
             ))}
           </div>
-        </aside>
-      </div>
-
-      <article className="timeline-card" id="risk-feed">
-        <span className="tag">Risk feed</span>
-        <h3>Today’s market pressure points.</h3>
-        <form method="GET" className="auth-form market-form">
-          <input type="hidden" name="pendingReviewSearch" value={pendingReviewSearch} />
-          <input type="hidden" name="disputesSearch" value={disputesSearch} />
-          <input type="hidden" name="disputeStatusFilter" value={disputeStatusFilter || "all"} />
-          <input type="hidden" name="fundingSearch" value={fundingSearch} />
-          <label className="auth-field">
-            <span>Search risk alerts</span>
-            <input
-              name="riskSearch"
-              type="text"
-              placeholder="Search risk title or detail"
-              defaultValue={riskSearch}
-            />
-          </label>
-          <button type="submit" className="auth-submit">
-            Filter risk feed
-          </button>
-        </form>
-        <div className="timeline">
-          {filteredRiskFeed.length === 0 ? (
-            <EmptyState icon="📈" message="No risk alerts in the last period." actionLabel="Clear risk filters" actionHref="/ops#risk-feed" />
-          ) : null}
-          {filteredRiskFeed.map((item) => (
-            <div key={item.id} className="timeline-item">
-              <strong>{item.title}</strong>
-              <p>{item.detail}</p>
-            </div>
-          ))}
-        </div>
-      </article>
-
-      <article className="timeline-card" id="disputes">
-        <span className="tag">Dispute queue</span>
-        <h3>Platform-first reimbursement only works if disputes stay visible.</h3>
-        <div className="flex gap-2 mb-2">
-          <a href={buildDisputeStatusHref("all")} className={chipClass(disputeStatusFilter === "all" || disputeStatusFilter === "")} aria-current={disputeStatusFilter === "all" || disputeStatusFilter === "" ? "page" : undefined}>
-            All
-          </a>
-          <a href={buildDisputeStatusHref("open")} className={chipClass(disputeStatusFilter === "open")} aria-current={disputeStatusFilter === "open" ? "page" : undefined}>
-            Open
-          </a>
-          <a href={buildDisputeStatusHref("resolved")} className={chipClass(disputeStatusFilter === "resolved")} aria-current={disputeStatusFilter === "resolved" ? "page" : undefined}>
-            Resolved
-          </a>
-        </div>
-        <form method="GET" className="auth-form market-form">
-          <input type="hidden" name="pendingReviewSearch" value={pendingReviewSearch} />
-          <input type="hidden" name="riskSearch" value={riskSearch} />
-          <input type="hidden" name="fundingSearch" value={fundingSearch} />
-          <div className="market-form__grid">
-            <label className="auth-field">
-              <span>Search disputes</span>
-              <input
-                name="disputesSearch"
-                type="text"
-                placeholder="Search order, milestone or reason"
-                defaultValue={disputesSearch}
-              />
-            </label>
-            <label className="auth-field">
-              <span>Status</span>
-              <select name="disputeStatusFilter" defaultValue={disputeStatusFilter || "all"}>
-                <option value="open">Open</option>
-                <option value="resolved">Resolved</option>
-                <option value="all">All</option>
-              </select>
-            </label>
-          </div>
-          <button type="submit" className="auth-submit">
-            Filter disputes
-          </button>
-        </form>
-        <div className="timeline">
-          {filteredDisputes.length === 0 ? (
-            <EmptyState icon="⚖️" message="No disputes in queue." actionLabel="Clear dispute filters" actionHref="/ops#disputes" />
-          ) : null}
-          {filteredDisputes.map((dispute) => (
-            <div key={dispute.id} className="timeline-item">
-              <strong>
-                {dispute.orderId} · {dispute.milestoneId} · {dispute.status}
-              </strong>
-              <p>
-                {dispute.reason} · refund {dispute.refundCents}
-              </p>
-              {dispute.status === "open" ? (
-                <form className="auth-form market-form" action={`/ops/disputes/${dispute.id}/resolve`} method="post">
-                  <label className="auth-field">
-                    <span>Resolution note</span>
-                    <textarea
-                      name="resolution"
-                      rows={2}
-                      defaultValue="Approved reimbursement after ops evidence review."
-                      required
-                    />
-                  </label>
-                  <button type="submit" className="action-button">
-                    Resolve dispute
-                  </button>
-                </form>
-              ) : (
-                <p>
-                  {dispute.resolution || "Resolved by ops."}
-                  {dispute.resolvedBy ? ` · ${dispute.resolvedBy}` : ""}
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
-      </article>
-
-      <article className="timeline-card" id="journal">
-        <span className="tag">Funding journal</span>
-        <h3>Live money movement, not demo theater.</h3>
-        <form method="GET" className="auth-form market-form">
-          <input type="hidden" name="pendingReviewSearch" value={pendingReviewSearch} />
-          <input type="hidden" name="disputesSearch" value={disputesSearch} />
-          <input type="hidden" name="disputeStatusFilter" value={disputeStatusFilter || "all"} />
-          <input type="hidden" name="riskSearch" value={riskSearch} />
-          <label className="auth-field">
-            <span>Search funding journal</span>
-            <input
-              name="fundingSearch"
-              type="text"
-              placeholder="Search kind, state, org, or invoice"
-              defaultValue={fundingSearch}
-            />
-          </label>
-          <button type="submit" className="auth-submit">
-            Filter funding
-          </button>
-        </form>
-        <div className="timeline">
-          {filteredFunding.length === 0 ? (
-            <EmptyState icon="📚" message="No funding records to display yet." actionLabel="Clear funding filters" actionHref="/ops#journal" />
-          ) : null}
-          {filteredFunding.map((record) => (
-            <div key={record.id} className="timeline-item">
-              <strong>
-                {record.kind.toUpperCase()} · {record.state}
-              </strong>
-              <p>
-                {record.amount}
-                {record.asset ? ` ${record.asset}` : ""} · {record.providerOrgId ?? record.buyerOrgId ?? "platform"}
-                {record.invoice ? ` · ${record.invoice}` : record.externalId ? ` · ${record.externalId}` : ""}
-              </p>
-            </div>
-          ))}
-        </div>
-      </article>
-    </PortalShell>
+        </SectionCard>
+      </section>
+    </WorkspaceShell>
   );
-}
-
-function readSearchParam(
-  searchParams: Record<string, string | string[] | undefined> | undefined,
-  key: string,
-): string {
-  const value = searchParams?.[key];
-  return Array.isArray(value) ? value[0] ?? "" : value ?? "";
 }
