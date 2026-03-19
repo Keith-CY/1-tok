@@ -8,6 +8,8 @@ const API_BASE_URL = trimTrailingSlash(process.env.SCREENSHOT_API_BASE_URL || "h
 const IAM_BASE_URL = trimTrailingSlash(process.env.SCREENSHOT_IAM_BASE_URL || "http://iam:8081");
 const SETTLEMENT_BASE_URL = trimTrailingSlash(process.env.SCREENSHOT_SETTLEMENT_BASE_URL || "http://settlement:8083");
 const SETTLEMENT_SERVICE_TOKEN = process.env.SCREENSHOT_SETTLEMENT_SERVICE_TOKEN || "local-settlement-service-token";
+const SETTLEMENT_INVOICE_ASSET = process.env.SCREENSHOT_INVOICE_ASSET || "CKB";
+const SETTLEMENT_INVOICE_AMOUNT = process.env.SCREENSHOT_INVOICE_AMOUNT || "12.5";
 const EXECUTION_BASE_URL = trimTrailingSlash(process.env.SCREENSHOT_EXECUTION_BASE_URL || "http://execution:8085");
 const EXECUTION_EVENT_TOKEN = process.env.SCREENSHOT_EXECUTION_EVENT_TOKEN || "local-execution-event-token";
 const PASSWORD = "correct horse battery staple 123";
@@ -280,7 +282,7 @@ async function waitForAwardedOrderId(token, title) {
 }
 
 async function settleOrderFlow(token, orderId) {
-  await settleOrderMilestone(orderId);
+  await settleOrderMilestone(token, orderId);
 
   let settledOrder = null;
   await poll(async () => {
@@ -301,7 +303,10 @@ async function waitForSettledInvoice(token, orderId) {
   }, 30000, `wait for settled invoice on ${orderId}`);
 }
 
-async function settleOrderMilestone(orderId) {
+async function settleOrderMilestone(token, orderId) {
+  const order = await getOrderById(token, orderId);
+  const milestoneId = order?.milestones?.[0]?.id || "ms_1";
+
   const response = await fetch(`${EXECUTION_BASE_URL}/v1/carrier/events`, {
     method: "POST",
     headers: {
@@ -311,7 +316,7 @@ async function settleOrderMilestone(orderId) {
     },
     body: JSON.stringify({
       orderId,
-      milestoneId: "ms_1",
+      milestoneId,
       eventType: "milestone_ready",
       summary: "Screenshot harness completed the mocked provider step.",
     }),
@@ -323,6 +328,8 @@ async function settleOrderMilestone(orderId) {
 }
 
 async function createInvoice(order) {
+  const milestoneId = order.milestones[0]?.id || "ms_1";
+
   const response = await fetch(`${SETTLEMENT_BASE_URL}/v1/invoices`, {
     method: "POST",
     headers: {
@@ -332,11 +339,11 @@ async function createInvoice(order) {
     },
     body: JSON.stringify({
       orderId: order.id,
-      milestoneId: "ms_1",
+      milestoneId,
       buyerOrgId: order.buyerOrgId,
       providerOrgId: order.providerOrgId,
-      asset: "CKB",
-      amount: "12.5",
+      asset: SETTLEMENT_INVOICE_ASSET,
+      amount: SETTLEMENT_INVOICE_AMOUNT,
     }),
   });
 

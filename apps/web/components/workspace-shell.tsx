@@ -48,7 +48,7 @@ const shellConfig: Record<
     nav: [
       { href: "/buyer", label: "Requests", icon: RiFolderChartLine },
       { href: "/buyer/rfqs/create", label: "Post request", icon: RiAddLine },
-      { href: "/buyer/orders/ord_1", label: "Awarded work", icon: RiTaskLine },
+      { href: "/buyer", label: "Delivery", icon: RiTaskLine },
     ],
   },
   provider: {

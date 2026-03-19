@@ -27,6 +27,7 @@ export default async function BuyerPage() {
     .sort((left, right) => left - right)[0] ?? null;
   const closingSoon = openRequests.filter((item) => Date.parse(item.responseDeadlineAt) - Date.now() <= 1000 * 60 * 60 * 72).length;
   const awarded = data.activeOrders.slice(0, 3);
+  const awardedWorkHref = awarded[0] ? `/buyer/orders/${awarded[0].id}` : "/buyer";
 
   return (
     <WorkspaceShell
@@ -36,7 +37,7 @@ export default async function BuyerPage() {
       status={`${openRequests.length} live requests`}
       actions={[
         { href: "/buyer/rfqs/create", label: "Post request" },
-        { href: "/buyer/orders/ord_1", label: "Awarded work", variant: "outline" },
+        { href: awardedWorkHref, label: "Awarded work", variant: "outline" },
       ]}
     >
       <section className="rounded-md border border-border bg-card">
