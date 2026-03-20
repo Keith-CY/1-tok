@@ -13,6 +13,7 @@ DUAL_NODE_SCRIPT="${ROOT_DIR}/scripts/release-compose-fnn-dual-node-smoke.sh"
 CARRIER_DOC="${ROOT_DIR}/docs/carrier-pr-support.md"
 PACKAGE_JSON="${ROOT_DIR}/package.json"
 README_FILE="${ROOT_DIR}/README.md"
+DEVELOPER_GUIDE_FILE="${ROOT_DIR}/docs/developer-guide.md"
 COOLIFY_README="${ROOT_DIR}/deploy/coolify/README.md"
 E2E_DOCKERFILE="${ROOT_DIR}/deploy/e2e/Dockerfile"
 
@@ -27,6 +28,7 @@ required_files=(
   "${DUAL_NODE_SCRIPT}"
   "${CARRIER_DOC}"
   "${E2E_DOCKERFILE}"
+  "${DEVELOPER_GUIDE_FILE}"
 )
 
 for file in "${required_files[@]}"; do
@@ -171,15 +173,15 @@ grep -q '"release:abuse-smoke"' "${PACKAGE_JSON}" || {
   exit 1
 }
 
-grep -q "release:compose-fnn-smoke" "${README_FILE}" || {
-  echo "README missing compose fnn smoke documentation" >&2
+if ! grep -q "release:compose-fnn-smoke" "${README_FILE}" && ! grep -q "release:compose-fnn-smoke" "${DEVELOPER_GUIDE_FILE}"; then
+  echo "user or developer docs missing compose fnn smoke documentation" >&2
   exit 1
-}
+fi
 
-grep -q "release:compose-e2e" "${README_FILE}" || {
-  echo "README missing docker-only compose e2e documentation" >&2
+if ! grep -q "release:compose-e2e" "${README_FILE}" && ! grep -q "release:compose-e2e" "${DEVELOPER_GUIDE_FILE}"; then
+  echo "user or developer docs missing docker-only compose e2e documentation" >&2
   exit 1
-}
+fi
 
 grep -q "\`fnn\`" "${COOLIFY_README}" || {
   echo "deploy/coolify/README.md missing fnn service guidance" >&2
