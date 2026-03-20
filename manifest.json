@@ -1,0 +1,210 @@
+[
+  {
+    "businessLine": "home",
+    "device": "desktop",
+    "order": 1,
+    "slug": "home",
+    "title": "Home",
+    "path": "home/desktop/01-home.png"
+  },
+  {
+    "businessLine": "buyer",
+    "device": "desktop",
+    "order": 1,
+    "slug": "login",
+    "title": "Buyer login",
+    "path": "buyer/desktop/01-login.png"
+  },
+  {
+    "businessLine": "buyer",
+    "device": "desktop",
+    "order": 2,
+    "slug": "post-request",
+    "title": "Buyer post request",
+    "path": "buyer/desktop/02-post-request.png"
+  },
+  {
+    "businessLine": "buyer",
+    "device": "desktop",
+    "order": 3,
+    "slug": "manage-requests",
+    "title": "Buyer manage requests",
+    "path": "buyer/desktop/03-manage-requests.png"
+  },
+  {
+    "businessLine": "provider",
+    "device": "desktop",
+    "order": 1,
+    "slug": "login",
+    "title": "Provider login",
+    "path": "provider/desktop/01-login.png"
+  },
+  {
+    "businessLine": "provider",
+    "device": "desktop",
+    "order": 2,
+    "slug": "open-request",
+    "title": "Provider open request",
+    "path": "provider/desktop/02-open-request.png"
+  },
+  {
+    "businessLine": "provider",
+    "device": "desktop",
+    "order": 3,
+    "slug": "submit-proposal",
+    "title": "Provider submit proposal",
+    "path": "provider/desktop/03-submit-proposal.png"
+  },
+  {
+    "businessLine": "buyer",
+    "device": "desktop",
+    "order": 4,
+    "slug": "award-request",
+    "title": "Buyer award request",
+    "path": "buyer/desktop/04-award-request.png"
+  },
+  {
+    "businessLine": "provider",
+    "device": "desktop",
+    "order": 4,
+    "slug": "awarded-work",
+    "title": "Provider awarded work",
+    "path": "provider/desktop/04-awarded-work.png"
+  },
+  {
+    "businessLine": "provider",
+    "device": "desktop",
+    "order": 5,
+    "slug": "delivery-in-progress",
+    "title": "Provider delivery in progress",
+    "path": "provider/desktop/05-delivery-in-progress.png"
+  },
+  {
+    "businessLine": "provider",
+    "device": "desktop",
+    "order": 6,
+    "slug": "step-complete-and-payout",
+    "title": "Provider step complete and payout",
+    "path": "provider/desktop/06-step-complete-and-payout.png"
+  },
+  {
+    "businessLine": "provider",
+    "device": "desktop",
+    "order": 7,
+    "slug": "delivery-completed",
+    "title": "Provider delivery completed",
+    "path": "provider/desktop/07-delivery-completed.png"
+  },
+  {
+    "businessLine": "buyer",
+    "device": "desktop",
+    "order": 5,
+    "slug": "review-result",
+    "title": "Buyer review result",
+    "path": "buyer/desktop/05-review-result.png"
+  },
+  {
+    "businessLine": "home",
+    "device": "mobile",
+    "order": 1,
+    "slug": "home",
+    "title": "Home",
+    "path": "home/mobile/01-home.png"
+  },
+  {
+    "businessLine": "buyer",
+    "device": "mobile",
+    "order": 1,
+    "slug": "login",
+    "title": "Buyer login",
+    "path": "buyer/mobile/01-login.png"
+  },
+  {
+    "businessLine": "buyer",
+    "device": "mobile",
+    "order": 2,
+    "slug": "post-request",
+    "title": "Buyer post request",
+    "path": "buyer/mobile/02-post-request.png"
+  },
+  {
+    "businessLine": "buyer",
+    "device": "mobile",
+    "order": 3,
+    "slug": "manage-requests",
+    "title": "Buyer manage requests",
+    "path": "buyer/mobile/03-manage-requests.png"
+  },
+  {
+    "businessLine": "provider",
+    "device": "mobile",
+    "order": 1,
+    "slug": "login",
+    "title": "Provider login",
+    "path": "provider/mobile/01-login.png"
+  },
+  {
+    "businessLine": "provider",
+    "device": "mobile",
+    "order": 2,
+    "slug": "open-request",
+    "title": "Provider open request",
+    "path": "provider/mobile/02-open-request.png"
+  },
+  {
+    "businessLine": "provider",
+    "device": "mobile",
+    "order": 3,
+    "slug": "submit-proposal",
+    "title": "Provider submit proposal",
+    "path": "provider/mobile/03-submit-proposal.png"
+  },
+  {
+    "businessLine": "buyer",
+    "device": "mobile",
+    "order": 4,
+    "slug": "award-request",
+    "title": "Buyer award request",
+    "path": "buyer/mobile/04-award-request.png"
+  },
+  {
+    "businessLine": "provider",
+    "device": "mobile",
+    "order": 4,
+    "slug": "awarded-work",
+    "title": "Provider awarded work",
+    "path": "provider/mobile/04-awarded-work.png"
+  },
+  {
+    "businessLine": "provider",
+    "device": "mobile",
+    "order": 5,
+    "slug": "delivery-in-progress",
+    "title": "Provider delivery in progress",
+    "path": "provider/mobile/05-delivery-in-progress.png"
+  },
+  {
+    "businessLine": "provider",
+    "device": "mobile",
+    "order": 6,
+    "slug": "step-complete-and-payout",
+    "title": "Provider step complete and payout",
+    "path": "provider/mobile/06-step-complete-and-payout.png"
+  },
+  {
+    "businessLine": "provider",
+    "device": "mobile",
+    "order": 7,
+    "slug": "delivery-completed",
+    "title": "Provider delivery completed",
+    "path": "provider/mobile/07-delivery-completed.png"
+  },
+  {
+    "businessLine": "buyer",
+    "device": "mobile",
+    "order": 5,
+    "slug": "review-result",
+    "title": "Buyer review result",
+    "path": "buyer/mobile/05-review-result.png"
+  }
+]
