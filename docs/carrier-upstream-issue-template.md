@@ -93,7 +93,12 @@ Carrier should shape callbacks to the current platform envelope:
   "payload": {
     "eventId": "evt_123",
     "sequence": 7,
-    "attemptId": "attempt_1"
+    "attemptId": "attempt_1",
+    "kind": "token",
+    "amountCents": 420,
+    "proofRef": "usage_2026_03_20_0007",
+    "proofTimestamp": "2026-03-20T08:00:00Z",
+    "proofSignature": "hex-hmac"
   }
 }
 ```
@@ -102,6 +107,8 @@ Current platform expectations:
 
 - `type`, `jobId`, `bindingId`, `timestamp`, and `signature` are top-level
 - `eventId`, `sequence`, and optional `attemptId` are currently read from `payload`
+- `usage.reported` should also carry `kind`, `amountCents`, and the proof trio `proofRef`, `proofSignature`, `proofTimestamp` when proof signing is enabled
+- in the current bridge flow, `jobId` is the execution identifier used for proof verification, and `milestoneId` is resolved from that job context rather than being required as a separate payload field
 - retries must reuse the same `eventId` and `sequence`
 - out-of-order gaps can be rejected until missing earlier events are replayed
 - callback response `recommendedAction.type=pause` or `cancel` should be treated as authoritative platform feedback

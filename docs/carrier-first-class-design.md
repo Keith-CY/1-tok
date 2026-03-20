@@ -383,6 +383,7 @@ Notes:
 
 - `proofRef`, `proofSignature`, and `proofTimestamp` are required together
 - signature is verified with HMAC over `(executionId, milestoneId, kind, amountCents, proofTimestamp)`
+- in the current bridge flow, `executionId` is the referenced `jobId`, and `milestoneId` is resolved from that execution job context rather than being required as a separate callback payload field
 - replay and stale-window checks on proof timestamp are enforced using the same max-age policy as callback authenticity
 
 Platform callback response fields:
