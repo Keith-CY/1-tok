@@ -34,14 +34,6 @@ Buyers publish budgeted requests. Providers compete with live proposals. Operati
 
 ## How to use it
 
-Start with the docs that match your goal:
-
-- Product and workflow overview: [docs/getting-started.md](./docs/getting-started.md)
-- Local development and technical operations: [docs/developer-guide.md](./docs/developer-guide.md)
-- Environment variables and service contracts: [docs/env.md](./docs/env.md)
-- Release readiness and launch posture: [docs/production-release-status.md](./docs/production-release-status.md)
-- Carrier integration design: [docs/carrier-first-class-design.md](./docs/carrier-first-class-design.md)
-
 If you want the shortest path to a local stack, start here:
 
 ```bash
@@ -59,6 +51,8 @@ Then follow the setup and smoke-test links in [docs/developer-guide.md](./docs/d
 - Environment contract: [docs/env.md](./docs/env.md)
 - Health/readiness contract: [docs/health-readiness.md](./docs/health-readiness.md)
 - Production launch checklist: [docs/production-launch-checklist.md](./docs/production-launch-checklist.md)
+- Release readiness and launch posture: [docs/production-release-status.md](./docs/production-release-status.md)
+- Carrier integration design: [docs/carrier-first-class-design.md](./docs/carrier-first-class-design.md)
 - API surface: [docs/api-spec.json](./docs/api-spec.json)
 
 ## Contributing
