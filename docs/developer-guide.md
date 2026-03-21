@@ -138,6 +138,7 @@ Use these documents as the source of truth:
 
 - Environment variables: [env.md](./env.md)
 - Health/readiness semantics: [health-readiness.md](./health-readiness.md)
+- Runtime commercial model (pre-fund + streaming settlement): [runtime-leasing-and-streaming-settlement.md](./runtime-leasing-and-streaming-settlement.md)
 - Launch checklist: [production-launch-checklist.md](./production-launch-checklist.md)
 - Production release posture: [production-release-status.md](./production-release-status.md)
 - Carrier design: [carrier-first-class-design.md](./carrier-first-class-design.md)
