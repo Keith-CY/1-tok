@@ -112,6 +112,6 @@ For CI-style verification and compose-based rehearsal, see the smoke and test co
 
 - Developer setup: [developer-guide.md](./developer-guide.md)
 - Contribution workflow: [contributing.md](./contributing.md)
-- Runtime commercial model: [runtime-leasing-and-streaming-settlement.md](./runtime-leasing-and-streaming-settlement.md)
+- Commercial model and settlement spec: [runtime-leasing-and-streaming-settlement.md](./runtime-leasing-and-streaming-settlement.md)
 - Release posture: [production-release-status.md](./production-release-status.md)
 - Launch checklist: [production-launch-checklist.md](./production-launch-checklist.md)
