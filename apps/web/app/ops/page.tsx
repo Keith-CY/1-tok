@@ -45,7 +45,7 @@ export default async function OpsPage({
         <StatCard icon={RiSearchEyeLine} label="Needs review" value={`${data.pendingReviews.length + data.summary.openDisputes}`} detail="Combined manual queue across applications, treasury, and disputes." />
         <StatCard icon={RiFundsLine} label="Funding records" value={`${data.summary.fundingRecords}`} detail="Treasury records visible in the control plane." />
         <StatCard icon={RiCheckboxCircleLine} label="Settled invoices" value={`${data.summary.settledInvoices}`} detail="Settlement entries already cleared." tone="success" />
-        <StatCard icon={RiTimeLine} label="Pending withdrawals" value={`${data.summary.pendingWithdrawals}`} detail="Cash movement still in flight." tone={data.summary.pendingWithdrawals > 0 ? "warning" : "default"} />
+        <StatCard icon={RiTimeLine} label="Pending payouts" value={`${data.summary.pendingWithdrawals}`} detail="Cash movement still in flight." tone={data.summary.pendingWithdrawals > 0 ? "warning" : "default"} />
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.02fr_0.98fr]">

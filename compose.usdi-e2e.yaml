@@ -1,0 +1,178 @@
+services:
+  remote-vps:
+    build:
+      context: .
+      dockerfile: deploy/carrier/remote-vps.Dockerfile
+    environment:
+      AUTHORIZED_KEY: ${CARRIER_E2E_REMOTE_AUTHORIZED_KEY:?CARRIER_E2E_REMOTE_AUTHORIZED_KEY must be set}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_CODEX_TOKEN: ${OPENAI_CODEX_TOKEN:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      SSH_PORT: "22"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -lc 'exec 3<>/dev/tcp/127.0.0.1/22'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+
+  carrier-daemon:
+    build:
+      context: .
+      dockerfile: deploy/carrier/Dockerfile
+    environment:
+      CARRIER_SERVER_API_TOKEN: ${CARRIER_SERVER_API_TOKEN:-test-daemon-token}
+      CARRIER_SERVER_PORT: "8788"
+      CARRIER_SERVER_HOST: "0.0.0.0"
+      CARRIER_DEV_MODE: "1"
+    command: ["carrier", "daemon"]
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q --header='Authorization: Bearer ${CARRIER_SERVER_API_TOKEN:-test-daemon-token}' -O- http://127.0.0.1:8788/healthz >/dev/null",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  carrier-gateway:
+    build:
+      context: .
+      dockerfile: deploy/carrier/Dockerfile
+    volumes:
+      - "${CARRIER_E2E_REMOTE_PRIVATE_KEY_PATH:?CARRIER_E2E_REMOTE_PRIVATE_KEY_PATH must be set}:/keys/id_ed25519:ro"
+    environment:
+      CARRIER_GATEWAY_API_TOKEN: ${CARRIER_GATEWAY_API_TOKEN:-test-gateway-token}
+      CARRIER_SERVER_API_TOKEN: ${CARRIER_SERVER_API_TOKEN:-test-daemon-token}
+      CARRIER_GATEWAY_PORT: "8787"
+      CARRIER_GATEWAY_HOST: "0.0.0.0"
+      CARRIER_DAEMON_BASE_URL: http://carrier-daemon:8788
+      SESSION_DATA_DIR: /tmp/carrier
+    command: ["carrier", "gateway"]
+    depends_on:
+      carrier-daemon:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8787/healthz >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  settlement:
+    environment:
+      FIBER_RPC_URL: http://fiber-adapter:8091
+      MARKETPLACE_SETTLEMENT_ASSET: USDI
+      MARKETPLACE_TREASURY_USER_ID: platform_treasury
+    depends_on:
+      fiber-adapter:
+        condition: service_healthy
+
+  settlement-reconciler:
+    environment:
+      FIBER_RPC_URL: http://fiber-adapter:8091
+      MARKETPLACE_SETTLEMENT_ASSET: USDI
+      MARKETPLACE_TREASURY_USER_ID: platform_treasury
+      SETTLEMENT_RECONCILER_INTERVAL: ${SETTLEMENT_RECONCILER_INTERVAL:-5s}
+    depends_on:
+      fiber-adapter:
+        condition: service_healthy
+
+  execution:
+    environment:
+      CARRIER_GATEWAY_URL: http://carrier-gateway:8787
+    depends_on:
+      carrier-gateway:
+        condition: service_healthy
+
+  usdi-e2e-runner:
+    build:
+      context: .
+      dockerfile: deploy/e2e/Dockerfile
+    environment:
+      RELEASE_USDI_E2E_API_BASE_URL: http://api-gateway:8080
+      RELEASE_USDI_E2E_IAM_BASE_URL: http://iam:8081
+      RELEASE_USDI_E2E_SETTLEMENT_BASE_URL: http://settlement:8083
+      RELEASE_USDI_E2E_SETTLEMENT_SERVICE_TOKEN: ${ONE_TOK_SETTLEMENT_SERVICE_TOKEN:-local-settlement-service-token}
+      RELEASE_USDI_E2E_EXECUTION_BASE_URL: http://execution:8085
+      RELEASE_USDI_E2E_EXECUTION_EVENT_TOKEN: ${ONE_TOK_EXECUTION_EVENT_TOKEN:-local-execution-event-token}
+      RELEASE_USDI_E2E_GATEWAY_SERVICE_TOKEN: ${ONE_TOK_EXECUTION_GATEWAY_TOKEN:-local-execution-gateway-token}
+      RELEASE_USDI_E2E_FIBER_ADAPTER_BASE_URL: http://fiber-adapter:8091
+      RELEASE_USDI_E2E_FIBER_ADAPTER_APP_ID: ${FIBER_APP_ID:-app_1}
+      RELEASE_USDI_E2E_FIBER_ADAPTER_HMAC_SECRET: ${FIBER_HMAC_SECRET:-replace-me}
+      RELEASE_USDI_E2E_CARRIER_BASE_URL: http://carrier-gateway:8787
+      RELEASE_USDI_E2E_CARRIER_INTEGRATION_TOKEN: ${CARRIER_GATEWAY_API_TOKEN:-test-gateway-token}
+      RELEASE_USDI_E2E_CARRIER_GATEWAY_TOKEN: ${CARRIER_GATEWAY_API_TOKEN:-test-gateway-token}
+      RELEASE_USDI_E2E_CARRIER_HOST_ID: ${RELEASE_USDI_E2E_CARRIER_HOST_ID:-host_1}
+      RELEASE_USDI_E2E_CARRIER_AGENT_ID: ${RELEASE_USDI_E2E_CARRIER_AGENT_ID:-main}
+      RELEASE_USDI_E2E_CARRIER_BACKEND: ${RELEASE_USDI_E2E_CARRIER_BACKEND:-codex}
+      RELEASE_USDI_E2E_CARRIER_WORKSPACE_ROOT: ${RELEASE_USDI_E2E_CARRIER_WORKSPACE_ROOT:-/workspace}
+      RELEASE_USDI_E2E_CARRIER_REMOTE_HOST_NAME: ${RELEASE_USDI_E2E_CARRIER_REMOTE_HOST_NAME:-usdi-remote}
+      RELEASE_USDI_E2E_CARRIER_REMOTE_HOST_HOST: ${RELEASE_USDI_E2E_CARRIER_REMOTE_HOST_HOST:-remote-vps}
+      RELEASE_USDI_E2E_CARRIER_REMOTE_HOST_PORT: ${RELEASE_USDI_E2E_CARRIER_REMOTE_HOST_PORT:-22}
+      RELEASE_USDI_E2E_CARRIER_REMOTE_HOST_USER: ${RELEASE_USDI_E2E_CARRIER_REMOTE_HOST_USER:-carrier}
+      RELEASE_USDI_E2E_CARRIER_REMOTE_KEY_PATH: ${RELEASE_USDI_E2E_CARRIER_REMOTE_KEY_PATH:-/keys/id_ed25519}
+      RELEASE_USDI_E2E_CARRIER_CALLBACK_SECRET: ${RELEASE_USDI_E2E_CARRIER_CALLBACK_SECRET:-usdi-e2e-callback-secret}
+      RELEASE_USDI_E2E_CARRIER_CALLBACK_KEY_ID: ${RELEASE_USDI_E2E_CARRIER_CALLBACK_KEY_ID:-usdi-e2e-key}
+      RELEASE_USDI_E2E_INCLUDE_CARRIER_PROBE: "true"
+      RELEASE_USDI_E2E_OUTPUT_PATH: /artifacts/release-usdi-marketplace-e2e.json
+      RELEASE_USDI_E2E_FAUCET_TX_HASH: ${RELEASE_USDI_E2E_FAUCET_TX_HASH:-}
+      RELEASE_USDI_E2E_EXPLORER_PROOF_URLS: ${RELEASE_USDI_E2E_EXPLORER_PROOF_URLS:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_CODEX_TOKEN: ${OPENAI_CODEX_TOKEN:-}
+    volumes:
+      - "${E2E_USDI_HOST_OUTPUT_DIR:-./.artifacts/usdi-e2e}:/artifacts"
+    depends_on:
+      carrier-gateway:
+        condition: service_healthy
+      remote-vps:
+        condition: service_healthy
+      iam:
+        condition: service_started
+      api-gateway:
+        condition: service_started
+      settlement:
+        condition: service_started
+      execution:
+        condition: service_started
+    command:
+      - /bin/sh
+      - -lc
+      - /usr/local/bin/release-usdi-marketplace-e2e
+
+  usdi-e2e-screenshot-runner:
+    build:
+      context: .
+      dockerfile: deploy/e2e-screenshots/Dockerfile
+    environment:
+      SCREENSHOT_FLOW_MODE: usdi-marketplace
+      SCREENSHOT_OUTPUT_DIR: /artifacts
+      SCREENSHOT_SUMMARY_PATH: /artifacts/release-usdi-marketplace-e2e.json
+      SCREENSHOT_WEB_BASE_URL: http://web:3000
+      SCREENSHOT_API_BASE_URL: http://api-gateway:8080
+      SCREENSHOT_IAM_BASE_URL: http://iam:8081
+      SCREENSHOT_SETTLEMENT_BASE_URL: http://settlement:8083
+      SCREENSHOT_SETTLEMENT_SERVICE_TOKEN: ${ONE_TOK_SETTLEMENT_SERVICE_TOKEN:-local-settlement-service-token}
+      SCREENSHOT_EXECUTION_BASE_URL: http://execution:8085
+      SCREENSHOT_EXECUTION_EVENT_TOKEN: ${ONE_TOK_EXECUTION_EVENT_TOKEN:-local-execution-event-token}
+    volumes:
+      - "${E2E_USDI_HOST_OUTPUT_DIR:-./.artifacts/usdi-e2e}:/artifacts"
+    depends_on:
+      carrier-gateway:
+        condition: service_healthy
+      iam:
+        condition: service_started
+      api-gateway:
+        condition: service_started
+      marketplace:
+        condition: service_started
+      settlement:
+        condition: service_started
+      execution:
+        condition: service_started
+      web:
+        condition: service_started
+      settlement-reconciler:
+        condition: service_started

@@ -18,8 +18,10 @@ import (
 type FundingRecordKind string
 
 const (
-	FundingRecordKindInvoice    FundingRecordKind = "invoice"
-	FundingRecordKindWithdrawal FundingRecordKind = "withdrawal"
+	FundingRecordKindInvoice        FundingRecordKind = "invoice"
+	FundingRecordKindWithdrawal     FundingRecordKind = "withdrawal"
+	FundingRecordKindBuyerTopUp     FundingRecordKind = "buyer_topup"
+	FundingRecordKindProviderPayout FundingRecordKind = "provider_payout"
 )
 
 type FundingRecord struct {
@@ -42,6 +44,7 @@ type FundingRecord struct {
 type FundingRecordFilter struct {
 	Kind          FundingRecordKind
 	OrderID       string
+	BuyerOrgID    string
 	ProviderOrgID string
 }
 
@@ -115,6 +118,9 @@ func (r *memoryFundingRecordRepository) List(filter FundingRecordFilter) ([]Fund
 			continue
 		}
 		if filter.OrderID != "" && record.OrderID != filter.OrderID {
+			continue
+		}
+		if filter.BuyerOrgID != "" && record.BuyerOrgID != filter.BuyerOrgID {
 			continue
 		}
 		if filter.ProviderOrgID != "" && record.ProviderOrgID != filter.ProviderOrgID {
@@ -196,9 +202,10 @@ func (r *postgresFundingRecordRepository) List(filter FundingRecordFilter) ([]Fu
 		FROM settlement_funding_records
 		WHERE ($1 = '' OR kind = $1)
 		  AND ($2 = '' OR order_id = $2)
-		  AND ($3 = '' OR provider_org_id = $3)
+		  AND ($3 = '' OR buyer_org_id = $3)
+		  AND ($4 = '' OR provider_org_id = $4)
 		ORDER BY created_at ASC, id ASC
-	`, string(filter.Kind), filter.OrderID, filter.ProviderOrgID)
+	`, string(filter.Kind), filter.OrderID, filter.BuyerOrgID, filter.ProviderOrgID)
 	if err != nil {
 		return nil, err
 	}

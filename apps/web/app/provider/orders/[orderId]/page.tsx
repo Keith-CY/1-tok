@@ -50,10 +50,10 @@ export default async function ProviderOrderPage({ params }: { params: Promise<{ 
   );
   const allSettled = order.milestones.length > 0 && order.milestones.every((milestone) => milestone.state === "settled");
   const invoiceRecords = fundingRecords.filter((record) => record.kind === "invoice");
-  const withdrawalRecords = fundingRecords.filter((record) => record.kind === "withdrawal");
+  const payoutRecords = fundingRecords.filter((record) => record.kind === "withdrawal" || record.kind === "provider_payout");
   const runningMilestone = order.milestones.find((milestone) => milestone.state === "running") ?? order.milestones[0] ?? null;
   const invoiceState = invoiceRecords[0]?.state ?? (allSettled ? "SETTLED" : "PENDING");
-  const withdrawalState = withdrawalRecords[0]?.state ?? (allSettled ? "READY" : "NOT REQUESTED");
+  const payoutState = payoutRecords[0]?.state ?? (allSettled ? "READY" : "NOT REQUESTED");
 
   return (
     <WorkspaceShell
@@ -90,7 +90,7 @@ export default async function ProviderOrderPage({ params }: { params: Promise<{ 
             icon={RiTimeLine}
             label="Payout state"
             value={invoiceState}
-            detail={withdrawalState === "NOT REQUESTED" ? "Invoice settled before withdrawal starts." : `Withdrawal ${withdrawalState}.`}
+            detail={payoutState === "NOT REQUESTED" ? "Invoice settled before payout starts." : `Payout ${payoutState}.`}
           />
         </div>
       </section>
@@ -135,7 +135,7 @@ export default async function ProviderOrderPage({ params }: { params: Promise<{ 
           >
             <div className="grid gap-3 sm:grid-cols-2">
               <DetailChip label="Invoice state" value={invoiceState} />
-              <DetailChip label="Withdrawal state" value={withdrawalState} />
+              <DetailChip label="Payout state" value={payoutState} />
               <DetailChip label="Funding records" value={`${fundingRecords.length}`} />
               <DetailChip label="Current milestone" value={runningMilestone ? runningMilestone.title : "None"} />
             </div>

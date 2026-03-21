@@ -252,41 +252,65 @@ jobs:
           echo "Integration Smoke failed after 2 attempts"
           exit 1
 
-  e2e_screenshots:
-    name: E2E Marketplace Screenshots
+  usdi_marketplace_e2e:
+    name: USDI Marketplace E2E
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: write
       pull-requests: write
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Prepare screenshot artifact dir
-        run: mkdir -p .artifacts/e2e-screenshots
+      - name: Prepare USDI e2e artifact dir
+        run: mkdir -p .artifacts/usdi-e2e
 
-      - name: Capture marketplace screenshots
+      - name: Run USDI marketplace e2e with screenshots
+        id: usdi_e2e
+        continue-on-error: true
         env:
-          E2E_SCREENSHOT_OUTPUT_DIR: ${{ github.workspace }}/.artifacts/e2e-screenshots
-        run: ./scripts/release-compose-e2e-screenshots.sh
+          E2E_USDI_SCREENSHOT_OUTPUT_DIR: ${{ github.workspace }}/.artifacts/usdi-e2e
+        run: ./scripts/release-compose-usdi-e2e-screenshots.sh
 
-      - name: Upload screenshot artifact
+      - name: Retry USDI marketplace e2e once
+        id: usdi_e2e_retry
+        if: steps.usdi_e2e.outcome == 'failure'
+        env:
+          E2E_USDI_SCREENSHOT_OUTPUT_DIR: ${{ github.workspace }}/.artifacts/usdi-e2e
+        run: |
+          rm -rf .artifacts/usdi-e2e
+          mkdir -p .artifacts/usdi-e2e
+          ./scripts/release-compose-usdi-e2e-screenshots.sh
+
+      - name: Resolve USDI e2e result
+        if: always()
+        id: usdi_e2e_result
+        run: |
+          result=failure
+          if [ "${{ steps.usdi_e2e.outcome }}" = "success" ] || [ "${{ steps.usdi_e2e_retry.outcome }}" = "success" ]; then
+            result=success
+          fi
+          echo "result=${result}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload USDI e2e artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-marketplace-screenshots
-          path: .artifacts/e2e-screenshots
+          name: usdi-marketplace-e2e
+          path: .artifacts/usdi-e2e
           if-no-files-found: error
 
       - name: Push screenshots to ref
-        if: success() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        if: steps.usdi_e2e_result.outputs.result == 'success'
         id: screenshot_ref
         run: |
           REF_NAME="screenshots/pr-${{ github.event.pull_request.number }}"
           TMP_DIR="$(mktemp -d)"
-          cp -R .artifacts/e2e-screenshots/. "$TMP_DIR/"
+          cp -R .artifacts/usdi-e2e/. "$TMP_DIR/"
           rm -rf .artifacts
 
           git config user.name "github-actions[bot]"
@@ -295,76 +319,107 @@ jobs:
           git rm -rf . >/dev/null 2>&1 || true
           cp -R "$TMP_DIR"/. .
           git add -A
-          git commit -m "Screenshots for ${{ github.sha }}" --allow-empty
+          git commit -m "USDI marketplace e2e for ${{ github.sha }}" --allow-empty
           git push origin "$REF_NAME" --force
 
           echo "ref=$REF_NAME" >> "$GITHUB_OUTPUT"
           echo "tmp_dir=$TMP_DIR" >> "$GITHUB_OUTPUT"
 
-      - name: Generate screenshot comment
-        if: success() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+      - name: Generate USDI e2e comment
+        if: always()
         env:
+          USDI_E2E_RESULT: ${{ steps.usdi_e2e_result.outputs.result }}
           REPOSITORY: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
           REF_NAME: ${{ steps.screenshot_ref.outputs.ref }}
-          MANIFEST_PATH: ${{ steps.screenshot_ref.outputs.tmp_dir }}/manifest.json
+          TMP_DIR: ${{ steps.screenshot_ref.outputs.tmp_dir }}
+          MANIFEST_PATH: .artifacts/usdi-e2e/manifest.json
+          SUMMARY_PATH: .artifacts/usdi-e2e/release-usdi-marketplace-e2e.json
+          CARRIER_ISSUE_URL: https://github.com/Keith-CY/carrier/issues/1595
+          FIBER_ISSUE_URL: https://github.com/nervosnetwork/fiber/issues/1226
         run: |
           python3 - <<'PY'
           import json
           import os
           from pathlib import Path
 
-          manifest = json.loads(Path(os.environ["MANIFEST_PATH"]).read_text(encoding="utf-8"))
-          base = f"https://raw.githubusercontent.com/{os.environ['REPOSITORY']}/{os.environ['REF_NAME']}"
-          run_url = f"https://github.com/{os.environ['REPOSITORY']}/actions/runs/{os.environ['RUN_ID']}"
-          marker = "<!-- 1-tok-e2e-screenshots -->"
-          business_order = [("home", "Home"), ("buyer", "Buyer"), ("provider", "Provider")]
-          device_order = [("desktop", "Desktop"), ("mobile", "Mobile")]
-
-          def chunk(items, size):
-            for index in range(0, len(items), size):
-              yield items[index:index + size]
+          result = os.environ.get("USDI_E2E_RESULT", "failure")
+          summary_path = Path(os.environ["SUMMARY_PATH"])
+          summary = json.loads(summary_path.read_text(encoding="utf-8")) if summary_path.exists() else {}
+          manifest = []
+          base = ""
+          tmp_dir = os.environ.get("TMP_DIR", "")
+          ref_name = os.environ.get("REF_NAME", "")
+          if result == "success" and tmp_dir and ref_name:
+            manifest_path = Path(tmp_dir) / "manifest.json"
+            if manifest_path.exists():
+              manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+              base = f"https://raw.githubusercontent.com/{os.environ['REPOSITORY']}/{ref_name}"
+          run_url = f"https://github.com/{os.environ['REPOSITORY']}/actions/runs/{os.environ['RUN_ID']}/attempts/{os.environ['RUN_ATTEMPT']}"
+          marker = "<!-- 1-tok-usdi-marketplace-e2e -->"
+          issues = [item for item in summary.get("integrationIssues", []) if item]
+          for issue in [os.environ.get("FIBER_ISSUE_URL", ""), os.environ.get("CARRIER_ISSUE_URL", "")]:
+            if issue and issue not in issues:
+              issues.append(issue)
 
           lines = [
             marker,
-            "## E2E Marketplace Screenshots",
+            "## USDI Marketplace E2E",
             "",
+            f"- Status: `{result}`",
             f"- Run: {run_url}",
-            f"- Artifact: [e2e-marketplace-screenshots]({run_url})",
+            f"- Artifact: [usdi-marketplace-e2e]({run_url})",
             "",
           ]
 
-          for business_key, business_label in business_order:
-            lines.append(f"### {business_label}")
-            lines.append("")
-            for device_key, device_label in device_order:
-              rows = [
-                item for item in manifest
-                if item["businessLine"] == business_key and item["device"] == device_key
-              ]
-              if not rows:
-                continue
-              rows.sort(key=lambda item: item["order"])
-              lines.append(f"#### {device_label}")
-              lines.append("")
-              for group in chunk(rows, 3):
-                headers = "| " + " | ".join(item["title"] for item in group) + " |"
-                align = "|" + "|".join([":---:"] * len(group)) + "|"
-                images = "| " + " | ".join(f"![{item['slug']}]({base}/{item['path']})" for item in group) + " |"
-                lines.extend([headers, align, images, ""])
+          if summary:
+            lines.extend([
+              f"- Asset: `{summary.get('asset', 'USDI')}`",
+              f"- Order: `{summary.get('orderId', '')}`",
+              f"- RFQ / Bid: `{summary.get('rfqId', '')}` / `{summary.get('bidId', '')}`",
+              f"- Carrier binding / execution: `{summary.get('carrierBindingId', '')}` / `{summary.get('carrierExecutionId', '')}`",
+              f"- Buyer top-up funding record: `{summary.get('buyerTopUpFundingRecordId', '')}`",
+              f"- Provider payout records: `{', '.join(summary.get('providerPayoutRecordIds', []))}`",
+              f"- Faucet tx: `{summary.get('faucetTxHash', '')}`",
+              "",
+            ])
+
+          if issues:
+            lines.append("- Known integration issues:")
+            for issue in issues:
+              lines.append(f"  - {issue}")
             lines.append("")
 
-          Path("e2e-screenshot-comment.md").write_text("\n".join(lines).strip() + "\n", encoding="utf-8")
+          if result == "success" and manifest and base:
+            for row in sorted(manifest, key=lambda item: item["order"]):
+              title = row.get("title") or row.get("stepLabel") or row.get("stepKey") or row.get("path")
+              lines.extend([
+                f"### {row.get('stepLabel', title)}",
+                "",
+                f"- {title}",
+                "",
+                f"![{title}]({base}/{row['path']})",
+                "",
+              ])
+          elif result != "success":
+            lines.extend([
+              "- Blocker: the real Fiber testnet nodes failed before the marketplace flow reached faucet/top-up/order execution.",
+              "- Screenshots were not published because the stack never reached the capture phase.",
+              "",
+            ])
+
+          Path("usdi-e2e-comment.md").write_text("\n".join(lines).strip() + "\n", encoding="utf-8")
           PY
 
-      - name: Upsert screenshot PR comment
-        if: success() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+      - name: Upsert USDI e2e PR comment
+        if: always()
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require("node:fs");
-            const body = fs.readFileSync("e2e-screenshot-comment.md", "utf8");
-            const marker = "<!-- 1-tok-e2e-screenshots -->";
+            const body = fs.readFileSync("usdi-e2e-comment.md", "utf8");
+            const marker = "<!-- 1-tok-usdi-marketplace-e2e -->";
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
             const comments = await github.paginate(github.rest.issues.listComments, {
@@ -384,7 +439,7 @@ jobs:
                 comment_id: existing.id,
                 body,
               });
-              core.info(`Updated screenshot comment ${existing.id}`);
+              core.info(`Updated USDI e2e comment ${existing.id}`);
             } else {
               const created = await github.rest.issues.createComment({
                 owner,
@@ -392,7 +447,7 @@ jobs:
                 issue_number,
                 body,
               });
-              core.info(`Created screenshot comment ${created.data.id}`);
+              core.info(`Created USDI e2e comment ${created.data.id}`);
             }
 
   report:
@@ -402,6 +457,7 @@ jobs:
       - unit
       - integration
       - portal_ux
+      - usdi_marketplace_e2e
     if: always()
     permissions:
       contents: read
@@ -435,6 +491,7 @@ jobs:
           UNIT_RESULT: ${{ needs.unit.result }}
           INTEGRATION_RESULT: ${{ needs.integration.result }}
           PORTAL_RESULT: ${{ needs.portal_ux.result }}
+          USDI_E2E_RESULT: ${{ needs.usdi_marketplace_e2e.result }}
           PORTAL_GOV_SKIPPED: ${{ needs.portal_ux.outputs.skipped }}
           PORTAL_UI_CHECK_RUN: ${{ needs.portal_ux.outputs.ranUiCheck }}
           PORTAL_CONFIG_VALIDATION_RUN: ${{ needs.portal_ux.outputs.ranConfigValidation }}
@@ -467,6 +524,7 @@ jobs:
               f"- Unit and coverage: `{os.environ['UNIT_RESULT']}`",
               f"- Integration smoke: `{os.environ['INTEGRATION_RESULT']}`",
               f"- Portal UX governance: `{os.environ['PORTAL_RESULT']}`",
+              f"- USDI marketplace e2e: `{os.environ['USDI_E2E_RESULT']}`",
               f"- Portal UX consistency check run: `{os.environ['PORTAL_UI_CHECK_RUN']}`",
               f"- Portal UX config validation run: `{os.environ['PORTAL_CONFIG_VALIDATION_RUN']}`",
               f"- Portal UX governance skipped: `{os.environ['PORTAL_GOV_SKIPPED']}`",

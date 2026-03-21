@@ -1,6 +1,7 @@
 ARG BUN_VERSION=1.2.22
 # Prefer passing --build-arg BUN_VERSION=$(grep -o 'bun@[^"]*' package.json | cut -d'@' -f2)
 # to keep package.json as the single source of truth.
+ARG NODE_VERSION=22-bookworm-slim
 
 FROM oven/bun:${BUN_VERSION} AS deps
 
@@ -10,14 +11,15 @@ COPY apps/web/package.json apps/web/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
 RUN bun install --frozen-lockfile
 
-FROM oven/bun:${BUN_VERSION} AS builder
+FROM node:${NODE_VERSION} AS builder
 
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN bun --cwd apps/web build
+# Next 16's Turbopack build path uses Worker options Bun does not implement yet.
+RUN cd apps/web && ../../node_modules/.bin/next build
 
-FROM oven/bun:${BUN_VERSION} AS runner
+FROM node:${NODE_VERSION} AS runner
 
 WORKDIR /app
 ENV NODE_ENV=production
@@ -27,7 +29,7 @@ COPY --from=builder /app/apps/web/.next/standalone ./
 COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=builder /app/apps/web/public ./apps/web/public
 
-USER bun
+USER node
 EXPOSE 3000
 
-CMD ["bun", "apps/web/server.js"]
+CMD ["node", "apps/web/server.js"]

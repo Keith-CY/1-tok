@@ -10,13 +10,19 @@ import { requirePortalViewer } from "@/lib/viewer";
 
 export const dynamic = "force-dynamic";
 
-export default async function BuyerPage() {
+export default async function BuyerPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const viewer = await requirePortalViewer("buyer", "/buyer");
   const data = await getBuyerDashboardData({
     authToken: viewer.token,
     buyerOrgId: viewer.membership.organization.id,
     requireLive: true,
   });
+  const params = await searchParams;
+  const topUp = String(params?.topup ?? "");
 
   const openRequests = [...data.rfqBook]
     .filter((item) => item.status === "open")
@@ -50,9 +56,9 @@ export default async function BuyerPage() {
           />
           <MetricStrip
             icon={RiPriceTag3Line}
-            label="Highest posted budget"
-            value={topRequest ? formatMoney(topRequest.budgetCents) : "-"}
-            detail={topRequest?.title ?? "No open request"}
+            label="Prepaid balance"
+            value={formatMoney(data.summary.prepaidBalanceCents)}
+            detail={`${data.summary.settledTopUps} settled USDI top-ups`}
           />
           <MetricStrip
             icon={RiAuctionLine}
@@ -99,8 +105,7 @@ export default async function BuyerPage() {
                       {low ? (
                         <form action={`/buyer/rfqs/${item.id}/award`} method="post">
                           <input type="hidden" name="bidId" value={low.id} />
-                          <input type="hidden" name="fundingMode" value="credit" />
-                          <input type="hidden" name="creditLineId" value="credit_1" />
+                          <input type="hidden" name="fundingMode" value="prepaid" />
                           <Button type="submit" className="w-full xl:w-auto">
                             Award low
                             <RiArrowRightUpLine className="size-4" />
@@ -121,6 +126,39 @@ export default async function BuyerPage() {
 
         <div className="space-y-6">
           <SectionCard
+            eyebrow="USDI top-up"
+            title="Prefund the platform wallet"
+            description="Buyers top up in USDI on CKB, while the marketplace keeps the portfolio view in USD."
+          >
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <SpotMetric label="Settled top-ups" value={`${data.summary.settledTopUps}`} />
+                <SpotMetric label="Pending top-ups" value={`${data.summary.pendingTopUps}`} />
+              </div>
+              <form id="top-up" action="/buyer/topups" method="post" className="grid gap-3">
+                <input type="hidden" name="asset" value="USDI" />
+                <input
+                  type="text"
+                  name="amount"
+                  defaultValue="25.00"
+                  className="rounded-md border border-border bg-background px-3 py-2 text-sm"
+                />
+                <Button type="submit" className="w-full justify-between">
+                  Top up USDI
+                  <RiArrowRightUpLine className="size-4" />
+                </Button>
+              </form>
+              <div className="text-sm text-muted-foreground">
+                {topUp === "success"
+                  ? "Top-up intent created. Pay the USDI invoice to increase available balance."
+                  : topUp === "failed"
+                    ? "Top-up creation failed. Try again after checking settlement connectivity."
+                    : "Create a USDI top-up intent before awarding new work."}
+              </div>
+            </div>
+          </SectionCard>
+
+          <SectionCard
             eyebrow="Top request now"
             title={topRequest?.title ?? "No live request"}
             description="This is the clearest current market view for a client watching proposals come in."
@@ -136,8 +174,7 @@ export default async function BuyerPage() {
                 {getLowestBid(topRequest) ? (
                   <form action={`/buyer/rfqs/${topRequest.id}/award`} method="post">
                     <input type="hidden" name="bidId" value={getLowestBid(topRequest)!.id} />
-                    <input type="hidden" name="fundingMode" value="credit" />
-                    <input type="hidden" name="creditLineId" value="credit_1" />
+                    <input type="hidden" name="fundingMode" value="prepaid" />
                     <Button type="submit" className="w-full justify-between">
                       Award lowest proposal
                       <RiArrowRightUpLine className="size-4" />

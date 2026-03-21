@@ -17,6 +17,7 @@ import (
 	"github.com/chenyu/1-tok/internal/serviceauth"
 	"github.com/chenyu/1-tok/internal/usageproof"
 	"github.com/chenyu/1-tok/internal/validation"
+	"io"
 	"net/http"
 	"os"
 	"slices"
@@ -1927,23 +1928,43 @@ func (s *Server) handleReviewApplication(w http.ResponseWriter, r *http.Request)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"application": app})
 }
 func (s *Server) handleCarrierCallback(w http.ResponseWriter, r *http.Request) {
-	var event carrier.CallbackEvent
-	if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
+	rawBody, err := io.ReadAll(r.Body)
+	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
 
-	s.applyCarrierCallbackAuthHeaders(&event, r)
-
-	// Verify callback signature (binding/provider secret preferred, then env fallback)
-	callbackSecret, err := s.resolveCarrierCallbackSecret(r, event)
+	event, isIntegrationCallback, err := parseCarrierCallback(rawBody)
 	if err != nil {
-		writeCallbackError(w, http.StatusUnauthorized, httputil.ErrCodeUnauthorized, err.Error())
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	if err := carrier.VerifyCallback(callbackSecret, event); err != nil {
-		writeCallbackError(w, http.StatusUnauthorized, httputil.ErrCodeUnauthorized, err.Error())
-		return
+
+	if isIntegrationCallback {
+		if sig := strings.TrimSpace(r.Header.Get("X-Carrier-Signature")); sig != "" {
+			callbackSecret, resolveErr := s.resolveCarrierCallbackSecret(r, event)
+			if resolveErr != nil {
+				writeCallbackError(w, http.StatusUnauthorized, httputil.ErrCodeUnauthorized, resolveErr.Error())
+				return
+			}
+			if verifyErr := carrier.VerifyIntegrationCallbackBody(callbackSecret, rawBody, sig); verifyErr != nil {
+				writeCallbackError(w, http.StatusUnauthorized, httputil.ErrCodeUnauthorized, verifyErr.Error())
+				return
+			}
+		}
+	} else {
+		s.applyCarrierCallbackAuthHeaders(&event, r)
+
+		// Verify callback signature (binding/provider secret preferred, then env fallback)
+		callbackSecret, err := s.resolveCarrierCallbackSecret(r, event)
+		if err != nil {
+			writeCallbackError(w, http.StatusUnauthorized, httputil.ErrCodeUnauthorized, err.Error())
+			return
+		}
+		if err := carrier.VerifyCallback(callbackSecret, event); err != nil {
+			writeCallbackError(w, http.StatusUnauthorized, httputil.ErrCodeUnauthorized, err.Error())
+			return
+		}
 	}
 
 	// Normalize legacy snake_case event names to canonical dot-separated
@@ -1995,6 +2016,25 @@ func (s *Server) handleCarrierCallback(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if _, err := s.carrier.CompleteJob(event.JobID, eventPayloadString(event.Payload, "output")); err != nil {
+			writeGatewayError(w, err)
+			return
+		}
+		job, err := s.carrier.GetJob(event.JobID)
+		if err != nil {
+			writeGatewayError(w, err)
+			return
+		}
+		binding, err := s.carrier.GetBindingByID(job.BindingID)
+		if err != nil {
+			writeGatewayError(w, err)
+			return
+		}
+		if _, _, err := s.app.SettleMilestone(binding.OrderID, platform.SettleMilestoneInput{
+			MilestoneID: job.MilestoneID,
+			Summary:     eventPayloadString(event.Payload, "summary"),
+			Source:      "carrier",
+			OccurredAt:  time.Now().UTC(),
+		}); err != nil {
 			writeGatewayError(w, err)
 			return
 		}
@@ -2085,6 +2125,9 @@ func (s *Server) resolveCarrierCallbackSecret(r *http.Request, event carrier.Cal
 	if overrideKeyID == "" {
 		overrideKeyID = strings.TrimSpace(r.Header.Get("X-One-Tok-Key-Id"))
 	}
+	if overrideKeyID == "" {
+		overrideKeyID = strings.TrimSpace(r.Header.Get("X-Carrier-Key-Id"))
+	}
 	if event.BindingID == "" {
 		if overrideKeyID != "" {
 			return "", fmt.Errorf("callback key id provided but no binding secret configured")
@@ -2130,6 +2173,23 @@ func (s *Server) resolveCarrierCallbackSecret(r *http.Request, event carrier.Cal
 	}
 
 	return os.Getenv("CARRIER_CALLBACK_SECRET"), nil
+}
+
+func parseCarrierCallback(rawBody []byte) (carrier.CallbackEvent, bool, error) {
+	var integrationEnvelope carrier.IntegrationCallbackEnvelope
+	if err := json.Unmarshal(rawBody, &integrationEnvelope); err == nil {
+		if strings.TrimSpace(integrationEnvelope.EventType) != "" ||
+			strings.TrimSpace(integrationEnvelope.EventID) != "" ||
+			strings.TrimSpace(integrationEnvelope.CarrierExecutionID) != "" {
+			return integrationEnvelope.ToCallbackEvent(), true, nil
+		}
+	}
+
+	var event carrier.CallbackEvent
+	if err := json.Unmarshal(rawBody, &event); err != nil {
+		return carrier.CallbackEvent{}, false, err
+	}
+	return event, false, nil
 }
 
 func (s *Server) handleCreateListing(w http.ResponseWriter, r *http.Request) {

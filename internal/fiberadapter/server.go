@@ -62,6 +62,13 @@ type rawNode interface {
 	GetInvoiceStatus(context.Context, string) (string, error)
 	ValidatePaymentRequest(context.Context, string) error
 	SendPayment(context.Context, string, string, string, string) (string, error)
+	NodeInfo(context.Context) (map[string]any, error)
+}
+
+type rpcUdtTypeScript struct {
+	CodeHash string `json:"code_hash"`
+	HashType string `json:"hash_type"`
+	Args     string `json:"args"`
 }
 
 func NewServer() *Server {
@@ -319,7 +326,7 @@ func (s *Server) handleRequestWithdrawal(w http.ResponseWriter, id any, raw json
 		UserID: input.UserID,
 		Asset:  input.Asset,
 		Amount: input.Amount,
-		State:  "PROCESSING",
+		State:  "COMPLETED",
 	}
 	s.withdrawals = append(s.withdrawals, withdrawal)
 	s.withdrawalsByID[withdrawal.ID] = &s.withdrawals[len(s.withdrawals)-1]
@@ -327,7 +334,7 @@ func (s *Server) handleRequestWithdrawal(w http.ResponseWriter, id any, raw json
 
 	writeRPCResult(w, id, fiberclient.RequestPayoutResult{
 		ID:    externalID,
-		State: "PENDING",
+		State: "COMPLETED",
 	})
 }
 
@@ -408,10 +415,22 @@ func (n *rpcNode) CreateInvoice(ctx context.Context, asset, amount string) (stri
 	if err != nil {
 		return "", err
 	}
-	result, err := n.call(ctx, "new_invoice", map[string]any{
+	params := map[string]any{
 		"amount":   hexAmount,
 		"currency": mapAssetToCurrency(asset),
-	})
+	}
+	if strings.EqualFold(strings.TrimSpace(asset), "USDI") {
+		udtTypeScript, err := resolveUSDIUdtTypeScript(ctx, n)
+		if err != nil {
+			return "", err
+		}
+		params["udt_type_script"] = map[string]any{
+			"code_hash": udtTypeScript.CodeHash,
+			"hash_type": udtTypeScript.HashType,
+			"args":      udtTypeScript.Args,
+		}
+	}
+	result, err := n.call(ctx, "new_invoice", params)
 	if err != nil {
 		return "", err
 	}
@@ -468,6 +487,10 @@ func (n *rpcNode) SendPayment(ctx context.Context, invoice, amount, asset, reque
 		return evidence, nil
 	}
 	return "", errors.New("send_payment response is missing transaction evidence")
+}
+
+func (n *rpcNode) NodeInfo(ctx context.Context) (map[string]any, error) {
+	return n.callNoParams(ctx, "node_info")
 }
 
 func (n *rpcNode) invoicePaymentHash(ctx context.Context, invoice string) (string, error) {
@@ -531,13 +554,64 @@ func (n *rpcNode) call(ctx context.Context, method string, params any) (map[stri
 	return body.Result, nil
 }
 
+func (n *rpcNode) callNoParams(ctx context.Context, method string) (map[string]any, error) {
+	if n == nil || strings.TrimSpace(n.endpoint) == "" {
+		return nil, errors.New("fnn rpc endpoint is not configured")
+	}
+
+	payload, err := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  method,
+		"params":  []any{},
+	})
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, n.endpoint, strings.NewReader(string(payload)))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := n.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= http.StatusBadRequest {
+		return nil, fmt.Errorf("fnn rpc returned %d", res.StatusCode)
+	}
+
+	var body struct {
+		Result map[string]any `json:"result"`
+		Error  *struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		return nil, err
+	}
+	if body.Error != nil {
+		return nil, fmt.Errorf("fnn rpc error %d: %s", body.Error.Code, body.Error.Message)
+	}
+	return body.Result, nil
+}
+
 func mapAssetToCurrency(asset string) string {
-	switch strings.ToUpper(strings.TrimSpace(asset)) {
-	case "CKB":
-		return "Fibt"
-	default:
+	if strings.EqualFold(strings.TrimSpace(asset), "CKB") {
+		if scoped := strings.TrimSpace(os.Getenv("FIBER_INVOICE_CURRENCY_CKB")); scoped != "" {
+			return scoped
+		}
+		if global := strings.TrimSpace(os.Getenv("FIBER_INVOICE_CURRENCY")); global != "" {
+			return global
+		}
 		return "Fibt"
 	}
+	if scoped := strings.TrimSpace(os.Getenv("FIBER_INVOICE_CURRENCY_USDI")); scoped != "" {
+		return scoped
+	}
+	return mapAssetToCurrency("CKB")
 }
 
 func mapInvoiceState(value string) string {
@@ -593,6 +667,91 @@ func nextID(prefix string) string {
 	return prefix + "_" + hex.EncodeToString(buf)
 }
 
+func resolveUSDIUdtTypeScript(ctx context.Context, node rawNode) (rpcUdtTypeScript, error) {
+	if envJSON := strings.TrimSpace(os.Getenv("FIBER_USDI_UDT_TYPE_SCRIPT_JSON")); envJSON != "" {
+		var script rpcUdtTypeScript
+		if err := json.Unmarshal([]byte(envJSON), &script); err != nil {
+			return rpcUdtTypeScript{}, errors.New("FIBER_USDI_UDT_TYPE_SCRIPT_JSON must be valid JSON")
+		}
+		if !script.valid() {
+			return rpcUdtTypeScript{}, errors.New("FIBER_USDI_UDT_TYPE_SCRIPT_JSON must include code_hash/hash_type/args")
+		}
+		return script, nil
+	}
+
+	nodeInfo, err := node.NodeInfo(ctx)
+	if err != nil {
+		return rpcUdtTypeScript{}, err
+	}
+	script := pickUSDIUdtTypeScript(nodeInfo)
+	if !script.valid() {
+		return rpcUdtTypeScript{}, errors.New("node_info does not expose a usable USDI udt_type_script")
+	}
+	return script, nil
+}
+
+func pickUSDIUdtTypeScript(nodeInfo map[string]any) rpcUdtTypeScript {
+	result, _ := nodeInfo["result"].(map[string]any)
+	if len(result) == 0 {
+		result = nodeInfo
+	}
+	infos, _ := result["udt_cfg_infos"].([]any)
+	if len(infos) == 0 {
+		return rpcUdtTypeScript{}
+	}
+
+	preferredName := normalizeOptionalAssetName(os.Getenv("FIBER_USDI_UDT_NAME"))
+	var fallback rpcUdtTypeScript
+	for _, item := range infos {
+		record, _ := item.(map[string]any)
+		if len(record) == 0 {
+			continue
+		}
+		script := parseRPCUdtTypeScript(record["script"])
+		if !script.valid() {
+			continue
+		}
+		if !fallback.valid() {
+			fallback = script
+		}
+		name := normalizeOptionalAssetName(record["name"])
+		if preferredName != "" {
+			if name == preferredName {
+				return script
+			}
+			continue
+		}
+		if name == "usdi" || name == "rusd" {
+			return script
+		}
+	}
+	return fallback
+}
+
+func parseRPCUdtTypeScript(value any) rpcUdtTypeScript {
+	record, _ := value.(map[string]any)
+	if len(record) == 0 {
+		return rpcUdtTypeScript{}
+	}
+	return rpcUdtTypeScript{
+		CodeHash: strings.TrimSpace(stringValue(record["code_hash"])),
+		HashType: strings.TrimSpace(stringValue(record["hash_type"])),
+		Args:     strings.TrimSpace(stringValue(record["args"])),
+	}
+}
+
+func (s rpcUdtTypeScript) valid() bool {
+	return s.CodeHash != "" && s.HashType != "" && s.Args != ""
+}
+
+func normalizeOptionalAssetName(value any) string {
+	return strings.ToLower(strings.TrimSpace(stringValue(value)))
+}
+
+func stringValue(value any) string {
+	text, _ := value.(string)
+	return text
+}
 
 // verifyHMAC checks the x-signature header against the request body using the
 // shared HMAC secret. When no secret is configured, verification is skipped

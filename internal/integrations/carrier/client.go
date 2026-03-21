@@ -78,6 +78,8 @@ type Client struct {
 	httpClient *http.Client
 }
 
+const defaultCodeAgentGatewayTimeout = 2 * time.Minute
+
 func NewClient(baseURL, apiToken string) *Client {
 	trimmed := strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	if trimmed == "" {
@@ -86,7 +88,7 @@ func NewClient(baseURL, apiToken string) *Client {
 	return &Client{
 		baseURL:    trimmed,
 		apiToken:   strings.TrimSpace(apiToken),
-		httpClient: &http.Client{Timeout: 10 * time.Second},
+		httpClient: &http.Client{Timeout: defaultCodeAgentGatewayTimeout},
 	}
 }
 

@@ -53,8 +53,7 @@ export const demoOrders: Order[] = [
     id: "ord_14",
     buyerOrgId: "buyer_1",
     providerOrgId: "provider_1",
-    fundingMode: "credit",
-    creditLineId: "credit_1",
+    fundingMode: "prepaid",
     platformWallet: "platform_main",
     status: "running",
     milestones: [
@@ -105,16 +104,25 @@ export const demoOrders: Order[] = [
 
 export const demoFundingRecords: FundingRecord[] = [
   {
-    id: "fund_1",
-    kind: "invoice",
+    id: "fund_topup_1",
+    kind: "buyer_topup",
+    buyerOrgId: "buyer_1",
+    asset: "USDI",
+    amount: "42.50",
+    invoice: "inv_topup_123",
+    state: "SETTLED",
+  },
+  {
+    id: "fund_payout_1",
+    kind: "provider_payout",
     orderId: "ord_14",
     milestoneId: "ms_1",
     buyerOrgId: "buyer_1",
     providerOrgId: "provider_1",
-    asset: "CKB",
-    amount: "12.5",
-    invoice: "inv_123",
-    state: "SETTLED",
+    asset: "USDI",
+    amount: "12.50",
+    externalId: "payout_123",
+    state: "PROCESSING",
   },
   {
     id: "fund_2",
