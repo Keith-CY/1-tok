@@ -1,10 +1,15 @@
 # Carrier First-Class Agent Provider Design
 
-Last updated: `2026-03-15`
+Last updated: `2026-03-20`
 
 This document is the authoritative design for making `Carrier-backed provider` a first-class provider type in `1-tok`.
 
-It replaces the older “three probe endpoints plus callback” framing as the main source of truth. The older document [carrier-pr-support.md](./carrier-pr-support.md) now serves as the upstream implementation checklist derived from this design.
+It now defines both:
+
+- the **current bridge contract** we can validate against existing Carrier probe endpoints and signed platform callbacks
+- the **target first-class async contract** that should replace the bridge over time
+
+The companion document [carrier-pr-support.md](./carrier-pr-support.md) is the upstream-facing checklist derived from this design.
 
 ## Decision Summary
 
@@ -12,7 +17,7 @@ The design fixes three product decisions:
 
 - `Carrier` is a general execution substrate, not a single special seller account inside the marketplace.
 - Each `provider org` owns and manages its own `Carrier` resources.
-- Formal marketplace execution uses an asynchronous `execution/job` protocol. The existing synchronous `health`, `version`, and `run` endpoints remain as compatibility probes and diagnostics only.
+- The target end state uses an asynchronous `execution/job` protocol, but the current rollout keeps a bridge contract around existing `health`, `version`, and `run` probe endpoints plus signed replay-safe callbacks.
 
 This split keeps platform ownership clear:
 
@@ -38,22 +43,19 @@ The design does not require:
 
 ## Current State And Gap
 
-Today the repo only has:
+Today the repo already has:
 
-- synchronous probe endpoints for `health`, `version`, and `run`
-- a coarse `POST /v1/carrier/events` callback into the execution service
-- no persistent `Carrier` binding model
-- no persistent execution job model
-- no formal evidence package for disputes
+- platform-side provider carrier bindings
+- platform-side execution jobs and callback event ledgering
+- compatibility probe endpoints for `health`, `version`, and `run`
+- signed callback ingress on the platform side
+- an internal bridge path still used by smoke coverage
 
-That is enough for smoke testing, but not enough for a first-class provider integration. The missing pieces are:
+That is enough for bridge-based staging validation, but not yet enough to claim that Carrier-native async executions are the only marketplace execution path. The remaining gap is:
 
-- provider-scoped resource binding
-- marketplace-visible execution profiles
-- async job lifecycle
-- signed, idempotent callback delivery
-- durable artifacts and usage proofs
-- operational health and credential rotation
+- provider-scoped auth wired end-to-end for live Carrier traffic
+- a Carrier-native async execution namespace adopted as the formal execution path
+- documentation and operator tooling fully switched off bridge-only assumptions
 
 ## Business Model
 
@@ -242,82 +244,95 @@ The platform must provide:
 
 ## Carrier Responsibilities
 
-### 1. Provider-Scoped Integration Credential
+Carrier responsibilities are split into two phases.
 
-Carrier must let a provider issue a provider-scoped integration token to `1-tok`.
+### Phase 1: Current Bridge Contract
 
-Required properties:
+This is the contract Carrier should satisfy for near-term staging validation and bridge-based rollout.
 
-- the token is restricted to that provider’s own `host`, `agent`, `profile`, `execution`, and artifact resources
-- the token can be rotated without hard downtime
-- Carrier can identify the provider account and resources associated with that token
+Carrier must provide:
 
-### 2. Stable Integration Surface
+- the existing compatibility probes:
+  - `GET /api/v1/remote/hosts/:hostId/instances/:agentId/codeagent/health`
+  - `GET /api/v1/remote/hosts/:hostId/instances/:agentId/codeagent/version`
+  - `POST /api/v1/remote/hosts/:hostId/instances/:agentId/codeagent/run`
+- a provider-issued integration token model that is scoped to one provider's resources and can later be reused by the async namespace
+- signed replay-safe callback delivery to `POST /api/v1/carrier/callbacks/events`
+- durable execution/job status, artifacts, and usage-proof evidence
+- callback retry behavior that preserves `eventId` and `sequence`
+- budget-aware behavior that honors platform `pause` or `cancel` recommendations
+
+Current callback envelope is fixed to the platform's live ingress shape:
+
+```json
+{
+  "type": "usage.reported",
+  "jobId": "job_123",
+  "bindingId": "bind_123",
+  "timestamp": "2026-03-20T08:00:00Z",
+  "signature": "hex-hmac",
+  "payload": {
+    "eventId": "evt_123",
+    "sequence": 7,
+    "attemptId": "attempt_1"
+  }
+}
+```
+
+Current platform expectations:
+
+- `type`, `jobId`, `bindingId`, `timestamp`, and `signature` are top-level
+- `eventId`, `sequence`, and optional `attemptId` are currently read from `payload`
+- retries reuse the same `eventId` and `sequence`
+- out-of-order gaps can be rejected until missing earlier events are replayed
+- callback response `recommendedAction.type=pause` or `cancel` is authoritative platform feedback
+
+Carrier should prefer canonical dot-separated event names now:
+
+- `execution.accepted`
+- `execution.started`
+- `execution.heartbeat`
+- `milestone.started`
+- `usage.reported`
+- `artifact.ready`
+- `budget.low`
+- `milestone.ready`
+- `execution.pause_requested`
+- `execution.paused`
+- `execution.resumed`
+- `execution.failed`
+- `execution.completed`
+
+Snake_case aliases may still be normalized by the platform during migration, but new Carrier work should not depend on that shim.
+
+### Phase 2: Target First-Class Async Contract
+
+This remains the target-state Carrier surface that should replace bridge-only execution over time.
 
 Carrier must expose a stable `1-tok` integration namespace. Recommended base path:
 
 - `/api/v1/integrations/one-tok/*`
 
-Carrier must implement:
+Target-state endpoints:
 
-- resource verification
-- execution creation
-- execution status fetch
-- execution action control
-- artifact listing
-- signed callback delivery
+- `POST /api/v1/integrations/one-tok/bindings/verify`
+- `POST /api/v1/integrations/one-tok/executions`
+- `GET /api/v1/integrations/one-tok/executions/:carrierExecutionId`
+- `POST /api/v1/integrations/one-tok/executions/:carrierExecutionId/actions`
 
-### 3. Execution Runtime Behavior
-
-Carrier must guarantee:
+Target-state guarantees:
 
 - retry-safe execution creation by `Idempotency-Key`
-- durable external ids for executions and attempts
+- durable `carrierExecutionId` and `attemptId`
 - monotonic event sequences per execution
-- explicit failure categories
-- explicit timeout semantics
 - durable artifact references for logs and outputs
 - usage proofs attached to billable usage events
+- explicit failure categories and timeout semantics
+- idempotent pause, resume, and cancel semantics
 
-Carrier is the owner of:
+The target async namespace is still required for the full first-class Carrier integration, but it should not be treated as a prerequisite for the current bridge-based staging validation described in Phase 1.
 
-- workspace preparation
-- remote agent start and supervision
-- retries or requeue within its own control plane
-- log retention
-- artifact retention
-
-### 4. Callback Delivery
-
-Carrier must push lifecycle events to the platform and retry on transient failures.
-
-Callback behavior is fixed:
-
-- every event has a globally unique `eventId`
-- every execution has a monotonically increasing `sequence`
-- retries reuse the same `eventId` and `sequence`
-- callbacks are signed with the binding-specific HMAC secret
-- Carrier treats non-2xx or `accepted=false` as delivery failure
-- Carrier retries with exponential backoff for at least 15 minutes
-
-### 5. What The Carrier Project Must Deliver
-
-For Carrier maintainers, the requirement is not "be generally compatible". The requirement is to expose a narrow contract that `1-tok` can treat as stable product infrastructure.
-
-Carrier must deliver all of the following:
-
-- a provider-facing way to mint and rotate a provider-scoped integration token for `1-tok`
-- one stable integration base URL for staging and one for production
-- one stable execution API namespace matching this document, instead of asking `1-tok` to target ad hoc internal routes
-- durable `carrierExecutionId`, `attemptId`, `eventId`, and artifact references that survive retries and process restarts
-- explicit translation from Carrier internal runtime states into the canonical states and failure categories in this document
-- callback signing and replay-safe retry behavior
-- artifact and usage-proof retention strong enough for settlement review and disputes
-- pause, resume, and cancel semantics that are safe even when delivered more than once
-
-Carrier should assume that `1-tok` will build platform logic directly against this contract. If Carrier needs additional fields, looser guarantees, or different state semantics, that mismatch must be resolved in the design before implementation ships.
-
-### 6. Joint Integration Requirements
+### Joint Integration Requirements
 
 Carrier and `1-tok` have separate ownership, so successful rollout also requires explicit coordination artifacts from the Carrier side.
 
@@ -335,7 +350,71 @@ The integration should not be considered ready for rollout until both teams can 
 
 ## Interface Contract
 
-### A. Platform To Carrier
+### Phase 1: Current Bridge Contract
+
+#### Platform callback ingress
+
+Canonical platform callback path:
+
+- `POST /api/v1/carrier/callbacks/events`
+
+Compatibility alias still accepted during migration:
+
+- `POST /api/v1/carrier/callback`
+
+Carrier upstream work should target the canonical `/api/v1/carrier/callbacks/events` path, not the internal bridge alias `/v1/carrier/events`.
+
+Headers:
+
+- `X-One-Tok-Callback-Key-Id` *(preferred)*
+- `X-One-Tok-Key-Id` *(compat alias, accepted)*
+- `X-One-Tok-Timestamp` *(override for request body timestamp)*
+- `X-One-Tok-Signature` *(override for request body signature)*
+- `X-One-Tok-Callback-Secret` *(manual override in special integrations)*
+
+Notes:
+
+- header values `X-One-Tok-Timestamp` and `X-One-Tok-Signature` are applied before signature verification and take precedence over `timestamp`/`signature` in payload body
+- preferred key lookup key is `X-One-Tok-Callback-Key-Id`; `X-One-Tok-Key-Id` remains supported for compatibility
+- a callback without a key id can still pass if the legacy secret binding path is explicitly configured; key-id plus wrong secret becomes unauthorized immediately
+- the callback secret itself is provisioned during binding creation or rotation and looked up by `keyId`; it is never resent in per-execution requests
+
+`usage.reported` proof validation behavior (when secret is available):
+
+- `proofRef`, `proofSignature`, and `proofTimestamp` are required together
+- signature is verified with HMAC over `(executionId, milestoneId, kind, amountCents, proofTimestamp)`
+- in the current bridge flow, `executionId` is the referenced `jobId`, and `milestoneId` is resolved from that execution job context rather than being required as a separate callback payload field
+- replay and stale-window checks on proof timestamp are enforced using the same max-age policy as callback authenticity
+
+Platform callback response fields:
+
+- `accepted`
+- `continueAllowed`
+- `recommendedAction.type`
+- `recommendedAction.reason`
+
+Allowed `recommendedAction.type` values:
+
+- `continue`
+- `pause`
+- `cancel`
+
+#### Compatibility probe endpoints
+
+The existing endpoints remain valid:
+
+- `GET /api/v1/remote/hosts/:hostId/instances/:agentId/codeagent/health`
+- `GET /api/v1/remote/hosts/:hostId/instances/:agentId/codeagent/version`
+- `POST /api/v1/remote/hosts/:hostId/instances/:agentId/codeagent/run`
+
+Their role in Phase 1 is:
+
+- provider binding verification
+- ops diagnostics
+- compatibility checks
+- bridge-compatible execution/probe behavior
+
+### Phase 2: Target First-Class Async Contract
 
 #### `POST /api/v1/integrations/one-tok/bindings/verify`
 
@@ -443,119 +522,23 @@ Allowed `action` values:
 - `resume`
 - `cancel`
 
-### B. Carrier To Platform
-
-#### `POST /v1/carrier/callbacks/events`
-
-Headers:
-
-- `X-One-Tok-Callback-Key-Id` *(preferred)*
-- `X-One-Tok-Key-Id` *(compat alias, accepted)*
-- `X-One-Tok-Timestamp` *(override for request body timestamp)*
-- `X-One-Tok-Signature` *(override for request body signature)*
-- `X-One-Tok-Callback-Secret` *(manual override in special integrations)*
-
-Notes:
-
-- Header values `X-One-Tok-Timestamp` and `X-One-Tok-Signature` are applied before signature verification and take precedence over `timestamp`/`signature` in payload body.
-- Preferred key lookup key is `X-One-Tok-Callback-Key-Id`; `X-One-Tok-Key-Id` remains supported for compatibility.
-- A callback without a key-id can still pass if the legacy secret binding path is explicitly configured; key-id+wrong-secret becomes unauthorized immediately.
-
-The body is signed using `HMAC-SHA256` over timestamp plus body.
-
-The callback secret itself is provisioned during binding creation or rotation and looked up by `keyId`; it is never resent in per-execution requests.
-
-`usage.reported` proof validation behavior (when secret available):
-
-- `proofRef`, `proofSignature`, and `proofTimestamp` are required together.
-- Signature is verified with HMAC over `(executionId, milestoneId, kind, amountCents, proofTimestamp)`.
-- Replay and stale window checks on proof timestamp are enforced using the same max-age policy as callback authenticity.
-
-The legacy endpoint still supported for migration:
-
-- `POST /api/v1/carrier/callback`
-- backward-compatible snake_case event names are normalized server-side to dot-separated canonical names.
-
-Event envelope fields:
-
-- `eventId`
-- `sequence`
-- `eventType`
-- `occurredAt`
-- `platformExecutionId`
-- `carrierExecutionId`
-- `orderId`
-- `milestoneId`
-- `providerOrgId`
-- `executionProfileId`
-- `attemptId`
-- `payload`
-
-Mandatory event types:
-
-| Event | Required payload |
-| --- | --- |
-| `execution.accepted` | `queueState` |
-| `execution.started` | `attemptNo` |
-| `execution.heartbeat` | `progressPercent`, `summary` |
-| `milestone.started` | `summary` |
-| `usage.reported` | `usageKind`, `amountCents`, `proofRef`, `meterRef` |
-| `artifact.ready` | `artifacts[]` |
-| `budget.low` | `currentSpendCents`, `remainingBudgetCents`, `recommendedAction` |
-| `milestone.ready` | `summary`, `artifacts[]`, `usageSnapshot` |
-| `execution.pause_requested` | `reason` |
-| `execution.paused` | `reason` |
-| `execution.resumed` | `reason` |
-| `execution.failed` | `failureCategory`, `failureCode`, `failureMessage`, `artifacts[]` |
-| `execution.completed` | `summary`, `artifacts[]` |
-
-Platform callback response fields:
-
-- `accepted`
-- `continueAllowed`
-- `recommendedAction.type`
-- `recommendedAction.reason`
-
-Allowed `recommendedAction.type` values:
-
-- `continue`
-- `pause`
-- `cancel`
-
-### C. Compatibility Probe Endpoints
-
-The existing endpoints remain valid:
-
-- `GET /api/v1/remote/hosts/:hostId/instances/:agentId/codeagent/health`
-- `GET /api/v1/remote/hosts/:hostId/instances/:agentId/codeagent/version`
-- `POST /api/v1/remote/hosts/:hostId/instances/:agentId/codeagent/run`
-
-Their role is restricted to:
-
-- provider binding verification
-- ops diagnostics
-- compatibility checks
-- emergency manual probes
-
-They are not the authoritative marketplace execution path anymore.
-
 ## Platform Compatibility Bridge
 
-`origin/main` already ships a platform-side execution-service bridge. The canonical Carrier contract in this document must coexist with that bridge until migration completes.
+`origin/main` still ships a platform-side execution bridge. The target Carrier contract in this document must coexist with that bridge until migration completes.
 
-| Current platform route | Current behavior | Canonical contract |
+| Current platform route | Current behavior | Target contract |
 | --- | --- | --- |
 | `GET /v1/carrier/codeagent/health` | platform proxy for health verification | Carrier `GET /api/v1/remote/hosts/:hostId/instances/:agentId/codeagent/health` |
 | `GET /v1/carrier/codeagent/version` | platform proxy for backend/version inspection | Carrier `GET /api/v1/remote/hosts/:hostId/instances/:agentId/codeagent/version` |
-| `POST /v1/carrier/codeagent/run` | platform proxy for emergency probe execution | Carrier `POST /api/v1/remote/hosts/:hostId/instances/:agentId/codeagent/run` |
-| `POST /v1/carrier/events` | legacy callback ingress using snake_case event names | Platform `POST /v1/carrier/callbacks/events` using canonical dot-separated event names |
+| `POST /v1/carrier/codeagent/run` | platform proxy for bridge-compatible probe execution | Carrier `POST /api/v1/remote/hosts/:hostId/instances/:agentId/codeagent/run` |
+| `POST /v1/carrier/events` | internal bridge ingress still used by smoke coverage | Platform `POST /api/v1/carrier/callbacks/events` using canonical dot-separated event names |
 
 Bridge rules:
 
-- Carrier upstream work targets the canonical endpoints, not the legacy bridge names
+- Carrier upstream work targets the canonical `/api/v1/carrier/callbacks/events` path, not the internal bridge route
 - the platform bridge may temporarily accept snake_case aliases such as `usage_reported`, `budget_low`, and `milestone_ready`, but it normalizes them to canonical names before persistence
-- new smoke tests, docs, and operator runbooks must prefer `/v1/carrier/callbacks/events` and canonical dot-separated event names
-- the legacy callback alias is removable only after ops tooling and smoke coverage no longer depend on it
+- new smoke tests, docs, and operator runbooks should prefer `/api/v1/carrier/callbacks/events` and canonical dot-separated event names
+- the internal `/v1/carrier/events` bridge is removable only after ops tooling and smoke coverage no longer depend on it
 
 ## State Mapping
 
@@ -582,7 +565,7 @@ Platform settlement mapping is also fixed:
 
 These are mandatory requirements for implementation:
 
-- platform-to-Carrier requests use provider-scoped bearer tokens
+- platform-to-Carrier requests move toward provider-scoped bearer tokens as the bridge is retired
 - Carrier-to-platform callbacks use per-binding HMAC signing
 - every create and action request is idempotent
 - callback processing is idempotent by `eventId`
@@ -599,14 +582,14 @@ Retention defaults:
 
 Implementation order is fixed:
 
-1. Add `CarrierBinding`, `ExecutionProfile`, `ExecutionJob`, `ExecutionAttempt`, and `ExecutionEvent` to the platform.
-2. Keep the execution-service bridge in place, but add the canonical callback path and dot-separated event normalization.
-3. Implement provider-scoped binding verification.
+1. Keep the bridge contract healthy enough for joint staging validation.
+2. Keep the internal execution bridge in place, but prefer the canonical `/api/v1/carrier/callbacks/events` path and dot-separated event normalization in new docs and tooling.
+3. Implement provider-scoped binding verification and provider-scoped auth end to end.
 4. Add async execution endpoints in Carrier.
 5. Add callback verification, ledger persistence, and stale-job reconciliation in the platform.
 6. Move listings and bids to reference `executionProfileId`.
-7. Rewrite smoke tests and operator tooling so formal marketplace execution uses the canonical async path and callback names.
-8. Remove the legacy callback alias only after the migration is complete.
+7. Rewrite smoke tests and operator tooling so formal marketplace execution prefers the target async path and callback names.
+8. Remove the internal bridge alias only after the migration is complete.
 
 ## Acceptance Criteria
 

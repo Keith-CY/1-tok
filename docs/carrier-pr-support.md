@@ -1,47 +1,32 @@
 # Carrier Upstream PR Checklist
 
-This document is the upstream-facing checklist derived from the authoritative design in [carrier-first-class-design.md](./carrier-first-class-design.md).
+This checklist mirrors the current upstream contract tracked in `carrier#1564`.
 
-Use this document to coordinate the actual Carrier implementation or PR scope. If there is any conflict, the design doc wins.
+Use it when coordinating Carrier implementation work or when reviewing an upstream Carrier PR. The goal is to keep the upstream ask aligned with the **current bridge contract** we can validate now and the **target async contract** we still want Carrier to expose over time.
+
+For product rationale and platform-side context, see [carrier-first-class-design.md](./carrier-first-class-design.md).
 
 ## Goal
 
 `Carrier` should support `1-tok` as a first-class marketplace execution substrate for provider-owned resources.
 
-That means:
+That contract is now split into two phases:
 
-- each provider can issue a provider-scoped Carrier integration token to `1-tok`
-- each awarded marketplace milestone can become one asynchronous Carrier execution
-- Carrier can push signed lifecycle events and expose durable execution evidence
+- **Phase 1**: bridge-compatible rollout using the existing `codeagent` probe endpoints plus signed callbacks into the platform
+- **Phase 2**: Carrier-native async executions under a stable `/api/v1/integrations/one-tok/*` namespace
 
-## What Carrier Developers Need To Build
+The async namespace is still required, but it is no longer treated as a prerequisite for the first bridge-based staging success.
 
-This checklist is written for the Carrier project, not for `1-tok`.
+## Required Outcomes
 
-Carrier developers should read it as a product-integration contract with four concrete outcomes:
+This integration is complete only when all of the following are true:
 
-1. A provider can safely delegate execution authority from Carrier to `1-tok` without exposing unrelated tenants or resources.
-2. `1-tok` can create, observe, pause, resume, and cancel Carrier executions through a stable API contract.
-3. Carrier can push settlement-grade execution evidence back to `1-tok` in a replay-safe way.
-4. Both teams can run joint staging tests without special-case scripts or manual database edits.
+1. A provider can delegate execution authority from Carrier to `1-tok` using a provider-scoped token model.
+2. `1-tok` can validate one provider-owned Carrier resource tuple without manual DB edits or undocumented operator steps.
+3. Carrier can push signed, replay-safe lifecycle callbacks and durable evidence for budget control, settlement evidence, and disputes.
+4. The bridge path works now, and the target async namespace can replace it without redefining the provider-scoped trust model.
 
-If a planned Carrier implementation does not satisfy one of those outcomes, it is incomplete even if the raw endpoint exists.
-
-## Required Carrier Coordination Artifacts
-
-Carrier needs to provide these non-code deliverables as part of the integration work:
-
-- a stable staging base URL for the `1-tok` integration namespace
-- a documented flow for minting or rotating provider-scoped integration tokens
-- at least one stable staging resource tuple: `hostId`, `agentId`, `backend`, `workspaceRoot`
-- callback signing setup instructions, including how `keyId` and secret rotation work
-- sample callback payloads for success, budget pause, failure, and artifact publication cases
-- sample usage-proof and artifact payloads that match real Carrier behavior
-- a named Carrier owner for contract questions and rollout approvals
-
-These are required because `1-tok` cannot infer Carrier tenancy, signing, or execution semantics by reading the Carrier codebase.
-
-## Required Carrier Deliverables
+## Phase 1: Current Bridge Contract
 
 ### 1. Keep the existing compatibility probes
 
@@ -51,60 +36,67 @@ Carrier must continue to support:
 | --- | --- | --- |
 | `GET` | `/api/v1/remote/hosts/:hostId/instances/:agentId/codeagent/health` | resource verification and diagnostics |
 | `GET` | `/api/v1/remote/hosts/:hostId/instances/:agentId/codeagent/version` | backend/version visibility |
-| `POST` | `/api/v1/remote/hosts/:hostId/instances/:agentId/codeagent/run` | emergency probe and compatibility fallback |
+| `POST` | `/api/v1/remote/hosts/:hostId/instances/:agentId/codeagent/run` | bridge-compatible execution/probe path |
 
-All three paths should continue to accept `Authorization: Bearer <token>`.
+These endpoints should continue to accept bearer-token auth.
 
-### 2. Add a provider-scoped integration namespace
+### 2. Support provider-scoped auth for Carrier-owned resources
 
-Recommended namespace:
-
-- `/api/v1/integrations/one-tok/*`
-
-Required endpoints:
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `POST` | `/api/v1/integrations/one-tok/bindings/verify` | verify provider host/agent/backend/workspace |
-| `POST` | `/api/v1/integrations/one-tok/executions` | create one async execution |
-| `GET` | `/api/v1/integrations/one-tok/executions/:id` | fetch authoritative execution state |
-| `POST` | `/api/v1/integrations/one-tok/executions/:id/actions` | pause, resume, or cancel execution |
-
-Carrier should treat this namespace as a versioned public contract for `1-tok`. Avoid coupling `1-tok` to internal-only routes, internal state names, or one-off staging shims.
-
-### 3. Support provider-scoped bearer tokens
-
-Carrier must support a provider-issued integration token with these properties:
+Carrier should support a provider-issued integration token that is:
 
 - scoped to one provider account or tenant
-- limited to that provider’s resources
+- limited to that provider's own resources
 - rotatable without hard downtime
-- usable on both probe endpoints and async execution endpoints
+- usable on the probe endpoints above
+- reusable later for the async execution namespace in Phase 2
 
-### 4. Support signed async callbacks
+### 3. Support signed replay-safe callbacks to the current platform ingress
 
-Carrier must be able to push lifecycle events to the platform callback:
+Carrier upstream work should target:
 
-- `POST /v1/carrier/callbacks/events`
+- `POST /api/v1/carrier/callbacks/events`
 
-Required delivery guarantees:
+Compatibility alias still accepted by the platform during migration:
 
-- unique `eventId`
-- monotonic `sequence` per execution
-- retry-safe delivery with the same `eventId`
-- HMAC signing using a binding-specific key and secret
-- exponential retry on transient failure
+- `POST /api/v1/carrier/callback`
 
-Callback contract details that should shape the Carrier implementation:
+Carrier upstream work should not depend on the internal bridge alias `/v1/carrier/events`.
 
-- canonical callback path is `POST /v1/carrier/callbacks/events`
-- canonical event names use dot-separated form such as `usage.reported` and `milestone.ready`
-- the platform may temporarily keep a legacy `/v1/carrier/events` alias with snake_case names for internal bridge traffic, but Carrier upstream work should target the canonical path and names
-- if the platform returns `accepted=false`, Carrier must retry the same `eventId` and `sequence` rather than minting a new event
-- Carrier should expect the platform to reject a sequence gap until the missing earlier event is redelivered
-- when the platform returns `recommendedAction.type=pause` or `cancel`, Carrier should treat it as authoritative control-plane feedback for that execution
+### 4. Current callback envelope
 
-Required event types:
+Carrier should shape callbacks to the current platform envelope:
+
+```json
+{
+  "type": "usage.reported",
+  "jobId": "job_123",
+  "bindingId": "bind_123",
+  "timestamp": "2026-03-20T08:00:00Z",
+  "signature": "hex-hmac",
+  "payload": {
+    "eventId": "evt_123",
+    "sequence": 7,
+    "attemptId": "attempt_1",
+    "kind": "step",
+    "amountCents": 4200,
+    "proofRef": "usage://proof-1",
+    "proofSignature": "proof-hmac",
+    "proofTimestamp": "2026-03-20T08:00:00Z"
+  }
+}
+```
+
+Current platform expectations:
+
+- `type`, `jobId`, `bindingId`, `timestamp`, and `signature` are top-level
+- `eventId`, `sequence`, and optional `attemptId` are currently read from `payload`
+- retries must reuse the same `eventId` and `sequence`
+- out-of-order gaps can be rejected until missing earlier events are replayed
+- callback response `recommendedAction.type=pause` or `cancel` should be treated as authoritative platform feedback
+
+### 5. Canonical event names for current rollout
+
+Carrier should prefer dot-separated event names now:
 
 - `execution.accepted`
 - `execution.started`
@@ -120,35 +112,16 @@ Required event types:
 - `execution.failed`
 - `execution.completed`
 
-### Callback callback auth and response mapping
+The platform may temporarily normalize snake_case aliases such as `usage_reported`, `budget_low`, and `milestone_ready`, but new Carrier work should not depend on that migration shim.
 
-Carrier should expect these platform callback responses from `POST /v1/carrier/callbacks/events`:
+### 6. Phase 1 evidence requirements
 
-- `200` + `accepted=true`: callback accepted (new event or replay).
-- `200` + `accepted=false`: transient platform conflict; same `eventId` should be retried with backoff.
-- `400`: payload validation failed (missing required fields / malformed event / bad proof payload); Carrier should fix payload and retry only if the root cause is transient.
-- `401`: authentication mismatch (wrong/missing secret or keyId); treat as an integration misconfiguration and alert instead of blind retries.
-- `409`: sequence gap or out-of-order event; Carrier should replay missing earlier events to restore sequence continuity, preserving `eventId`/`sequence`.
-- `5xx`: transport/runtime side failures; safe to retry with exponential backoff while preserving idempotency keys.
+Carrier needs to provide enough evidence for budget control and dispute handling:
 
-Sample callback responses:
-
-- Accepted:
-  - `{"accepted":true,"recommendedAction":{"type":"continue"}}`
-- Auth failure:
-  - `{"error":"callback key id provided but no binding secret configured","code":"UNAUTHORIZED"}`
-- Validation failure:
-  - `{"error":"invalid usage proof payload: proofRef, proofSignature and proofTimestamp are required together","code":"BAD_REQUEST"}`
-- Sequence gap:
-  - `{"error":"out-of-order callback sequence","code":"CONFLICT","accepted":false,"replay":false}`
-
-### 5. Support durable execution evidence
-
-
-- execution status
-- machine-readable failure category and code
+- authoritative execution/job status
 - artifact references for logs and outputs
 - usage proofs for billable usage events
+- typed failure category and failure code where failure occurs
 
 Minimum failure categories:
 
@@ -160,122 +133,92 @@ Minimum failure categories:
 - `buyer_dependency_missing`
 - `unknown`
 
-### 6. Honor platform control-plane decisions
+### 7. Phase 1 callback response mapping
 
-Carrier must treat the platform callback response as part of the control plane.
+Carrier should expect these platform callback responses from `POST /api/v1/carrier/callbacks/events`:
 
-Required behavior:
+- `200` + `accepted=true`: callback accepted
+- `200` + `replay=true`: callback was a replay; previous decision is echoed back
+- `400`: payload validation failed
+- `401`: authentication mismatch
+- `409`: sequence gap or out-of-order event; replay the missing earlier event
+- `5xx`: transport/runtime failure; retry safely with the same event identity
 
-- if callback response says `recommendedAction.type=continue`, Carrier may keep running
-- if callback response says `recommendedAction.type=pause`, Carrier should pause as soon as safely possible and emit `execution.paused`
-- if callback response says `recommendedAction.type=cancel`, Carrier should cancel as soon as safely possible and emit the matching terminal event
-- if callback response says `accepted=false`, Carrier must retry the same callback delivery rather than assuming the platform observed the event
+### 8. Phase 1 staging test matrix
 
-This prevents budget enforcement and dispute safety from depending on out-of-band operator action.
+We should be able to demonstrate all of the following without manual DB edits:
 
-## Payload Expectations
+1. Verify one provider resource tuple successfully using the existing probe endpoints.
+2. Run one bridge-compatible execution/probe against a provider-owned resource.
+3. Emit signed callbacks to `/api/v1/carrier/callbacks/events`.
+4. Deliver `usage.reported`, `milestone.ready`, and `execution.completed` without corrupting event history.
+5. Retry one callback safely with the same `eventId` and `sequence`.
+6. Recover from one out-of-order callback by replaying the missing earlier event.
+7. Honor one platform `pause` recommendation after budget or usage pressure.
+8. Expose at least one artifact reference and one usage proof for a completed run.
 
-### Existing `run` payload
+## Phase 2: Target First-Class Async Contract
 
-`POST .../run` should continue to support the current request body:
+This remains the target-state Carrier surface that should replace bridge-only execution over time.
 
-- `hostId`
-- `agentId`
-- `backend`
-- `workspaceRoot`
-- `capability`
-- `path`
-- `content`
-- `writeMode`
-- `command`
-- `cwd`
-- `timeoutSec`
-- `stdoutPath`
-- `stderrPath`
-- `appendOutput`
-- `resumeSessionId`
+### Recommended namespace
 
-The response envelope should continue to include:
+- `/api/v1/integrations/one-tok/*`
 
-- `backend`
-- `result.ok`
-- `result.policy_decision`
-- `result.cost_estimate_usd`
+### Required target endpoints
 
-### Async execution payload
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/v1/integrations/one-tok/bindings/verify` | verify provider host/agent/backend/workspace |
+| `POST` | `/api/v1/integrations/one-tok/executions` | create one async execution |
+| `GET` | `/api/v1/integrations/one-tok/executions/:id` | fetch authoritative execution state |
+| `POST` | `/api/v1/integrations/one-tok/executions/:id/actions` | pause, resume, or cancel execution |
 
-`POST /api/v1/integrations/one-tok/executions` must support these fields:
+### Required target-state properties
 
-- `platformExecutionId`
-- `orderId`
-- `milestoneId`
-- `providerOrgId`
-- `executionProfileId`
-- `target.hostId`
-- `target.agentId`
-- `target.backend`
-- `target.workspaceRoot`
-- `task.capability`
-- `task.title`
-- `task.instructions`
-- `task.timeoutSec`
-- `budget.basePriceCents`
-- `budget.maxVariableSpendCents`
-- `budget.pauseThresholdCents`
-- `artifacts.retentionHours`
-- `artifacts.requiredKinds`
-- `callbacks.eventsUrl`
-- `callbacks.auth.type`
-- `callbacks.auth.keyId`
+- stable `carrierExecutionId`
+- stable `attemptId`
+- idempotent execution create behavior
+- idempotent pause / resume / cancel behavior
+- authoritative execution status by execution id
+- durable artifact and usage evidence by execution id
+- provider-scoped bearer tokens on both probe and async execution endpoints
 
-The response must include:
+The target async namespace is still required for the full first-class Carrier integration, but it should not be treated as a prerequisite for the current bridge-based staging validation described in Phase 1.
 
-- `carrierExecutionId`
-- `accepted`
-- `queueState`
-- `estimatedStartAt`
+## Required Coordination Artifacts
 
-The callback secret should be established during binding creation or credential rotation, then referenced by `callbacks.auth.keyId`. It should not be resent on every execution create request.
+Carrier should provide:
 
-### Idempotency And Sequencing Expectations
+- one stable staging base URL
+- one documented token issuance or rotation flow
+- one stable staging resource tuple: `hostId`, `agentId`, `backend`, `workspaceRoot`
+- callback signing setup instructions, including key-id and secret rotation behavior
+- sample callback payloads for success, budget pause, failure, and artifact publication
+- sample usage-proof payloads
+- one named Carrier owner for contract questions and rollout approval
 
-- reusing the same `Idempotency-Key` on `POST /api/v1/integrations/one-tok/executions` must return the same `carrierExecutionId`
-- retries of the same action request must be safe and must not double-apply `pause`, `resume`, or `cancel`
-- replaying one callback delivery must reuse the same `eventId` and `sequence`; a logical retry must not mint a new identity
-- status fetch should converge with the last accepted callback so the platform can reconcile stale jobs deterministically
+## Acceptance Criteria
 
-### Minimum Joint Test Matrix
+### Phase 1 acceptance
 
-Carrier should be able to demonstrate all of the following in staging:
+- existing probe endpoints still work
+- provider-scoped auth story exists for provider-owned Carrier resources
+- canonical callback path `/api/v1/carrier/callbacks/events` works
+- callbacks are signed and replay-safe
+- callback retries preserve `eventId` and `sequence`
+- budget-aware platform recommendations are honored
+- artifacts and usage proofs are available for joint validation
 
-- verify one provider resource tuple successfully
-- create one execution and return a durable `carrierExecutionId`
-- emit `execution.accepted`, `execution.started`, `usage.reported`, `milestone.ready`, and `execution.completed`
-- emit `budget.low` or honor a platform `pause` recommendation after usage is reported
-- recover from one callback retry without creating duplicate execution history
-- recover from one out-of-order callback by redelivering the missing earlier event
-- expose at least one artifact reference and one usage proof for a completed execution
+### Phase 2 acceptance
 
-If Carrier cannot run this matrix, the integration is not ready for `1-tok` production rollout.
+- stable `/api/v1/integrations/one-tok/*` namespace exists
+- create and action endpoints are idempotent
+- status, artifacts, and usage proofs are queryable by execution id
+- pause / resume / cancel semantics are implemented on Carrier-native async executions
+- Carrier-side execution identity replaces bridge-only assumptions
 
-## Done Criteria For The Carrier PR
-
-The Carrier work is complete when:
-
-- a provider-scoped token can verify one host/agent/backend/workspace combination
-- `1-tok` can create an async execution for one awarded milestone
-- Carrier can push signed lifecycle events for that execution
-- duplicate or retried callbacks are safe
-- out-of-order callback gaps can be recovered by redelivering the missing event without inventing a new `eventId`
-- Carrier honors platform `pause` or `cancel` recommendations returned from callback responses
-- Carrier can expose logs, output artifacts, and usage proofs by execution id
-- failure states are typed instead of only free-form strings
-- no new Carrier work depends on the platform's legacy `/v1/carrier/events` alias or snake_case event names
-- Carrier has provided the staging artifacts and ownership information listed above so both teams can complete joint integration
-
-## Explicit Non-Goals For The First PR
-
-The first Carrier PR does not need to include:
+## Explicit Non-Goals
 
 - interactive terminal streaming
 - platform-managed host or agent creation
