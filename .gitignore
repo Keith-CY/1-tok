@@ -17,4 +17,6 @@ progress.md
 task_plan.md
 tmp
 *.tsbuildinfo
-release-usdi-marketplace-e2e
+/release-usdi-marketplace-e2e
+!/cmd/release-usdi-marketplace-e2e/
+!/cmd/release-usdi-marketplace-e2e/main.go
