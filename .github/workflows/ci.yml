@@ -376,9 +376,15 @@ jobs:
           if summary:
             lines.extend([
               f"- Asset: `{summary.get('asset', 'USDI')}`",
-              f"- Order: `{summary.get('orderId', '')}`",
-              f"- RFQ / Bid: `{summary.get('rfqId', '')}` / `{summary.get('bidId', '')}`",
+              f"- Bootstrap order / channel: `{summary.get('bootstrapOrderId', '')}` / `{summary.get('bootstrapReservationChannel', '')}`",
+              f"- Bootstrap reservation status: `{summary.get('bootstrapReservationStatus', '')}`",
+              f"- Reuse order initial / final channel: `{summary.get('reuseOrderId', '')}` / `{summary.get('reuseReservationInitialChannel', '')}` -> `{summary.get('reuseReservationChannel', '')}`",
+              f"- Reuse status / source: `{summary.get('reuseReservationStatus', '')}` / `{summary.get('reuseReservationReuseSource', '')}`",
+              f"- Disconnect order: `{summary.get('orderId', '')}`",
+              f"- Disconnect RFQ / Bid: `{summary.get('rfqId', '')}` / `{summary.get('bidId', '')}`",
               f"- Carrier binding / execution: `{summary.get('carrierBindingId', '')}` / `{summary.get('carrierExecutionId', '')}`",
+              f"- Disconnect initial / final channel: `{summary.get('reservationInitialChannelId', '')}` / `{summary.get('reservationChannelId', '')}`",
+              f"- Disconnect / recover status: `{summary.get('disconnectOrderStatus', '')}` / `{summary.get('recoveredOrderStatus', '')}`",
               f"- Buyer top-up funding record: `{summary.get('buyerTopUpFundingRecordId', '')}`",
               f"- Provider payout records: `{', '.join(summary.get('providerPayoutRecordIds', []))}`",
               f"- Faucet tx: `{summary.get('faucetTxHash', '')}`",

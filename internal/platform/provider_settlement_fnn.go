@@ -303,10 +303,10 @@ func (c providerSettlementRawFNNClient) ListChannels(ctx context.Context, peerID
 }
 
 func connectProviderSettlementPeers(ctx context.Context, treasuryNode, providerNode providerSettlementRawFNNClient, providerP2PAddress, treasuryP2PAddress string) error {
-	if err := treasuryNode.ConnectPeer(ctx, providerP2PAddress); err != nil {
+	if err := treasuryNode.ConnectPeer(ctx, providerP2PAddress); err != nil && !isProviderSettlementConnectRetryableSuccess(err) {
 		return fmt.Errorf("connect treasury -> provider: %w", err)
 	}
-	if err := providerNode.ConnectPeer(ctx, treasuryP2PAddress); err != nil {
+	if err := providerNode.ConnectPeer(ctx, treasuryP2PAddress); err != nil && !isProviderSettlementConnectRetryableSuccess(err) {
 		return fmt.Errorf("connect provider -> treasury: %w", err)
 	}
 	return nil
@@ -611,6 +611,15 @@ func isProviderSettlementOpenChannelRetryable(err error) bool {
 		strings.Contains(message, "peer not ready") ||
 		strings.Contains(message, "temporarily unavailable") ||
 		strings.Contains(message, "waiting for peer to send init message")
+}
+
+func isProviderSettlementConnectRetryableSuccess(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "already connected") ||
+		strings.Contains(message, "already exists")
 }
 
 func isProviderSettlementAcceptRetryable(err error) bool {

@@ -23,6 +23,9 @@ import (
 
 const marketplaceTreasuryUserID = "platform_treasury"
 const usdiMarketplaceE2EHTTPTimeout = 2 * time.Minute
+const usdiMarketplaceCarrierInstallTimeout = 10 * time.Minute
+const usdiMarketplaceProviderPayoutRetryAttempts = 3
+const usdiMarketplaceProviderPayoutRetryDelay = 2 * time.Second
 
 type USDIMarketplaceE2EConfig struct {
 	APIBaseURL                          string
@@ -71,6 +74,24 @@ type USDIMarketplaceE2ESummary struct {
 	BuyerTopUpInvoice           string   `json:"buyerTopUpInvoice"`
 	BuyerTopUpFundingRecordID   string   `json:"buyerTopUpFundingRecordId"`
 	BuyerTopUpPaymentID         string   `json:"buyerTopUpPaymentId,omitempty"`
+	BootstrapRFQID              string   `json:"bootstrapRfqId,omitempty"`
+	BootstrapBidID              string   `json:"bootstrapBidId,omitempty"`
+	BootstrapOrderID            string   `json:"bootstrapOrderId,omitempty"`
+	BootstrapCarrierBindingID   string   `json:"bootstrapCarrierBindingId,omitempty"`
+	BootstrapCarrierExecutionID string   `json:"bootstrapCarrierExecutionId,omitempty"`
+	BootstrapReservationID      string   `json:"bootstrapReservationId,omitempty"`
+	BootstrapReservationChannel string   `json:"bootstrapReservationChannel,omitempty"`
+	BootstrapReservationStatus  string   `json:"bootstrapReservationStatus,omitempty"`
+	BootstrapPayoutRecordIDs    []string `json:"bootstrapPayoutRecordIds,omitempty"`
+	ReuseRFQID                  string   `json:"reuseRfqId,omitempty"`
+	ReuseBidID                  string   `json:"reuseBidId,omitempty"`
+	ReuseOrderID                string   `json:"reuseOrderId,omitempty"`
+	ReuseReservationID          string   `json:"reuseReservationId,omitempty"`
+	ReuseReservationInitialChan string   `json:"reuseReservationInitialChannel,omitempty"`
+	ReuseReservationChannel     string   `json:"reuseReservationChannel,omitempty"`
+	ReuseReservationStatus      string   `json:"reuseReservationStatus,omitempty"`
+	ReuseReservationReuseSource string   `json:"reuseReservationReuseSource,omitempty"`
+	ReusePayoutRecordIDs        []string `json:"reusePayoutRecordIds,omitempty"`
 	RFQID                       string   `json:"rfqId"`
 	BidID                       string   `json:"bidId"`
 	OrderID                     string   `json:"orderId"`
@@ -78,8 +99,15 @@ type USDIMarketplaceE2ESummary struct {
 	ProviderSettlementBindingID string   `json:"providerSettlementBindingId"`
 	CarrierBindingID            string   `json:"carrierBindingId"`
 	CarrierExecutionID          string   `json:"carrierExecutionId"`
+	ReservationID               string   `json:"reservationId,omitempty"`
+	ReservationInitialChannelID string   `json:"reservationInitialChannelId,omitempty"`
+	ReservationChannelID        string   `json:"reservationChannelId,omitempty"`
+	ReservationReuseSource      string   `json:"reservationReuseSource,omitempty"`
+	ReservationStatus           string   `json:"reservationStatus,omitempty"`
 	UsageChargeCount            int      `json:"usageChargeCount"`
 	ProviderPayoutRecordIDs     []string `json:"providerPayoutRecordIds"`
+	DisconnectOrderStatus       string   `json:"disconnectOrderStatus,omitempty"`
+	RecoveredOrderStatus        string   `json:"recoveredOrderStatus,omitempty"`
 	FinalOrderStatus            string   `json:"finalOrderStatus"`
 	CodeAgentPolicy             string   `json:"codeAgentPolicy,omitempty"`
 }
@@ -90,6 +118,31 @@ type usageReportedStep struct {
 	Kind        core.UsageChargeKind
 	AmountCents int64
 	ProofRef    string
+}
+
+type usdiMarketplaceOrderFlowOptions struct {
+	Label                    string
+	DisconnectAfterFirstStep bool
+}
+
+type usdiMarketplaceOrderFlowResult struct {
+	RFQID                       string
+	BidID                       string
+	OrderID                     string
+	CarrierBindingID            string
+	CarrierExecutionID          string
+	InitialReservationID        string
+	InitialReservationChannelID string
+	InitialReservationReuse     string
+	ReservationID               string
+	ReservationChannelID        string
+	ReservationReuse            string
+	ReservationStatus           string
+	UsageChargeCount            int
+	PayoutRecordIDs             []string
+	DisconnectStatus            string
+	RecoveredStatus             string
+	FinalOrderStatus            string
 }
 
 func USDIMarketplaceE2EConfigFromEnv() USDIMarketplaceE2EConfig {
@@ -160,11 +213,11 @@ func RunUSDIMarketplaceE2E(ctx context.Context, cfg USDIMarketplaceE2EConfig) (U
 		}
 	}
 
-	topUpInvoice, topUpRecordID, err := client.createBuyerTopUp(ctx, cfg.SettlementBaseURL, buyer, cfg.SettlementServiceToken, "25.00")
+	topUpInvoice, topUpRecordID, err := client.createBuyerTopUp(ctx, cfg.SettlementBaseURL, buyer, cfg.SettlementServiceToken, "50.00")
 	if err != nil {
 		return USDIMarketplaceE2ESummary{}, err
 	}
-	topUpPaymentID, err := client.payInvoiceViaFiber(ctx, cfg, buyer.OrgID, topUpInvoice, "25.00", "USDI")
+	topUpPaymentID, err := client.payInvoiceViaFiber(ctx, cfg, buyer.OrgID, topUpInvoice, "50.00", "USDI")
 	if err != nil {
 		return USDIMarketplaceE2ESummary{}, err
 	}
@@ -190,27 +243,6 @@ func RunUSDIMarketplaceE2E(ctx context.Context, cfg USDIMarketplaceE2EConfig) (U
 		return USDIMarketplaceE2ESummary{}, err
 	}
 
-	rfqID, err := client.createRFQ(ctx, cfg.APIBaseURL, buyer)
-	if err != nil {
-		return USDIMarketplaceE2ESummary{}, err
-	}
-	bidID, err := client.createBid(ctx, cfg.APIBaseURL, provider, rfqID)
-	if err != nil {
-		return USDIMarketplaceE2ESummary{}, err
-	}
-	orderID, err := client.awardRFQPrepaid(ctx, cfg.APIBaseURL, buyer.Token, rfqID, bidID)
-	if err != nil {
-		return USDIMarketplaceE2ESummary{}, err
-	}
-	carrierBindingID, err := client.bindOrderCarrier(ctx, cfg.APIBaseURL, cfg.GatewayServiceToken, orderID, "ms_1", providerCarrierBindingID)
-	if err != nil {
-		return USDIMarketplaceE2ESummary{}, err
-	}
-	carrierExecutionID, err := client.createCarrierJob(ctx, cfg.APIBaseURL, cfg.GatewayServiceToken, orderID, "ms_1", carrierBindingID, "run usdi marketplace e2e")
-	if err != nil {
-		return USDIMarketplaceE2ESummary{}, err
-	}
-
 	policy := ""
 	if cfg.IncludeCarrierProbe {
 		if cfg.CarrierAuthConfigured {
@@ -223,117 +255,27 @@ func RunUSDIMarketplaceE2E(ctx context.Context, cfg USDIMarketplaceE2EConfig) (U
 		}
 	}
 
-	if err := client.sendCarrierIntegrationCallback(ctx, cfg.APIBaseURL, cfg, carrier.IntegrationCallbackEnvelope{
-		EventID:            "evt-start",
-		Sequence:           1,
-		EventType:          "execution.started",
-		BindingID:          carrierBindingID,
-		CarrierExecutionID: carrierExecutionID,
-		CreatedAt:          time.Now().UTC().Format(time.RFC3339),
-		Payload: map[string]any{
-			"jobId": carrierExecutionID,
-		},
-	}); err != nil {
-		return USDIMarketplaceE2ESummary{}, err
-	}
-
-	usageSteps := []usageReportedStep{
-		{EventID: "evt-usage-1", Sequence: 2, Kind: core.UsageChargeKindStep, AmountCents: 100, ProofRef: "fiber:proof:usage-1"},
-		{EventID: "evt-usage-2", Sequence: 3, Kind: core.UsageChargeKindStep, AmountCents: 200, ProofRef: "fiber:proof:usage-2"},
-	}
-	providerPayoutRecordIDs := make([]string, 0, len(usageSteps)+1)
-	for _, step := range usageSteps {
-		if err := client.sendCarrierIntegrationCallback(ctx, cfg.APIBaseURL, cfg, buildUsageReportedEnvelope(
-			carrierBindingID,
-			carrierExecutionID,
-			"ms_1",
-			cfg.CarrierCallbackSecret,
-			step,
-			time.Now().UTC(),
-		)); err != nil {
-			return USDIMarketplaceE2ESummary{}, err
-		}
-		paymentRequest, err := client.createProviderInvoiceViaProviderSettlementNode(ctx, cfg, amountFromCents(step.AmountCents))
-		if err != nil {
-			return USDIMarketplaceE2ESummary{}, err
-		}
-		recordID, err := client.requestProviderPayout(ctx, cfg.SettlementBaseURL, cfg.SettlementServiceToken, orderID, buyer.OrgID, provider.OrgID, amountFromCents(step.AmountCents), paymentRequest)
-		if err != nil {
-			return USDIMarketplaceE2ESummary{}, err
-		}
-		providerPayoutRecordIDs = append(providerPayoutRecordIDs, recordID)
-	}
-
-	if err := client.sendCarrierIntegrationCallback(ctx, cfg.APIBaseURL, cfg, carrier.IntegrationCallbackEnvelope{
-		EventID:            "evt-artifact",
-		Sequence:           4,
-		EventType:          "artifact.ready",
-		BindingID:          carrierBindingID,
-		CarrierExecutionID: carrierExecutionID,
-		CreatedAt:          time.Now().UTC().Format(time.RFC3339),
-		Payload: map[string]any{
-			"jobId":   carrierExecutionID,
-			"summary": "delivery evidence bundle ready",
-			"artifacts": []map[string]any{
-				{
-					"name":      "delivery-summary",
-					"type":      "report",
-					"url":       "https://example.test/artifacts/delivery-summary.json",
-					"sizeBytes": 128,
-				},
-			},
-			"usageReport": map[string]any{
-				"tokenCount":     120,
-				"stepCount":      len(usageSteps),
-				"apiCallCount":   2,
-				"totalCostCents": 300,
-			},
-		},
-	}); err != nil {
-		return USDIMarketplaceE2ESummary{}, err
-	}
-	if err := client.sendCarrierIntegrationCallback(ctx, cfg.APIBaseURL, cfg, carrier.IntegrationCallbackEnvelope{
-		EventID:            "evt-ready",
-		Sequence:           5,
-		EventType:          "milestone.ready",
-		BindingID:          carrierBindingID,
-		CarrierExecutionID: carrierExecutionID,
-		CreatedAt:          time.Now().UTC().Format(time.RFC3339),
-		Payload: map[string]any{
-			"jobId":   carrierExecutionID,
-			"output":  "milestone completed successfully",
-			"summary": "milestone completed successfully",
-			"artifacts": []map[string]any{
-				{
-					"name":      "delivery-archive",
-					"type":      "archive",
-					"url":       "https://example.test/artifacts/delivery-archive.zip",
-					"sizeBytes": 256,
-				},
-			},
-		},
-	}); err != nil {
-		return USDIMarketplaceE2ESummary{}, err
-	}
-
-	finalPaymentRequest, err := client.createProviderInvoiceViaProviderSettlementNode(ctx, cfg, "9.00")
+	bootstrapOrder, err := client.runUSDIMarketplaceOrderFlow(ctx, cfg, buyer, provider, providerCarrierBindingID, usdiMarketplaceOrderFlowOptions{
+		Label: "bootstrap",
+	})
 	if err != nil {
 		return USDIMarketplaceE2ESummary{}, err
 	}
-	finalPayoutRecordID, err := client.requestProviderPayout(ctx, cfg.SettlementBaseURL, cfg.SettlementServiceToken, orderID, buyer.OrgID, provider.OrgID, "9.00", finalPaymentRequest)
+	reuseOrder, err := client.runUSDIMarketplaceOrderFlow(ctx, cfg, buyer, provider, providerCarrierBindingID, usdiMarketplaceOrderFlowOptions{
+		Label: "reuse",
+	})
 	if err != nil {
 		return USDIMarketplaceE2ESummary{}, err
 	}
-	providerPayoutRecordIDs = append(providerPayoutRecordIDs, finalPayoutRecordID)
 
-	if _, err := client.waitFundingRecordState(ctx, cfg.SettlementBaseURL, provider.Token, map[string]string{
-		"kind":    "provider_payout",
-		"orderId": orderID,
-	}, 30*time.Second, "COMPLETED", "SETTLED", "PROCESSING", "PENDING"); err != nil {
+	disconnectOrder, err := client.runUSDIMarketplaceOrderFlow(ctx, cfg, buyer, provider, providerCarrierBindingID, usdiMarketplaceOrderFlowOptions{
+		Label:                    "disconnect",
+		DisconnectAfterFirstStep: true,
+	})
+	if err != nil {
 		return USDIMarketplaceE2ESummary{}, err
 	}
-	finalOrderStatus, err := client.waitOrderStatus(ctx, cfg.APIBaseURL, buyer.Token, orderID, 30*time.Second, "completed")
-	if err != nil {
+	if err := validateUSDIMarketplaceOrderScenarios(bootstrapOrder, reuseOrder, disconnectOrder); err != nil {
 		return USDIMarketplaceE2ESummary{}, err
 	}
 
@@ -349,17 +291,240 @@ func RunUSDIMarketplaceE2E(ctx context.Context, cfg USDIMarketplaceE2EConfig) (U
 		BuyerTopUpInvoice:           topUpInvoice,
 		BuyerTopUpFundingRecordID:   topUpRecordID,
 		BuyerTopUpPaymentID:         topUpPaymentID,
+		BootstrapRFQID:              bootstrapOrder.RFQID,
+		BootstrapBidID:              bootstrapOrder.BidID,
+		BootstrapOrderID:            bootstrapOrder.OrderID,
+		BootstrapCarrierBindingID:   bootstrapOrder.CarrierBindingID,
+		BootstrapCarrierExecutionID: bootstrapOrder.CarrierExecutionID,
+		BootstrapReservationID:      bootstrapOrder.ReservationID,
+		BootstrapReservationChannel: bootstrapOrder.ReservationChannelID,
+		BootstrapReservationStatus:  bootstrapOrder.ReservationStatus,
+		BootstrapPayoutRecordIDs:    bootstrapOrder.PayoutRecordIDs,
+		ReuseRFQID:                  reuseOrder.RFQID,
+		ReuseBidID:                  reuseOrder.BidID,
+		ReuseOrderID:                reuseOrder.OrderID,
+		ReuseReservationID:          reuseOrder.ReservationID,
+		ReuseReservationInitialChan: reuseOrder.InitialReservationChannelID,
+		ReuseReservationChannel:     reuseOrder.ReservationChannelID,
+		ReuseReservationStatus:      reuseOrder.ReservationStatus,
+		ReuseReservationReuseSource: reuseOrder.ReservationReuse,
+		ReusePayoutRecordIDs:        reuseOrder.PayoutRecordIDs,
+		RFQID:                       disconnectOrder.RFQID,
+		BidID:                       disconnectOrder.BidID,
+		OrderID:                     disconnectOrder.OrderID,
+		CarrierProviderBindingID:    providerCarrierBindingID,
+		ProviderSettlementBindingID: providerSettlementBindingID,
+		CarrierBindingID:            disconnectOrder.CarrierBindingID,
+		CarrierExecutionID:          disconnectOrder.CarrierExecutionID,
+		ReservationID:               disconnectOrder.ReservationID,
+		ReservationInitialChannelID: disconnectOrder.InitialReservationChannelID,
+		ReservationChannelID:        disconnectOrder.ReservationChannelID,
+		ReservationReuseSource:      disconnectOrder.InitialReservationReuse,
+		ReservationStatus:           disconnectOrder.ReservationStatus,
+		UsageChargeCount:            disconnectOrder.UsageChargeCount,
+		ProviderPayoutRecordIDs:     disconnectOrder.PayoutRecordIDs,
+		DisconnectOrderStatus:       disconnectOrder.DisconnectStatus,
+		RecoveredOrderStatus:        disconnectOrder.RecoveredStatus,
+		FinalOrderStatus:            disconnectOrder.FinalOrderStatus,
+		CodeAgentPolicy:             policy,
+	}, nil
+}
+
+func validateUSDIMarketplaceOrderScenarios(bootstrapOrder, reuseOrder, disconnectOrder usdiMarketplaceOrderFlowResult) error {
+	if !strings.EqualFold(bootstrapOrder.ReservationStatus, "released") {
+		return fmt.Errorf("bootstrap order reservation status = %s, want released", bootstrapOrder.ReservationStatus)
+	}
+	if reuseOrder.InitialReservationReuse != string(platform.ProviderLiquidityReuseReused) {
+		return fmt.Errorf("reuse order reuse source = %s, want %s", reuseOrder.InitialReservationReuse, platform.ProviderLiquidityReuseReused)
+	}
+	if disconnectOrder.InitialReservationReuse != string(platform.ProviderLiquidityReuseReused) {
+		return fmt.Errorf("disconnect order reuse source = %s, want %s", disconnectOrder.InitialReservationReuse, platform.ProviderLiquidityReuseReused)
+	}
+	if disconnectOrder.DisconnectStatus != string(core.OrderStatusAwaitingPaymentRail) {
+		return fmt.Errorf("disconnect order status = %s, want %s", disconnectOrder.DisconnectStatus, core.OrderStatusAwaitingPaymentRail)
+	}
+	if disconnectOrder.RecoveredStatus != string(core.OrderStatusRunning) {
+		return fmt.Errorf("recovered order status = %s, want %s", disconnectOrder.RecoveredStatus, core.OrderStatusRunning)
+	}
+	return nil
+}
+
+func (c *smokeClient) runUSDIMarketplaceOrderFlow(ctx context.Context, cfg USDIMarketplaceE2EConfig, buyer, provider actorIdentity, providerCarrierBindingID string, options usdiMarketplaceOrderFlowOptions) (usdiMarketplaceOrderFlowResult, error) {
+	label := firstNonEmptyString(options.Label, "primary")
+
+	rfqID, err := c.createRFQ(ctx, cfg.APIBaseURL, buyer)
+	if err != nil {
+		return usdiMarketplaceOrderFlowResult{}, err
+	}
+	bidID, err := c.createBid(ctx, cfg.APIBaseURL, provider, rfqID)
+	if err != nil {
+		return usdiMarketplaceOrderFlowResult{}, err
+	}
+	orderID, err := c.awardRFQPrepaid(ctx, cfg.APIBaseURL, buyer.Token, rfqID, bidID)
+	if err != nil {
+		return usdiMarketplaceOrderFlowResult{}, err
+	}
+	reservation, err := c.getOrderProviderSettlementReservation(ctx, cfg.APIBaseURL, buyer.Token, orderID)
+	if err != nil {
+		return usdiMarketplaceOrderFlowResult{}, fmt.Errorf("get provider settlement reservation for %s order: %w", label, err)
+	}
+	carrierBindingID, err := c.bindOrderCarrier(ctx, cfg.APIBaseURL, cfg.GatewayServiceToken, orderID, "ms_1", providerCarrierBindingID)
+	if err != nil {
+		return usdiMarketplaceOrderFlowResult{}, err
+	}
+	carrierExecutionID, err := c.createCarrierJob(ctx, cfg.APIBaseURL, cfg.GatewayServiceToken, orderID, "ms_1", carrierBindingID, "run usdi marketplace e2e "+label)
+	if err != nil {
+		return usdiMarketplaceOrderFlowResult{}, err
+	}
+
+	startedAt := time.Now().UTC()
+	if err := c.sendCarrierIntegrationCallback(ctx, cfg.APIBaseURL, cfg, carrier.IntegrationCallbackEnvelope{
+		EventID:            "evt-" + label + "-start",
+		Sequence:           1,
+		EventType:          "execution.started",
+		BindingID:          carrierBindingID,
+		CarrierExecutionID: carrierExecutionID,
+		CreatedAt:          startedAt.Format(time.RFC3339),
+		Payload: map[string]any{
+			"jobId": carrierExecutionID,
+		},
+	}); err != nil {
+		return usdiMarketplaceOrderFlowResult{}, err
+	}
+
+	usageSteps := []usageReportedStep{
+		{EventID: "evt-" + label + "-usage-1", Sequence: 2, Kind: core.UsageChargeKindStep, AmountCents: 100, ProofRef: "fiber:proof:" + label + ":usage-1"},
+		{EventID: "evt-" + label + "-usage-2", Sequence: 3, Kind: core.UsageChargeKindStep, AmountCents: 200, ProofRef: "fiber:proof:" + label + ":usage-2"},
+	}
+	providerPayoutRecordIDs := make([]string, 0, len(usageSteps)+1)
+	disconnectStatus := ""
+	recoveredStatus := ""
+	for idx, step := range usageSteps {
+		if err := c.sendCarrierIntegrationCallback(ctx, cfg.APIBaseURL, cfg, buildUsageReportedEnvelope(
+			carrierBindingID,
+			carrierExecutionID,
+			"ms_1",
+			cfg.CarrierCallbackSecret,
+			step,
+			time.Now().UTC(),
+		)); err != nil {
+			return usdiMarketplaceOrderFlowResult{}, err
+		}
+		recordID, err := c.requestProviderPayoutWithRetry(ctx, cfg, orderID, buyer.OrgID, provider.OrgID, amountFromCents(step.AmountCents), usdiMarketplaceProviderPayoutRetryAttempts, usdiMarketplaceProviderPayoutRetryDelay)
+		if err != nil {
+			return usdiMarketplaceOrderFlowResult{}, err
+		}
+		providerPayoutRecordIDs = append(providerPayoutRecordIDs, recordID)
+
+		if options.DisconnectAfterFirstStep && idx == 0 {
+			if _, err := c.reportProviderSettlementDisconnect(ctx, cfg.APIBaseURL, cfg.GatewayServiceToken, provider.OrgID, "provider closed channel"); err != nil {
+				return usdiMarketplaceOrderFlowResult{}, err
+			}
+			disconnectStatus, err = c.waitOrderStatus(ctx, cfg.APIBaseURL, buyer.Token, orderID, 30*time.Second, string(core.OrderStatusAwaitingPaymentRail))
+			if err != nil {
+				return usdiMarketplaceOrderFlowResult{}, fmt.Errorf("wait awaiting payment rail: %w", err)
+			}
+			if _, err := c.recoverProviderSettlement(ctx, cfg.APIBaseURL, cfg.GatewayServiceToken, provider.OrgID); err != nil {
+				return usdiMarketplaceOrderFlowResult{}, err
+			}
+			recoveredStatus, err = c.waitOrderStatus(ctx, cfg.APIBaseURL, buyer.Token, orderID, 30*time.Second, string(core.OrderStatusRunning))
+			if err != nil {
+				return usdiMarketplaceOrderFlowResult{}, fmt.Errorf("wait recovered order status: %w", err)
+			}
+		}
+	}
+
+	if err := c.sendCarrierIntegrationCallback(ctx, cfg.APIBaseURL, cfg, carrier.IntegrationCallbackEnvelope{
+		EventID:            "evt-" + label + "-artifact",
+		Sequence:           4,
+		EventType:          "artifact.ready",
+		BindingID:          carrierBindingID,
+		CarrierExecutionID: carrierExecutionID,
+		CreatedAt:          time.Now().UTC().Format(time.RFC3339),
+		Payload: map[string]any{
+			"jobId":   carrierExecutionID,
+			"summary": "delivery evidence bundle ready",
+			"artifacts": []map[string]any{
+				{
+					"name":      "delivery-summary",
+					"type":      "report",
+					"url":       "https://example.test/artifacts/" + label + "-delivery-summary.json",
+					"sizeBytes": 128,
+				},
+			},
+			"usageReport": map[string]any{
+				"tokenCount":     120,
+				"stepCount":      len(usageSteps),
+				"apiCallCount":   2,
+				"totalCostCents": 300,
+			},
+		},
+	}); err != nil {
+		return usdiMarketplaceOrderFlowResult{}, err
+	}
+	if err := c.sendCarrierIntegrationCallback(ctx, cfg.APIBaseURL, cfg, carrier.IntegrationCallbackEnvelope{
+		EventID:            "evt-" + label + "-ready",
+		Sequence:           5,
+		EventType:          "milestone.ready",
+		BindingID:          carrierBindingID,
+		CarrierExecutionID: carrierExecutionID,
+		CreatedAt:          time.Now().UTC().Format(time.RFC3339),
+		Payload: map[string]any{
+			"jobId":   carrierExecutionID,
+			"output":  "milestone completed successfully",
+			"summary": "milestone completed successfully",
+			"artifacts": []map[string]any{
+				{
+					"name":      "delivery-archive",
+					"type":      "archive",
+					"url":       "https://example.test/artifacts/" + label + "-delivery-archive.zip",
+					"sizeBytes": 256,
+				},
+			},
+		},
+	}); err != nil {
+		return usdiMarketplaceOrderFlowResult{}, err
+	}
+
+	finalPayoutRecordID, err := c.requestProviderPayoutWithRetry(ctx, cfg, orderID, buyer.OrgID, provider.OrgID, "9.00", usdiMarketplaceProviderPayoutRetryAttempts, usdiMarketplaceProviderPayoutRetryDelay)
+	if err != nil {
+		return usdiMarketplaceOrderFlowResult{}, err
+	}
+	providerPayoutRecordIDs = append(providerPayoutRecordIDs, finalPayoutRecordID)
+
+	if _, err := c.waitFundingRecordState(ctx, cfg.SettlementBaseURL, provider.Token, map[string]string{
+		"kind":    "provider_payout",
+		"orderId": orderID,
+	}, 30*time.Second, "COMPLETED", "SETTLED", "PROCESSING", "PENDING"); err != nil {
+		return usdiMarketplaceOrderFlowResult{}, err
+	}
+	finalOrderStatus, err := c.waitOrderStatus(ctx, cfg.APIBaseURL, buyer.Token, orderID, 30*time.Second, string(core.OrderStatusCompleted))
+	if err != nil {
+		return usdiMarketplaceOrderFlowResult{}, err
+	}
+	finalReservation, err := c.getOrderProviderSettlementReservation(ctx, cfg.APIBaseURL, buyer.Token, orderID)
+	if err != nil {
+		return usdiMarketplaceOrderFlowResult{}, fmt.Errorf("get provider settlement reservation after completion: %w", err)
+	}
+
+	return usdiMarketplaceOrderFlowResult{
 		RFQID:                       rfqID,
 		BidID:                       bidID,
 		OrderID:                     orderID,
-		CarrierProviderBindingID:    providerCarrierBindingID,
-		ProviderSettlementBindingID: providerSettlementBindingID,
 		CarrierBindingID:            carrierBindingID,
 		CarrierExecutionID:          carrierExecutionID,
+		InitialReservationID:        reservation.ID,
+		InitialReservationChannelID: reservation.ChannelID,
+		InitialReservationReuse:     string(reservation.ReuseSource),
+		ReservationID:               firstNonEmptyString(finalReservation.ID, reservation.ID),
+		ReservationChannelID:        firstNonEmptyString(finalReservation.ChannelID, reservation.ChannelID),
+		ReservationReuse:            firstNonEmptyString(string(finalReservation.ReuseSource), string(reservation.ReuseSource)),
+		ReservationStatus:           finalReservation.Status,
 		UsageChargeCount:            len(usageSteps),
-		ProviderPayoutRecordIDs:     providerPayoutRecordIDs,
+		PayoutRecordIDs:             providerPayoutRecordIDs,
+		DisconnectStatus:            disconnectStatus,
+		RecoveredStatus:             recoveredStatus,
 		FinalOrderStatus:            finalOrderStatus,
-		CodeAgentPolicy:             policy,
 	}, nil
 }
 
@@ -483,6 +648,91 @@ func (c *smokeClient) requestProviderPayout(ctx context.Context, baseURL, servic
 	return response.RecordID, nil
 }
 
+func (c *smokeClient) requestProviderPayoutWithRetry(ctx context.Context, cfg USDIMarketplaceE2EConfig, orderID, buyerOrgID, providerOrgID, amount string, attempts int, delay time.Duration) (string, error) {
+	if attempts <= 0 {
+		attempts = 1
+	}
+	var lastErr error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		paymentRequest, err := c.createProviderInvoiceViaProviderSettlementNode(ctx, cfg, amount)
+		if err != nil {
+			return "", err
+		}
+		recordID, err := c.requestProviderPayout(ctx, cfg.SettlementBaseURL, cfg.SettlementServiceToken, orderID, buyerOrgID, providerOrgID, amount, paymentRequest)
+		if err == nil {
+			return recordID, nil
+		}
+		lastErr = err
+		if !isRetryableReleaseStatus(err) || attempt == attempts {
+			break
+		}
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return "", ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return "", lastErr
+}
+
+func (c *smokeClient) getOrderProviderSettlementReservation(ctx context.Context, baseURL, token, orderID string) (platform.ProviderLiquidityReservation, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(baseURL, "/")+"/api/v1/orders/"+orderID+"/provider-settlement-reservation", nil)
+	if err != nil {
+		return platform.ProviderLiquidityReservation{}, err
+	}
+	for key, value := range authHeaders(token) {
+		req.Header.Set(key, value)
+	}
+	res, err := c.httpClient.Do(req)
+	if err != nil {
+		return platform.ProviderLiquidityReservation{}, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return platform.ProviderLiquidityReservation{}, fmt.Errorf("provider settlement reservation status %d", res.StatusCode)
+	}
+	var payload struct {
+		Reservation platform.ProviderLiquidityReservation `json:"reservation"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&payload); err != nil {
+		return platform.ProviderLiquidityReservation{}, err
+	}
+	if strings.TrimSpace(payload.Reservation.ID) == "" {
+		return platform.ProviderLiquidityReservation{}, errors.New("provider settlement reservation missing id")
+	}
+	return payload.Reservation, nil
+}
+
+func (c *smokeClient) reportProviderSettlementDisconnect(ctx context.Context, baseURL, gatewayToken, providerOrgID, reason string) (platform.ProviderLiquidityPool, error) {
+	var response struct {
+		Pool platform.ProviderLiquidityPool `json:"pool"`
+	}
+	err := c.postJSONWithHeaders(ctx, strings.TrimRight(baseURL, "/")+"/api/v1/provider-settlement-bindings/"+providerOrgID+"/disconnect", map[string]string{
+		serviceauth.HeaderName: strings.TrimSpace(gatewayToken),
+	}, map[string]any{
+		"reason": reason,
+	}, &response)
+	if err != nil {
+		return platform.ProviderLiquidityPool{}, fmt.Errorf("report provider settlement disconnect: %w", err)
+	}
+	return response.Pool, nil
+}
+
+func (c *smokeClient) recoverProviderSettlement(ctx context.Context, baseURL, gatewayToken, providerOrgID string) (platform.ProviderLiquidityPool, error) {
+	var response struct {
+		Pool platform.ProviderLiquidityPool `json:"pool"`
+	}
+	err := c.postJSONWithHeaders(ctx, strings.TrimRight(baseURL, "/")+"/api/v1/provider-settlement-bindings/"+providerOrgID+"/recover", map[string]string{
+		serviceauth.HeaderName: strings.TrimSpace(gatewayToken),
+	}, map[string]any{}, &response)
+	if err != nil {
+		return platform.ProviderLiquidityPool{}, fmt.Errorf("recover provider settlement: %w", err)
+	}
+	return response.Pool, nil
+}
+
 func (c *smokeClient) registerProviderCarrierBinding(ctx context.Context, baseURL, providerOrgID string, cfg USDIMarketplaceE2EConfig) (string, error) {
 	var response struct {
 		Binding struct {
@@ -598,7 +848,15 @@ func (c *smokeClient) installCarrierCodeAgent(ctx context.Context, baseURL, toke
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(token))
-	res, err := c.httpClient.Do(req)
+	client := c.httpClient
+	if client == nil {
+		client = &http.Client{}
+	}
+	installClient := *client
+	if installClient.Timeout <= 0 || installClient.Timeout < usdiMarketplaceCarrierInstallTimeout {
+		installClient.Timeout = usdiMarketplaceCarrierInstallTimeout
+	}
+	res, err := installClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -988,6 +1246,11 @@ func (c *smokeClient) verifyCarrierWithConfig(ctx context.Context, baseURL strin
 func amountFromCents(cents int64) string {
 	value := float64(cents) / 100
 	return strconv.FormatFloat(value, 'f', 2, 64)
+}
+
+func isRetryableReleaseStatus(err error) bool {
+	var target statusError
+	return errors.As(err, &target) && target.StatusCode >= http.StatusInternalServerError
 }
 
 func splitCSV(value string) []string {

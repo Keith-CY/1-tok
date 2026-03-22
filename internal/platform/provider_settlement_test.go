@@ -279,3 +279,153 @@ func TestAwardRFQ_BlockedWhenProviderLiquidityPoolIsDisconnected(t *testing.T) {
 		t.Fatalf("expected ErrProviderSettlementPoolUnavailable, got %v", err)
 	}
 }
+
+func TestSettleMilestone_ReleasesProviderSettlementReservation(t *testing.T) {
+	app := NewAppWithMemory()
+	registerActiveCarrierBinding(t, app, "org_provider")
+
+	settlementBinding, _ := app.RegisterProviderSettlementBinding(ProviderSettlementBinding{
+		ProviderOrgID:         "org_provider",
+		Asset:                 "USDI",
+		PeerID:                "peer_provider",
+		P2PAddress:            "/dns4/provider/tcp/8228/p2p/peer_provider",
+		PaymentRequestBaseURL: "https://carrier.example.com/payment-requests",
+		UDTTypeScript: UDTTypeScript{
+			CodeHash: "0xudt",
+			HashType: "type",
+			Args:     "0x01",
+		},
+		OwnershipProof: "proof_1",
+	})
+	app.VerifyProviderSettlementBinding(settlementBinding.ID)
+	app.SetProviderSettlementProvisioner(&stubSettlementProvisioner{
+		result: EnsureProviderLiquidityResult{
+			ChannelID:           "ch_1",
+			ReuseSource:         ProviderLiquidityReuseNewChannel,
+			ReadyChannelCount:   1,
+			TotalSpendableCents: 7_000,
+		},
+	})
+
+	rfq, bid := createCarrierBackedRFQAndBid(t, app, "org_buyer", "org_provider", 5_000)
+	_, order, err := app.AwardRFQ(rfq.ID, AwardRFQInput{
+		BidID:       bid.ID,
+		FundingMode: core.FundingModePrepaid,
+	})
+	if err != nil {
+		t.Fatalf("award rfq: %v", err)
+	}
+
+	reservation, err := app.GetProviderSettlementReservation(order.ID)
+	if err != nil {
+		t.Fatalf("get reservation before completion: %v", err)
+	}
+	if reservation.Status != "active" {
+		t.Fatalf("reservation status before completion = %s, want active", reservation.Status)
+	}
+
+	if _, _, err := app.SettleMilestone(order.ID, SettleMilestoneInput{
+		MilestoneID: "ms_1",
+		Summary:     "done",
+		Source:      "test",
+		OccurredAt:  time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("settle milestone: %v", err)
+	}
+
+	reservation, err = app.GetProviderSettlementReservation(order.ID)
+	if err != nil {
+		t.Fatalf("get reservation after completion: %v", err)
+	}
+	if reservation.Status != "released" {
+		t.Fatalf("reservation status after completion = %s, want released", reservation.Status)
+	}
+
+	pool, err := app.GetProviderSettlementPool("org_provider")
+	if err != nil {
+		t.Fatalf("get pool after completion: %v", err)
+	}
+	if pool.ReservedOutstandingCents != 0 {
+		t.Fatalf("reserved cents after completion = %d, want 0", pool.ReservedOutstandingCents)
+	}
+	if pool.AvailableToAllocateCents != pool.TotalSpendableCents {
+		t.Fatalf("available cents after completion = %d, want total spendable %d", pool.AvailableToAllocateCents, pool.TotalSpendableCents)
+	}
+}
+
+func TestRecoverProviderSettlementResumesAwaitingOrders(t *testing.T) {
+	app := NewAppWithMemory()
+	registerActiveCarrierBinding(t, app, "org_provider")
+
+	settlementBinding, _ := app.RegisterProviderSettlementBinding(ProviderSettlementBinding{
+		ProviderOrgID:         "org_provider",
+		Asset:                 "USDI",
+		PeerID:                "peer_provider",
+		P2PAddress:            "/dns4/provider/tcp/8228/p2p/peer_provider",
+		PaymentRequestBaseURL: "https://carrier.example.com/payment-requests",
+		UDTTypeScript: UDTTypeScript{
+			CodeHash: "0xudt",
+			HashType: "type",
+			Args:     "0x01",
+		},
+		OwnershipProof: "proof_1",
+	})
+	app.VerifyProviderSettlementBinding(settlementBinding.ID)
+
+	provisioner := &stubSettlementProvisioner{
+		result: EnsureProviderLiquidityResult{
+			ChannelID:           "ch_1",
+			ReuseSource:         ProviderLiquidityReuseNewChannel,
+			ReadyChannelCount:   1,
+			TotalSpendableCents: 7_000,
+		},
+	}
+	app.SetProviderSettlementProvisioner(provisioner)
+
+	rfq, bid := createCarrierBackedRFQAndBid(t, app, "org_buyer", "org_provider", 5_000)
+	_, order, err := app.AwardRFQ(rfq.ID, AwardRFQInput{
+		BidID:       bid.ID,
+		FundingMode: core.FundingModePrepaid,
+	})
+	if err != nil {
+		t.Fatalf("award rfq: %v", err)
+	}
+
+	if err := app.ReportProviderSettlementDisconnect("org_provider", "peer offline"); err != nil {
+		t.Fatalf("report disconnect: %v", err)
+	}
+
+	provisioner.result = EnsureProviderLiquidityResult{
+		ChannelID:           "ch_1",
+		ReuseSource:         ProviderLiquidityReuseReused,
+		ReadyChannelCount:   1,
+		TotalSpendableCents: 7_000,
+	}
+	pool, err := app.RecoverProviderSettlement("org_provider")
+	if err != nil {
+		t.Fatalf("recover provider settlement: %v", err)
+	}
+	if provisioner.calls != 2 {
+		t.Fatalf("provisioner calls = %d, want 2", provisioner.calls)
+	}
+	if pool.Status != ProviderLiquidityPoolStatusHealthy {
+		t.Fatalf("pool status = %s, want healthy", pool.Status)
+	}
+	if pool.DisconnectReason != "" {
+		t.Fatalf("disconnect reason = %q, want empty", pool.DisconnectReason)
+	}
+
+	updated, err := app.GetOrder(order.ID)
+	if err != nil {
+		t.Fatalf("get order after recovery: %v", err)
+	}
+	if updated.Status != core.OrderStatusRunning {
+		t.Fatalf("order status after recovery = %s, want running", updated.Status)
+	}
+	if updated.Milestones[0].State != core.MilestoneStateRunning {
+		t.Fatalf("milestone state after recovery = %s, want running", updated.Milestones[0].State)
+	}
+	if slices.Contains(updated.Milestones[0].AnomalyFlags, "provider_settlement_disconnected") {
+		t.Fatalf("expected disconnect anomaly to be cleared, got %v", updated.Milestones[0].AnomalyFlags)
+	}
+}

@@ -565,6 +565,9 @@ func (a *App) SettleMilestone(orderID string, input SettleMilestoneInput) (*core
 		}
 	}
 	if allSettled && order.Status == core.OrderStatusCompleted {
+		if reservation, reservationErr := a.GetProviderSettlementReservation(order.ID); reservationErr == nil {
+			a.releaseProviderSettlementReservation(reservation.ID)
+		}
 		a.notify("order.completed", order.BuyerOrgID, map[string]any{"orderId": order.ID})
 		a.notify("order.completed", order.ProviderOrgID, map[string]any{"orderId": order.ID})
 	}

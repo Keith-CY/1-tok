@@ -70,6 +70,7 @@ E2E_USDI_BALANCE_POLL_INTERVAL_SECONDS="${E2E_USDI_BALANCE_POLL_INTERVAL_SECONDS
 E2E_USDI_BALANCE_CHECK_LIMIT_PAGES="${E2E_USDI_BALANCE_CHECK_LIMIT_PAGES:-20}"
 E2E_USDI_FAUCET_MAX_ATTEMPTS="${E2E_USDI_FAUCET_MAX_ATTEMPTS:-2}"
 E2E_USDI_TOPUP_ADDRESS="${E2E_USDI_TOPUP_ADDRESS:-}"
+E2E_USDI_PROVIDER_LIQUIDITY_BOOTSTRAP_AMOUNT="${E2E_USDI_PROVIDER_LIQUIDITY_BOOTSTRAP_AMOUNT:-25}"
 E2E_CKB_TOPUP_ADDRESS="${E2E_CKB_TOPUP_ADDRESS:-}"
 E2E_CKB_INVOICE_TOPUP_ADDRESS="${E2E_CKB_INVOICE_TOPUP_ADDRESS:-}"
 E2E_CKB_PROVIDER_TOPUP_ADDRESS="${E2E_CKB_PROVIDER_TOPUP_ADDRESS:-}"
@@ -828,6 +829,11 @@ request_usdi_faucet() {
   request_usdi_faucet_for_lock_script "${E2E_USDI_TOPUP_ADDRESS}" "payer-bootstrap" "${1:-0}" "${PAYER_LOCK_SCRIPT_JSON}"
 }
 
+request_provider_liquidity_bootstrap_usdi_faucet() {
+  local amount="${1:-${E2E_USDI_PROVIDER_LIQUIDITY_BOOTSTRAP_AMOUNT}}"
+  request_usdi_faucet_for_lock_script "${E2E_USDI_TOPUP_ADDRESS}" "payer-provider-liquidity" "${amount}" "${PAYER_LOCK_SCRIPT_JSON}"
+}
+
 get_container_ip() {
   local container="$1"
   docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${container}"
@@ -857,6 +863,8 @@ open_channel_from_payer() {
   local peer_id="$1"
   local funding_amount_hex="$2"
   local funding_udt_type_script_json="${3:-}"
+  local invoice_addr="${4:-}"
+  local payer_addr="${5:-}"
   local attempt=0
   while true; do
     attempt=$((attempt + 1))
@@ -900,6 +908,10 @@ open_channel_from_payer() {
       local message
       message="$(jsonrpc_error_message "${response}")"
       if contains_open_channel_peer_not_ready_error "${message}" && [[ "${attempt}" -lt "${OPEN_CHANNEL_INIT_RETRIES}" ]]; then
+        if [[ -n "${invoice_addr}" && -n "${payer_addr}" ]]; then
+          connect_peer_on_port "${FNN2_PUBLISHED_RPC_PORT}" "${invoice_addr}" "payer-to-invoice"
+          connect_peer_on_port "${FNN_PUBLISHED_RPC_PORT}" "${payer_addr}" "invoice-to-payer"
+        fi
         sleep "${OPEN_CHANNEL_INIT_RETRY_INTERVAL_SECONDS}"
         continue
       fi
@@ -1099,7 +1111,7 @@ bootstrap_usdi_channel() {
   funding_amount="$(resolve_usdi_channel_funding_amount)"
   funding_amount_hex="$(to_hex_quantity "${funding_amount}")"
   accept_funding_hex="${USDI_AUTO_ACCEPT_AMOUNT_HEX:-${funding_amount_hex}}"
-  open_channel_from_payer "${INVOICE_PEER_ID}" "${funding_amount_hex}" "${USDI_TYPE_SCRIPT_JSON}"
+  open_channel_from_payer "${INVOICE_PEER_ID}" "${funding_amount_hex}" "${USDI_TYPE_SCRIPT_JSON}" "${invoice_addr}" "${payer_addr}"
   accept_channel_on_invoice_node "${OPEN_CHANNEL_TEMPORARY_ID}" "${accept_funding_hex}"
   if ! wait_until_channel_ready 180 "${OPEN_CHANNEL_TEMPORARY_ID}" "${accept_funding_hex}"; then
     accept_channel_on_invoice_node "${OPEN_CHANNEL_TEMPORARY_ID}" "${accept_funding_hex}"
@@ -1241,6 +1253,7 @@ if [[ "${provider_required_usdi_amount}" =~ ^[0-9]+$ ]] && [[ "${provider_requir
   request_usdi_faucet_for_lock_script "${E2E_CKB_PROVIDER_TOPUP_ADDRESS}" "provider-bootstrap" "${provider_required_usdi_amount}" "${PROVIDER_LOCK_SCRIPT_JSON}"
 fi
 bootstrap_usdi_channel
+request_provider_liquidity_bootstrap_usdi_faucet "${E2E_USDI_PROVIDER_LIQUIDITY_BOOTSTRAP_AMOUNT}"
 
 compose up -d --build usdi-e2e-runner
 runner_id="$(wait_for_container usdi-e2e-runner)"

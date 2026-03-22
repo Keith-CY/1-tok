@@ -163,6 +163,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleVerifyProviderSettlementBinding(w, r)
 	case r.Method == http.MethodPost && isProviderSettlementBindingSuspendPath(r.URL.Path):
 		s.handleSuspendProviderSettlementBinding(w, r)
+	case r.Method == http.MethodPost && isProviderSettlementBindingDisconnectPath(r.URL.Path):
+		s.handleDisconnectProviderSettlementBinding(w, r)
+	case r.Method == http.MethodPost && isProviderSettlementBindingRecoverPath(r.URL.Path):
+		s.handleRecoverProviderSettlementBinding(w, r)
 	case r.Method == http.MethodPost && (r.URL.Path == "/api/v1/carrier/callback" || r.URL.Path == "/api/v1/carrier/callbacks/events"):
 		s.handleCarrierCallback(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/credit-limits":
@@ -231,6 +235,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleOrderBudget(w, r)
 	case r.Method == http.MethodGet && isOrderTimelinePath(r.URL.Path):
 		s.handleOrderTimeline(w, r)
+	case r.Method == http.MethodGet && isOrderProviderSettlementReservationPath(r.URL.Path):
+		s.handleGetOrderProviderSettlementReservation(w, r)
 	case r.Method == http.MethodGet && isBindCarrierPath(r.URL.Path):
 		s.handleGetBinding(w, r)
 	case r.Method == http.MethodGet && isCreateJobPath(r.URL.Path):
@@ -1761,6 +1767,36 @@ func (s *Server) handleOrderBudget(w http.ResponseWriter, r *http.Request) {
 	}
 	httputil.WriteJSON(w, http.StatusOK, budget)
 }
+func isOrderProviderSettlementReservationPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 5 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "orders" && parts[4] == "provider-settlement-reservation"
+}
+func (s *Server) handleGetOrderProviderSettlementReservation(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	orderID := parts[3]
+	order, err := s.app.GetOrder(orderID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+	if s.auth != nil && !iamclient.IsNoop(s.auth) {
+		actor, err := s.authenticatedActor(r)
+		if err != nil {
+			httputil.WriteAuthError(w, err)
+			return
+		}
+		if err := authorizeOrderForActor(order, actor); err != nil {
+			httputil.WriteAuthError(w, err)
+			return
+		}
+	}
+	reservation, err := s.app.GetProviderSettlementReservation(orderID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"reservation": reservation})
+}
 func isProviderRevenuePath(path string) bool {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	return len(parts) == 5 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "providers" && parts[4] == "revenue"
@@ -2269,6 +2305,14 @@ func isProviderSettlementBindingSuspendPath(path string) bool {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	return len(parts) == 5 && parts[2] == "provider-settlement-bindings" && parts[4] == "suspend"
 }
+func isProviderSettlementBindingDisconnectPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 5 && parts[2] == "provider-settlement-bindings" && parts[4] == "disconnect"
+}
+func isProviderSettlementBindingRecoverPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 5 && parts[2] == "provider-settlement-bindings" && parts[4] == "recover"
+}
 func (s *Server) handleRegisterCarrierBinding(w http.ResponseWriter, r *http.Request) {
 	var input platform.ProviderCarrierBinding
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -2378,6 +2422,53 @@ func (s *Server) handleSuspendProviderSettlementBinding(w http.ResponseWriter, r
 	}
 	binding = sanitizeProviderSettlementBindingForPublic(binding)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"binding": binding})
+}
+
+func (s *Server) handleDisconnectProviderSettlementBinding(w http.ResponseWriter, r *http.Request) {
+	if err := s.authorizeExecutionMutation(r); err != nil {
+		httputil.WriteAuthError(w, err)
+		return
+	}
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	providerOrgID := parts[3]
+	var payload struct {
+		Reason string `json:"reason"`
+	}
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil && !errors.Is(err, io.EOF) {
+			httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+			return
+		}
+	}
+	reason := strings.TrimSpace(payload.Reason)
+	if reason == "" {
+		reason = "provider settlement disconnected"
+	}
+	if err := s.app.ReportProviderSettlementDisconnect(providerOrgID, reason); err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+	pool, err := s.app.GetProviderSettlementPool(providerOrgID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"pool": pool})
+}
+
+func (s *Server) handleRecoverProviderSettlementBinding(w http.ResponseWriter, r *http.Request) {
+	if err := s.authorizeExecutionMutation(r); err != nil {
+		httputil.WriteAuthError(w, err)
+		return
+	}
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	providerOrgID := parts[3]
+	pool, err := s.app.RecoverProviderSettlement(providerOrgID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"pool": pool})
 }
 
 func (s *Server) handleGetProviderSettlementPool(w http.ResponseWriter, r *http.Request) {

@@ -266,6 +266,80 @@ func (a *App) ReportProviderSettlementDisconnect(providerOrgID, reason string) e
 	return nil
 }
 
+func (a *App) RecoverProviderSettlement(providerOrgID string) (ProviderLiquidityPool, error) {
+	a.mu.Lock()
+	settlementBinding, hasSettlementBinding := a.activeSettlementBindingLocked(providerOrgID)
+	if !hasSettlementBinding || settlementBinding.Status != "active" {
+		a.mu.Unlock()
+		return ProviderLiquidityPool{}, ErrProviderSettlementPoolUnavailable
+	}
+	currentPool, ok := a.settlementPools[providerOrgID]
+	if !ok {
+		a.mu.Unlock()
+		return ProviderLiquidityPool{}, fmt.Errorf("no settlement pool for provider %s", providerOrgID)
+	}
+	provisioner := a.settlementProvisioner
+	if provisioner == nil {
+		a.mu.Unlock()
+		return ProviderLiquidityPool{}, ErrProviderSettlementProvisionerMissing
+	}
+	warmTTL := a.settlementWarmTTL
+	now := a.now()
+	currentPool.Status = ProviderLiquidityPoolStatusRecovering
+	currentPool.LastFailureAt = &now
+	a.settlementPools[providerOrgID] = currentPool
+	recoveryPool := currentPool
+	recoveryPool.AvailableToAllocateCents = recoveryPool.TotalSpendableCents
+	neededReserve := currentPool.ReservedOutstandingCents
+	a.mu.Unlock()
+
+	result, err := provisioner.EnsureProviderLiquidity(EnsureProviderLiquidityInput{
+		ProviderOrgID:      providerOrgID,
+		Binding:            settlementBinding,
+		NeededReserveCents: neededReserve,
+		CurrentPool:        recoveryPool,
+	})
+	if err != nil {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		pool := a.settlementPools[providerOrgID]
+		failedAt := a.now()
+		pool.Status = ProviderLiquidityPoolStatusDisconnected
+		pool.LastFailureAt = &failedAt
+		a.settlementPools[providerOrgID] = pool
+		return ProviderLiquidityPool{}, fmt.Errorf("ensure provider liquidity: %w", err)
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	pool := a.settlementPools[providerOrgID]
+	healthyAt := a.now()
+	pool.ProviderSettlementBindingID = settlementBinding.ID
+	pool.ProviderOrgID = providerOrgID
+	pool.Asset = settlementBinding.Asset
+	pool.Status = ProviderLiquidityPoolStatusHealthy
+	pool.ReadyChannelCount = result.ReadyChannelCount
+	pool.TotalSpendableCents = result.TotalSpendableCents
+	pool.AvailableToAllocateCents = result.TotalSpendableCents - pool.ReservedOutstandingCents
+	if pool.AvailableToAllocateCents < 0 {
+		pool.AvailableToAllocateCents = 0
+	}
+	pool.LastHealthyAt = &healthyAt
+	pool.DisconnectReason = ""
+	if result.WarmUntil != nil {
+		pool.WarmUntil = result.WarmUntil
+	} else if warmTTL > 0 {
+		warmUntil := healthyAt.Add(warmTTL)
+		pool.WarmUntil = &warmUntil
+	}
+	if err := a.resumeProviderSettlementOrdersLocked(providerOrgID); err != nil {
+		return ProviderLiquidityPool{}, err
+	}
+	a.settlementPools[providerOrgID] = pool
+	return pool, nil
+}
+
 func (a *App) maybeReserveProviderSettlementLiquidity(providerOrgID string, totalBudgetCents int64) (*ProviderLiquidityReservation, error) {
 	a.mu.Lock()
 	carrierBinding, hasCarrierBinding := a.activeCarrierBindingLocked(providerOrgID)
@@ -395,6 +469,9 @@ func (a *App) releaseProviderSettlementReservation(reservationID string) {
 	if !ok {
 		return
 	}
+	if reservation.Status == "released" {
+		return
+	}
 	pool := a.settlementPools[reservation.ProviderOrgID]
 	pool.ReservedOutstandingCents -= reservation.ReservedCents
 	if pool.ReservedOutstandingCents < 0 {
@@ -406,6 +483,34 @@ func (a *App) releaseProviderSettlementReservation(reservationID string) {
 	reservation.Status = "released"
 	reservation.ReleasedAt = &now
 	a.settlementReservations[reservation.ID] = reservation
+}
+
+func (a *App) resumeProviderSettlementOrdersLocked(providerOrgID string) error {
+	for _, reservation := range a.settlementReservations {
+		if reservation.ProviderOrgID != providerOrgID || reservation.OrderID == "" || reservation.Status != "active" {
+			continue
+		}
+		order, err := a.orders.Get(reservation.OrderID)
+		if err != nil || order == nil {
+			continue
+		}
+		if order.Status == core.OrderStatusAwaitingPaymentRail {
+			order.Status = core.OrderStatusRunning
+		}
+		for i := range order.Milestones {
+			if order.Milestones[i].State == core.MilestoneStatePaused &&
+				slices.Contains(order.Milestones[i].AnomalyFlags, "provider_settlement_disconnected") {
+				order.Milestones[i].State = core.MilestoneStateRunning
+				order.Milestones[i].AnomalyFlags = slices.DeleteFunc(order.Milestones[i].AnomalyFlags, func(flag string) bool {
+					return flag == "provider_settlement_disconnected"
+				})
+			}
+		}
+		if err := a.orders.Save(order); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (a *App) providerSettlementBufferBPSLocked() int64 {

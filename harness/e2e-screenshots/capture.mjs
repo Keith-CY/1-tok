@@ -39,9 +39,11 @@ const manifest = [];
 async function main() {
   await fs.mkdir(OUTPUT_DIR, { recursive: true });
   const browser = await chromium.launch({ headless: true });
+  let summary = null;
 
   try {
     if (FLOW_MODE === "usdi-marketplace") {
+      summary = JSON.parse(await fs.readFile(SUMMARY_PATH, "utf8"));
       await runUSDIMarketplaceFlow(browser);
     } else {
       for (const device of DEVICE_PRESETS) {
@@ -50,7 +52,7 @@ async function main() {
     }
 
     await fs.writeFile(path.join(OUTPUT_DIR, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n", "utf8");
-    await fs.writeFile(path.join(OUTPUT_DIR, "comment.md"), renderLocalComment(manifest), "utf8");
+    await fs.writeFile(path.join(OUTPUT_DIR, "comment.md"), renderLocalComment(manifest, summary), "utf8");
     console.log(`screenshots saved to ${OUTPUT_DIR}`);
   } finally {
     await browser.close();
@@ -604,13 +606,26 @@ function slugify(value) {
     .replace(/^-+|-+$/g, "") || "step";
 }
 
-function renderLocalComment(entries) {
+function renderLocalComment(entries, summary) {
   if (FLOW_MODE === "usdi-marketplace") {
     const rows = [...entries].sort((left, right) => left.order - right.order);
     const lines = [
       "# USDI Marketplace E2E",
       "",
     ];
+    if (summary) {
+      lines.push(
+        `- Asset: \`${summary.asset || "USDI"}\``,
+        `- Bootstrap order / channel: \`${summary.bootstrapOrderId || ""}\` / \`${summary.bootstrapReservationChannel || ""}\``,
+        `- Bootstrap reservation status: \`${summary.bootstrapReservationStatus || ""}\``,
+        `- Reuse order initial / final channel: \`${summary.reuseOrderId || ""}\` / \`${summary.reuseReservationInitialChannel || ""}\` -> \`${summary.reuseReservationChannel || ""}\``,
+        `- Reuse status / source: \`${summary.reuseReservationStatus || ""}\` / \`${summary.reuseReservationReuseSource || ""}\``,
+        `- Disconnect order: \`${summary.orderId || ""}\``,
+        `- Disconnect / recover status: \`${summary.disconnectOrderStatus || ""}\` / \`${summary.recoveredOrderStatus || ""}\``,
+        `- Final order status: \`${summary.finalOrderStatus || ""}\``,
+        "",
+      );
+    }
     for (const row of rows) {
       lines.push(`## ${row.stepLabel}`, "", `- ${row.title}: \`${row.path}\``, "");
     }

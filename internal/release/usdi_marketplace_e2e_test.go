@@ -6,10 +6,13 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/chenyu/1-tok/internal/core"
+	"github.com/chenyu/1-tok/internal/platform"
+	"github.com/chenyu/1-tok/internal/serviceauth"
 	"github.com/chenyu/1-tok/internal/usageproof"
 )
 
@@ -299,6 +302,236 @@ func TestCreateProviderInvoiceViaProviderSettlementNodeUsesNewInvoice(t *testing
 	}
 	if len(methods) != 1 || methods[0] != "new_invoice" {
 		t.Fatalf("methods = %v, want [new_invoice]", methods)
+	}
+}
+
+func TestRequestProviderPayoutWithRetryRetriesOnServerError(t *testing.T) {
+	invoiceAttempts := 0
+	node := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var rpc struct {
+			Method string `json:"method"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&rpc); err != nil {
+			t.Fatalf("decode node rpc request: %v", err)
+		}
+		if rpc.Method != "new_invoice" {
+			t.Fatalf("unexpected node rpc method %q", rpc.Method)
+		}
+		invoiceAttempts++
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0",
+			"id":      "1",
+			"result": map[string]any{
+				"invoice_address": "invoice_retry_" + strconv.Itoa(invoiceAttempts),
+			},
+		})
+	}))
+	defer node.Close()
+
+	payoutAttempts := 0
+	settlement := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/provider-payouts" {
+			t.Fatalf("unexpected settlement request %s %s", r.Method, r.URL.Path)
+		}
+		payoutAttempts++
+		if payoutAttempts == 1 {
+			http.Error(w, "upstream fiber unavailable", http.StatusBadGateway)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"recordId": "fund_retry_ok",
+		})
+	}))
+	defer settlement.Close()
+
+	client := &smokeClient{httpClient: settlement.Client()}
+	recordID, err := client.requestProviderPayoutWithRetry(context.Background(), USDIMarketplaceE2EConfig{
+		SettlementBaseURL:                   settlement.URL,
+		SettlementServiceToken:              "settlement-token",
+		ProviderSettlementRPCURL:            node.URL,
+		ProviderSettlementUDTTypeScriptJSON: `{"code_hash":"0xudt","hash_type":"type","args":"0x01"}`,
+	}, "ord_1", "buyer_1", "provider_1", "1.00", 3, 0)
+	if err != nil {
+		t.Fatalf("request provider payout with retry: %v", err)
+	}
+	if recordID != "fund_retry_ok" {
+		t.Fatalf("record id = %q, want fund_retry_ok", recordID)
+	}
+	if payoutAttempts != 2 {
+		t.Fatalf("payout attempts = %d, want 2", payoutAttempts)
+	}
+	if invoiceAttempts != 2 {
+		t.Fatalf("invoice attempts = %d, want 2", invoiceAttempts)
+	}
+}
+
+func TestGetOrderProviderSettlementReservationUsesOrderSubresource(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/orders/ord_1/provider-settlement-reservation" {
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer buyer-token" {
+			t.Fatalf("unexpected auth header %q", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"reservation": map[string]any{
+				"id":            "plr_1",
+				"orderId":       "ord_1",
+				"channelId":     "ch_1",
+				"reuseSource":   "reused",
+				"reservedCents": 1980,
+			},
+		})
+	}))
+	defer server.Close()
+
+	client := &smokeClient{httpClient: server.Client()}
+	reservation, err := client.getOrderProviderSettlementReservation(context.Background(), server.URL, "buyer-token", "ord_1")
+	if err != nil {
+		t.Fatalf("get order provider settlement reservation: %v", err)
+	}
+	if reservation.OrderID != "ord_1" || reservation.ChannelID != "ch_1" {
+		t.Fatalf("unexpected reservation: %+v", reservation)
+	}
+	if reservation.ReuseSource != "reused" {
+		t.Fatalf("reuse source = %s, want reused", reservation.ReuseSource)
+	}
+}
+
+func TestProviderSettlementDisconnectAndRecoverUseGatewayServiceToken(t *testing.T) {
+	var seen []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get(serviceauth.HeaderName); got != "gateway-token" {
+			t.Fatalf("unexpected service token %q", got)
+		}
+		seen = append(seen, r.Method+" "+r.URL.Path)
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/provider-settlement-bindings/provider_1/disconnect":
+			var payload map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode disconnect payload: %v", err)
+			}
+			if payload["reason"] != "provider closed channel" {
+				t.Fatalf("disconnect reason = %v", payload["reason"])
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"pool": map[string]any{
+					"providerOrgId": "provider_1",
+					"status":        "disconnected",
+				},
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/provider-settlement-bindings/provider_1/recover":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"pool": map[string]any{
+					"providerOrgId": "provider_1",
+					"status":        "healthy",
+				},
+			})
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := &smokeClient{httpClient: server.Client()}
+	disconnected, err := client.reportProviderSettlementDisconnect(context.Background(), server.URL, "gateway-token", "provider_1", "provider closed channel")
+	if err != nil {
+		t.Fatalf("report provider settlement disconnect: %v", err)
+	}
+	if disconnected.Status != "disconnected" {
+		t.Fatalf("disconnect status = %s, want disconnected", disconnected.Status)
+	}
+
+	recovered, err := client.recoverProviderSettlement(context.Background(), server.URL, "gateway-token", "provider_1")
+	if err != nil {
+		t.Fatalf("recover provider settlement: %v", err)
+	}
+	if recovered.Status != "healthy" {
+		t.Fatalf("recover status = %s, want healthy", recovered.Status)
+	}
+	if len(seen) != 2 {
+		t.Fatalf("seen requests = %v, want 2", seen)
+	}
+}
+
+func TestValidateUSDIMarketplaceOrderScenarios_AllowsDisconnectRecoveryToRotateChannel(t *testing.T) {
+	err := validateUSDIMarketplaceOrderScenarios(
+		usdiMarketplaceOrderFlowResult{
+			OrderID:              "ord_bootstrap",
+			ReservationChannelID: "ch_bootstrap",
+			ReservationStatus:    "released",
+		},
+		usdiMarketplaceOrderFlowResult{
+			OrderID:                     "ord_reuse",
+			InitialReservationChannelID: "ch_bootstrap",
+			InitialReservationReuse:     string(platform.ProviderLiquidityReuseReused),
+			ReservationChannelID:        "ch_bootstrap",
+		},
+		usdiMarketplaceOrderFlowResult{
+			OrderID:                     "ord_disconnect",
+			InitialReservationChannelID: "ch_bootstrap",
+			InitialReservationReuse:     string(platform.ProviderLiquidityReuseReused),
+			ReservationChannelID:        "ch_recovered",
+			DisconnectStatus:            string(core.OrderStatusAwaitingPaymentRail),
+			RecoveredStatus:             string(core.OrderStatusRunning),
+		},
+	)
+	if err != nil {
+		t.Fatalf("validate scenarios: %v", err)
+	}
+}
+
+func TestValidateUSDIMarketplaceOrderScenarios_AllowsReusePoolToRotateChannel(t *testing.T) {
+	err := validateUSDIMarketplaceOrderScenarios(
+		usdiMarketplaceOrderFlowResult{
+			OrderID:              "ord_bootstrap",
+			ReservationChannelID: "ch_bootstrap",
+			ReservationStatus:    "released",
+		},
+		usdiMarketplaceOrderFlowResult{
+			OrderID:                     "ord_reuse",
+			InitialReservationChannelID: "ch_other",
+			InitialReservationReuse:     string(platform.ProviderLiquidityReuseReused),
+			ReservationChannelID:        "ch_other",
+		},
+		usdiMarketplaceOrderFlowResult{
+			OrderID:                     "ord_disconnect",
+			InitialReservationChannelID: "ch_bootstrap",
+			InitialReservationReuse:     string(platform.ProviderLiquidityReuseReused),
+			ReservationChannelID:        "ch_recovered",
+			DisconnectStatus:            string(core.OrderStatusAwaitingPaymentRail),
+			RecoveredStatus:             string(core.OrderStatusRunning),
+		},
+	)
+	if err != nil {
+		t.Fatalf("validate scenarios: %v", err)
+	}
+}
+
+func TestValidateUSDIMarketplaceOrderScenarios_RejectsReuseWhenPoolWasNotReused(t *testing.T) {
+	err := validateUSDIMarketplaceOrderScenarios(
+		usdiMarketplaceOrderFlowResult{
+			OrderID:              "ord_bootstrap",
+			ReservationChannelID: "ch_bootstrap",
+			ReservationStatus:    "released",
+		},
+		usdiMarketplaceOrderFlowResult{
+			OrderID:                     "ord_reuse",
+			InitialReservationChannelID: "ch_other",
+			InitialReservationReuse:     string(platform.ProviderLiquidityReuseNewChannel),
+			ReservationChannelID:        "ch_other",
+		},
+		usdiMarketplaceOrderFlowResult{
+			OrderID:                     "ord_disconnect",
+			InitialReservationChannelID: "ch_other",
+			InitialReservationReuse:     string(platform.ProviderLiquidityReuseReused),
+			ReservationChannelID:        "ch_recovered",
+			DisconnectStatus:            string(core.OrderStatusAwaitingPaymentRail),
+			RecoveredStatus:             string(core.OrderStatusRunning),
+		},
+	)
+	if err == nil {
+		t.Fatal("expected reuse source validation error")
 	}
 }
 

@@ -84,3 +84,17 @@ func TestRun_DefaultDrainTimeout(t *testing.T) {
 		t.Fatal("timed out — DefaultDrainTimeout too long")
 	}
 }
+
+func TestEnvDurationSecondsOrDefault(t *testing.T) {
+	t.Setenv("SERVER_WRITE_TIMEOUT_SECONDS", "180")
+	if got := envDurationSecondsOrDefault("SERVER_WRITE_TIMEOUT_SECONDS", time.Minute); got != 180*time.Second {
+		t.Fatalf("timeout = %s, want 3m0s", got)
+	}
+}
+
+func TestEnvDurationSecondsOrDefaultFallsBackOnInvalidValue(t *testing.T) {
+	t.Setenv("SERVER_WRITE_TIMEOUT_SECONDS", "not-a-number")
+	if got := envDurationSecondsOrDefault("SERVER_WRITE_TIMEOUT_SECONDS", time.Minute); got != time.Minute {
+		t.Fatalf("timeout = %s, want %s", got, time.Minute)
+	}
+}
