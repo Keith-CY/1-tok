@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -22,6 +23,8 @@ const (
 	defaultProviderSettlementWaitTimeout        = 90 * time.Second
 	defaultProviderSettlementOpenChannelRetries = 10
 	defaultProviderSettlementAcceptRetries      = 10
+	defaultProviderSettlementAcceptRetryEvery   = 6
+	defaultProviderSettlementCentsPerUnit       = int64(100)
 	defaultProviderSettlementMinFundingUnits    = int64(1)
 )
 
@@ -33,6 +36,8 @@ type FNNProviderSettlementProvisionerConfig struct {
 	WaitTimeout          time.Duration
 	OpenChannelRetries   int
 	AcceptChannelRetries int
+	AcceptRetryEvery     int
+	CentsPerUnit         int64
 	MinFundingUnits      int64
 }
 
@@ -50,8 +55,15 @@ type providerSettlementRawRPCClient struct {
 }
 
 type providerSettlementNodeInfo struct {
-	NodeID                            string `json:"node_id"`
-	AutoAcceptChannelCKBFundingAmount string `json:"auto_accept_channel_ckb_funding_amount"`
+	NodeID                            string                             `json:"node_id"`
+	AutoAcceptChannelCKBFundingAmount string                             `json:"auto_accept_channel_ckb_funding_amount"`
+	UDTCfgInfos                       []providerSettlementNodeUDTCfgInfo `json:"udt_cfg_infos"`
+}
+
+type providerSettlementNodeUDTCfgInfo struct {
+	Name             string                             `json:"name"`
+	Script           providerSettlementRawUDTTypeScript `json:"script"`
+	AutoAcceptAmount string                             `json:"auto_accept_amount"`
 }
 
 type providerSettlementRawChannelList struct {
@@ -90,6 +102,8 @@ func NewFNNProviderSettlementProvisionerFromEnv() (ProviderSettlementProvisioner
 		WaitTimeout:          envDurationSecondsOrDefault("PROVIDER_SETTLEMENT_FNN_WAIT_TIMEOUT_SECONDS", defaultProviderSettlementWaitTimeout),
 		OpenChannelRetries:   envIntOrDefault("PROVIDER_SETTLEMENT_FNN_OPEN_CHANNEL_RETRIES", defaultProviderSettlementOpenChannelRetries),
 		AcceptChannelRetries: envIntOrDefault("PROVIDER_SETTLEMENT_FNN_ACCEPT_CHANNEL_RETRIES", defaultProviderSettlementAcceptRetries),
+		AcceptRetryEvery:     envIntOrDefault("PROVIDER_SETTLEMENT_FNN_ACCEPT_RETRY_INTERVAL_ATTEMPTS", defaultProviderSettlementAcceptRetryEvery),
+		CentsPerUnit:         envInt64OrDefault("PROVIDER_SETTLEMENT_FNN_CENTS_PER_UNIT", defaultProviderSettlementCentsPerUnit),
 		MinFundingUnits:      envInt64OrDefault("PROVIDER_SETTLEMENT_FNN_MIN_FUNDING_UNITS", defaultProviderSettlementMinFundingUnits),
 	}
 	return NewFNNProviderSettlementProvisioner(cfg)
@@ -116,6 +130,12 @@ func NewFNNProviderSettlementProvisioner(cfg FNNProviderSettlementProvisionerCon
 	}
 	if cfg.AcceptChannelRetries <= 0 {
 		cfg.AcceptChannelRetries = defaultProviderSettlementAcceptRetries
+	}
+	if cfg.AcceptRetryEvery <= 0 {
+		cfg.AcceptRetryEvery = defaultProviderSettlementAcceptRetryEvery
+	}
+	if cfg.CentsPerUnit <= 0 {
+		cfg.CentsPerUnit = defaultProviderSettlementCentsPerUnit
 	}
 	if cfg.MinFundingUnits <= 0 {
 		cfg.MinFundingUnits = defaultProviderSettlementMinFundingUnits
@@ -158,10 +178,17 @@ func (p *fnnProviderSettlementProvisioner) EnsureProviderLiquidity(input EnsureP
 		return EnsureProviderLiquidityResult{}, fmt.Errorf("provider settlement binding peerId mismatch: binding=%s actual=%s", expected, providerPeerID)
 	}
 
-	if err := treasuryNode.ConnectPeer(ctx, input.Binding.P2PAddress); err != nil {
+	providerP2PAddress, err := providerSettlementNormalizeP2PAddress(ctx, input.Binding.P2PAddress)
+	if err != nil {
+		return EnsureProviderLiquidityResult{}, fmt.Errorf("normalize provider p2p address: %w", err)
+	}
+	if err := treasuryNode.ConnectPeer(ctx, providerP2PAddress); err != nil {
 		return EnsureProviderLiquidityResult{}, fmt.Errorf("connect treasury -> provider: %w", err)
 	}
-	treasuryP2PAddress := providerSettlementMultiaddrForP2P(p.cfg.TreasuryP2PHost, p.cfg.TreasuryP2PPort, treasuryPeerID)
+	treasuryP2PAddress, err := providerSettlementNormalizeP2PAddress(ctx, providerSettlementMultiaddrForP2P(p.cfg.TreasuryP2PHost, p.cfg.TreasuryP2PPort, treasuryPeerID))
+	if err != nil {
+		return EnsureProviderLiquidityResult{}, fmt.Errorf("normalize treasury p2p address: %w", err)
+	}
 	if err := providerNode.ConnectPeer(ctx, treasuryP2PAddress); err != nil {
 		return EnsureProviderLiquidityResult{}, fmt.Errorf("connect provider -> treasury: %w", err)
 	}
@@ -186,7 +213,7 @@ func (p *fnnProviderSettlementProvisioner) EnsureProviderLiquidity(input EnsureP
 		}, nil
 	}
 
-	fundingUnits := neededReserveToFundingUnits(input.NeededReserveCents, p.cfg.MinFundingUnits)
+	fundingUnits := neededReserveToFundingUnits(input.NeededReserveCents, p.cfg.CentsPerUnit, p.cfg.MinFundingUnits)
 	fundingHex, err := providerSettlementDecimalToHexQuantity(fundingUnits)
 	if err != nil {
 		return EnsureProviderLiquidityResult{}, fmt.Errorf("funding amount: %w", err)
@@ -196,7 +223,7 @@ func (p *fnnProviderSettlementProvisioner) EnsureProviderLiquidity(input EnsureP
 		return EnsureProviderLiquidityResult{}, fmt.Errorf("open channel: %w", err)
 	}
 
-	acceptFundingHex := strings.TrimSpace(providerInfo.AutoAcceptChannelCKBFundingAmount)
+	acceptFundingHex := providerSettlementAcceptFundingHex(providerInfo, input.Binding.UDTTypeScript)
 	if acceptFundingHex == "" {
 		acceptFundingHex = "0x1"
 	}
@@ -204,11 +231,11 @@ func (p *fnnProviderSettlementProvisioner) EnsureProviderLiquidity(input EnsureP
 		return EnsureProviderLiquidityResult{}, fmt.Errorf("accept channel: %w", err)
 	}
 
-	if err := waitForProviderSettlementChannelReady(ctx, treasuryNode, providerNode, providerPeerID, treasuryPeerID, input.Binding.UDTTypeScript, p.cfg.PollInterval); err != nil {
+	if err := waitForProviderSettlementChannelReady(ctx, treasuryNode, providerNode, providerPeerID, treasuryPeerID, temporaryChannelID, acceptFundingHex, input.Binding.UDTTypeScript, p.cfg.PollInterval, p.cfg.AcceptRetryEvery, p.cfg.AcceptChannelRetries); err != nil {
 		return EnsureProviderLiquidityResult{}, err
 	}
 
-	fundingCents := fundingUnits * 100
+	fundingCents := fundingUnitsToCents(fundingUnits, p.cfg.CentsPerUnit)
 	return EnsureProviderLiquidityResult{
 		ChannelID:           temporaryChannelID,
 		ReuseSource:         ProviderLiquidityReuseNewChannel,
@@ -365,11 +392,13 @@ func acceptProviderSettlementChannelWithRetry(ctx context.Context, providerNode 
 	return lastErr
 }
 
-func waitForProviderSettlementChannelReady(ctx context.Context, treasuryNode, providerNode providerSettlementRawFNNClient, providerPeerID, treasuryPeerID string, udtTypeScript UDTTypeScript, pollInterval time.Duration) error {
+func waitForProviderSettlementChannelReady(ctx context.Context, treasuryNode, providerNode providerSettlementRawFNNClient, providerPeerID, treasuryPeerID, temporaryChannelID, acceptFundingHex string, udtTypeScript UDTTypeScript, pollInterval time.Duration, acceptRetryEvery, acceptRetries int) error {
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
+	attempt := 0
 	for {
+		attempt++
 		treasuryChannels, err := treasuryNode.ListChannels(ctx, providerPeerID)
 		if err != nil {
 			return fmt.Errorf("list treasury channels: %w", err)
@@ -380,6 +409,15 @@ func waitForProviderSettlementChannelReady(ctx context.Context, treasuryNode, pr
 		}
 		if _, ok := matchingReadyChannelID(treasuryChannels, providerChannels, udtTypeScript); ok {
 			return nil
+		}
+		if strings.TrimSpace(temporaryChannelID) != "" &&
+			strings.TrimSpace(acceptFundingHex) != "" &&
+			acceptRetryEvery > 0 &&
+			attempt%acceptRetryEvery == 0 &&
+			firstProviderSettlementChannelState(providerChannels, udtTypeScript) == "AWAITING_CHANNEL_READY" {
+			if err := acceptProviderSettlementChannelWithRetry(ctx, providerNode, temporaryChannelID, acceptFundingHex, acceptRetries, pollInterval); err != nil && !isProviderSettlementAcceptRetryable(err) {
+				return fmt.Errorf("re-accept channel: %w", err)
+			}
 		}
 
 		select {
@@ -402,6 +440,23 @@ func matchingReadyChannelID(treasuryChannels, providerChannels providerSettlemen
 	return providerID, true
 }
 
+func providerSettlementAcceptFundingHex(info providerSettlementNodeInfo, udtTypeScript UDTTypeScript) string {
+	if hasProviderSettlementUDTScript(udtTypeScript) {
+		for _, cfg := range info.UDTCfgInfos {
+			if providerSettlementUDTScriptsEqual(cfg.Script, udtTypeScript) {
+				return strings.TrimSpace(cfg.AutoAcceptAmount)
+			}
+		}
+	}
+	return strings.TrimSpace(info.AutoAcceptChannelCKBFundingAmount)
+}
+
+func providerSettlementUDTScriptsEqual(left providerSettlementRawUDTTypeScript, right UDTTypeScript) bool {
+	return strings.TrimSpace(left.CodeHash) == strings.TrimSpace(right.CodeHash) &&
+		strings.TrimSpace(left.HashType) == strings.TrimSpace(right.HashType) &&
+		strings.TrimSpace(left.Args) == strings.TrimSpace(right.Args)
+}
+
 func firstReadyProviderSettlementChannelID(channels providerSettlementRawChannelList, udtTypeScript UDTTypeScript) string {
 	for _, channel := range channels.Channels {
 		if normalizeProviderSettlementChannelState(channel.State) != "CHANNEL_READY" {
@@ -411,6 +466,16 @@ func firstReadyProviderSettlementChannelID(channels providerSettlementRawChannel
 			continue
 		}
 		return strings.TrimSpace(channel.ChannelID)
+	}
+	return ""
+}
+
+func firstProviderSettlementChannelState(channels providerSettlementRawChannelList, udtTypeScript UDTTypeScript) string {
+	for _, channel := range channels.Channels {
+		if hasProviderSettlementUDTScript(udtTypeScript) && !providerSettlementUDTScriptsMatch(channel.FundingUDTTypeScript, udtTypeScript) {
+			continue
+		}
+		return normalizeProviderSettlementChannelState(channel.State)
 	}
 	return ""
 }
@@ -460,18 +525,60 @@ func providerSettlementMultiaddrForP2P(host string, port int, peerID string) str
 	return fmt.Sprintf("/dns4/%s/tcp/%d/p2p/%s", host, port, peerID)
 }
 
-func neededReserveToFundingUnits(neededReserveCents, minFundingUnits int64) int64 {
+func providerSettlementNormalizeP2PAddress(ctx context.Context, address string) (string, error) {
+	trimmed := strings.TrimSpace(address)
+	if !strings.HasPrefix(trimmed, "/dns4/") {
+		return trimmed, nil
+	}
+	parts := strings.Split(trimmed, "/")
+	if len(parts) < 7 || parts[1] != "dns4" || parts[3] != "tcp" || parts[5] != "p2p" {
+		return "", fmt.Errorf("unsupported dns4 multiaddr %q", address)
+	}
+	ip, err := providerSettlementResolveIPv4(ctx, parts[2])
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("/ip4/%s/tcp/%s/p2p/%s", ip, parts[4], parts[6]), nil
+}
+
+func providerSettlementResolveIPv4(ctx context.Context, host string) (string, error) {
+	addresses, err := net.DefaultResolver.LookupIPAddr(ctx, strings.TrimSpace(host))
+	if err != nil {
+		return "", fmt.Errorf("resolve host %q: %w", host, err)
+	}
+	for _, address := range addresses {
+		if ipv4 := address.IP.To4(); ipv4 != nil {
+			return ipv4.String(), nil
+		}
+	}
+	return "", fmt.Errorf("resolve host %q: no ipv4 address found", host)
+}
+
+func neededReserveToFundingUnits(neededReserveCents, centsPerUnit, minFundingUnits int64) int64 {
 	if neededReserveCents <= 0 {
 		return minFundingUnits
 	}
-	units := neededReserveCents / 100
-	if neededReserveCents%100 != 0 {
+	if centsPerUnit <= 0 {
+		centsPerUnit = defaultProviderSettlementCentsPerUnit
+	}
+	units := neededReserveCents / centsPerUnit
+	if neededReserveCents%centsPerUnit != 0 {
 		units++
 	}
 	if units < minFundingUnits {
 		return minFundingUnits
 	}
 	return units
+}
+
+func fundingUnitsToCents(fundingUnits, centsPerUnit int64) int64 {
+	if fundingUnits <= 0 {
+		return 0
+	}
+	if centsPerUnit <= 0 {
+		centsPerUnit = defaultProviderSettlementCentsPerUnit
+	}
+	return fundingUnits * centsPerUnit
 }
 
 func providerSettlementDecimalToHexQuantity(value int64) (string, error) {

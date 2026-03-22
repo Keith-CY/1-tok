@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -438,8 +439,8 @@ func (c *smokeClient) createProviderInvoiceViaProviderSettlementNode(ctx context
 		return "", errors.New("provider settlement udt type script json is required for provider invoice creation")
 	}
 
-	var udtTypeScript platform.UDTTypeScript
-	if err := json.Unmarshal([]byte(cfg.ProviderSettlementUDTTypeScriptJSON), &udtTypeScript); err != nil {
+	udtTypeScript, err := parseProviderSettlementUDTTypeScriptJSON(cfg.ProviderSettlementUDTTypeScriptJSON)
+	if err != nil {
 		return "", fmt.Errorf("provider settlement udt type script: %w", err)
 	}
 
@@ -634,9 +635,13 @@ func (c *smokeClient) registerProviderSettlementBinding(ctx context.Context, bas
 		return "", fmt.Errorf("provider settlement peer id: %w", err)
 	}
 
-	var udtTypeScript platform.UDTTypeScript
-	if err := json.Unmarshal([]byte(cfg.ProviderSettlementUDTTypeScriptJSON), &udtTypeScript); err != nil {
+	udtTypeScript, err := parseProviderSettlementUDTTypeScriptJSON(cfg.ProviderSettlementUDTTypeScriptJSON)
+	if err != nil {
 		return "", fmt.Errorf("provider settlement udt type script: %w", err)
+	}
+	p2pAddress, err := releaseNormalizeP2PAddress(ctx, multiaddrForP2P(cfg.ProviderSettlementP2PHost, cfg.ProviderSettlementP2PPort, peerID))
+	if err != nil {
+		return "", fmt.Errorf("provider settlement p2p address: %w", err)
 	}
 
 	var response struct {
@@ -648,7 +653,7 @@ func (c *smokeClient) registerProviderSettlementBinding(ctx context.Context, bas
 		"providerOrgId": providerOrgID,
 		"asset":         "USDI",
 		"peerId":        peerID,
-		"p2pAddress":    multiaddrForP2P(cfg.ProviderSettlementP2PHost, cfg.ProviderSettlementP2PPort, peerID),
+		"p2pAddress":    p2pAddress,
 		"nodeRpcUrl":    cfg.ProviderSettlementRPCURL,
 		"udtTypeScript": map[string]any{
 			"codeHash": udtTypeScript.CodeHash,
@@ -667,6 +672,55 @@ func (c *smokeClient) registerProviderSettlementBinding(ctx context.Context, bas
 		return "", fmt.Errorf("verify provider settlement binding: %w", err)
 	}
 	return response.Binding.ID, nil
+}
+
+func parseProviderSettlementUDTTypeScriptJSON(raw string) (platform.UDTTypeScript, error) {
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		return platform.UDTTypeScript{}, err
+	}
+	readString := func(keys ...string) string {
+		for _, key := range keys {
+			value, ok := payload[key]
+			if !ok {
+				continue
+			}
+			if text, ok := value.(string); ok {
+				return strings.TrimSpace(text)
+			}
+		}
+		return ""
+	}
+	script := platform.UDTTypeScript{
+		CodeHash: readString("codeHash", "code_hash"),
+		HashType: readString("hashType", "hash_type"),
+		Args:     readString("args"),
+	}
+	if strings.TrimSpace(script.CodeHash) == "" || strings.TrimSpace(script.HashType) == "" || strings.TrimSpace(script.Args) == "" {
+		return platform.UDTTypeScript{}, errors.New("missing code hash, hash type, or args")
+	}
+	return script, nil
+}
+
+func releaseNormalizeP2PAddress(ctx context.Context, address string) (string, error) {
+	trimmed := strings.TrimSpace(address)
+	if !strings.HasPrefix(trimmed, "/dns4/") {
+		return trimmed, nil
+	}
+	parts := strings.Split(trimmed, "/")
+	if len(parts) < 7 || parts[1] != "dns4" || parts[3] != "tcp" || parts[5] != "p2p" {
+		return "", fmt.Errorf("unsupported dns4 multiaddr %q", address)
+	}
+	addresses, err := net.DefaultResolver.LookupIPAddr(ctx, strings.TrimSpace(parts[2]))
+	if err != nil {
+		return "", fmt.Errorf("resolve host %q: %w", parts[2], err)
+	}
+	for _, resolved := range addresses {
+		if ipv4 := resolved.IP.To4(); ipv4 != nil {
+			return fmt.Sprintf("/ip4/%s/tcp/%s/p2p/%s", ipv4.String(), parts[4], parts[6]), nil
+		}
+	}
+	return "", fmt.Errorf("resolve host %q: no ipv4 address found", parts[2])
 }
 
 func (c *smokeClient) bindOrderCarrier(ctx context.Context, baseURL, gatewayToken, orderID, milestoneID, carrierID string) (string, error) {

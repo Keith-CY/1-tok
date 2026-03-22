@@ -87,6 +87,7 @@ INVOICE_LOCK_SCRIPT_JSON=""
 PROVIDER_LOCK_SCRIPT_JSON=""
 USDI_TYPE_SCRIPT_JSON=""
 USDI_AUTO_ACCEPT_AMOUNT_HEX=""
+PROVIDER_USDI_AUTO_ACCEPT_AMOUNT_HEX=""
 ACCEPT_CHANNEL_FUNDING_AMOUNT_HEX=""
 PROVIDER_ACCEPT_CHANNEL_FUNDING_AMOUNT_HEX=""
 PAYER_NODE_ID=""
@@ -566,7 +567,9 @@ query_ckb_balance_for_lock_script() {
   printf '%s' "${total}"
 }
 
-query_usdi_balance_for_payer() {
+query_usdi_balance_for_lock_script() {
+  local lock_script_json="$1"
+  local label="$2"
   local cursor="0x"
   local page=0
   local total=0
@@ -577,8 +580,8 @@ query_usdi_balance_for_payer() {
     fi
     local payload
     payload="$(jq -cn \
-      --arg id "usdi-balance-${page}" \
-      --argjson lock_script "${PAYER_LOCK_SCRIPT_JSON}" \
+      --arg id "usdi-balance-${label}-${page}" \
+      --argjson lock_script "${lock_script_json}" \
       --argjson type_script "${USDI_TYPE_SCRIPT_JSON}" \
       --arg cursor "${cursor}" '
       if $cursor == "0x" then
@@ -603,6 +606,10 @@ query_usdi_balance_for_payer() {
     cursor="${next_cursor}"
   done
   printf '%s' "${total}"
+}
+
+query_usdi_balance_for_payer() {
+  query_usdi_balance_for_lock_script "${PAYER_LOCK_SCRIPT_JSON}" "payer"
 }
 
 request_ckb_faucet() {
@@ -719,18 +726,21 @@ fetch_matching_type_script_from_tx_for_lock() {
   '
 }
 
-request_usdi_faucet() {
-  local required_amount="${1:-0}"
-  local stdout_file="${ARTIFACT_DIR}/usdi-faucet.stdout.log"
-  local stderr_file="${ARTIFACT_DIR}/usdi-faucet.stderr.log"
-  local balance_rc before_balance
-  if [[ -n "${PAYER_LOCK_SCRIPT_JSON}" && -n "${USDI_TYPE_SCRIPT_JSON}" && "${required_amount}" =~ ^[0-9]+$ ]]; then
+request_usdi_faucet_for_lock_script() {
+  local address="$1"
+  local label="$2"
+  local required_amount="${3:-0}"
+  local lock_script_json="$4"
+  local stdout_file="${ARTIFACT_DIR}/usdi-faucet-${label}.stdout.log"
+  local stderr_file="${ARTIFACT_DIR}/usdi-faucet-${label}.stderr.log"
+  local balance_rc before_balance faucet_tx_hash=""
+  if [[ -n "${lock_script_json}" && -n "${USDI_TYPE_SCRIPT_JSON}" && "${required_amount}" =~ ^[0-9]+$ ]]; then
     set +e
-    before_balance="$(query_usdi_balance_for_payer)"
+    before_balance="$(query_usdi_balance_for_lock_script "${lock_script_json}" "${label}")"
     balance_rc=$?
     set -e
     if [[ "${balance_rc}" -eq 0 && -n "${before_balance}" ]] && bigint_gte "${before_balance}" "${required_amount}"; then
-      log "usdi balance precheck passed (balance=${before_balance}, required=${required_amount})"
+      log "usdi balance precheck passed for ${label} (balance=${before_balance}, required=${required_amount})"
       return 0
     fi
   fi
@@ -738,13 +748,13 @@ request_usdi_faucet() {
     E2E_USDI_FAUCET_COMMAND='curl -fsS -X POST https://ckb-utilities.random-walk.co.jp/api/faucet -H "content-type: application/json" -d "{\"address\":\"${E2E_FAUCET_ADDRESS}\",\"token\":\"usdi\"}"'
     log "E2E_USDI_FAUCET_COMMAND is unset; using built-in default faucet command"
   fi
-  printf '%s\n' "${E2E_USDI_FAUCET_COMMAND}" > "${ARTIFACT_DIR}/usdi-faucet.command.txt"
+  printf '%s\n' "${E2E_USDI_FAUCET_COMMAND}" > "${ARTIFACT_DIR}/usdi-faucet-${label}.command.txt"
   local attempt=0
   while true; do
     attempt=$((attempt + 1))
     set +e
     E2E_FAUCET_ASSET="USDI" \
-    E2E_FAUCET_ADDRESS="${E2E_USDI_TOPUP_ADDRESS}" \
+    E2E_FAUCET_ADDRESS="${address}" \
     E2E_FAUCET_AMOUNT="${E2E_USDI_FAUCET_AMOUNT}" \
       bash -lc "${E2E_USDI_FAUCET_COMMAND}" >"${stdout_file}" 2>"${stderr_file}"
     local rc=$?
@@ -753,47 +763,50 @@ request_usdi_faucet() {
       echo "usdi faucet command failed" >&2
       exit 1
     fi
-    USDI_FAUCET_TX_HASH="$(extract_tx_hash_from_file "${stdout_file}" || true)"
-    if [[ -z "${USDI_FAUCET_TX_HASH}" ]]; then
-      USDI_FAUCET_TX_HASH="$(extract_tx_hash_from_file "${stderr_file}" || true)"
+    faucet_tx_hash="$(extract_tx_hash_from_file "${stdout_file}" || true)"
+    if [[ -z "${faucet_tx_hash}" ]]; then
+      faucet_tx_hash="$(extract_tx_hash_from_file "${stderr_file}" || true)"
     fi
-    if [[ -n "${USDI_FAUCET_TX_HASH}" ]]; then
-      USDI_EXPLORER_PROOF_URLS="$(build_explorer_url "${USDI_FAUCET_TX_HASH}")"
+    if [[ "${label}" == "payer-bootstrap" ]]; then
+      USDI_FAUCET_TX_HASH="${faucet_tx_hash}"
+      if [[ -n "${USDI_FAUCET_TX_HASH}" ]]; then
+        USDI_EXPLORER_PROOF_URLS="$(build_explorer_url "${USDI_FAUCET_TX_HASH}")"
+      fi
     fi
-    log "usdi faucet succeeded; waiting ${E2E_USDI_FAUCET_WAIT_SECONDS}s"
+    log "usdi faucet succeeded for ${label}; waiting ${E2E_USDI_FAUCET_WAIT_SECONDS}s"
     sleep "${E2E_USDI_FAUCET_WAIT_SECONDS}"
 
-    if [[ -n "${USDI_FAUCET_TX_HASH}" && -n "${PAYER_LOCK_SCRIPT_JSON}" && -n "${USDI_TYPE_SCRIPT_JSON}" ]]; then
+    if [[ -n "${faucet_tx_hash}" && -n "${lock_script_json}" && -n "${USDI_TYPE_SCRIPT_JSON}" ]]; then
       local actual_type_script expected_canonical actual_canonical
-      actual_type_script="$(fetch_matching_type_script_from_tx_for_lock "${USDI_FAUCET_TX_HASH}" "${PAYER_LOCK_SCRIPT_JSON}" || true)"
+      actual_type_script="$(fetch_matching_type_script_from_tx_for_lock "${faucet_tx_hash}" "${lock_script_json}" || true)"
       if [[ -n "${actual_type_script}" ]]; then
-        printf '%s\n' "${actual_type_script}" > "${ARTIFACT_DIR}/usdi-faucet.actual-type-script.json"
-        printf '%s\n' "${USDI_TYPE_SCRIPT_JSON}" > "${ARTIFACT_DIR}/usdi-faucet.expected-type-script.json"
+        printf '%s\n' "${actual_type_script}" > "${ARTIFACT_DIR}/usdi-faucet-${label}.actual-type-script.json"
+        printf '%s\n' "${USDI_TYPE_SCRIPT_JSON}" > "${ARTIFACT_DIR}/usdi-faucet-${label}.expected-type-script.json"
         expected_canonical="$(canonicalize_json_object "${USDI_TYPE_SCRIPT_JSON}" || true)"
         actual_canonical="$(canonicalize_json_object "${actual_type_script}" || true)"
         if [[ -n "${expected_canonical}" && -n "${actual_canonical}" && "${expected_canonical}" != "${actual_canonical}" ]]; then
           {
-            printf 'faucet tx %s minted a different UDT than fnn node_info expects\n' "${USDI_FAUCET_TX_HASH}"
+            printf 'faucet tx %s minted a different UDT than fnn node_info expects\n' "${faucet_tx_hash}"
             printf 'expected=%s\n' "${expected_canonical}"
             printf 'actual=%s\n' "${actual_canonical}"
             printf 'impact=current fnn open_channel rejects the faucet asset as invalid UDT type script\n'
-          } > "${ARTIFACT_DIR}/usdi-faucet-mismatch.txt"
+          } > "${ARTIFACT_DIR}/usdi-faucet-${label}-mismatch.txt"
           echo "usdi faucet minted a UDT that does not match fnn node_info; current fnn open_channel rejects that asset as invalid UDT type script" >&2
           exit 1
         fi
       fi
     fi
 
-    if [[ -n "${PAYER_LOCK_SCRIPT_JSON}" && -n "${USDI_TYPE_SCRIPT_JSON}" && "${required_amount}" =~ ^[0-9]+$ ]]; then
+    if [[ -n "${lock_script_json}" && -n "${USDI_TYPE_SCRIPT_JSON}" && "${required_amount}" =~ ^[0-9]+$ ]]; then
       local deadline after_balance
       deadline=$(( $(date +%s) + E2E_USDI_BALANCE_WAIT_TIMEOUT_SECONDS ))
       while [[ "$(date +%s)" -lt "${deadline}" ]]; do
         set +e
-        after_balance="$(query_usdi_balance_for_payer)"
+        after_balance="$(query_usdi_balance_for_lock_script "${lock_script_json}" "${label}")"
         balance_rc=$?
         set -e
         if [[ "${balance_rc}" -eq 0 && -n "${after_balance}" ]]; then
-          log "usdi balance after faucet attempt=${attempt}: ${after_balance}"
+          log "usdi balance after faucet ${label} attempt=${attempt}: ${after_balance}"
           if bigint_gte "${after_balance}" "${required_amount}"; then
             return 0
           fi
@@ -801,14 +814,18 @@ request_usdi_faucet() {
         sleep "${E2E_USDI_BALANCE_POLL_INTERVAL_SECONDS}"
       done
       if [[ "${attempt}" -ge "${E2E_USDI_FAUCET_MAX_ATTEMPTS}" ]]; then
-        echo "usdi balance still below required threshold after faucet (required=${required_amount})" >&2
+        echo "usdi balance still below required threshold for ${label} after faucet (required=${required_amount})" >&2
         exit 1
       fi
-      log "usdi balance still below required threshold after faucet attempt=${attempt}; retrying faucet"
+      log "usdi balance still below required threshold for ${label} after faucet attempt=${attempt}; retrying faucet"
       continue
     fi
     return 0
   done
+}
+
+request_usdi_faucet() {
+  request_usdi_faucet_for_lock_script "${E2E_USDI_TOPUP_ADDRESS}" "payer-bootstrap" "${1:-0}" "${PAYER_LOCK_SCRIPT_JSON}"
 }
 
 get_container_ip() {
@@ -972,6 +989,7 @@ normalize_channel_state() {
 wait_until_channel_ready() {
   local attempts="${1:-180}"
   local temporary_channel_id="${2:-}"
+  local accept_funding_amount_hex="${3:-}"
   local seen_channel=0
   for ((i = 1; i <= attempts; i++)); do
     local payer_resp invoice_resp payer_state invoice_state payer_count invoice_count
@@ -999,7 +1017,7 @@ wait_until_channel_ready() {
       && "${CHANNEL_ACCEPT_RETRY_INTERVAL_ATTEMPTS}" =~ ^[0-9]+$ \
       && "${CHANNEL_ACCEPT_RETRY_INTERVAL_ATTEMPTS}" -gt 0 \
       && $((i % CHANNEL_ACCEPT_RETRY_INTERVAL_ATTEMPTS)) -eq 0 ]]; then
-      accept_channel_on_invoice_node "${temporary_channel_id}"
+      accept_channel_on_invoice_node "${temporary_channel_id}" "${accept_funding_amount_hex}"
     fi
     if [[ "${payer_count}" -gt 0 && "${invoice_count}" -gt 0 && "${payer_state}" == "CHANNEL_READY" && "${invoice_state}" == "CHANNEL_READY" ]]; then
       return 0
@@ -1048,15 +1066,6 @@ wait_until_usdi_channel_ready() {
 
 resolve_usdi_channel_funding_amount() {
   local amount="${E2E_USDI_CHANNEL_FUNDING_AMOUNT}"
-  if [[ -z "${amount}" && -n "${USDI_AUTO_ACCEPT_AMOUNT_HEX}" ]]; then
-    set +e
-    amount="$(hex_quantity_to_decimal "${USDI_AUTO_ACCEPT_AMOUNT_HEX}")"
-    local rc=$?
-    set -e
-    if [[ "${rc}" -ne 0 ]]; then
-      amount=""
-    fi
-  fi
   if [[ -z "${amount}" ]]; then
     amount="50"
   fi
@@ -1080,7 +1089,7 @@ bootstrap_usdi_channel() {
     echo "unable to resolve fnn container IPs" >&2
     exit 1
   }
-  local invoice_addr payer_addr funding_amount funding_amount_hex
+  local invoice_addr payer_addr funding_amount funding_amount_hex accept_funding_hex
   invoice_addr="/ip4/${invoice_ip}/tcp/8228/p2p/${INVOICE_PEER_ID}"
   payer_addr="/ip4/${payer_ip}/tcp/8228/p2p/${PAYER_PEER_ID}"
   printf '%s\n' "${invoice_addr}" > "${ARTIFACT_DIR}/invoice-node.addr"
@@ -1089,11 +1098,12 @@ bootstrap_usdi_channel() {
   connect_peer_on_port "${FNN_PUBLISHED_RPC_PORT}" "${payer_addr}" "invoice-to-payer"
   funding_amount="$(resolve_usdi_channel_funding_amount)"
   funding_amount_hex="$(to_hex_quantity "${funding_amount}")"
+  accept_funding_hex="${USDI_AUTO_ACCEPT_AMOUNT_HEX:-${funding_amount_hex}}"
   open_channel_from_payer "${INVOICE_PEER_ID}" "${funding_amount_hex}" "${USDI_TYPE_SCRIPT_JSON}"
-  accept_channel_on_invoice_node "${OPEN_CHANNEL_TEMPORARY_ID}"
-  if ! wait_until_channel_ready 180 "${OPEN_CHANNEL_TEMPORARY_ID}"; then
-    accept_channel_on_invoice_node "${OPEN_CHANNEL_TEMPORARY_ID}"
-    wait_until_channel_ready 180 "${OPEN_CHANNEL_TEMPORARY_ID}" || {
+  accept_channel_on_invoice_node "${OPEN_CHANNEL_TEMPORARY_ID}" "${accept_funding_hex}"
+  if ! wait_until_channel_ready 180 "${OPEN_CHANNEL_TEMPORARY_ID}" "${accept_funding_hex}"; then
+    accept_channel_on_invoice_node "${OPEN_CHANNEL_TEMPORARY_ID}" "${accept_funding_hex}"
+    wait_until_channel_ready 180 "${OPEN_CHANNEL_TEMPORARY_ID}" "${accept_funding_hex}" || {
       echo "timed out waiting for ckb channel readiness" >&2
       exit 1
     }
@@ -1156,6 +1166,10 @@ PROVIDER_LOCK_SCRIPT_JSON="$(printf '%s' "${provider_info}" | jq -c '.result.def
 NODE_INFO_USDI_TYPE_SCRIPT_JSON="$(extract_usdi_type_script_from_node_info_without_override "${payer_info}")"
 USDI_TYPE_SCRIPT_JSON="$(extract_usdi_type_script_from_node_info "${payer_info}")"
 USDI_AUTO_ACCEPT_AMOUNT_HEX="$(extract_usdi_auto_accept_amount_from_node_info "${payer_info}")"
+PROVIDER_USDI_AUTO_ACCEPT_AMOUNT_HEX="$(extract_usdi_auto_accept_amount_from_node_info "${provider_info}")"
+if [[ -z "${FIBER_USDI_UDT_TYPE_SCRIPT_JSON}" && -n "${USDI_TYPE_SCRIPT_JSON}" ]]; then
+  FIBER_USDI_UDT_TYPE_SCRIPT_JSON="${USDI_TYPE_SCRIPT_JSON}"
+fi
 if [[ -n "${FIBER_USDI_UDT_TYPE_SCRIPT_JSON}" ]]; then
   expected_canonical="$(canonicalize_json_object "${NODE_INFO_USDI_TYPE_SCRIPT_JSON}" || true)"
   override_canonical="$(canonicalize_json_object "${USDI_TYPE_SCRIPT_JSON}" || true)"
@@ -1212,6 +1226,20 @@ fi
 ensure_ckb_balance_or_request_faucet "${E2E_CKB_PROVIDER_TOPUP_ADDRESS}" "provider-bootstrap" "${provider_required_amount}" "${PROVIDER_LOCK_SCRIPT_JSON}"
 required_usdi_amount="$(resolve_usdi_channel_funding_amount)"
 request_usdi_faucet "${required_usdi_amount}"
+invoice_required_usdi_amount="0"
+if [[ -n "${USDI_AUTO_ACCEPT_AMOUNT_HEX}" && "${USDI_AUTO_ACCEPT_AMOUNT_HEX}" =~ ^0x[0-9a-fA-F]+$ ]]; then
+  invoice_required_usdi_amount="$(hex_quantity_to_decimal "${USDI_AUTO_ACCEPT_AMOUNT_HEX}")"
+fi
+if [[ "${invoice_required_usdi_amount}" =~ ^[0-9]+$ ]] && [[ "${invoice_required_usdi_amount}" -gt 0 ]]; then
+  request_usdi_faucet_for_lock_script "${E2E_CKB_INVOICE_TOPUP_ADDRESS}" "invoice-bootstrap" "${invoice_required_usdi_amount}" "${INVOICE_LOCK_SCRIPT_JSON}"
+fi
+provider_required_usdi_amount="0"
+if [[ -n "${PROVIDER_USDI_AUTO_ACCEPT_AMOUNT_HEX}" && "${PROVIDER_USDI_AUTO_ACCEPT_AMOUNT_HEX}" =~ ^0x[0-9a-fA-F]+$ ]]; then
+  provider_required_usdi_amount="$(hex_quantity_to_decimal "${PROVIDER_USDI_AUTO_ACCEPT_AMOUNT_HEX}")"
+fi
+if [[ "${provider_required_usdi_amount}" =~ ^[0-9]+$ ]] && [[ "${provider_required_usdi_amount}" -gt 0 ]]; then
+  request_usdi_faucet_for_lock_script "${E2E_CKB_PROVIDER_TOPUP_ADDRESS}" "provider-bootstrap" "${provider_required_usdi_amount}" "${PROVIDER_LOCK_SCRIPT_JSON}"
+fi
 bootstrap_usdi_channel
 
 compose up -d --build usdi-e2e-runner

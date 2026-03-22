@@ -270,12 +270,19 @@ func (c releaseRawFNNClient) ListChannels(ctx context.Context, peerID string) (r
 }
 
 func releaseMapAssetToCurrency(asset string) string {
-	switch strings.ToUpper(strings.TrimSpace(asset)) {
-	case "CKB":
-		return "CKB"
-	default:
-		return "FIBD"
+	if strings.EqualFold(strings.TrimSpace(asset), "CKB") {
+		if scoped := strings.TrimSpace(os.Getenv("FIBER_INVOICE_CURRENCY_CKB")); scoped != "" {
+			return scoped
+		}
+		if global := strings.TrimSpace(os.Getenv("FIBER_INVOICE_CURRENCY")); global != "" {
+			return global
+		}
+		return "Fibt"
 	}
+	if scoped := strings.TrimSpace(os.Getenv("FIBER_INVOICE_CURRENCY_USDI")); scoped != "" {
+		return scoped
+	}
+	return releaseMapAssetToCurrency("CKB")
 }
 
 func waitForChannelReady(ctx context.Context, invoiceNode, payerNode releaseRawFNNClient, invoicePeerID, payerPeerID string, pollInterval time.Duration) error {

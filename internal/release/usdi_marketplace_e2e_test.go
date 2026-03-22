@@ -98,7 +98,7 @@ func TestBootstrapCarrierTargetSkipsWithoutRemoteHostConfig(t *testing.T) {
 }
 
 func TestBuildUsageReportedEnvelopeIncludesVerifiableProof(t *testing.T) {
-	eventAt := time.Date(2026, time.March, 22, 10, 11, 12, 0, time.UTC)
+	eventAt := time.Now().UTC().Truncate(time.Second)
 	step := usageReportedStep{
 		EventID:     "evt-usage-1",
 		Sequence:    2,
@@ -203,9 +203,9 @@ func TestRegisterProviderSettlementBindingUsesNodeInfoAndConfiguredUDTScript(t *
 	client := &smokeClient{httpClient: api.Client()}
 	cfg := USDIMarketplaceE2EConfig{
 		ProviderSettlementRPCURL:            node.URL,
-		ProviderSettlementP2PHost:           "fnn",
+		ProviderSettlementP2PHost:           "localhost",
 		ProviderSettlementP2PPort:           8228,
-		ProviderSettlementUDTTypeScriptJSON: `{"codeHash":"0xudt","hashType":"type","args":"0x01"}`,
+		ProviderSettlementUDTTypeScriptJSON: `{"code_hash":"0xudt","hash_type":"type","args":"0x01"}`,
 	}
 
 	bindingID, err := client.registerProviderSettlementBinding(context.Background(), api.URL, "provider_1", cfg)
@@ -218,8 +218,19 @@ func TestRegisterProviderSettlementBindingUsesNodeInfoAndConfiguredUDTScript(t *
 	if createdPayload["peerId"] == "" {
 		t.Fatalf("expected peerId in payload, got %+v", createdPayload)
 	}
+	expectedP2PAddress := "/ip4/127.0.0.1/tcp/8228/p2p/" + createdPayload["peerId"].(string)
+	if createdPayload["p2pAddress"] != expectedP2PAddress {
+		t.Fatalf("p2pAddress = %v, want %s", createdPayload["p2pAddress"], expectedP2PAddress)
+	}
 	if createdPayload["nodeRpcUrl"] != node.URL {
 		t.Fatalf("nodeRpcUrl = %v, want %s", createdPayload["nodeRpcUrl"], node.URL)
+	}
+	udtTypeScript, ok := createdPayload["udtTypeScript"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing udtTypeScript in payload: %+v", createdPayload)
+	}
+	if udtTypeScript["codeHash"] != "0xudt" || udtTypeScript["hashType"] != "type" || udtTypeScript["args"] != "0x01" {
+		t.Fatalf("unexpected udtTypeScript payload: %+v", udtTypeScript)
 	}
 }
 
@@ -250,6 +261,9 @@ func TestCreateProviderInvoiceViaProviderSettlementNodeUsesNewInvoice(t *testing
 			if param["amount"] != "0x9" {
 				t.Fatalf("amount = %v, want 0x9", param["amount"])
 			}
+			if param["currency"] != "Fibt" {
+				t.Fatalf("currency = %v, want Fibt", param["currency"])
+			}
 			udt, ok := param["udt_type_script"].(map[string]any)
 			if !ok {
 				t.Fatalf("missing udt_type_script in payload: %+v", param)
@@ -273,7 +287,7 @@ func TestCreateProviderInvoiceViaProviderSettlementNodeUsesNewInvoice(t *testing
 	client := &smokeClient{httpClient: http.DefaultClient}
 	cfg := USDIMarketplaceE2EConfig{
 		ProviderSettlementRPCURL:            node.URL,
-		ProviderSettlementUDTTypeScriptJSON: `{"codeHash":"0xudt","hashType":"type","args":"0x01"}`,
+		ProviderSettlementUDTTypeScriptJSON: `{"code_hash":"0xudt","hash_type":"type","args":"0x01"}`,
 	}
 
 	invoice, err := client.createProviderInvoiceViaProviderSettlementNode(context.Background(), cfg, "9.00")
@@ -285,5 +299,23 @@ func TestCreateProviderInvoiceViaProviderSettlementNodeUsesNewInvoice(t *testing
 	}
 	if len(methods) != 1 || methods[0] != "new_invoice" {
 		t.Fatalf("methods = %v, want [new_invoice]", methods)
+	}
+}
+
+func TestParseProviderSettlementUDTTypeScriptJSONSupportsCamelAndSnakeCase(t *testing.T) {
+	snakeCase, err := parseProviderSettlementUDTTypeScriptJSON(`{"code_hash":"0xudt","hash_type":"type","args":"0x01"}`)
+	if err != nil {
+		t.Fatalf("parse snake_case: %v", err)
+	}
+	if snakeCase.CodeHash != "0xudt" || snakeCase.HashType != "type" || snakeCase.Args != "0x01" {
+		t.Fatalf("unexpected snake_case script: %+v", snakeCase)
+	}
+
+	camelCase, err := parseProviderSettlementUDTTypeScriptJSON(`{"codeHash":"0xabc","hashType":"data1","args":"0x02"}`)
+	if err != nil {
+		t.Fatalf("parse camelCase: %v", err)
+	}
+	if camelCase.CodeHash != "0xabc" || camelCase.HashType != "data1" || camelCase.Args != "0x02" {
+		t.Fatalf("unexpected camelCase script: %+v", camelCase)
 	}
 }
