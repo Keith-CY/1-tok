@@ -182,15 +182,12 @@ func (p *fnnProviderSettlementProvisioner) EnsureProviderLiquidity(input EnsureP
 	if err != nil {
 		return EnsureProviderLiquidityResult{}, fmt.Errorf("normalize provider p2p address: %w", err)
 	}
-	if err := treasuryNode.ConnectPeer(ctx, providerP2PAddress); err != nil {
-		return EnsureProviderLiquidityResult{}, fmt.Errorf("connect treasury -> provider: %w", err)
-	}
 	treasuryP2PAddress, err := providerSettlementNormalizeP2PAddress(ctx, providerSettlementMultiaddrForP2P(p.cfg.TreasuryP2PHost, p.cfg.TreasuryP2PPort, treasuryPeerID))
 	if err != nil {
 		return EnsureProviderLiquidityResult{}, fmt.Errorf("normalize treasury p2p address: %w", err)
 	}
-	if err := providerNode.ConnectPeer(ctx, treasuryP2PAddress); err != nil {
-		return EnsureProviderLiquidityResult{}, fmt.Errorf("connect provider -> treasury: %w", err)
+	if err := connectProviderSettlementPeers(ctx, treasuryNode, providerNode, providerP2PAddress, treasuryP2PAddress); err != nil {
+		return EnsureProviderLiquidityResult{}, err
 	}
 
 	treasuryChannels, err := treasuryNode.ListChannels(ctx, providerPeerID)
@@ -218,7 +215,9 @@ func (p *fnnProviderSettlementProvisioner) EnsureProviderLiquidity(input EnsureP
 	if err != nil {
 		return EnsureProviderLiquidityResult{}, fmt.Errorf("funding amount: %w", err)
 	}
-	temporaryChannelID, err := openProviderSettlementChannelWithRetry(ctx, treasuryNode, providerPeerID, fundingHex, input.Binding.UDTTypeScript, p.cfg.OpenChannelRetries, p.cfg.PollInterval)
+	temporaryChannelID, err := openProviderSettlementChannelWithRetry(ctx, treasuryNode, providerPeerID, fundingHex, input.Binding.UDTTypeScript, p.cfg.OpenChannelRetries, p.cfg.PollInterval, func(ctx context.Context) error {
+		return connectProviderSettlementPeers(ctx, treasuryNode, providerNode, providerP2PAddress, treasuryP2PAddress)
+	})
 	if err != nil {
 		return EnsureProviderLiquidityResult{}, fmt.Errorf("open channel: %w", err)
 	}
@@ -303,6 +302,16 @@ func (c providerSettlementRawFNNClient) ListChannels(ctx context.Context, peerID
 	return result, nil
 }
 
+func connectProviderSettlementPeers(ctx context.Context, treasuryNode, providerNode providerSettlementRawFNNClient, providerP2PAddress, treasuryP2PAddress string) error {
+	if err := treasuryNode.ConnectPeer(ctx, providerP2PAddress); err != nil {
+		return fmt.Errorf("connect treasury -> provider: %w", err)
+	}
+	if err := providerNode.ConnectPeer(ctx, treasuryP2PAddress); err != nil {
+		return fmt.Errorf("connect provider -> treasury: %w", err)
+	}
+	return nil
+}
+
 func (c *providerSettlementRawRPCClient) Call(ctx context.Context, method string, params any, target any) error {
 	body, err := json.Marshal(map[string]any{
 		"jsonrpc": "2.0",
@@ -348,7 +357,7 @@ func (c *providerSettlementRawRPCClient) Call(ctx context.Context, method string
 	return json.Unmarshal(rpc.Result, target)
 }
 
-func openProviderSettlementChannelWithRetry(ctx context.Context, treasuryNode providerSettlementRawFNNClient, peerID, fundingHex string, udtTypeScript UDTTypeScript, attempts int, delay time.Duration) (string, error) {
+func openProviderSettlementChannelWithRetry(ctx context.Context, treasuryNode providerSettlementRawFNNClient, peerID, fundingHex string, udtTypeScript UDTTypeScript, attempts int, delay time.Duration, reconnect func(context.Context) error) (string, error) {
 	var lastErr error
 	for attempt := 1; attempt <= attempts; attempt++ {
 		channelID, err := treasuryNode.OpenChannel(ctx, peerID, fundingHex, udtTypeScript)
@@ -358,6 +367,11 @@ func openProviderSettlementChannelWithRetry(ctx context.Context, treasuryNode pr
 		lastErr = err
 		if !isProviderSettlementOpenChannelRetryable(err) || attempt == attempts {
 			break
+		}
+		if reconnect != nil {
+			if reconnectErr := reconnect(ctx); reconnectErr != nil {
+				return "", reconnectErr
+			}
 		}
 		timer := time.NewTimer(delay)
 		select {
