@@ -7263,6 +7263,154 @@ func TestCarrierCallback_HeaderAuthTakesHeaderSignatureAndTimestamp(t *testing.T
 	}
 }
 
+func TestCarrierCallback_RealCarrierEnvelopeAccepted(t *testing.T) {
+	srv := NewServer()
+
+	orderID, bindingID, jobID := prepareOrderCarrierBindingAndJob(t, srv, "org_real_carrier", "secret-real-carrier", "ms_real_carrier")
+	_ = orderID
+
+	startEnvelope := carrier.IntegrationCallbackEnvelope{
+		EventID:            "evt-real-1",
+		Sequence:           1,
+		EventType:          "execution.started",
+		BindingID:          bindingID,
+		CarrierExecutionID: "cexec_real_1",
+		AttemptID:          "attempt_real_1",
+		CreatedAt:          time.Now().UTC().Format(time.RFC3339),
+		Payload: map[string]any{
+			"jobId": jobID,
+		},
+	}
+	startBody, _ := json.Marshal(startEnvelope)
+
+	req := httptest.NewRequest("POST", "/api/v1/carrier/callbacks/events", strings.NewReader(string(startBody)))
+	req.Header.Set("X-Carrier-Signature", carrier.SignIntegrationCallbackBody("secret-real-carrier", startBody))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("real carrier start callback should pass: %d %s", w.Code, w.Body.String())
+	}
+
+	envelope := carrier.IntegrationCallbackEnvelope{
+		EventID:            "evt-real-2",
+		Sequence:           2,
+		EventType:          "milestone.ready",
+		BindingID:          bindingID,
+		CarrierExecutionID: "cexec_real_1",
+		AttemptID:          "attempt_real_1",
+		CreatedAt:          time.Now().UTC().Format(time.RFC3339),
+		Payload: map[string]any{
+			"jobId":   jobID,
+			"summary": "carrier integration completed the milestone",
+		},
+	}
+	body, _ := json.Marshal(envelope)
+
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callbacks/events", strings.NewReader(string(body)))
+	req.Header.Set("X-Carrier-Signature", carrier.SignIntegrationCallbackBody("secret-real-carrier", body))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("real carrier callback should pass: %d %s", w.Code, w.Body.String())
+	}
+
+	job, err := srv.carrier.GetJob(jobID)
+	if err != nil {
+		t.Fatalf("get job: %v", err)
+	}
+	if job.State != carrier.JobStateCompleted {
+		t.Fatalf("expected completed job after milestone.ready callback, got %s", job.State)
+	}
+	order, err := srv.app.GetOrder(orderID)
+	if err != nil {
+		t.Fatalf("get order: %v", err)
+	}
+	if order.Status != core.OrderStatusCompleted {
+		t.Fatalf("expected completed order after milestone.ready callback, got %s", order.Status)
+	}
+	if got := srv.ledger.LastSequence(jobID); got != 2 {
+		t.Fatalf("expected sequence 2 to be recorded, got %d", got)
+	}
+}
+
+func TestCarrierCallback_RealCarrierEnvelopeWithCarrierKeyIDMismatchRejected(t *testing.T) {
+	srv := NewServer()
+
+	orderPayload := map[string]any{
+		"buyerOrgID":    "buyer_real_key_bad",
+		"buyerOrgId":    "buyer_real_key_bad",
+		"providerOrgId": "org_real_key_bad",
+		"title":         "Real carrier key bad",
+		"fundingMode":   "prepaid",
+		"milestones": []map[string]any{{
+			"id":             "ms_real_key_bad",
+			"title":          "Key bad",
+			"basePriceCents": 1000,
+			"budgetCents":    2000,
+		}},
+	}
+	orderBody, _ := json.Marshal(orderPayload)
+	req := httptest.NewRequest("POST", "/api/v1/orders", strings.NewReader(string(orderBody)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create order: %d %s", w.Code, w.Body.String())
+	}
+	var ord map[string]any
+	json.Unmarshal(w.Body.Bytes(), &ord)
+	orderID := ord["order"].(map[string]any)["id"].(string)
+
+	regBody := `{"providerOrgId":"org_real_key_bad","carrierBaseUrl":"https://carrier.test","hostId":"real-key-h","agentId":"a1","backend":"agent","workspaceRoot":"/tmp","callbackSecret":"secret-real-key-bad","callbackKeyId":"real-key-ok"}`
+	req = httptest.NewRequest("POST", "/api/v1/carrier-bindings", strings.NewReader(regBody))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("register binding: %d %s", w.Code, w.Body.String())
+	}
+
+	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/milestones/ms_real_key_bad/bind-carrier", strings.NewReader(`{"carrierId":"c_real_key_bad","capabilities":["gpu"]}`))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("bind: %d %s", w.Code, w.Body.String())
+	}
+	var bindResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &bindResp)
+	bindingID := bindResp["binding"].(map[string]any)["id"].(string)
+
+	req = httptest.NewRequest("POST", "/api/v1/orders/"+orderID+"/milestones/ms_real_key_bad/jobs", strings.NewReader(fmt.Sprintf(`{"bindingId":"%s","input":"work"}`, bindingID)))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create job: %d %s", w.Code, w.Body.String())
+	}
+	var jobResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &jobResp)
+	jobID := jobResp["job"].(map[string]any)["id"].(string)
+
+	envelope := carrier.IntegrationCallbackEnvelope{
+		EventID:            "evt-real-key-bad-1",
+		Sequence:           1,
+		EventType:          "execution.started",
+		BindingID:          bindingID,
+		CarrierExecutionID: "cexec_real_key_bad",
+		CreatedAt:          time.Now().UTC().Format(time.RFC3339),
+		Payload: map[string]any{
+			"jobId": jobID,
+		},
+	}
+	body, _ := json.Marshal(envelope)
+	req = httptest.NewRequest("POST", "/api/v1/carrier/callbacks/events", strings.NewReader(string(body)))
+	req.Header.Set("X-Carrier-Key-Id", "wrong-real-key")
+	req.Header.Set("X-Carrier-Signature", carrier.SignIntegrationCallbackBody("secret-real-key-bad", body))
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unauthorized for mismatched real carrier key id, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func prepareOrderCarrierBindingAndJob(t *testing.T, srv *Server, providerOrg, secret, milestoneID string) (orderID, bindingID, jobID string) {
 	t.Helper()
 

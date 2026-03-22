@@ -143,7 +143,7 @@ export interface Bid {
   updatedAt: string;
 }
 
-export const fundingRecordKinds = ["invoice", "withdrawal"] as const;
+export const fundingRecordKinds = ["invoice", "withdrawal", "buyer_topup", "provider_payout"] as const;
 export type FundingRecordKind = (typeof fundingRecordKinds)[number];
 
 export interface FundingRecord {
@@ -157,6 +157,7 @@ export interface FundingRecord {
   amount: string;
   invoice?: string;
   externalId?: string;
+  destination?: Record<string, string>;
   state: string;
   createdAt?: string;
   updatedAt?: string;

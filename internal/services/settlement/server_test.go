@@ -147,6 +147,125 @@ func TestCreateInvoiceUsesFiberClient(t *testing.T) {
 	}
 }
 
+func TestCreateTopUpUsesBuyerActorAndStoresBuyerTopUpRecord(t *testing.T) {
+	stub := &stubFiberClient{
+		createResult: fiberclient.CreateInvoiceResult{Invoice: "inv_topup_123"},
+	}
+	funding := NewMemoryFundingRecordRepository()
+	server := NewServerWithOptions(Options{
+		Upstream: "http://127.0.0.1:8080",
+		Fiber:    stub,
+		Funding:  funding,
+		Auth: &stubIAMClient{
+			actor: iamclient.Actor{
+				UserID: "usr_buyer_1",
+				Memberships: []iamclient.ActorMembership{{
+					OrganizationID:   "buyer_auth_1",
+					OrganizationKind: "buyer",
+					Role:             "procurement",
+				}},
+			},
+		},
+	})
+
+	payload := []byte(`{"asset":"USDI","amount":"25.00","memo":"seed marketplace balance"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/topups", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer buyer-token")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d body=%s", res.Code, res.Body.String())
+	}
+	if stub.createInput.FromUserID != "buyer_auth_1" {
+		t.Fatalf("expected buyer auth org to fund the invoice, got %q", stub.createInput.FromUserID)
+	}
+	if stub.createInput.ToUserID != "platform_treasury" {
+		t.Fatalf("expected platform treasury target, got %q", stub.createInput.ToUserID)
+	}
+	if stub.createInput.Asset != "USDI" || stub.createInput.Amount != "25.00" {
+		t.Fatalf("unexpected topup invoice input: %+v", stub.createInput)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/funding-records?buyerOrgId=buyer_auth_1", nil)
+	listReq.Header.Set("Authorization", "Bearer buyer-token")
+	listRes := httptest.NewRecorder()
+	server.ServeHTTP(listRes, listReq)
+	if listRes.Code != http.StatusOK {
+		t.Fatalf("expected 200 from buyer funding list, got %d body=%s", listRes.Code, listRes.Body.String())
+	}
+
+	var listResponse struct {
+		Records []FundingRecord `json:"records"`
+	}
+	if err := json.Unmarshal(listRes.Body.Bytes(), &listResponse); err != nil {
+		t.Fatalf("decode funding records: %v", err)
+	}
+	if len(listResponse.Records) != 1 {
+		t.Fatalf("expected one topup record, got %+v", listResponse.Records)
+	}
+	record := listResponse.Records[0]
+	if record.Kind != FundingRecordKindBuyerTopUp || record.Invoice != "inv_topup_123" || record.BuyerOrgID != "buyer_auth_1" {
+		t.Fatalf("unexpected buyer topup record: %+v", record)
+	}
+}
+
+func TestRequestProviderPayoutUsesTreasuryAndStoresProviderPayoutRecord(t *testing.T) {
+	stub := &stubFiberClient{
+		requestPayoutResult: fiberclient.RequestPayoutResult{ID: "payout_123", State: "PENDING"},
+	}
+	funding := NewMemoryFundingRecordRepository()
+	server := NewServerWithOptions(Options{
+		Upstream:      "http://127.0.0.1:8080",
+		Fiber:         stub,
+		Funding:       funding,
+		ServiceToken:  "settle-token",
+		ServiceTokens: serviceauth.NewTokenSet("settle-token"),
+	})
+
+	payload := []byte(`{"orderId":"ord_1","milestoneId":"ms_1","buyerOrgId":"buyer_1","providerOrgId":"provider_1","amount":"3.25","paymentRequest":"fiber:invoice:provider_1"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/provider-payouts", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(serviceauth.HeaderName, "settle-token")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d body=%s", res.Code, res.Body.String())
+	}
+	if stub.requestPayoutInput.UserID != "platform_treasury" {
+		t.Fatalf("expected platform treasury payout source, got %q", stub.requestPayoutInput.UserID)
+	}
+	if stub.requestPayoutInput.Asset != "USDI" || stub.requestPayoutInput.Amount != "3.25" {
+		t.Fatalf("unexpected provider payout input: %+v", stub.requestPayoutInput)
+	}
+	if stub.requestPayoutInput.Destination.Kind != "PAYMENT_REQUEST" || stub.requestPayoutInput.Destination.PaymentRequest != "fiber:invoice:provider_1" {
+		t.Fatalf("unexpected payout destination: %+v", stub.requestPayoutInput.Destination)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/funding-records?kind=provider_payout&orderId=ord_1", nil)
+	listRes := httptest.NewRecorder()
+	server.ServeHTTP(listRes, listReq)
+	if listRes.Code != http.StatusOK {
+		t.Fatalf("expected 200 from payout funding list, got %d body=%s", listRes.Code, listRes.Body.String())
+	}
+
+	var listResponse struct {
+		Records []FundingRecord `json:"records"`
+	}
+	if err := json.Unmarshal(listRes.Body.Bytes(), &listResponse); err != nil {
+		t.Fatalf("decode funding records: %v", err)
+	}
+	if len(listResponse.Records) != 1 {
+		t.Fatalf("expected one payout record, got %+v", listResponse.Records)
+	}
+	record := listResponse.Records[0]
+	if record.Kind != FundingRecordKindProviderPayout || record.ExternalID != "payout_123" || record.ProviderOrgID != "provider_1" {
+		t.Fatalf("unexpected provider payout record: %+v", record)
+	}
+}
+
 func TestNewServerRequiresPersistentFundingStoreWhenConfigured(t *testing.T) {
 	t.Setenv("ONE_TOK_REQUIRE_PERSISTENCE", "true")
 	t.Setenv("DATABASE_URL", "")

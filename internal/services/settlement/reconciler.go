@@ -122,7 +122,7 @@ func RunReconcilerLoop(ctx context.Context, reconciler *Reconciler, interval tim
 }
 
 func (r *Reconciler) syncPendingInvoices(ctx context.Context) (int, error) {
-	records, err := r.funding.List(FundingRecordFilter{Kind: FundingRecordKindInvoice})
+	records, err := r.funding.List(FundingRecordFilter{})
 	if err != nil {
 		return 0, err
 	}

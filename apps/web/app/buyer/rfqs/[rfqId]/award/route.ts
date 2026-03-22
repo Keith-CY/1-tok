@@ -9,7 +9,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ rfq
   const { rfqId } = await params;
   const form = await request.formData();
   const bidId = String(form.get("bidId") ?? "").trim();
-  const fundingMode = String(form.get("fundingMode") ?? "credit").trim();
+  const fundingMode = String(form.get("fundingMode") ?? "prepaid").trim();
   const creditLineId = String(form.get("creditLineId") ?? "").trim();
 
   if (!rfqId || !bidId || !fundingMode) {
@@ -17,11 +17,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ rfq
   }
 
   try {
-    await postGatewayJSON(`/api/v1/rfqs/${rfqId}/award`, viewer.token, {
+    const payload: Record<string, string> = {
       bidId,
       fundingMode,
-      creditLineId,
-    });
+    };
+    if (creditLineId) {
+      payload.creditLineId = creditLineId;
+    }
+    await postGatewayJSON(`/api/v1/rfqs/${rfqId}/award`, viewer.token, payload);
     return redirectToPortal(request, "/buyer");
   } catch {
     return redirectToPortal(request, "/buyer", "award-failed");

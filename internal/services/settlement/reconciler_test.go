@@ -101,6 +101,52 @@ func TestReconcilerSyncPendingInvoicesUpdatesUnsettledInvoices(t *testing.T) {
 	}
 }
 
+func TestReconcilerSyncPendingInvoicesUpdatesBuyerTopUps(t *testing.T) {
+	repo := NewMemoryFundingRecordRepository()
+	now := time.Now().UTC()
+	if err := repo.Save(FundingRecord{
+		ID:         "fund_topup_1",
+		Kind:       FundingRecordKindBuyerTopUp,
+		BuyerOrgID: "buyer_1",
+		Invoice:    "inv_topup_1",
+		State:      "UNPAID",
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}); err != nil {
+		t.Fatalf("seed buyer topup: %v", err)
+	}
+
+	fiber := &stubReconcilerFiberClient{
+		statusByInvoice: map[string]fiberclient.InvoiceStatusResult{
+			"inv_topup_1": {State: "SETTLED"},
+		},
+	}
+
+	reconciler := NewReconciler(ReconcilerOptions{
+		Fiber:   fiber,
+		Funding: repo,
+	})
+
+	summary, err := reconciler.Sync(context.Background())
+	if err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if summary.InvoiceUpdates != 1 {
+		t.Fatalf("expected 1 invoice-backed update, got %+v", summary)
+	}
+	if len(fiber.statusCalls) != 1 || fiber.statusCalls[0] != "inv_topup_1" {
+		t.Fatalf("expected buyer topup invoice to be queried, got %+v", fiber.statusCalls)
+	}
+
+	records, err := repo.List(FundingRecordFilter{Kind: FundingRecordKindBuyerTopUp, BuyerOrgID: "buyer_1"})
+	if err != nil {
+		t.Fatalf("list buyer topups: %v", err)
+	}
+	if len(records) != 1 || records[0].State != "SETTLED" {
+		t.Fatalf("expected buyer topup to be settled, got %+v", records)
+	}
+}
+
 func TestReconcilerSyncPendingWithdrawalsUpdatesPendingProviderStatuses(t *testing.T) {
 	repo := NewMemoryFundingRecordRepository()
 	now := time.Now().UTC()

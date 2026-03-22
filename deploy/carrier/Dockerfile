@@ -1,0 +1,15 @@
+FROM golang:1.25.0-alpine AS builder
+
+WORKDIR /src
+
+COPY .deps/carrier ./
+RUN go mod download
+RUN CGO_ENABLED=0 GOOS=linux go build -o /out/carrier ./cmd/carrier
+
+FROM alpine:3.20
+
+RUN apk add --no-cache ca-certificates openssh-client
+
+COPY --from=builder /out/carrier /usr/local/bin/carrier
+
+CMD ["carrier", "--help"]

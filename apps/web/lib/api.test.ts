@@ -83,7 +83,7 @@ describe("api fallback", () => {
     const records = await getFundingRecords();
 
     expect(records.length).toBeGreaterThan(0);
-    expect(records[0]?.id).toBe("fund_1");
+    expect(records[0]?.id).toBe("fund_topup_1");
   });
 
   it("returns an empty authenticated funding list when live settlement fetch fails", async () => {

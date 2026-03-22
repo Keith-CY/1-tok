@@ -34,8 +34,10 @@ type Summary struct {
 }
 
 type actorIdentity struct {
-	Token string
-	OrgID string
+	Token    string
+	OrgID    string
+	Email    string
+	Password string
 }
 
 type smokeClient struct {
@@ -523,6 +525,8 @@ func envBool(key string) bool {
 }
 
 func (c *smokeClient) createIAMUser(ctx context.Context, baseURL, kind, suffix string) (actorIdentity, error) {
+	email := fmt.Sprintf("%s-%s@example.com", kind, suffix)
+	password := "correct horse battery staple 123"
 	var response struct {
 		Organization struct {
 			ID string `json:"id"`
@@ -532,8 +536,8 @@ func (c *smokeClient) createIAMUser(ctx context.Context, baseURL, kind, suffix s
 		} `json:"session"`
 	}
 	err := c.postJSON(ctx, strings.TrimRight(baseURL, "/")+"/v1/signup", map[string]any{
-		"email":            fmt.Sprintf("%s-%s@example.com", kind, suffix),
-		"password":         "correct horse battery staple 123",
+		"email":            email,
+		"password":         password,
 		"name":             strings.ToUpper(kind[:1]) + kind[1:] + " User",
 		"organizationName": strings.ToUpper(kind[:1]) + kind[1:] + " Org " + suffix,
 		"organizationKind": kind,
@@ -548,8 +552,10 @@ func (c *smokeClient) createIAMUser(ctx context.Context, baseURL, kind, suffix s
 		return actorIdentity{}, errors.New("missing iam organization id")
 	}
 	return actorIdentity{
-		Token: response.Session.Token,
-		OrgID: response.Organization.ID,
+		Token:    response.Session.Token,
+		OrgID:    response.Organization.ID,
+		Email:    email,
+		Password: password,
 	}, nil
 }
 

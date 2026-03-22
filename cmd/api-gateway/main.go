@@ -9,6 +9,7 @@ import (
 	"github.com/chenyu/1-tok/internal/gateway"
 	"github.com/chenyu/1-tok/internal/httputil"
 	"github.com/chenyu/1-tok/internal/observability"
+	"github.com/chenyu/1-tok/internal/platform"
 	"github.com/chenyu/1-tok/internal/server"
 )
 
@@ -30,9 +31,15 @@ func main() {
 		}
 	}()
 
+	providerSettlementProvisioner, err := platform.NewFNNProviderSettlementProvisionerFromEnv()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	log.Printf("api-gateway listening on %s", addr)
 	gw, err := gateway.NewServerWithOptionsE(gateway.Options{
-		App: app,
+		App:                           app,
+		ProviderSettlementProvisioner: providerSettlementProvisioner,
 	})
 	if err != nil {
 		log.Fatal(err)

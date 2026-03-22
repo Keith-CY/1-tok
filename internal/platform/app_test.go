@@ -2688,6 +2688,33 @@ func TestAwardRFQ_WithActiveBinding_Succeeds(t *testing.T) {
 		ProviderOrgID: "org_p", CarrierBaseURL: "https://carrier.test", HostID: "h1",
 	})
 	app.VerifyCarrierBinding(binding.ID)
+	settlementBinding, err := app.RegisterProviderSettlementBinding(ProviderSettlementBinding{
+		ProviderOrgID:         "org_p",
+		Asset:                 "USDI",
+		PeerID:                "peer_provider",
+		P2PAddress:            "/dns4/provider/tcp/8228/p2p/peer_provider",
+		PaymentRequestBaseURL: "https://carrier.example.com/payment-requests",
+		OwnershipProof:        "proof_1",
+		UDTTypeScript: UDTTypeScript{
+			CodeHash: "0xudt",
+			HashType: "type",
+			Args:     "0x01",
+		},
+	})
+	if err != nil {
+		t.Fatalf("register settlement binding: %v", err)
+	}
+	if _, err := app.VerifyProviderSettlementBinding(settlementBinding.ID); err != nil {
+		t.Fatalf("verify settlement binding: %v", err)
+	}
+	app.SetProviderSettlementProvisioner(&stubSettlementProvisioner{
+		result: EnsureProviderLiquidityResult{
+			ChannelID:           "ch_1",
+			ReuseSource:         ProviderLiquidityReuseNewChannel,
+			ReadyChannelCount:   1,
+			TotalSpendableCents: 7000,
+		},
+	})
 
 	rfq, _ := app.CreateRFQ(CreateRFQInput{
 		BuyerOrgID: "org_b", Title: "Active binding", Category: "ai",

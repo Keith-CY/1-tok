@@ -27,13 +27,16 @@ var (
 	ErrBidNotBelongToRFQ  = errors.New("bid does not belong to rfq")
 
 	// Provider errors
-	ErrProviderSuspended = errors.New("provider carrier binding is suspended")
+	ErrProviderSuspended                    = errors.New("provider carrier binding is suspended")
+	ErrProviderSettlementBindingRequired    = errors.New("provider settlement binding is required")
+	ErrProviderSettlementPoolUnavailable    = errors.New("provider settlement pool is unavailable")
+	ErrProviderSettlementProvisionerMissing = errors.New("provider settlement provisioner is not configured")
 
 	// Bid errors
 	ErrBidExceedsBudget = errors.New("bid milestone totals exceed RFQ budget")
 
 	// Rating errors
-	ErrInvalidScore    = errors.New("score must be between 1 and 5")
+	ErrInvalidScore      = errors.New("score must be between 1 and 5")
 	ErrOrderNotCompleted = errors.New("only completed orders can be rated")
 	ErrOrderAlreadyRated = errors.New("order already rated")
 	ErrOrderNotRated     = errors.New("order not rated")

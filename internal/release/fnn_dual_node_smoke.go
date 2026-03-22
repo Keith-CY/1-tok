@@ -19,17 +19,17 @@ import (
 const defaultChannelFeeProportionalMillionths = "0x4B0"
 
 type FNNDualNodeSmokeConfig struct {
-	InvoiceRPCURL      string
-	PayerRPCURL        string
-	InvoiceP2PHost     string
-	PayerP2PHost       string
-	P2PPort            int
-	FundingAmount      string
+	InvoiceRPCURL       string
+	PayerRPCURL         string
+	InvoiceP2PHost      string
+	PayerP2PHost        string
+	P2PPort             int
+	FundingAmount       string
 	AcceptFundingAmount string
-	PollInterval       time.Duration
-	WaitTimeout        time.Duration
-	OpenChannelRetries int
-	Adapter            FNNAdapterSmokeConfig
+	PollInterval        time.Duration
+	WaitTimeout         time.Duration
+	OpenChannelRetries  int
+	Adapter             FNNAdapterSmokeConfig
 }
 
 type FNNDualNodeSmokeSummary struct {
@@ -112,11 +112,8 @@ func RunFNNDualNodeSmoke(ctx context.Context, cfg FNNDualNodeSmokeConfig) (FNNDu
 
 	invoiceAddress := multiaddrForP2P(cfg.InvoiceP2PHost, cfg.P2PPort, invoicePeerID)
 	payerAddress := multiaddrForP2P(cfg.PayerP2PHost, cfg.P2PPort, payerPeerID)
-	if err := payerNode.ConnectPeer(ctx, invoiceAddress); err != nil {
-		return FNNDualNodeSmokeSummary{}, fmt.Errorf("connect payer -> invoice: %w", err)
-	}
-	if err := invoiceNode.ConnectPeer(ctx, payerAddress); err != nil {
-		return FNNDualNodeSmokeSummary{}, fmt.Errorf("connect invoice -> payer: %w", err)
+	if err := connectDualNodePeers(ctx, payerNode, invoiceNode, invoiceAddress, payerAddress); err != nil {
+		return FNNDualNodeSmokeSummary{}, err
 	}
 
 	fundingAmountHex, err := releaseHexQuantity(cfg.FundingAmount)
@@ -136,7 +133,9 @@ func RunFNNDualNodeSmoke(ctx context.Context, cfg FNNDualNodeSmokeConfig) (FNNDu
 		}
 	}
 
-	temporaryChannelID, err := openChannelWithRetry(ctx, payerNode, invoicePeerID, fundingAmountHex, cfg.OpenChannelRetries, cfg.PollInterval)
+	temporaryChannelID, err := openChannelWithRetry(ctx, payerNode, invoicePeerID, fundingAmountHex, cfg.OpenChannelRetries, cfg.PollInterval, func(ctx context.Context) error {
+		return connectDualNodePeers(ctx, payerNode, invoiceNode, invoiceAddress, payerAddress)
+	})
 	if err != nil {
 		return FNNDualNodeSmokeSummary{}, fmt.Errorf("open channel: %w", err)
 	}
@@ -180,7 +179,7 @@ type releaseRawFNNClient struct {
 }
 
 type rawNodeInfo struct {
-	NodeID                           string `json:"node_id"`
+	NodeID                            string `json:"node_id"`
 	AutoAcceptChannelCKBFundingAmount string `json:"auto_accept_channel_ckb_funding_amount"`
 }
 
@@ -219,13 +218,38 @@ func (c releaseRawFNNClient) OpenChannel(ctx context.Context, peerID, fundingAmo
 		TemporaryChannelID string `json:"temporary_channel_id"`
 	}
 	if err := c.client.Call(ctx, "open_channel", []any{map[string]any{
-		"peer_id":                          peerID,
-		"funding_amount":                   fundingAmountHex,
+		"peer_id":                         peerID,
+		"funding_amount":                  fundingAmountHex,
 		"tlc_fee_proportional_millionths": defaultChannelFeeProportionalMillionths,
 	}}, &result); err != nil {
 		return "", err
 	}
 	return result.TemporaryChannelID, nil
+}
+
+func (c releaseRawFNNClient) CreateInvoice(ctx context.Context, asset, amount string, udtTypeScript map[string]string) (string, error) {
+	hexAmount, err := releaseHexQuantity(amount)
+	if err != nil {
+		return "", err
+	}
+	params := map[string]any{
+		"amount":   hexAmount,
+		"currency": releaseMapAssetToCurrency(asset),
+	}
+	if strings.EqualFold(strings.TrimSpace(asset), "USDI") {
+		params["udt_type_script"] = map[string]any{
+			"code_hash": udtTypeScript["code_hash"],
+			"hash_type": udtTypeScript["hash_type"],
+			"args":      udtTypeScript["args"],
+		}
+	}
+	var result struct {
+		InvoiceAddress string `json:"invoice_address"`
+	}
+	if err := c.client.Call(ctx, "new_invoice", []any{params}, &result); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(result.InvoiceAddress), nil
 }
 
 func (c releaseRawFNNClient) AcceptChannel(ctx context.Context, temporaryChannelID, fundingAmountHex string) error {
@@ -242,6 +266,32 @@ func (c releaseRawFNNClient) ListChannels(ctx context.Context, peerID string) (r
 		return rawChannelList{}, err
 	}
 	return result, nil
+}
+
+func connectDualNodePeers(ctx context.Context, payerNode, invoiceNode releaseRawFNNClient, invoiceAddress, payerAddress string) error {
+	if err := payerNode.ConnectPeer(ctx, invoiceAddress); err != nil && !isDualNodeAlreadyConnected(err) {
+		return fmt.Errorf("connect payer -> invoice: %w", err)
+	}
+	if err := invoiceNode.ConnectPeer(ctx, payerAddress); err != nil && !isDualNodeAlreadyConnected(err) {
+		return fmt.Errorf("connect invoice -> payer: %w", err)
+	}
+	return nil
+}
+
+func releaseMapAssetToCurrency(asset string) string {
+	if strings.EqualFold(strings.TrimSpace(asset), "CKB") {
+		if scoped := strings.TrimSpace(os.Getenv("FIBER_INVOICE_CURRENCY_CKB")); scoped != "" {
+			return scoped
+		}
+		if global := strings.TrimSpace(os.Getenv("FIBER_INVOICE_CURRENCY")); global != "" {
+			return global
+		}
+		return "Fibt"
+	}
+	if scoped := strings.TrimSpace(os.Getenv("FIBER_INVOICE_CURRENCY_USDI")); scoped != "" {
+		return scoped
+	}
+	return releaseMapAssetToCurrency("CKB")
 }
 
 func waitForChannelReady(ctx context.Context, invoiceNode, payerNode releaseRawFNNClient, invoicePeerID, payerPeerID string, pollInterval time.Duration) error {
@@ -269,7 +319,7 @@ func waitForChannelReady(ctx context.Context, invoiceNode, payerNode releaseRawF
 	}
 }
 
-func openChannelWithRetry(ctx context.Context, payerNode releaseRawFNNClient, peerID, fundingAmountHex string, attempts int, delay time.Duration) (string, error) {
+func openChannelWithRetry(ctx context.Context, payerNode releaseRawFNNClient, peerID, fundingAmountHex string, attempts int, delay time.Duration, reconnect func(context.Context) error) (string, error) {
 	var lastErr error
 	for attempt := 1; attempt <= attempts; attempt++ {
 		temporaryChannelID, err := payerNode.OpenChannel(ctx, peerID, fundingAmountHex)
@@ -279,6 +329,11 @@ func openChannelWithRetry(ctx context.Context, payerNode releaseRawFNNClient, pe
 		lastErr = err
 		if !isPeerInitPendingError(err) || attempt == attempts {
 			break
+		}
+		if reconnect != nil {
+			if reconnectErr := reconnect(ctx); reconnectErr != nil {
+				return "", reconnectErr
+			}
 		}
 
 		timer := time.NewTimer(delay)
@@ -299,6 +354,14 @@ func isPeerInitPendingError(err error) bool {
 	message := strings.ToLower(err.Error())
 	return strings.Contains(message, "waiting for peer to send init message") ||
 		(strings.Contains(message, "feature not found") && strings.Contains(message, "peer"))
+}
+
+func isDualNodeAlreadyConnected(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "already connected") || strings.Contains(message, "already exists")
 }
 
 func acceptChannelWithRetry(ctx context.Context, invoiceNode releaseRawFNNClient, temporaryChannelID, fundingAmountHex string, attempts int, delay time.Duration) error {
@@ -366,6 +429,13 @@ func releaseHexQuantity(value string) (string, error) {
 	}
 	if strings.HasPrefix(strings.ToLower(trimmed), "0x") {
 		return strings.ToLower(trimmed), nil
+	}
+	if strings.Contains(trimmed, ".") {
+		parts := strings.SplitN(trimmed, ".", 2)
+		if len(parts) != 2 || strings.Trim(parts[1], "0") != "" {
+			return "", fmt.Errorf("invalid positive integer amount %q", value)
+		}
+		trimmed = parts[0]
 	}
 	amount, ok := new(big.Int).SetString(trimmed, 10)
 	if !ok || amount.Sign() <= 0 {

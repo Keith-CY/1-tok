@@ -12,3 +12,7 @@ scripts/
 **/*_test.go
 **/*.test.ts
 .artifacts/
+.deps/
+api-gateway
+release-usdi-marketplace-e2e
+output/

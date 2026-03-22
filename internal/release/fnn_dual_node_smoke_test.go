@@ -319,6 +319,142 @@ func TestRunFNNDualNodeSmokeRetriesOpenChannelUntilPeerInitIsReady(t *testing.T)
 	}
 }
 
+func TestRunFNNDualNodeSmokeReconnectTreatsAlreadyConnectedAsSuccess(t *testing.T) {
+	var invoiceConnectCalls int
+	invoiceNode := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		payload, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read invoice node request: %v", err)
+		}
+		var rpc struct {
+			Method string `json:"method"`
+		}
+		if err := json.Unmarshal(payload, &rpc); err != nil {
+			t.Fatalf("decode invoice node request: %v", err)
+		}
+		switch rpc.Method {
+		case "node_info":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0",
+				"id":      1,
+				"result": map[string]any{
+					"node_id":                                "0x021111111111111111111111111111111111111111111111111111111111111111",
+					"auto_accept_channel_ckb_funding_amount": "0x2540be400",
+				},
+			})
+		case "connect_peer":
+			invoiceConnectCalls++
+			if invoiceConnectCalls > 1 {
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"jsonrpc": "2.0",
+					"id":      1,
+					"error": map[string]any{"message": "Peer already connected"},
+				})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": 1, "result": map[string]any{}})
+		case "accept_channel":
+			_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": 1, "result": map[string]any{}})
+		case "list_channels":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0",
+				"id":      1,
+				"result": map[string]any{
+					"channels": []map[string]any{{"state": "CHANNEL_READY", "enabled": true}},
+				},
+			})
+		default:
+			t.Fatalf("unexpected invoice node method %q", rpc.Method)
+		}
+	}))
+	defer invoiceNode.Close()
+
+	var payerConnectCalls int
+	var openChannelAttempts int
+	payerNode := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		payload, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read payer node request: %v", err)
+		}
+		var rpc struct {
+			Method string `json:"method"`
+		}
+		if err := json.Unmarshal(payload, &rpc); err != nil {
+			t.Fatalf("decode payer node request: %v", err)
+		}
+		switch rpc.Method {
+		case "node_info":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0",
+				"id":      1,
+				"result": map[string]any{
+					"node_id": "0x032222222222222222222222222222222222222222222222222222222222222222",
+				},
+			})
+		case "connect_peer":
+			payerConnectCalls++
+			if payerConnectCalls > 1 {
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"jsonrpc": "2.0",
+					"id":      1,
+					"error": map[string]any{"message": "already connected"},
+				})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": 1, "result": map[string]any{}})
+		case "open_channel":
+			openChannelAttempts++
+			if openChannelAttempts == 1 {
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"jsonrpc": "2.0",
+					"id":      1,
+					"error": map[string]any{
+						"code":    -32602,
+						"message": "Invalid parameter: Peer PeerId(QmTest)'s feature not found, waiting for peer to send Init message",
+					},
+				})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0",
+				"id":      1,
+				"result": map[string]any{"temporary_channel_id": "tmp_retry_2"},
+			})
+		case "list_channels":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0",
+				"id":      1,
+				"result": map[string]any{
+					"channels": []map[string]any{{"state": "CHANNEL_READY", "enabled": true}},
+				},
+			})
+		default:
+			t.Fatalf("unexpected payer node method %q", rpc.Method)
+		}
+	}))
+	defer payerNode.Close()
+
+	summary, err := RunFNNDualNodeSmoke(context.Background(), FNNDualNodeSmokeConfig{
+		InvoiceRPCURL:  invoiceNode.URL,
+		PayerRPCURL:    payerNode.URL,
+		InvoiceP2PHost: "fnn",
+		PayerP2PHost:   "fnn2",
+		P2PPort:        8228,
+		FundingAmount:  "10000000000",
+		PollInterval:   5 * time.Millisecond,
+		WaitTimeout:    time.Second,
+	})
+	if err != nil {
+		t.Fatalf("run dual fnn smoke: %v", err)
+	}
+	if summary.ChannelTemporaryID != "tmp_retry_2" {
+		t.Fatalf("unexpected summary: %+v", summary)
+	}
+	if openChannelAttempts < 2 {
+		t.Fatalf("expected open_channel retry, got %d attempts", openChannelAttempts)
+	}
+}
+
 func TestRunFNNDualNodeSmokeRetriesAcceptChannelUntilTempIDPropagates(t *testing.T) {
 	var acceptAttempts int
 

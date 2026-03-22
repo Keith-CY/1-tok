@@ -123,6 +123,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.Method == http.MethodPost && r.URL.Path == "/v1/topups" {
+		s.handleCreateTopUp(w, r)
+		return
+	}
+
 	if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/invoices/") {
 		s.handleGetInvoiceStatus(w, r)
 		return
@@ -135,6 +140,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodPost && r.URL.Path == "/v1/withdrawals" {
 		s.handleRequestWithdrawal(w, r)
+		return
+	}
+
+	if r.Method == http.MethodPost && r.URL.Path == "/v1/provider-payouts" {
+		s.handleRequestProviderPayout(w, r)
 		return
 	}
 
@@ -229,6 +239,70 @@ func (s *Server) handleCreateInvoice(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusCreated, map[string]string{"invoice": result.Invoice})
+}
+
+func (s *Server) handleCreateTopUp(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		BuyerOrgID string `json:"buyerOrgId"`
+		Asset      string `json:"asset"`
+		Amount     string `json:"amount"`
+		Memo       string `json:"memo"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	if strings.TrimSpace(payload.Amount) == "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required fields"})
+		return
+	}
+
+	buyerOrgID, err := s.resolveBuyerOrgOrInternal(r, payload.BuyerOrgID)
+	if err != nil {
+		httputil.WriteAuthError(w, err)
+		return
+	}
+	recordID, err := s.funding.NextID()
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	asset := defaultSettlementAsset(payload.Asset)
+	result, err := s.fiber.CreateInvoice(r.Context(), fiberclient.CreateInvoiceInput{
+		PostID:     "buyer_topup:" + buyerOrgID + ":" + recordID,
+		FromUserID: buyerOrgID,
+		ToUserID:   marketplaceTreasuryUserID(),
+		Asset:      asset,
+		Amount:     strings.TrimSpace(payload.Amount),
+		Message:    strings.TrimSpace(payload.Memo),
+	})
+	if err != nil {
+		writeFiberError(w, err)
+		return
+	}
+
+	now := time.Now().UTC()
+	if err := s.funding.Save(FundingRecord{
+		ID:         recordID,
+		Kind:       FundingRecordKindBuyerTopUp,
+		BuyerOrgID: buyerOrgID,
+		Asset:      asset,
+		Amount:     strings.TrimSpace(payload.Amount),
+		Invoice:    result.Invoice,
+		State:      "UNPAID",
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}); err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusCreated, map[string]string{
+		"invoice":  result.Invoice,
+		"recordId": recordID,
+		"asset":    asset,
+	})
 }
 
 func (s *Server) handleGetInvoiceStatus(w http.ResponseWriter, r *http.Request) {
@@ -342,10 +416,86 @@ func (s *Server) handleRequestWithdrawal(w http.ResponseWriter, r *http.Request)
 	httputil.WriteJSON(w, http.StatusCreated, result)
 }
 
+func (s *Server) handleRequestProviderPayout(w http.ResponseWriter, r *http.Request) {
+	if err := s.authorizeInternalRoute(r); err != nil {
+		httputil.WriteAuthError(w, err)
+		return
+	}
+
+	var payload struct {
+		OrderID        string `json:"orderId"`
+		MilestoneID    string `json:"milestoneId"`
+		BuyerOrgID     string `json:"buyerOrgId"`
+		ProviderOrgID  string `json:"providerOrgId"`
+		Asset          string `json:"asset"`
+		Amount         string `json:"amount"`
+		PaymentRequest string `json:"paymentRequest"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	if strings.TrimSpace(payload.ProviderOrgID) == "" || strings.TrimSpace(payload.Amount) == "" || strings.TrimSpace(payload.PaymentRequest) == "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required fields"})
+		return
+	}
+
+	asset := defaultSettlementAsset(payload.Asset)
+	result, err := s.fiber.RequestPayout(r.Context(), fiberclient.RequestPayoutInput{
+		UserID: marketplaceTreasuryUserID(),
+		Asset:  asset,
+		Amount: strings.TrimSpace(payload.Amount),
+		Destination: fiberclient.WithdrawalDestination{
+			Kind:           "PAYMENT_REQUEST",
+			PaymentRequest: strings.TrimSpace(payload.PaymentRequest),
+		},
+	})
+	if err != nil {
+		writeFiberError(w, err)
+		return
+	}
+
+	recordID, err := s.funding.NextID()
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	now := time.Now().UTC()
+	if err := s.funding.Save(FundingRecord{
+		ID:            recordID,
+		Kind:          FundingRecordKindProviderPayout,
+		OrderID:       strings.TrimSpace(payload.OrderID),
+		MilestoneID:   strings.TrimSpace(payload.MilestoneID),
+		BuyerOrgID:    strings.TrimSpace(payload.BuyerOrgID),
+		ProviderOrgID: strings.TrimSpace(payload.ProviderOrgID),
+		Asset:         asset,
+		Amount:        strings.TrimSpace(payload.Amount),
+		ExternalID:    result.ID,
+		State:         result.State,
+		Destination: map[string]string{
+			"kind":           "PAYMENT_REQUEST",
+			"paymentRequest": strings.TrimSpace(payload.PaymentRequest),
+		},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}); err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
+		"id":       result.ID,
+		"state":    result.State,
+		"recordId": recordID,
+		"asset":    asset,
+	})
+}
+
 func (s *Server) handleListFundingRecords(w http.ResponseWriter, r *http.Request) {
 	filter := FundingRecordFilter{
 		Kind:          FundingRecordKind(r.URL.Query().Get("kind")),
 		OrderID:       r.URL.Query().Get("orderId"),
+		BuyerOrgID:    r.URL.Query().Get("buyerOrgId"),
 		ProviderOrgID: r.URL.Query().Get("providerOrgId"),
 	}
 	if err := s.scopeFundingFilter(r, &filter); err != nil {
@@ -479,6 +629,14 @@ func (s *Server) scopeFundingFilter(r *http.Request, filter *FundingRecordFilter
 		if membership.OrganizationKind == "ops" && isOpsRole(membership.Role) {
 			return nil
 		}
+		if membership.OrganizationKind == "buyer" && isBuyerTreasuryRole(membership.Role) {
+			if filter.BuyerOrgID != "" && filter.BuyerOrgID != membership.OrganizationID {
+				return errors.New("buyer org mismatch")
+			}
+			filter.BuyerOrgID = membership.OrganizationID
+			filter.ProviderOrgID = ""
+			return nil
+		}
 		if membership.OrganizationKind == "provider" && isProviderFinanceRole(membership.Role) {
 			if filter.ProviderOrgID != "" && filter.ProviderOrgID != membership.OrganizationID {
 				return errors.New("provider org mismatch")
@@ -488,7 +646,7 @@ func (s *Server) scopeFundingFilter(r *http.Request, filter *FundingRecordFilter
 		}
 	}
 
-	return errors.New("provider or ops membership is required")
+	return errors.New("buyer, provider, or ops membership is required")
 }
 
 func bearerToken(header string) (string, bool) {
@@ -502,6 +660,15 @@ func bearerToken(header string) (string, bool) {
 func isProviderFinanceRole(role string) bool {
 	switch role {
 	case "org_owner", "sales", "delivery_operator", "finance_viewer":
+		return true
+	default:
+		return false
+	}
+}
+
+func isBuyerTreasuryRole(role string) bool {
+	switch role {
+	case "org_owner", "procurement", "operator":
 		return true
 	default:
 		return false
@@ -547,6 +714,46 @@ func (s *Server) resolveProviderOrg(r *http.Request, requestedProviderOrgID stri
 	return "", errors.New("provider or ops membership is required")
 }
 
+func (s *Server) resolveBuyerOrgOrInternal(r *http.Request, requestedBuyerOrgID string) (string, error) {
+	if (!s.serviceTokens.Empty() && s.serviceTokens.MatchesRequest(r)) || (s.serviceTokens.Empty() && (s.auth == nil || iamclient.IsNoop(s.auth))) {
+		if strings.TrimSpace(requestedBuyerOrgID) == "" {
+			return "", errors.New("buyer org is required")
+		}
+		return strings.TrimSpace(requestedBuyerOrgID), nil
+	}
+	return s.resolveBuyerOrg(r, requestedBuyerOrgID)
+}
+
+func (s *Server) resolveBuyerOrg(r *http.Request, requestedBuyerOrgID string) (string, error) {
+	if s.auth == nil || iamclient.IsNoop(s.auth) {
+		return requestedBuyerOrgID, nil
+	}
+
+	token, ok := bearerToken(r.Header.Get("Authorization"))
+	if !ok {
+		return "", iamclient.ErrUnauthorized
+	}
+
+	actor, err := s.auth.GetActor(r.Context(), token)
+	if err != nil {
+		return "", err
+	}
+
+	for _, membership := range actor.Memberships {
+		if membership.OrganizationKind == "ops" && isOpsRole(membership.Role) {
+			return requestedBuyerOrgID, nil
+		}
+		if membership.OrganizationKind == "buyer" && isBuyerTreasuryRole(membership.Role) {
+			if requestedBuyerOrgID != "" && requestedBuyerOrgID != membership.OrganizationID {
+				return "", errors.New("buyer org mismatch")
+			}
+			return membership.OrganizationID, nil
+		}
+	}
+
+	return "", errors.New("buyer or ops membership is required")
+}
+
 
 func writeFiberError(w http.ResponseWriter, err error) {
 	if errors.Is(err, fiberclient.ErrNotConfigured) {
@@ -566,3 +773,19 @@ func (s *Server) authorizeInternalRoute(r *http.Request) error {
 	return serviceauth.ErrInvalidServiceToken
 }
 
+func marketplaceTreasuryUserID() string {
+	if value := strings.TrimSpace(os.Getenv("MARKETPLACE_TREASURY_USER_ID")); value != "" {
+		return value
+	}
+	return "platform_treasury"
+}
+
+func defaultSettlementAsset(value string) string {
+	if trimmed := strings.TrimSpace(value); trimmed != "" {
+		return trimmed
+	}
+	if env := strings.TrimSpace(os.Getenv("MARKETPLACE_SETTLEMENT_ASSET")); env != "" {
+		return env
+	}
+	return "USDI"
+}

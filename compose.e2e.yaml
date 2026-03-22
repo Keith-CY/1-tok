@@ -120,7 +120,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "HOST_IP=$$(hostname -i | awk '{print $$1}'); HOST_IP=$${HOST_IP} bun -e \"const res = await fetch('http://' + process.env.HOST_IP + ':3000/login'); if (!res.ok) process.exit(1);\"",
+          "HOST_IP=$$(hostname -i | awk '{print $$1}'); HOST_IP=$${HOST_IP} node -e \"const socket = require('node:net').connect(3000, process.env.HOST_IP); socket.on('connect', () => { socket.end(); process.exit(0); }); socket.on('error', () => process.exit(1));\"",
         ]
       interval: 5s
       timeout: 10s

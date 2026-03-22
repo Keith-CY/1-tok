@@ -2,7 +2,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { chromium, devices } from "playwright";
 
+const FLOW_MODE = process.env.SCREENSHOT_FLOW_MODE || "legacy-marketplace";
 const OUTPUT_DIR = process.env.SCREENSHOT_OUTPUT_DIR || "/artifacts";
+const SUMMARY_PATH = process.env.SCREENSHOT_SUMMARY_PATH || path.join(OUTPUT_DIR, "release-usdi-marketplace-e2e.json");
 const WEB_BASE_URL = trimTrailingSlash(process.env.SCREENSHOT_WEB_BASE_URL || "http://web:3000");
 const API_BASE_URL = trimTrailingSlash(process.env.SCREENSHOT_API_BASE_URL || "http://api-gateway:8080");
 const IAM_BASE_URL = trimTrailingSlash(process.env.SCREENSHOT_IAM_BASE_URL || "http://iam:8081");
@@ -37,14 +39,20 @@ const manifest = [];
 async function main() {
   await fs.mkdir(OUTPUT_DIR, { recursive: true });
   const browser = await chromium.launch({ headless: true });
+  let summary = null;
 
   try {
-    for (const device of DEVICE_PRESETS) {
-      await runFlowForDevice(browser, device);
+    if (FLOW_MODE === "usdi-marketplace") {
+      summary = JSON.parse(await fs.readFile(SUMMARY_PATH, "utf8"));
+      await runUSDIMarketplaceFlow(browser);
+    } else {
+      for (const device of DEVICE_PRESETS) {
+        await runFlowForDevice(browser, device);
+      }
     }
 
     await fs.writeFile(path.join(OUTPUT_DIR, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n", "utf8");
-    await fs.writeFile(path.join(OUTPUT_DIR, "comment.md"), renderLocalComment(manifest), "utf8");
+    await fs.writeFile(path.join(OUTPUT_DIR, "comment.md"), renderLocalComment(manifest, summary), "utf8");
     console.log(`screenshots saved to ${OUTPUT_DIR}`);
   } finally {
     await browser.close();
@@ -191,6 +199,103 @@ async function runFlowForDevice(browser, device) {
   }
 }
 
+async function runUSDIMarketplaceFlow(browser) {
+  const summary = JSON.parse(await fs.readFile(SUMMARY_PATH, "utf8"));
+  if (!summary?.orderId || !summary?.buyerUserEmail || !summary?.providerUserEmail) {
+    throw new Error(`invalid usdi marketplace summary at ${SUMMARY_PATH}`);
+  }
+
+  const device = DEVICE_PRESETS[0];
+  const buyerContext = await browser.newContext(device.contextOptions);
+  const providerContext = await browser.newContext(device.contextOptions);
+  const opsContext = await browser.newContext(device.contextOptions);
+  const proofContext = await browser.newContext(device.contextOptions);
+  const buyerPage = await buyerContext.newPage();
+  const providerPage = await providerContext.newPage();
+  const opsPage = await opsContext.newPage();
+  const proofPage = await proofContext.newPage();
+  const ops = await createUser("ops", `${Date.now()}-${String(summary.orderId).slice(-6)}`);
+
+  try {
+    let order = 1;
+    for (const [index, proofURL] of (summary.explorerProofUrls ?? []).entries()) {
+      await proofPage.goto(proofURL, { waitUntil: "domcontentloaded" });
+      await proofPage.waitForTimeout(1500);
+      await captureFlow(proofPage, {
+        flow: "usdi-marketplace",
+        stepKey: `explorer-proof-${index + 1}`,
+        stepLabel: `Explorer Proof ${index + 1}`,
+        order,
+        title: `Faucet proof ${index + 1}`,
+      });
+      order += 1;
+    }
+
+    await goto(buyerPage, `${WEB_BASE_URL}/login?next=/buyer`);
+    await login(buyerPage, summary.buyerUserEmail, PASSWORD);
+    await waitForHydration(buyerPage);
+    await captureFlow(buyerPage, {
+      flow: "usdi-marketplace",
+      stepKey: "buyer-dashboard",
+      stepLabel: "Buyer Dashboard",
+      order,
+      title: "Buyer top-up and awarded request",
+    });
+    order += 1;
+
+    await goto(buyerPage, `${WEB_BASE_URL}/buyer/orders/${summary.orderId}`);
+    await waitForHydration(buyerPage);
+    await captureFlow(buyerPage, {
+      flow: "usdi-marketplace",
+      stepKey: "buyer-order",
+      stepLabel: "Buyer Order",
+      order,
+      title: "Buyer sees completed delivery",
+    });
+    order += 1;
+
+    await goto(providerPage, `${WEB_BASE_URL}/login?next=/provider`);
+    await login(providerPage, summary.providerUserEmail, PASSWORD);
+    await goto(providerPage, `${WEB_BASE_URL}/provider/proposals`);
+    await waitForHydration(providerPage);
+    await captureFlow(providerPage, {
+      flow: "usdi-marketplace",
+      stepKey: "provider-proposals",
+      stepLabel: "Provider Proposal",
+      order,
+      title: "Provider awarded proposal",
+    });
+    order += 1;
+
+    await goto(providerPage, `${WEB_BASE_URL}/provider/orders/${summary.orderId}`);
+    await waitForHydration(providerPage);
+    await captureFlow(providerPage, {
+      flow: "usdi-marketplace",
+      stepKey: "provider-order",
+      stepLabel: "Provider Order",
+      order,
+      title: "Provider streaming payout and completion",
+    });
+    order += 1;
+
+    await goto(opsPage, `${WEB_BASE_URL}/internal/login?next=/ops`);
+    await login(opsPage, ops.email, ops.password);
+    await waitForHydration(opsPage);
+    await captureFlow(opsPage, {
+      flow: "usdi-marketplace",
+      stepKey: "ops-dashboard",
+      stepLabel: "Ops Dashboard",
+      order,
+      title: "Ops sees payout and settlement state",
+    });
+  } finally {
+    await buyerContext.close();
+    await providerContext.close();
+    await opsContext.close();
+    await proofContext.close();
+  }
+}
+
 async function createUser(kind, suffix) {
   const email = `${kind}-screenshot-${suffix}@example.com`;
   const response = await fetch(`${IAM_BASE_URL}/v1/signup`, {
@@ -220,7 +325,7 @@ async function login(page, email, password) {
   await page.locator('input[name="email"]').fill(email);
   await page.locator('input[name="password"]').fill(password);
   await Promise.all([
-    page.waitForURL(/\/(buyer|provider)$/),
+    page.waitForURL(/\/(buyer|provider|ops)$/),
     page.locator('form[action="/auth/login"] button[type="submit"]').click(),
   ]);
   await waitForHydration(page);
@@ -447,6 +552,24 @@ async function capture(page, entry) {
   console.log(`captured ${relativePath}`);
 }
 
+async function captureFlow(page, entry) {
+  const slug = slugify(entry.stepKey || entry.stepLabel || entry.title || `step-${entry.order}`);
+  const fileName = `${String(entry.order).padStart(2, "0")}-${slug}.png`;
+  const relativePath = path.join(entry.flow, fileName);
+  const absolutePath = path.join(OUTPUT_DIR, relativePath);
+  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+  await page.screenshot({ path: absolutePath, fullPage: true });
+  manifest.push({
+    flow: entry.flow,
+    stepKey: entry.stepKey,
+    stepLabel: entry.stepLabel,
+    order: entry.order,
+    title: entry.title,
+    path: relativePath.replaceAll(path.sep, "/"),
+  });
+  console.log(`captured ${relativePath}`);
+}
+
 async function poll(fn, timeoutMs, label) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
@@ -475,7 +598,40 @@ function capitalize(value) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-function renderLocalComment(entries) {
+function slugify(value) {
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "step";
+}
+
+function renderLocalComment(entries, summary) {
+  if (FLOW_MODE === "usdi-marketplace") {
+    const rows = [...entries].sort((left, right) => left.order - right.order);
+    const lines = [
+      "# USDI Marketplace E2E",
+      "",
+    ];
+    if (summary) {
+      lines.push(
+        `- Asset: \`${summary.asset || "USDI"}\``,
+        `- Bootstrap order / channel: \`${summary.bootstrapOrderId || ""}\` / \`${summary.bootstrapReservationChannel || ""}\``,
+        `- Bootstrap reservation status: \`${summary.bootstrapReservationStatus || ""}\``,
+        `- Reuse order initial / final channel: \`${summary.reuseOrderId || ""}\` / \`${summary.reuseReservationInitialChannel || ""}\` -> \`${summary.reuseReservationChannel || ""}\``,
+        `- Reuse status / source: \`${summary.reuseReservationStatus || ""}\` / \`${summary.reuseReservationReuseSource || ""}\``,
+        `- Disconnect order: \`${summary.orderId || ""}\``,
+        `- Disconnect / recover status: \`${summary.disconnectOrderStatus || ""}\` / \`${summary.recoveredOrderStatus || ""}\``,
+        `- Final order status: \`${summary.finalOrderStatus || ""}\``,
+        "",
+      );
+    }
+    for (const row of rows) {
+      lines.push(`## ${row.stepLabel}`, "", `- ${row.title}: \`${row.path}\``, "");
+    }
+    return `${lines.join("\n").trim()}\n`;
+  }
+
   const businessOrder = [
     ["home", "Home"],
     ["buyer", "Buyer"],

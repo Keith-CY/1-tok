@@ -126,6 +126,144 @@ func TestServerCreatesInvoiceReadsStatusAndBuildsSettledFeedFromFNN(t *testing.T
 	}
 }
 
+func TestServerCreatesUSDIInvoiceWithResolvedUdtTypeScript(t *testing.T) {
+	invoiceNode := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		payload, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read raw fnn request: %v", err)
+		}
+
+		var rpc struct {
+			Method string            `json:"method"`
+			Params []json.RawMessage `json:"params"`
+		}
+		if err := json.Unmarshal(payload, &rpc); err != nil {
+			t.Fatalf("decode raw fnn request: %v", err)
+		}
+
+		switch rpc.Method {
+		case "node_info":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0",
+				"id":      1,
+				"result": map[string]any{
+					"udt_cfg_infos": []map[string]any{
+						{
+							"name": "USDI",
+							"script": map[string]any{
+								"code_hash": "0xudt",
+								"hash_type": "type",
+								"args":      "0x01",
+							},
+						},
+					},
+				},
+			})
+		case "new_invoice":
+			var params struct {
+				Amount        string `json:"amount"`
+				Currency      string `json:"currency"`
+				UdtTypeScript struct {
+					CodeHash string `json:"code_hash"`
+					HashType string `json:"hash_type"`
+					Args     string `json:"args"`
+				} `json:"udt_type_script"`
+			}
+			if len(rpc.Params) != 1 {
+				t.Fatalf("expected one new_invoice param, got %d", len(rpc.Params))
+			}
+			if err := json.Unmarshal(rpc.Params[0], &params); err != nil {
+				t.Fatalf("decode new_invoice params: %v", err)
+			}
+			if params.Amount != "0xa" {
+				t.Fatalf("expected integer USDI amount to map to 0xa, got %q", params.Amount)
+			}
+			if params.Currency == "" {
+				t.Fatal("expected USDI invoice currency to be set")
+			}
+			if params.UdtTypeScript.CodeHash != "0xudt" || params.UdtTypeScript.HashType != "type" || params.UdtTypeScript.Args != "0x01" {
+				t.Fatalf("missing udt_type_script in new_invoice params: %+v", params.UdtTypeScript)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0",
+				"id":      1,
+				"result": map[string]any{
+					"invoice_address": "fiber:invoice:usdi:10",
+				},
+			})
+		default:
+			t.Fatalf("unexpected raw fnn method %q", rpc.Method)
+		}
+	}))
+	defer invoiceNode.Close()
+
+	server := httptest.NewServer(NewServerWithOptions(Options{
+		InvoiceRPCURL: invoiceNode.URL,
+		PayerRPCURL:   invoiceNode.URL,
+	}))
+	defer server.Close()
+
+	client := fiberclient.NewClient(server.URL, "app_local", "secret_local")
+	result, err := client.CreateInvoice(context.Background(), fiberclient.CreateInvoiceInput{
+		PostID:     "buyer_topup:buyer_1:fund_1",
+		FromUserID: "buyer_1",
+		ToUserID:   "platform_treasury",
+		Asset:      "USDI",
+		Amount:     "10",
+	})
+	if err != nil {
+		t.Fatalf("create usdi invoice: %v", err)
+	}
+	if result.Invoice != "fiber:invoice:usdi:10" {
+		t.Fatalf("unexpected usdi invoice: %+v", result)
+	}
+}
+
+func TestServerRejectsUSDIInvoiceWhenNodeInfoHasNoUdtScript(t *testing.T) {
+	invoiceNode := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		payload, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read raw fnn request: %v", err)
+		}
+
+		var rpc struct {
+			Method string `json:"method"`
+		}
+		if err := json.Unmarshal(payload, &rpc); err != nil {
+			t.Fatalf("decode raw fnn request: %v", err)
+		}
+		if rpc.Method != "node_info" {
+			t.Fatalf("unexpected raw fnn method %q", rpc.Method)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0",
+			"id":      1,
+			"result": map[string]any{
+				"udt_cfg_infos": []map[string]any{},
+			},
+		})
+	}))
+	defer invoiceNode.Close()
+
+	server := httptest.NewServer(NewServerWithOptions(Options{
+		InvoiceRPCURL: invoiceNode.URL,
+		PayerRPCURL:   invoiceNode.URL,
+	}))
+	defer server.Close()
+
+	client := fiberclient.NewClient(server.URL, "app_local", "secret_local")
+	_, err := client.CreateInvoice(context.Background(), fiberclient.CreateInvoiceInput{
+		PostID:     "buyer_topup:buyer_1:fund_1",
+		FromUserID: "buyer_1",
+		ToUserID:   "platform_treasury",
+		Asset:      "USDI",
+		Amount:     "10",
+	})
+	if err == nil || !strings.Contains(err.Error(), "usable USDI udt_type_script") {
+		t.Fatalf("expected missing USDI udt script error, got %v", err)
+	}
+}
+
 func TestServerQuotesAndRequestsWithdrawalThroughPayerFNN(t *testing.T) {
 	payerNode := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		payload, err := io.ReadAll(r.Body)
@@ -386,6 +524,10 @@ func (rejectingRawNode) SendPayment(context.Context, string, string, string, str
 	return "", errors.New("unexpected call")
 }
 
+func (rejectingRawNode) NodeInfo(context.Context) (map[string]any, error) {
+	return nil, errors.New("unexpected call")
+}
+
 func TestHMACVerification_NoSecretAllowsAll(t *testing.T) {
 	server := NewServerWithOptions(Options{
 		InvoiceNode: &stubRPCNode{},
@@ -575,6 +717,13 @@ func TestMapAssetToCurrency(t *testing.T) {
 		if got := mapAssetToCurrency(tt.asset); got != tt.want {
 			t.Errorf("mapAssetToCurrency(%q) = %q, want %q", tt.asset, got, tt.want)
 		}
+	}
+}
+
+func TestMapAssetToCurrencyUsesScopedUSDIOverride(t *testing.T) {
+	t.Setenv("FIBER_INVOICE_CURRENCY_USDI", "TestUdt")
+	if got := mapAssetToCurrency("USDI"); got != "TestUdt" {
+		t.Fatalf("mapAssetToCurrency(USDI) = %q, want TestUdt", got)
 	}
 }
 
@@ -975,7 +1124,9 @@ func TestFullTipFlow_CreateThenStatus(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 
 		body, _ := io.ReadAll(r.Body)
-		var rpc struct{ Method string `json:"method"` }
+		var rpc struct {
+			Method string `json:"method"`
+		}
 		json.Unmarshal(body, &rpc)
 
 		switch rpc.Method {
@@ -1059,7 +1210,9 @@ func TestQuoteWithdrawal_PaymentRequestValidation(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 
 		body, _ := io.ReadAll(r.Body)
-		var rpc struct{ Method string `json:"method"` }
+		var rpc struct {
+			Method string `json:"method"`
+		}
 		json.Unmarshal(body, &rpc)
 
 		if rpc.Method == "parse_invoice" {
@@ -1104,7 +1257,9 @@ func TestRequestWithdrawal_PaymentRequest(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 
 		body, _ := io.ReadAll(r.Body)
-		var rpc struct{ Method string `json:"method"` }
+		var rpc struct {
+			Method string `json:"method"`
+		}
 		json.Unmarshal(body, &rpc)
 
 		switch rpc.Method {
@@ -1214,7 +1369,9 @@ func TestHandleStatus_InvoiceNodeError(t *testing.T) {
 	rpcSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		body, _ := io.ReadAll(r.Body)
-		var rpc struct{ Method string `json:"method"` }
+		var rpc struct {
+			Method string `json:"method"`
+		}
 		json.Unmarshal(body, &rpc)
 
 		if rpc.Method == "parse_invoice" {
@@ -1347,7 +1504,9 @@ func TestSendPayment_Success(t *testing.T) {
 		callCount++
 		w.Header().Set("Content-Type", "application/json")
 		body, _ := io.ReadAll(r.Body)
-		var rpc struct{ Method string `json:"method"` }
+		var rpc struct {
+			Method string `json:"method"`
+		}
 		json.Unmarshal(body, &rpc)
 
 		switch rpc.Method {

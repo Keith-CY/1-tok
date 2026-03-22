@@ -21,6 +21,9 @@ export interface BuyerDashboardData {
     openRFQs: number;
     pausedOrders: number;
     buyerOrgId: string;
+    prepaidBalanceCents: number;
+    settledTopUps: number;
+    pendingTopUps: number;
   };
   recommendedListings: Listing[];
   activeOrders: Order[];
@@ -82,7 +85,6 @@ export interface ProviderOrderDetail {
   rfq: RFQ | null;
   fundingRecords: FundingRecord[];
 }
-
 export interface OpsDashboardData {
   summary: {
     activeOrders: number;
@@ -137,13 +139,17 @@ export async function getBuyerDashboardData(options: {
   buyerOrgId: string;
   requireLive?: boolean;
 }): Promise<BuyerDashboardData> {
-  const [recommendedListings, orders, rfqs] = await Promise.all([
+  const [recommendedListings, orders, rfqs, fundingRecords] = await Promise.all([
     getListings({ authToken: options.authToken, requireLive: options.requireLive }),
     getOrders({ authToken: options.authToken, requireLive: options.requireLive }),
     getRFQs({ authToken: options.authToken, requireLive: options.requireLive }),
+    getFundingRecords({ authToken: options.authToken, requireLive: options.requireLive }),
   ]);
   const activeOrders = orders.filter((order) => order.buyerOrgId === options.buyerOrgId);
   const buyerRFQs = rfqs.filter((rfq) => rfq.buyerOrgId === options.buyerOrgId);
+  const buyerFunding = fundingRecords.filter((record) => record.buyerOrgId === options.buyerOrgId);
+  const settledTopUps = buyerFunding.filter((record) => record.kind === "buyer_topup" && record.state === "SETTLED");
+  const pendingTopUps = buyerFunding.filter((record) => record.kind === "buyer_topup" && record.state !== "SETTLED");
   const pausedOrders = activeOrders.filter(
     (order) =>
       order.status === "awaiting_budget" || order.milestones.some((milestone) => milestone.state === "paused"),
@@ -178,6 +184,9 @@ export async function getBuyerDashboardData(options: {
       openRFQs: buyerRFQs.filter((rfq) => rfq.status === "open").length,
       pausedOrders,
       buyerOrgId: options.buyerOrgId,
+      prepaidBalanceCents: settledTopUps.reduce((sum, record) => sum + parseAmountToCents(record.amount), 0),
+      settledTopUps: settledTopUps.length,
+      pendingTopUps: pendingTopUps.length,
     },
     recommendedListings,
     activeOrders,
@@ -192,6 +201,11 @@ export async function getBuyerDashboardData(options: {
         id: "msg_2",
         title: "RFQ watch",
         detail: `${rfqBook.length} RFQs are active for this buyer session, with ${rfqBook.reduce((sum, rfq) => sum + rfq.bidCount, 0)} bids in play.`,
+      },
+      {
+        id: "msg_3",
+        title: "USDI prefund",
+        detail: `${settledTopUps.length} settled top-ups and ${pendingTopUps.length} pending top-ups are visible for this buyer.`,
       },
     ],
   };
@@ -218,7 +232,7 @@ export async function getProviderDashboardData(options: {
   const providerFunding = fundingRecords.filter((record) => record.providerOrgId === options.providerOrgId);
   const settledInvoices = providerFunding.filter((record) => record.kind === "invoice" && record.state === "SETTLED").length;
   const inFlightWithdrawals = providerFunding.filter(
-    (record) => record.kind === "withdrawal" && record.state !== "SETTLED",
+    (record) => (record.kind === "withdrawal" || record.kind === "provider_payout") && record.state !== "SETTLED",
   ).length;
   const rfqBidGroups = await Promise.all(
     rfqs.map(async (rfq) => ({
@@ -270,7 +284,7 @@ export async function getProviderDashboardData(options: {
     pipeline: [
       { id: "pipe_1", label: "Active orders", detail: `${activeOrders.length} orders currently tied to ${provider.name}.` },
       { id: "pipe_2", label: "Submitted bids", detail: `${marketQueue.length} RFQ responses currently belong to ${provider.name}.` },
-      { id: "pipe_3", label: "Withdrawal queue", detail: `${inFlightWithdrawals} provider withdrawals are still in flight.` },
+      { id: "pipe_3", label: "Payout queue", detail: `${inFlightWithdrawals} provider payouts are still in flight.` },
     ],
     activeOrders,
     marketQueue,
@@ -333,7 +347,6 @@ export async function getProviderOrderDetail(options: {
     ),
   };
 }
-
 export async function getOpsDashboardData(options: { authToken: string; requireLive?: boolean }): Promise<OpsDashboardData> {
   const [providers, orders, fundingRecords, disputes] = await Promise.all([
     getProviders({ authToken: options.authToken, requireLive: options.requireLive }),
@@ -343,7 +356,7 @@ export async function getOpsDashboardData(options: { authToken: string; requireL
   ]);
   const settledInvoices = fundingRecords.filter((record) => record.kind === "invoice" && record.state === "SETTLED").length;
   const pendingWithdrawals = fundingRecords.filter(
-    (record) => record.kind === "withdrawal" && record.state !== "SETTLED",
+    (record) => (record.kind === "withdrawal" || record.kind === "provider_payout") && record.state !== "SETTLED",
   ).length;
   const openDisputes = disputes.filter((dispute) => dispute.status !== "resolved");
 
@@ -357,7 +370,7 @@ export async function getOpsDashboardData(options: { authToken: string; requireL
     },
     pendingReviews: [
       { id: "review_1", title: "Open disputes", detail: `${openDisputes.length} disputes currently need reimbursement or recovery review.` },
-      { id: "review_2", title: "Pending withdrawals", detail: `${pendingWithdrawals} settlement withdrawals still need completion or review.` },
+      { id: "review_2", title: "Pending payouts", detail: `${pendingWithdrawals} settlement payouts still need completion or review.` },
     ],
     treasurySignals: [
       { id: "sig_1", label: "Funding records", value: `${fundingRecords.length}`, tone: "warning" },
@@ -417,6 +430,14 @@ function resolveBaseUrl(kind: "api" | "settlement"): string | null {
     return process.env.NEXT_PUBLIC_SETTLEMENT_BASE_URL?.replace(/\/$/, "") ?? null;
   }
   return process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? null;
+}
+
+function parseAmountToCents(amount: string): number {
+  const parsed = Number.parseFloat(amount);
+  if (Number.isNaN(parsed)) {
+    return 0;
+  }
+  return Math.round(parsed * 100);
 }
 
 // --- New v1 API functions ---

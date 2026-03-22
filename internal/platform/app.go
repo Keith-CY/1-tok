@@ -184,25 +184,33 @@ type DisputeRepository interface {
 }
 
 type App struct {
-	orders               OrderRepository
-	providers            ProviderRepository
-	listings             ListingRepository
-	rfqs                 RFQRepository
-	bids                 BidRepository
-	messages             MessageRepository
-	disputes             DisputeRepository
-	creditEngine         core.CreditDecisionEngine
-	publisher            EventPublisher
-	notifier             Notifier
-	mu                   sync.Mutex // guards compound multi-store operations
-	ratings              []OrderRating
-	clock                Clock
-	providerApplications []ProviderApplication
-	carrierBindings      []ProviderCarrierBinding
-	carrierBindingsByOrg map[string]int // providerOrgID → index in carrierBindings
-	requireExecProfile   bool
-	profileValidator     func(profileID string) bool
-	creditLimits         map[string]BuyerCreditLimit
+	orders                       OrderRepository
+	providers                    ProviderRepository
+	listings                     ListingRepository
+	rfqs                         RFQRepository
+	bids                         BidRepository
+	messages                     MessageRepository
+	disputes                     DisputeRepository
+	creditEngine                 core.CreditDecisionEngine
+	publisher                    EventPublisher
+	notifier                     Notifier
+	mu                           sync.Mutex // guards compound multi-store operations
+	ratings                      []OrderRating
+	clock                        Clock
+	providerApplications         []ProviderApplication
+	carrierBindings              []ProviderCarrierBinding
+	carrierBindingsByOrg         map[string]int // providerOrgID → index in carrierBindings
+	settlementBindings           []ProviderSettlementBinding
+	settlementBindingsByOrg      map[string]int                          // providerOrgID → index in settlementBindings
+	settlementPools              map[string]ProviderLiquidityPool        // providerOrgID → pool
+	settlementReservations       map[string]ProviderLiquidityReservation // reservationID → reservation
+	settlementReservationByOrder map[string]string                       // orderID → reservationID
+	settlementProvisioner        ProviderSettlementProvisioner
+	settlementBufferBPS          int64
+	settlementWarmTTL            time.Duration
+	requireExecProfile           bool
+	profileValidator             func(profileID string) bool
+	creditLimits                 map[string]BuyerCreditLimit
 }
 
 // Notifier is an optional notification delivery interface.
@@ -268,6 +276,11 @@ func NewAppWithMemory() *App {
 			FailurePenaltyCents:   50_000,
 			ConsumptionMultiplier: 2,
 		},
+		settlementPools:              make(map[string]ProviderLiquidityPool),
+		settlementReservations:       make(map[string]ProviderLiquidityReservation),
+		settlementReservationByOrder: make(map[string]string),
+		settlementBufferBPS:          1000,
+		settlementWarmTTL:            30 * time.Minute,
 	}
 }
 
@@ -321,6 +334,11 @@ func NewApp(
 			FailurePenaltyCents:   50_000,
 			ConsumptionMultiplier: 2,
 		},
+		settlementPools:              make(map[string]ProviderLiquidityPool),
+		settlementReservations:       make(map[string]ProviderLiquidityReservation),
+		settlementReservationByOrder: make(map[string]string),
+		settlementBufferBPS:          1000,
+		settlementWarmTTL:            30 * time.Minute,
 	}
 }
 
@@ -547,6 +565,9 @@ func (a *App) SettleMilestone(orderID string, input SettleMilestoneInput) (*core
 		}
 	}
 	if allSettled && order.Status == core.OrderStatusCompleted {
+		if reservation, reservationErr := a.GetProviderSettlementReservation(order.ID); reservationErr == nil {
+			a.releaseProviderSettlementReservation(reservation.ID)
+		}
 		a.notify("order.completed", order.BuyerOrgID, map[string]any{"orderId": order.ID})
 		a.notify("order.completed", order.ProviderOrgID, map[string]any{"orderId": order.ID})
 	}

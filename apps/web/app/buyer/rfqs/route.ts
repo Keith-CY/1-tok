@@ -8,7 +8,7 @@ export async function POST(request: Request) {
 
   const form = await request.formData();
   const title = String(form.get("title") ?? "").trim();
-  const category = String(form.get("category") ?? "service-request").trim();
+  const category = String(form.get("category") ?? "service-request").trim() || "service-request";
   const rawScope = String(form.get("scope") ?? "").trim();
   const scope = rawScope || title;
   const budgetCents = Number.parseInt(String(form.get("budgetCents") ?? "0"), 10);

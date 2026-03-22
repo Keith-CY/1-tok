@@ -2,6 +2,7 @@
 alpha-portal-ux-audit.json
 alpha-portal-ux-audit-summary.md
 .artifacts
+.deps/
 bin/
 coverage
 dist
@@ -16,3 +17,6 @@ progress.md
 task_plan.md
 tmp
 *.tsbuildinfo
+/release-usdi-marketplace-e2e
+!/cmd/release-usdi-marketplace-e2e/
+!/cmd/release-usdi-marketplace-e2e/main.go
