@@ -121,8 +121,8 @@ func USDIMarketplaceE2EConfigFromEnv() USDIMarketplaceE2EConfig {
 		IncludeCarrierProbe:                 envBool("RELEASE_USDI_E2E_INCLUDE_CARRIER_PROBE"),
 		FaucetTxHash:                        strings.TrimSpace(envOrDefault("RELEASE_USDI_E2E_FAUCET_TX_HASH", "")),
 		ExplorerProofURLs:                   splitCSV(envOrDefault("RELEASE_USDI_E2E_EXPLORER_PROOF_URLS", "")),
-		ProviderSettlementRPCURL:            envOrDefault("RELEASE_USDI_E2E_PROVIDER_SETTLEMENT_RPC_URL", "http://fnn:8227"),
-		ProviderSettlementP2PHost:           envOrDefault("RELEASE_USDI_E2E_PROVIDER_SETTLEMENT_P2P_HOST", "fnn"),
+		ProviderSettlementRPCURL:            envOrDefault("RELEASE_USDI_E2E_PROVIDER_SETTLEMENT_RPC_URL", "http://provider-fnn:8227"),
+		ProviderSettlementP2PHost:           envOrDefault("RELEASE_USDI_E2E_PROVIDER_SETTLEMENT_P2P_HOST", "provider-fnn"),
 		ProviderSettlementP2PPort:           envIntOrDefault("RELEASE_USDI_E2E_PROVIDER_SETTLEMENT_P2P_PORT", 8228),
 		ProviderSettlementUDTTypeScriptJSON: envOrDefault("RELEASE_USDI_E2E_PROVIDER_SETTLEMENT_UDT_TYPE_SCRIPT_JSON", envOrDefault("FIBER_USDI_UDT_TYPE_SCRIPT_JSON", "")),
 	}
@@ -241,7 +241,7 @@ func RunUSDIMarketplaceE2E(ctx context.Context, cfg USDIMarketplaceE2EConfig) (U
 		{EventID: "evt-usage-2", Sequence: 3, Kind: core.UsageChargeKindStep, AmountCents: 200, ProofRef: "fiber:proof:usage-2"},
 	}
 	providerPayoutRecordIDs := make([]string, 0, len(usageSteps)+1)
-	for index, step := range usageSteps {
+	for _, step := range usageSteps {
 		if err := client.sendCarrierIntegrationCallback(ctx, cfg.APIBaseURL, cfg, buildUsageReportedEnvelope(
 			carrierBindingID,
 			carrierExecutionID,
@@ -252,7 +252,7 @@ func RunUSDIMarketplaceE2E(ctx context.Context, cfg USDIMarketplaceE2EConfig) (U
 		)); err != nil {
 			return USDIMarketplaceE2ESummary{}, err
 		}
-		paymentRequest, err := client.createProviderInvoiceViaFiber(ctx, cfg, orderID, "ms_1", provider.OrgID, amountFromCents(step.AmountCents), fmt.Sprintf("provider usage payout %d", index+1))
+		paymentRequest, err := client.createProviderInvoiceViaProviderSettlementNode(ctx, cfg, amountFromCents(step.AmountCents))
 		if err != nil {
 			return USDIMarketplaceE2ESummary{}, err
 		}
@@ -315,7 +315,7 @@ func RunUSDIMarketplaceE2E(ctx context.Context, cfg USDIMarketplaceE2EConfig) (U
 		return USDIMarketplaceE2ESummary{}, err
 	}
 
-	finalPaymentRequest, err := client.createProviderInvoiceViaFiber(ctx, cfg, orderID, "ms_1", provider.OrgID, "9.00", "provider milestone final payout")
+	finalPaymentRequest, err := client.createProviderInvoiceViaProviderSettlementNode(ctx, cfg, "9.00")
 	if err != nil {
 		return USDIMarketplaceE2ESummary{}, err
 	}
@@ -430,30 +430,32 @@ func (c *smokeClient) payInvoiceViaFiber(ctx context.Context, cfg USDIMarketplac
 	return result.ID, nil
 }
 
-func (c *smokeClient) createProviderInvoiceViaFiber(ctx context.Context, cfg USDIMarketplaceE2EConfig, orderID, milestoneID, providerOrgID, amount, memo string) (string, error) {
-	if strings.TrimSpace(cfg.FiberAdapterBaseURL) == "" || strings.TrimSpace(cfg.FiberAdapterAppID) == "" || strings.TrimSpace(cfg.FiberAdapterHMACSecret) == "" {
-		return "", errors.New("fiber adapter config is required for usdi marketplace e2e")
+func (c *smokeClient) createProviderInvoiceViaProviderSettlementNode(ctx context.Context, cfg USDIMarketplaceE2EConfig, amount string) (string, error) {
+	if strings.TrimSpace(cfg.ProviderSettlementRPCURL) == "" {
+		return "", errors.New("provider settlement rpc url is required for provider invoice creation")
 	}
-	postID := strings.TrimSpace(orderID)
-	if strings.TrimSpace(milestoneID) != "" {
-		postID += ":" + strings.TrimSpace(milestoneID)
+	if strings.TrimSpace(cfg.ProviderSettlementUDTTypeScriptJSON) == "" {
+		return "", errors.New("provider settlement udt type script json is required for provider invoice creation")
 	}
-	client := fiberclient.NewClient(cfg.FiberAdapterBaseURL, cfg.FiberAdapterAppID, cfg.FiberAdapterHMACSecret)
-	result, err := client.CreateInvoice(ctx, fiberclient.CreateInvoiceInput{
-		PostID:     postID,
-		FromUserID: marketplaceTreasuryUserID,
-		ToUserID:   providerOrgID,
-		Asset:      "USDI",
-		Amount:     amount,
-		Message:    strings.TrimSpace(memo),
+
+	var udtTypeScript platform.UDTTypeScript
+	if err := json.Unmarshal([]byte(cfg.ProviderSettlementUDTTypeScriptJSON), &udtTypeScript); err != nil {
+		return "", fmt.Errorf("provider settlement udt type script: %w", err)
+	}
+
+	node := newReleaseRawFNNClient(cfg.ProviderSettlementRPCURL)
+	invoice, err := node.CreateInvoice(ctx, "USDI", amount, map[string]string{
+		"code_hash": udtTypeScript.CodeHash,
+		"hash_type": udtTypeScript.HashType,
+		"args":      udtTypeScript.Args,
 	})
 	if err != nil {
-		return "", fmt.Errorf("create provider invoice via fiber adapter: %w", err)
+		return "", fmt.Errorf("create provider invoice via provider settlement node: %w", err)
 	}
-	if strings.TrimSpace(result.Invoice) == "" {
-		return "", errors.New("create provider invoice via fiber adapter: missing invoice")
+	if strings.TrimSpace(invoice) == "" {
+		return "", errors.New("create provider invoice via provider settlement node: missing invoice")
 	}
-	return result.Invoice, nil
+	return invoice, nil
 }
 
 func (c *smokeClient) requestProviderPayout(ctx context.Context, baseURL, serviceToken, orderID, buyerOrgID, providerOrgID, amount, paymentRequest string) (string, error) {

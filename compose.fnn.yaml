@@ -47,6 +47,30 @@ services:
       retries: 12
       start_period: 20s
 
+  provider-fnn:
+    platform: ${FNN_PLATFORM:-linux/amd64}
+    build:
+      context: .
+      dockerfile: deploy/fnn/Dockerfile
+      args:
+        FNN_VERSION: ${FNN_VERSION:-v0.6.1}
+        FNN_ASSET: ${FNN_ASSET:-fnn_v0.6.1-x86_64-linux-portable.tar.gz}
+        FNN_ASSET_SHA256: ${FNN_ASSET_SHA256:-8f9a69361f662438fa1fc29ddc668192810b13021536ebd1101c84dc0cfa330f}
+    environment:
+      FIBER_SECRET_KEY_PASSWORD: ${FIBER_SECRET_KEY_PASSWORD:-}
+      FNN_CKB_RPC_URL: ${PROVIDER_FNN_CKB_RPC_URL:-${FNN_CKB_RPC_URL:-https://testnet.ckbapp.dev/}}
+    ports:
+      - "${PROVIDER_FNN_PUBLISHED_RPC_PORT:-58227}:8227"
+      - "${PROVIDER_FNN_PUBLISHED_P2P_PORT:-58228}:8228"
+    volumes:
+      - provider-fnn-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "FNN_HOST_IP=$$(hostname -i | awk '{print $$1}'); curl -sS --max-time 3 \"http://$${FNN_HOST_IP}:8227\" >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
   fiber-adapter:
     build:
       context: .
@@ -76,3 +100,4 @@ services:
 volumes:
   fnn-data:
   fnn2-data:
+  provider-fnn-data:

@@ -19,17 +19,17 @@ import (
 const defaultChannelFeeProportionalMillionths = "0x4B0"
 
 type FNNDualNodeSmokeConfig struct {
-	InvoiceRPCURL      string
-	PayerRPCURL        string
-	InvoiceP2PHost     string
-	PayerP2PHost       string
-	P2PPort            int
-	FundingAmount      string
+	InvoiceRPCURL       string
+	PayerRPCURL         string
+	InvoiceP2PHost      string
+	PayerP2PHost        string
+	P2PPort             int
+	FundingAmount       string
 	AcceptFundingAmount string
-	PollInterval       time.Duration
-	WaitTimeout        time.Duration
-	OpenChannelRetries int
-	Adapter            FNNAdapterSmokeConfig
+	PollInterval        time.Duration
+	WaitTimeout         time.Duration
+	OpenChannelRetries  int
+	Adapter             FNNAdapterSmokeConfig
 }
 
 type FNNDualNodeSmokeSummary struct {
@@ -180,7 +180,7 @@ type releaseRawFNNClient struct {
 }
 
 type rawNodeInfo struct {
-	NodeID                           string `json:"node_id"`
+	NodeID                            string `json:"node_id"`
 	AutoAcceptChannelCKBFundingAmount string `json:"auto_accept_channel_ckb_funding_amount"`
 }
 
@@ -219,13 +219,38 @@ func (c releaseRawFNNClient) OpenChannel(ctx context.Context, peerID, fundingAmo
 		TemporaryChannelID string `json:"temporary_channel_id"`
 	}
 	if err := c.client.Call(ctx, "open_channel", []any{map[string]any{
-		"peer_id":                          peerID,
-		"funding_amount":                   fundingAmountHex,
+		"peer_id":                         peerID,
+		"funding_amount":                  fundingAmountHex,
 		"tlc_fee_proportional_millionths": defaultChannelFeeProportionalMillionths,
 	}}, &result); err != nil {
 		return "", err
 	}
 	return result.TemporaryChannelID, nil
+}
+
+func (c releaseRawFNNClient) CreateInvoice(ctx context.Context, asset, amount string, udtTypeScript map[string]string) (string, error) {
+	hexAmount, err := releaseHexQuantity(amount)
+	if err != nil {
+		return "", err
+	}
+	params := map[string]any{
+		"amount":   hexAmount,
+		"currency": releaseMapAssetToCurrency(asset),
+	}
+	if strings.EqualFold(strings.TrimSpace(asset), "USDI") {
+		params["udt_type_script"] = map[string]any{
+			"code_hash": udtTypeScript["code_hash"],
+			"hash_type": udtTypeScript["hash_type"],
+			"args":      udtTypeScript["args"],
+		}
+	}
+	var result struct {
+		InvoiceAddress string `json:"invoice_address"`
+	}
+	if err := c.client.Call(ctx, "new_invoice", []any{params}, &result); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(result.InvoiceAddress), nil
 }
 
 func (c releaseRawFNNClient) AcceptChannel(ctx context.Context, temporaryChannelID, fundingAmountHex string) error {
@@ -242,6 +267,15 @@ func (c releaseRawFNNClient) ListChannels(ctx context.Context, peerID string) (r
 		return rawChannelList{}, err
 	}
 	return result, nil
+}
+
+func releaseMapAssetToCurrency(asset string) string {
+	switch strings.ToUpper(strings.TrimSpace(asset)) {
+	case "CKB":
+		return "CKB"
+	default:
+		return "FIBD"
+	}
 }
 
 func waitForChannelReady(ctx context.Context, invoiceNode, payerNode releaseRawFNNClient, invoicePeerID, payerPeerID string, pollInterval time.Duration) error {
@@ -366,6 +400,13 @@ func releaseHexQuantity(value string) (string, error) {
 	}
 	if strings.HasPrefix(strings.ToLower(trimmed), "0x") {
 		return strings.ToLower(trimmed), nil
+	}
+	if strings.Contains(trimmed, ".") {
+		parts := strings.SplitN(trimmed, ".", 2)
+		if len(parts) != 2 || strings.Trim(parts[1], "0") != "" {
+			return "", fmt.Errorf("invalid positive integer amount %q", value)
+		}
+		trimmed = parts[0]
 	}
 	amount, ok := new(big.Int).SetString(trimmed, 10)
 	if !ok || amount.Sign() <= 0 {

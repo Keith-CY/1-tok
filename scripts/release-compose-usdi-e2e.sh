@@ -40,12 +40,15 @@ FNN_PUBLISHED_RPC_PORT="${FNN_PUBLISHED_RPC_PORT:-48227}"
 FNN_PUBLISHED_P2P_PORT="${FNN_PUBLISHED_P2P_PORT:-48228}"
 FNN2_PUBLISHED_RPC_PORT="${FNN2_PUBLISHED_RPC_PORT:-49227}"
 FNN2_PUBLISHED_P2P_PORT="${FNN2_PUBLISHED_P2P_PORT:-49228}"
+PROVIDER_FNN_PUBLISHED_RPC_PORT="${PROVIDER_FNN_PUBLISHED_RPC_PORT:-58227}"
+PROVIDER_FNN_PUBLISHED_P2P_PORT="${PROVIDER_FNN_PUBLISHED_P2P_PORT:-58228}"
 FNN_VERSION="${FNN_VERSION:-v0.6.1}"
 FNN_ASSET="${FNN_ASSET:-fnn_v0.6.1-x86_64-linux-portable.tar.gz}"
 FNN_ASSET_SHA256="${FNN_ASSET_SHA256:-8f9a69361f662438fa1fc29ddc668192810b13021536ebd1101c84dc0cfa330f}"
 FIBER_SECRET_KEY_PASSWORD="${FIBER_SECRET_KEY_PASSWORD:-local-fnn-dev-password}"
 FNN_CKB_RPC_URL="${FNN_CKB_RPC_URL:-https://testnet.ckbapp.dev/}"
 FNN2_CKB_RPC_URL="${FNN2_CKB_RPC_URL:-${FNN_CKB_RPC_URL}}"
+PROVIDER_FNN_CKB_RPC_URL="${PROVIDER_FNN_CKB_RPC_URL:-${FNN_CKB_RPC_URL}}"
 SETTLEMENT_RECONCILER_INTERVAL="${SETTLEMENT_RECONCILER_INTERVAL:-5s}"
 CARRIER_E2E_REMOTE_PRIVATE_KEY_PATH="${CARRIER_E2E_REMOTE_PRIVATE_KEY_PATH:-${CARRIER_REMOTE_KEY_DIR}/id_ed25519}"
 CARRIER_E2E_REMOTE_AUTHORIZED_KEY="${CARRIER_E2E_REMOTE_AUTHORIZED_KEY:-}"
@@ -69,6 +72,7 @@ E2E_USDI_FAUCET_MAX_ATTEMPTS="${E2E_USDI_FAUCET_MAX_ATTEMPTS:-2}"
 E2E_USDI_TOPUP_ADDRESS="${E2E_USDI_TOPUP_ADDRESS:-}"
 E2E_CKB_TOPUP_ADDRESS="${E2E_CKB_TOPUP_ADDRESS:-}"
 E2E_CKB_INVOICE_TOPUP_ADDRESS="${E2E_CKB_INVOICE_TOPUP_ADDRESS:-}"
+E2E_CKB_PROVIDER_TOPUP_ADDRESS="${E2E_CKB_PROVIDER_TOPUP_ADDRESS:-}"
 E2E_USDI_CHANNEL_FUNDING_AMOUNT="${E2E_USDI_CHANNEL_FUNDING_AMOUNT:-}"
 E2E_CHANNEL_TLC_FEE_PROPORTIONAL_MILLIONTHS="${E2E_CHANNEL_TLC_FEE_PROPORTIONAL_MILLIONTHS:-0x0}"
 OPEN_CHANNEL_INIT_RETRIES="${OPEN_CHANNEL_INIT_RETRIES:-10}"
@@ -80,15 +84,20 @@ FIBER_TESTNET_CONTRACTS_ISSUE_URL="${FIBER_TESTNET_CONTRACTS_ISSUE_URL:-https://
 
 PAYER_LOCK_SCRIPT_JSON=""
 INVOICE_LOCK_SCRIPT_JSON=""
+PROVIDER_LOCK_SCRIPT_JSON=""
 USDI_TYPE_SCRIPT_JSON=""
 USDI_AUTO_ACCEPT_AMOUNT_HEX=""
 ACCEPT_CHANNEL_FUNDING_AMOUNT_HEX=""
+PROVIDER_ACCEPT_CHANNEL_FUNDING_AMOUNT_HEX=""
 PAYER_NODE_ID=""
 INVOICE_NODE_ID=""
+PROVIDER_NODE_ID=""
 PAYER_PEER_ID=""
 INVOICE_PEER_ID=""
+PROVIDER_PEER_ID=""
 PAYER_NODE_CONTAINER=""
 INVOICE_NODE_CONTAINER=""
+PROVIDER_NODE_CONTAINER=""
 USDI_FAUCET_TX_HASH=""
 USDI_EXPLORER_PROOF_URLS=""
 OPEN_CHANNEL_TEMPORARY_ID=""
@@ -140,12 +149,15 @@ compose() {
     FNN_PUBLISHED_P2P_PORT="${FNN_PUBLISHED_P2P_PORT}" \
     FNN2_PUBLISHED_RPC_PORT="${FNN2_PUBLISHED_RPC_PORT}" \
     FNN2_PUBLISHED_P2P_PORT="${FNN2_PUBLISHED_P2P_PORT}" \
+    PROVIDER_FNN_PUBLISHED_RPC_PORT="${PROVIDER_FNN_PUBLISHED_RPC_PORT}" \
+    PROVIDER_FNN_PUBLISHED_P2P_PORT="${PROVIDER_FNN_PUBLISHED_P2P_PORT}" \
     FNN_VERSION="${FNN_VERSION}" \
     FNN_ASSET="${FNN_ASSET}" \
     FNN_ASSET_SHA256="${FNN_ASSET_SHA256}" \
     FIBER_SECRET_KEY_PASSWORD="${FIBER_SECRET_KEY_PASSWORD}" \
     FNN_CKB_RPC_URL="${FNN_CKB_RPC_URL}" \
     FNN2_CKB_RPC_URL="${FNN2_CKB_RPC_URL}" \
+    PROVIDER_FNN_CKB_RPC_URL="${PROVIDER_FNN_CKB_RPC_URL}" \
     SETTLEMENT_RECONCILER_INTERVAL="${SETTLEMENT_RECONCILER_INTERVAL}" \
     BUN_VERSION="${BUN_VERSION}" \
     E2E_USDI_HOST_OUTPUT_DIR="${ARTIFACT_DIR}" \
@@ -1106,6 +1118,7 @@ done
 compose up -d --build \
   fnn \
   fnn2 \
+  provider-fnn \
   fiber-adapter \
   carrier-daemon \
   carrier-gateway \
@@ -1119,9 +1132,11 @@ compose up -d --build \
 
 PAYER_NODE_CONTAINER="$(wait_for_container fnn2)"
 INVOICE_NODE_CONTAINER="$(wait_for_container fnn)"
+PROVIDER_NODE_CONTAINER="$(wait_for_container provider-fnn)"
 
 wait_for_http_reachable "http://127.0.0.1:${FNN_PUBLISHED_RPC_PORT}" "fnn rpc"
 wait_for_http_reachable "http://127.0.0.1:${FNN2_PUBLISHED_RPC_PORT}" "fnn2 rpc"
+wait_for_http_reachable "http://127.0.0.1:${PROVIDER_FNN_PUBLISHED_RPC_PORT}" "provider-fnn rpc"
 wait_for_http_reachable "http://127.0.0.1:${FIBER_ADAPTER_PUBLISHED_PORT}/healthz" "fiber-adapter"
 wait_for_http_reachable "http://127.0.0.1:${API_GATEWAY_PUBLISHED_PORT}/healthz" "api-gateway"
 wait_for_http_reachable "http://127.0.0.1:${SETTLEMENT_PUBLISHED_PORT}/healthz" "settlement"
@@ -1132,9 +1147,12 @@ fetch_node_info "${FNN2_PUBLISHED_RPC_PORT}" "${ARTIFACT_DIR}/node-info-payer.re
 payer_info="${NODE_INFO_RESULT}"
 fetch_node_info "${FNN_PUBLISHED_RPC_PORT}" "${ARTIFACT_DIR}/node-info-invoice.response.json"
 invoice_info="${NODE_INFO_RESULT}"
+fetch_node_info "${PROVIDER_FNN_PUBLISHED_RPC_PORT}" "${ARTIFACT_DIR}/node-info-provider.response.json"
+provider_info="${NODE_INFO_RESULT}"
 
 PAYER_LOCK_SCRIPT_JSON="$(printf '%s' "${payer_info}" | jq -c '.result.default_funding_lock_script // empty')"
 INVOICE_LOCK_SCRIPT_JSON="$(printf '%s' "${invoice_info}" | jq -c '.result.default_funding_lock_script // empty')"
+PROVIDER_LOCK_SCRIPT_JSON="$(printf '%s' "${provider_info}" | jq -c '.result.default_funding_lock_script // empty')"
 NODE_INFO_USDI_TYPE_SCRIPT_JSON="$(extract_usdi_type_script_from_node_info_without_override "${payer_info}")"
 USDI_TYPE_SCRIPT_JSON="$(extract_usdi_type_script_from_node_info "${payer_info}")"
 USDI_AUTO_ACCEPT_AMOUNT_HEX="$(extract_usdi_auto_accept_amount_from_node_info "${payer_info}")"
@@ -1151,8 +1169,11 @@ if [[ -n "${FIBER_USDI_UDT_TYPE_SCRIPT_JSON}" ]]; then
 fi
 PAYER_NODE_ID="$(printf '%s' "${payer_info}" | jq -r '.result.node_id // empty')"
 INVOICE_NODE_ID="$(printf '%s' "${invoice_info}" | jq -r '.result.node_id // empty')"
+PROVIDER_NODE_ID="$(printf '%s' "${provider_info}" | jq -r '.result.node_id // empty')"
 ACCEPT_CHANNEL_FUNDING_AMOUNT_HEX="$(printf '%s' "${invoice_info}" | jq -r '.result.auto_accept_channel_ckb_funding_amount // empty')"
 [[ -n "${ACCEPT_CHANNEL_FUNDING_AMOUNT_HEX}" ]] || ACCEPT_CHANNEL_FUNDING_AMOUNT_HEX="$(to_hex_quantity 1)"
+PROVIDER_ACCEPT_CHANNEL_FUNDING_AMOUNT_HEX="$(printf '%s' "${provider_info}" | jq -r '.result.auto_accept_channel_ckb_funding_amount // empty')"
+[[ -n "${PROVIDER_ACCEPT_CHANNEL_FUNDING_AMOUNT_HEX}" ]] || PROVIDER_ACCEPT_CHANNEL_FUNDING_AMOUNT_HEX="$(to_hex_quantity 1)"
 
 if [[ -z "${E2E_CKB_TOPUP_ADDRESS}" ]]; then
   payer_lock_args="$(printf '%s' "${PAYER_LOCK_SCRIPT_JSON}" | jq -r '.args // empty')"
@@ -1162,15 +1183,21 @@ if [[ -z "${E2E_CKB_INVOICE_TOPUP_ADDRESS}" ]]; then
   invoice_lock_args="$(printf '%s' "${INVOICE_LOCK_SCRIPT_JSON}" | jq -r '.args // empty')"
   E2E_CKB_INVOICE_TOPUP_ADDRESS="$(derive_ckb_testnet_address_from_lock_args "${invoice_lock_args}")"
 fi
+if [[ -z "${E2E_CKB_PROVIDER_TOPUP_ADDRESS}" ]]; then
+  provider_lock_args="$(printf '%s' "${PROVIDER_LOCK_SCRIPT_JSON}" | jq -r '.args // empty')"
+  E2E_CKB_PROVIDER_TOPUP_ADDRESS="$(derive_ckb_testnet_address_from_lock_args "${provider_lock_args}")"
+fi
 if [[ -z "${E2E_USDI_TOPUP_ADDRESS}" ]]; then
   E2E_USDI_TOPUP_ADDRESS="${E2E_CKB_TOPUP_ADDRESS}"
 fi
 
 PAYER_PEER_ID="$(derive_peer_id_from_node_id "${PAYER_NODE_ID}")"
 INVOICE_PEER_ID="$(derive_peer_id_from_node_id "${INVOICE_NODE_ID}")"
+PROVIDER_PEER_ID="$(derive_peer_id_from_node_id "${PROVIDER_NODE_ID}")"
 
 log "payer node=fnn2 peer_id=${PAYER_PEER_ID} ckb_address=${E2E_CKB_TOPUP_ADDRESS} usdi_address=${E2E_USDI_TOPUP_ADDRESS}"
 log "invoice node=fnn peer_id=${INVOICE_PEER_ID} ckb_address=${E2E_CKB_INVOICE_TOPUP_ADDRESS}"
+log "provider settlement node=provider-fnn peer_id=${PROVIDER_PEER_ID} ckb_address=${E2E_CKB_PROVIDER_TOPUP_ADDRESS}"
 
 ensure_ckb_balance_or_request_faucet "${E2E_CKB_TOPUP_ADDRESS}" "payer-bootstrap" "10000000000" "${PAYER_LOCK_SCRIPT_JSON}"
 invoice_required_amount="1"
@@ -1178,6 +1205,11 @@ if [[ -n "${ACCEPT_CHANNEL_FUNDING_AMOUNT_HEX}" && "${ACCEPT_CHANNEL_FUNDING_AMO
   invoice_required_amount="$(hex_quantity_to_decimal "${ACCEPT_CHANNEL_FUNDING_AMOUNT_HEX}")"
 fi
 ensure_ckb_balance_or_request_faucet "${E2E_CKB_INVOICE_TOPUP_ADDRESS}" "invoice-bootstrap" "${invoice_required_amount}" "${INVOICE_LOCK_SCRIPT_JSON}"
+provider_required_amount="1"
+if [[ -n "${PROVIDER_ACCEPT_CHANNEL_FUNDING_AMOUNT_HEX}" && "${PROVIDER_ACCEPT_CHANNEL_FUNDING_AMOUNT_HEX}" =~ ^0x[0-9a-fA-F]+$ ]]; then
+  provider_required_amount="$(hex_quantity_to_decimal "${PROVIDER_ACCEPT_CHANNEL_FUNDING_AMOUNT_HEX}")"
+fi
+ensure_ckb_balance_or_request_faucet "${E2E_CKB_PROVIDER_TOPUP_ADDRESS}" "provider-bootstrap" "${provider_required_amount}" "${PROVIDER_LOCK_SCRIPT_JSON}"
 required_usdi_amount="$(resolve_usdi_channel_funding_amount)"
 request_usdi_faucet "${required_usdi_amount}"
 bootstrap_usdi_channel

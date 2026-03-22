@@ -137,6 +137,24 @@ func TestBuildUsageReportedEnvelopeIncludesVerifiableProof(t *testing.T) {
 	}
 }
 
+func TestUSDIMarketplaceE2EConfigFromEnvDefaultsProviderSettlementToDedicatedNode(t *testing.T) {
+	t.Setenv("RELEASE_USDI_E2E_PROVIDER_SETTLEMENT_RPC_URL", "")
+	t.Setenv("RELEASE_USDI_E2E_PROVIDER_SETTLEMENT_P2P_HOST", "")
+	t.Setenv("RELEASE_USDI_E2E_PROVIDER_SETTLEMENT_P2P_PORT", "")
+	t.Setenv("FIBER_USDI_UDT_TYPE_SCRIPT_JSON", `{"codeHash":"0xudt","hashType":"type","args":"0x01"}`)
+
+	cfg := USDIMarketplaceE2EConfigFromEnv()
+	if cfg.ProviderSettlementRPCURL != "http://provider-fnn:8227" {
+		t.Fatalf("provider settlement rpc url = %q, want http://provider-fnn:8227", cfg.ProviderSettlementRPCURL)
+	}
+	if cfg.ProviderSettlementP2PHost != "provider-fnn" {
+		t.Fatalf("provider settlement p2p host = %q, want provider-fnn", cfg.ProviderSettlementP2PHost)
+	}
+	if cfg.ProviderSettlementP2PPort != 8228 {
+		t.Fatalf("provider settlement p2p port = %d, want 8228", cfg.ProviderSettlementP2PPort)
+	}
+}
+
 func TestRegisterProviderSettlementBindingUsesNodeInfoAndConfiguredUDTScript(t *testing.T) {
 	node := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		payload, err := io.ReadAll(r.Body)
@@ -202,5 +220,70 @@ func TestRegisterProviderSettlementBindingUsesNodeInfoAndConfiguredUDTScript(t *
 	}
 	if createdPayload["nodeRpcUrl"] != node.URL {
 		t.Fatalf("nodeRpcUrl = %v, want %s", createdPayload["nodeRpcUrl"], node.URL)
+	}
+}
+
+func TestCreateProviderInvoiceViaProviderSettlementNodeUsesNewInvoice(t *testing.T) {
+	var methods []string
+	node := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		payload, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read node request: %v", err)
+		}
+		var rpc struct {
+			Method string `json:"method"`
+			Params []any  `json:"params"`
+		}
+		if err := json.Unmarshal(payload, &rpc); err != nil {
+			t.Fatalf("decode node request: %v", err)
+		}
+		methods = append(methods, rpc.Method)
+		switch rpc.Method {
+		case "new_invoice":
+			if len(rpc.Params) != 1 {
+				t.Fatalf("expected one new_invoice param, got %d", len(rpc.Params))
+			}
+			param, ok := rpc.Params[0].(map[string]any)
+			if !ok {
+				t.Fatalf("unexpected new_invoice param type: %T", rpc.Params[0])
+			}
+			if param["amount"] != "0x9" {
+				t.Fatalf("amount = %v, want 0x9", param["amount"])
+			}
+			udt, ok := param["udt_type_script"].(map[string]any)
+			if !ok {
+				t.Fatalf("missing udt_type_script in payload: %+v", param)
+			}
+			if udt["code_hash"] != "0xudt" || udt["hash_type"] != "type" || udt["args"] != "0x01" {
+				t.Fatalf("unexpected udt_type_script: %+v", udt)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0",
+				"id":      1,
+				"result": map[string]any{
+					"invoice_address": "fiber:invoice:provider-fnn",
+				},
+			})
+		default:
+			t.Fatalf("unexpected node rpc method %q", rpc.Method)
+		}
+	}))
+	defer node.Close()
+
+	client := &smokeClient{httpClient: http.DefaultClient}
+	cfg := USDIMarketplaceE2EConfig{
+		ProviderSettlementRPCURL:            node.URL,
+		ProviderSettlementUDTTypeScriptJSON: `{"codeHash":"0xudt","hashType":"type","args":"0x01"}`,
+	}
+
+	invoice, err := client.createProviderInvoiceViaProviderSettlementNode(context.Background(), cfg, "9.00")
+	if err != nil {
+		t.Fatalf("create provider invoice: %v", err)
+	}
+	if invoice != "fiber:invoice:provider-fnn" {
+		t.Fatalf("invoice = %q, want fiber:invoice:provider-fnn", invoice)
+	}
+	if len(methods) != 1 || methods[0] != "new_invoice" {
+		t.Fatalf("methods = %v, want [new_invoice]", methods)
 	}
 }
