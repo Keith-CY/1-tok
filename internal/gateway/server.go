@@ -57,12 +57,13 @@ func NewServerWithApp(app *platform.App) *Server {
 }
 
 type Options struct {
-	App             *platform.App
-	IAM             iamclient.Client
-	ExecutionToken  string
-	ExecutionTokens serviceauth.TokenSet
-	RateLimiter     ratelimit.Limiter
-	Carrier         *carrier.Service
+	App                           *platform.App
+	IAM                           iamclient.Client
+	ExecutionToken                string
+	ExecutionTokens               serviceauth.TokenSet
+	RateLimiter                   ratelimit.Limiter
+	Carrier                       *carrier.Service
+	ProviderSettlementProvisioner platform.ProviderSettlementProvisioner
 }
 
 func NewServerWithOptions(options Options) *Server {
@@ -108,6 +109,9 @@ func NewServerWithOptionsE(options Options) (*Server, error) {
 	if carrierSvc == nil {
 		carrierSvc = carrier.NewService()
 	}
+	if options.ProviderSettlementProvisioner != nil {
+		options.App.SetProviderSettlementProvisioner(options.ProviderSettlementProvisioner)
+	}
 	webhookSvc := notifications.NewWebhookService()
 	registry := notifications.NewRegistry(webhookSvc)
 	// Wire notifications to the app via adapter
@@ -149,6 +153,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleVerifyCarrierBinding(w, r)
 	case r.Method == http.MethodPost && isCarrierBindingSuspendPath(r.URL.Path):
 		s.handleSuspendCarrierBinding(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/provider-settlement-bindings":
+		s.handleRegisterProviderSettlementBinding(w, r)
+	case r.Method == http.MethodGet && isProviderSettlementBindingPoolPath(r.URL.Path):
+		s.handleGetProviderSettlementPool(w, r)
+	case r.Method == http.MethodGet && isProviderSettlementBindingPath(r.URL.Path):
+		s.handleGetProviderSettlementBinding(w, r)
+	case r.Method == http.MethodPost && isProviderSettlementBindingVerifyPath(r.URL.Path):
+		s.handleVerifyProviderSettlementBinding(w, r)
+	case r.Method == http.MethodPost && isProviderSettlementBindingSuspendPath(r.URL.Path):
+		s.handleSuspendProviderSettlementBinding(w, r)
 	case r.Method == http.MethodPost && (r.URL.Path == "/api/v1/carrier/callback" || r.URL.Path == "/api/v1/carrier/callbacks/events"):
 		s.handleCarrierCallback(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/credit-limits":
@@ -1208,7 +1222,10 @@ func writeGatewayError(w http.ResponseWriter, err error) {
 		errors.Is(err, platform.ErrRFQNotOpenForAward),
 		errors.Is(err, platform.ErrBidNotBelongToRFQ),
 		errors.Is(err, platform.ErrOrderNotCompleted),
-		errors.Is(err, platform.ErrOrderAlreadyRated):
+		errors.Is(err, platform.ErrOrderAlreadyRated),
+		errors.Is(err, platform.ErrProviderSettlementBindingRequired),
+		errors.Is(err, platform.ErrProviderSettlementPoolUnavailable),
+		errors.Is(err, platform.ErrProviderSettlementProvisionerMissing):
 		httputil.WriteError(w, http.StatusConflict, httputil.ErrCodeConflict, err.Error())
 	default:
 		httputil.WriteError(w, http.StatusConflict, httputil.ErrCodeConflict, err.Error())
@@ -2236,6 +2253,22 @@ func isCarrierBindingSuspendPath(path string) bool {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	return len(parts) == 5 && parts[2] == "carrier-bindings" && parts[4] == "suspend"
 }
+func isProviderSettlementBindingPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 4 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "provider-settlement-bindings"
+}
+func isProviderSettlementBindingPoolPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 5 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "provider-settlement-bindings" && parts[4] == "pool"
+}
+func isProviderSettlementBindingVerifyPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 5 && parts[2] == "provider-settlement-bindings" && parts[4] == "verify"
+}
+func isProviderSettlementBindingSuspendPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 5 && parts[2] == "provider-settlement-bindings" && parts[4] == "suspend"
+}
 func (s *Server) handleRegisterCarrierBinding(w http.ResponseWriter, r *http.Request) {
 	var input platform.ProviderCarrierBinding
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -2253,6 +2286,11 @@ func (s *Server) handleRegisterCarrierBinding(w http.ResponseWriter, r *http.Req
 func sanitizeCarrierBindingForPublic(b platform.ProviderCarrierBinding) platform.ProviderCarrierBinding {
 	b.IntegrationToken = ""
 	b.CallbackSecret = ""
+	return b
+}
+
+func sanitizeProviderSettlementBindingForPublic(b platform.ProviderSettlementBinding) platform.ProviderSettlementBinding {
+	b.OwnershipProof = ""
 	return b
 }
 
@@ -2289,6 +2327,68 @@ func (s *Server) handleSuspendCarrierBinding(w http.ResponseWriter, r *http.Requ
 	}
 	binding = sanitizeCarrierBindingForPublic(binding)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"binding": binding})
+}
+
+func (s *Server) handleRegisterProviderSettlementBinding(w http.ResponseWriter, r *http.Request) {
+	var input platform.ProviderSettlementBinding
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	binding, err := s.app.RegisterProviderSettlementBinding(input)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+	binding = sanitizeProviderSettlementBindingForPublic(binding)
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{"binding": binding})
+}
+
+func (s *Server) handleGetProviderSettlementBinding(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	providerOrgID := parts[3]
+	binding, err := s.app.GetProviderSettlementBinding(providerOrgID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+	binding = sanitizeProviderSettlementBindingForPublic(binding)
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"binding": binding})
+}
+
+func (s *Server) handleVerifyProviderSettlementBinding(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	bindingID := parts[3]
+	binding, err := s.app.VerifyProviderSettlementBinding(bindingID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+	binding = sanitizeProviderSettlementBindingForPublic(binding)
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"binding": binding})
+}
+
+func (s *Server) handleSuspendProviderSettlementBinding(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	bindingID := parts[3]
+	binding, err := s.app.SuspendProviderSettlementBinding(bindingID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+	binding = sanitizeProviderSettlementBindingForPublic(binding)
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"binding": binding})
+}
+
+func (s *Server) handleGetProviderSettlementPool(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	providerOrgID := parts[3]
+	pool, err := s.app.GetProviderSettlementPool(providerOrgID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"pool": pool})
 }
 
 // authorizeRFQForActor verifies the actor is a participant in the RFQ.

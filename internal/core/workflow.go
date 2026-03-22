@@ -16,11 +16,12 @@ const (
 type OrderStatus string
 
 const (
-	OrderStatusDraft          OrderStatus = "draft"
-	OrderStatusRunning        OrderStatus = "running"
-	OrderStatusAwaitingBudget OrderStatus = "awaiting_budget"
-	OrderStatusCompleted      OrderStatus = "completed"
-	OrderStatusFailed         OrderStatus = "failed"
+	OrderStatusDraft               OrderStatus = "draft"
+	OrderStatusRunning             OrderStatus = "running"
+	OrderStatusAwaitingBudget      OrderStatus = "awaiting_budget"
+	OrderStatusAwaitingPaymentRail OrderStatus = "awaiting_payment_rail"
+	OrderStatusCompleted           OrderStatus = "completed"
+	OrderStatusFailed              OrderStatus = "failed"
 )
 
 type MilestoneState string

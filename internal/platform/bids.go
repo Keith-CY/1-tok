@@ -45,9 +45,9 @@ type BidMilestoneInput struct {
 type CreateBidInput struct {
 	ProviderOrgID      string
 	Message            string
-	QuoteCents         int64              // optional: defaults to RFQ budget
+	QuoteCents         int64               // optional: defaults to RFQ budget
 	Milestones         []BidMilestoneInput // optional: defaults to RFQ default milestones
-	ExecutionProfileID string             // optional: required when profile enforcement enabled
+	ExecutionProfileID string              // optional: required when profile enforcement enabled
 }
 
 type AwardRFQInput struct {
@@ -180,8 +180,20 @@ func (a *App) AwardRFQ(rfqID string, input AwardRFQInput) (RFQ, *core.Order, err
 	}
 	a.mu.Unlock()
 
+	var totalBudgetCents int64
+	for _, milestone := range bid.Milestones {
+		totalBudgetCents += milestone.BudgetCents
+	}
+	reservation, err := a.maybeReserveProviderSettlementLiquidity(bid.ProviderOrgID, totalBudgetCents)
+	if err != nil {
+		return RFQ{}, nil, err
+	}
+
 	bids, err := a.bids.ListByRFQ(rfqID)
 	if err != nil {
+		if reservation != nil {
+			a.releaseProviderSettlementReservation(reservation.ID)
+		}
 		return RFQ{}, nil, err
 	}
 	for _, candidate := range bids {
@@ -192,6 +204,9 @@ func (a *App) AwardRFQ(rfqID string, input AwardRFQInput) (RFQ, *core.Order, err
 			candidate.Status = BidStatusRejected
 		}
 		if err := a.bids.Save(candidate); err != nil {
+			if reservation != nil {
+				a.releaseProviderSettlementReservation(reservation.ID)
+			}
 			return RFQ{}, nil, err
 		}
 	}
@@ -215,7 +230,16 @@ func (a *App) AwardRFQ(rfqID string, input AwardRFQInput) (RFQ, *core.Order, err
 
 	order, err := a.CreateOrder(orderInput)
 	if err != nil {
+		if reservation != nil {
+			a.releaseProviderSettlementReservation(reservation.ID)
+		}
 		return RFQ{}, nil, err
+	}
+	if reservation != nil {
+		if err := a.attachProviderSettlementReservation(reservation.ID, order.ID); err != nil {
+			a.releaseProviderSettlementReservation(reservation.ID)
+			return RFQ{}, nil, err
+		}
 	}
 
 	rfq.Status = RFQStatusAwarded

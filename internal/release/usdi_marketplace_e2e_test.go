@@ -3,6 +3,7 @@ package release
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -133,5 +134,73 @@ func TestBuildUsageReportedEnvelopeIncludesVerifiableProof(t *testing.T) {
 		Signature:   signature,
 	}); err != nil {
 		t.Fatalf("expected usage proof to verify, got %v", err)
+	}
+}
+
+func TestRegisterProviderSettlementBindingUsesNodeInfoAndConfiguredUDTScript(t *testing.T) {
+	node := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		payload, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read node request: %v", err)
+		}
+		var rpc struct {
+			Method string `json:"method"`
+		}
+		if err := json.Unmarshal(payload, &rpc); err != nil {
+			t.Fatalf("decode node request: %v", err)
+		}
+		if rpc.Method != "node_info" {
+			t.Fatalf("unexpected node rpc method %q", rpc.Method)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0",
+			"id":      1,
+			"result": map[string]any{
+				"node_id": "0x021111111111111111111111111111111111111111111111111111111111111111",
+			},
+		})
+	}))
+	defer node.Close()
+
+	var createdPayload map[string]any
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/provider-settlement-bindings":
+			if err := json.NewDecoder(r.Body).Decode(&createdPayload); err != nil {
+				t.Fatalf("decode create payload: %v", err)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"binding": map[string]any{"id": "psb_1"},
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/provider-settlement-bindings/psb_1/verify":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"binding": map[string]any{"id": "psb_1", "status": "active"},
+			})
+		default:
+			t.Fatalf("unexpected api request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer api.Close()
+
+	client := &smokeClient{httpClient: api.Client()}
+	cfg := USDIMarketplaceE2EConfig{
+		ProviderSettlementRPCURL:            node.URL,
+		ProviderSettlementP2PHost:           "fnn",
+		ProviderSettlementP2PPort:           8228,
+		ProviderSettlementUDTTypeScriptJSON: `{"codeHash":"0xudt","hashType":"type","args":"0x01"}`,
+	}
+
+	bindingID, err := client.registerProviderSettlementBinding(context.Background(), api.URL, "provider_1", cfg)
+	if err != nil {
+		t.Fatalf("register provider settlement binding: %v", err)
+	}
+	if bindingID != "psb_1" {
+		t.Fatalf("binding id = %q, want psb_1", bindingID)
+	}
+	if createdPayload["peerId"] == "" {
+		t.Fatalf("expected peerId in payload, got %+v", createdPayload)
+	}
+	if createdPayload["nodeRpcUrl"] != node.URL {
+		t.Fatalf("nodeRpcUrl = %v, want %s", createdPayload["nodeRpcUrl"], node.URL)
 	}
 }

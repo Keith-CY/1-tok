@@ -15,6 +15,7 @@ import (
 	"github.com/chenyu/1-tok/internal/carrier"
 	"github.com/chenyu/1-tok/internal/core"
 	fiberclient "github.com/chenyu/1-tok/internal/integrations/fiber"
+	"github.com/chenyu/1-tok/internal/platform"
 	"github.com/chenyu/1-tok/internal/serviceauth"
 	"github.com/chenyu/1-tok/internal/usageproof"
 )
@@ -23,58 +24,63 @@ const marketplaceTreasuryUserID = "platform_treasury"
 const usdiMarketplaceE2EHTTPTimeout = 2 * time.Minute
 
 type USDIMarketplaceE2EConfig struct {
-	APIBaseURL              string
-	IAMBaseURL              string
-	SettlementBaseURL       string
-	SettlementServiceToken  string
-	ExecutionBaseURL        string
-	ExecutionEventToken     string
-	GatewayServiceToken     string
-	FiberAdapterBaseURL     string
-	FiberAdapterAppID       string
-	FiberAdapterHMACSecret  string
-	CarrierBaseURL          string
-	CarrierGatewayToken     string
-	CarrierIntegrationToken string
-	CarrierHostID           string
-	CarrierAgentID          string
-	CarrierBackend          string
-	CarrierWorkspaceRoot    string
-	CarrierRemoteHostName   string
-	CarrierRemoteHostHost   string
-	CarrierRemoteHostPort   int
-	CarrierRemoteHostUser   string
-	CarrierRemoteKeyPath    string
-	CarrierAuthConfigured   bool
-	CarrierCallbackSecret   string
-	CarrierCallbackKeyID    string
-	IncludeCarrierProbe     bool
-	FaucetTxHash            string
-	ExplorerProofURLs       []string
+	APIBaseURL                          string
+	IAMBaseURL                          string
+	SettlementBaseURL                   string
+	SettlementServiceToken              string
+	ExecutionBaseURL                    string
+	ExecutionEventToken                 string
+	GatewayServiceToken                 string
+	FiberAdapterBaseURL                 string
+	FiberAdapterAppID                   string
+	FiberAdapterHMACSecret              string
+	CarrierBaseURL                      string
+	CarrierGatewayToken                 string
+	CarrierIntegrationToken             string
+	CarrierHostID                       string
+	CarrierAgentID                      string
+	CarrierBackend                      string
+	CarrierWorkspaceRoot                string
+	CarrierRemoteHostName               string
+	CarrierRemoteHostHost               string
+	CarrierRemoteHostPort               int
+	CarrierRemoteHostUser               string
+	CarrierRemoteKeyPath                string
+	CarrierAuthConfigured               bool
+	CarrierCallbackSecret               string
+	CarrierCallbackKeyID                string
+	IncludeCarrierProbe                 bool
+	FaucetTxHash                        string
+	ExplorerProofURLs                   []string
+	ProviderSettlementRPCURL            string
+	ProviderSettlementP2PHost           string
+	ProviderSettlementP2PPort           int
+	ProviderSettlementUDTTypeScriptJSON string
 }
 
 type USDIMarketplaceE2ESummary struct {
-	Asset                     string   `json:"asset"`
-	FaucetTxHash              string   `json:"faucetTxHash,omitempty"`
-	ExplorerProofURLs         []string `json:"explorerProofUrls,omitempty"`
-	IntegrationIssues         []string `json:"integrationIssues,omitempty"`
-	BuyerUserEmail            string   `json:"buyerUserEmail,omitempty"`
-	ProviderUserEmail         string   `json:"providerUserEmail,omitempty"`
-	BuyerOrgID                string   `json:"buyerOrgId"`
-	ProviderOrgID             string   `json:"providerOrgId"`
-	BuyerTopUpInvoice         string   `json:"buyerTopUpInvoice"`
-	BuyerTopUpFundingRecordID string   `json:"buyerTopUpFundingRecordId"`
-	BuyerTopUpPaymentID       string   `json:"buyerTopUpPaymentId,omitempty"`
-	RFQID                     string   `json:"rfqId"`
-	BidID                     string   `json:"bidId"`
-	OrderID                   string   `json:"orderId"`
-	CarrierProviderBindingID  string   `json:"carrierProviderBindingId"`
-	CarrierBindingID          string   `json:"carrierBindingId"`
-	CarrierExecutionID        string   `json:"carrierExecutionId"`
-	UsageChargeCount          int      `json:"usageChargeCount"`
-	ProviderPayoutRecordIDs   []string `json:"providerPayoutRecordIds"`
-	FinalOrderStatus          string   `json:"finalOrderStatus"`
-	CodeAgentPolicy           string   `json:"codeAgentPolicy,omitempty"`
+	Asset                       string   `json:"asset"`
+	FaucetTxHash                string   `json:"faucetTxHash,omitempty"`
+	ExplorerProofURLs           []string `json:"explorerProofUrls,omitempty"`
+	IntegrationIssues           []string `json:"integrationIssues,omitempty"`
+	BuyerUserEmail              string   `json:"buyerUserEmail,omitempty"`
+	ProviderUserEmail           string   `json:"providerUserEmail,omitempty"`
+	BuyerOrgID                  string   `json:"buyerOrgId"`
+	ProviderOrgID               string   `json:"providerOrgId"`
+	BuyerTopUpInvoice           string   `json:"buyerTopUpInvoice"`
+	BuyerTopUpFundingRecordID   string   `json:"buyerTopUpFundingRecordId"`
+	BuyerTopUpPaymentID         string   `json:"buyerTopUpPaymentId,omitempty"`
+	RFQID                       string   `json:"rfqId"`
+	BidID                       string   `json:"bidId"`
+	OrderID                     string   `json:"orderId"`
+	CarrierProviderBindingID    string   `json:"carrierProviderBindingId"`
+	ProviderSettlementBindingID string   `json:"providerSettlementBindingId"`
+	CarrierBindingID            string   `json:"carrierBindingId"`
+	CarrierExecutionID          string   `json:"carrierExecutionId"`
+	UsageChargeCount            int      `json:"usageChargeCount"`
+	ProviderPayoutRecordIDs     []string `json:"providerPayoutRecordIds"`
+	FinalOrderStatus            string   `json:"finalOrderStatus"`
+	CodeAgentPolicy             string   `json:"codeAgentPolicy,omitempty"`
 }
 
 type usageReportedStep struct {
@@ -87,34 +93,38 @@ type usageReportedStep struct {
 
 func USDIMarketplaceE2EConfigFromEnv() USDIMarketplaceE2EConfig {
 	return USDIMarketplaceE2EConfig{
-		APIBaseURL:              envOrDefault("RELEASE_USDI_E2E_API_BASE_URL", envOrDefault("RELEASE_SMOKE_API_BASE_URL", "http://127.0.0.1:8080")),
-		IAMBaseURL:              envOrDefault("RELEASE_USDI_E2E_IAM_BASE_URL", envOrDefault("RELEASE_SMOKE_IAM_BASE_URL", "")),
-		SettlementBaseURL:       envOrDefault("RELEASE_USDI_E2E_SETTLEMENT_BASE_URL", envOrDefault("RELEASE_SMOKE_SETTLEMENT_BASE_URL", "http://127.0.0.1:8083")),
-		SettlementServiceToken:  envOrDefault("RELEASE_USDI_E2E_SETTLEMENT_SERVICE_TOKEN", envOrDefault("RELEASE_SMOKE_SETTLEMENT_SERVICE_TOKEN", "")),
-		ExecutionBaseURL:        envOrDefault("RELEASE_USDI_E2E_EXECUTION_BASE_URL", envOrDefault("RELEASE_SMOKE_EXECUTION_BASE_URL", "http://127.0.0.1:8085")),
-		ExecutionEventToken:     envOrDefault("RELEASE_USDI_E2E_EXECUTION_EVENT_TOKEN", envOrDefault("RELEASE_SMOKE_EXECUTION_EVENT_TOKEN", "")),
-		GatewayServiceToken:     envOrDefault("RELEASE_USDI_E2E_GATEWAY_SERVICE_TOKEN", envOrDefault("EXECUTION_GATEWAY_TOKEN", "")),
-		FiberAdapterBaseURL:     envOrDefault("RELEASE_USDI_E2E_FIBER_ADAPTER_BASE_URL", envOrDefault("FIBER_RPC_URL", "")),
-		FiberAdapterAppID:       envOrDefault("RELEASE_USDI_E2E_FIBER_ADAPTER_APP_ID", envOrDefault("FIBER_APP_ID", "")),
-		FiberAdapterHMACSecret:  envOrDefault("RELEASE_USDI_E2E_FIBER_ADAPTER_HMAC_SECRET", envOrDefault("FIBER_HMAC_SECRET", "")),
-		CarrierBaseURL:          envOrDefault("RELEASE_USDI_E2E_CARRIER_BASE_URL", envOrDefault("CARRIER_GATEWAY_URL", "http://127.0.0.1:8787")),
-		CarrierGatewayToken:     envOrDefault("RELEASE_USDI_E2E_CARRIER_GATEWAY_TOKEN", envOrDefault("CARRIER_GATEWAY_API_TOKEN", "")),
-		CarrierIntegrationToken: envOrDefault("RELEASE_USDI_E2E_CARRIER_INTEGRATION_TOKEN", envOrDefault("CARRIER_GATEWAY_API_TOKEN", "")),
-		CarrierHostID:           envOrDefault("RELEASE_USDI_E2E_CARRIER_HOST_ID", "host_1"),
-		CarrierAgentID:          envOrDefault("RELEASE_USDI_E2E_CARRIER_AGENT_ID", "main"),
-		CarrierBackend:          envOrDefault("RELEASE_USDI_E2E_CARRIER_BACKEND", "codex"),
-		CarrierWorkspaceRoot:    envOrDefault("RELEASE_USDI_E2E_CARRIER_WORKSPACE_ROOT", "/workspace"),
-		CarrierRemoteHostName:   envOrDefault("RELEASE_USDI_E2E_CARRIER_REMOTE_HOST_NAME", ""),
-		CarrierRemoteHostHost:   envOrDefault("RELEASE_USDI_E2E_CARRIER_REMOTE_HOST_HOST", ""),
-		CarrierRemoteHostPort:   envIntOrDefault("RELEASE_USDI_E2E_CARRIER_REMOTE_HOST_PORT", 22),
-		CarrierRemoteHostUser:   envOrDefault("RELEASE_USDI_E2E_CARRIER_REMOTE_HOST_USER", "carrier"),
-		CarrierRemoteKeyPath:    envOrDefault("RELEASE_USDI_E2E_CARRIER_REMOTE_KEY_PATH", "/keys/id_ed25519"),
-		CarrierAuthConfigured:   strings.TrimSpace(envOrDefault("OPENAI_API_KEY", "")) != "" || strings.TrimSpace(envOrDefault("OPENAI_CODEX_TOKEN", "")) != "",
-		CarrierCallbackSecret:   envOrDefault("RELEASE_USDI_E2E_CARRIER_CALLBACK_SECRET", "usdi-e2e-callback-secret"),
-		CarrierCallbackKeyID:    envOrDefault("RELEASE_USDI_E2E_CARRIER_CALLBACK_KEY_ID", "usdi-e2e-key"),
-		IncludeCarrierProbe:     envBool("RELEASE_USDI_E2E_INCLUDE_CARRIER_PROBE"),
-		FaucetTxHash:            strings.TrimSpace(envOrDefault("RELEASE_USDI_E2E_FAUCET_TX_HASH", "")),
-		ExplorerProofURLs:       splitCSV(envOrDefault("RELEASE_USDI_E2E_EXPLORER_PROOF_URLS", "")),
+		APIBaseURL:                          envOrDefault("RELEASE_USDI_E2E_API_BASE_URL", envOrDefault("RELEASE_SMOKE_API_BASE_URL", "http://127.0.0.1:8080")),
+		IAMBaseURL:                          envOrDefault("RELEASE_USDI_E2E_IAM_BASE_URL", envOrDefault("RELEASE_SMOKE_IAM_BASE_URL", "")),
+		SettlementBaseURL:                   envOrDefault("RELEASE_USDI_E2E_SETTLEMENT_BASE_URL", envOrDefault("RELEASE_SMOKE_SETTLEMENT_BASE_URL", "http://127.0.0.1:8083")),
+		SettlementServiceToken:              envOrDefault("RELEASE_USDI_E2E_SETTLEMENT_SERVICE_TOKEN", envOrDefault("RELEASE_SMOKE_SETTLEMENT_SERVICE_TOKEN", "")),
+		ExecutionBaseURL:                    envOrDefault("RELEASE_USDI_E2E_EXECUTION_BASE_URL", envOrDefault("RELEASE_SMOKE_EXECUTION_BASE_URL", "http://127.0.0.1:8085")),
+		ExecutionEventToken:                 envOrDefault("RELEASE_USDI_E2E_EXECUTION_EVENT_TOKEN", envOrDefault("RELEASE_SMOKE_EXECUTION_EVENT_TOKEN", "")),
+		GatewayServiceToken:                 envOrDefault("RELEASE_USDI_E2E_GATEWAY_SERVICE_TOKEN", envOrDefault("EXECUTION_GATEWAY_TOKEN", "")),
+		FiberAdapterBaseURL:                 envOrDefault("RELEASE_USDI_E2E_FIBER_ADAPTER_BASE_URL", envOrDefault("FIBER_RPC_URL", "")),
+		FiberAdapterAppID:                   envOrDefault("RELEASE_USDI_E2E_FIBER_ADAPTER_APP_ID", envOrDefault("FIBER_APP_ID", "")),
+		FiberAdapterHMACSecret:              envOrDefault("RELEASE_USDI_E2E_FIBER_ADAPTER_HMAC_SECRET", envOrDefault("FIBER_HMAC_SECRET", "")),
+		CarrierBaseURL:                      envOrDefault("RELEASE_USDI_E2E_CARRIER_BASE_URL", envOrDefault("CARRIER_GATEWAY_URL", "http://127.0.0.1:8787")),
+		CarrierGatewayToken:                 envOrDefault("RELEASE_USDI_E2E_CARRIER_GATEWAY_TOKEN", envOrDefault("CARRIER_GATEWAY_API_TOKEN", "")),
+		CarrierIntegrationToken:             envOrDefault("RELEASE_USDI_E2E_CARRIER_INTEGRATION_TOKEN", envOrDefault("CARRIER_GATEWAY_API_TOKEN", "")),
+		CarrierHostID:                       envOrDefault("RELEASE_USDI_E2E_CARRIER_HOST_ID", "host_1"),
+		CarrierAgentID:                      envOrDefault("RELEASE_USDI_E2E_CARRIER_AGENT_ID", "main"),
+		CarrierBackend:                      envOrDefault("RELEASE_USDI_E2E_CARRIER_BACKEND", "codex"),
+		CarrierWorkspaceRoot:                envOrDefault("RELEASE_USDI_E2E_CARRIER_WORKSPACE_ROOT", "/workspace"),
+		CarrierRemoteHostName:               envOrDefault("RELEASE_USDI_E2E_CARRIER_REMOTE_HOST_NAME", ""),
+		CarrierRemoteHostHost:               envOrDefault("RELEASE_USDI_E2E_CARRIER_REMOTE_HOST_HOST", ""),
+		CarrierRemoteHostPort:               envIntOrDefault("RELEASE_USDI_E2E_CARRIER_REMOTE_HOST_PORT", 22),
+		CarrierRemoteHostUser:               envOrDefault("RELEASE_USDI_E2E_CARRIER_REMOTE_HOST_USER", "carrier"),
+		CarrierRemoteKeyPath:                envOrDefault("RELEASE_USDI_E2E_CARRIER_REMOTE_KEY_PATH", "/keys/id_ed25519"),
+		CarrierAuthConfigured:               strings.TrimSpace(envOrDefault("OPENAI_API_KEY", "")) != "" || strings.TrimSpace(envOrDefault("OPENAI_CODEX_TOKEN", "")) != "",
+		CarrierCallbackSecret:               envOrDefault("RELEASE_USDI_E2E_CARRIER_CALLBACK_SECRET", "usdi-e2e-callback-secret"),
+		CarrierCallbackKeyID:                envOrDefault("RELEASE_USDI_E2E_CARRIER_CALLBACK_KEY_ID", "usdi-e2e-key"),
+		IncludeCarrierProbe:                 envBool("RELEASE_USDI_E2E_INCLUDE_CARRIER_PROBE"),
+		FaucetTxHash:                        strings.TrimSpace(envOrDefault("RELEASE_USDI_E2E_FAUCET_TX_HASH", "")),
+		ExplorerProofURLs:                   splitCSV(envOrDefault("RELEASE_USDI_E2E_EXPLORER_PROOF_URLS", "")),
+		ProviderSettlementRPCURL:            envOrDefault("RELEASE_USDI_E2E_PROVIDER_SETTLEMENT_RPC_URL", "http://fnn:8227"),
+		ProviderSettlementP2PHost:           envOrDefault("RELEASE_USDI_E2E_PROVIDER_SETTLEMENT_P2P_HOST", "fnn"),
+		ProviderSettlementP2PPort:           envIntOrDefault("RELEASE_USDI_E2E_PROVIDER_SETTLEMENT_P2P_PORT", 8228),
+		ProviderSettlementUDTTypeScriptJSON: envOrDefault("RELEASE_USDI_E2E_PROVIDER_SETTLEMENT_UDT_TYPE_SCRIPT_JSON", envOrDefault("FIBER_USDI_UDT_TYPE_SCRIPT_JSON", "")),
 	}
 }
 
@@ -167,6 +177,18 @@ func RunUSDIMarketplaceE2E(ctx context.Context, cfg USDIMarketplaceE2EConfig) (U
 		return USDIMarketplaceE2ESummary{}, fmt.Errorf("buyer topup not settled: %w", err)
 	}
 
+	providerCarrierBindingID, err := client.registerProviderCarrierBinding(ctx, cfg.APIBaseURL, provider.OrgID, cfg)
+	if err != nil {
+		return USDIMarketplaceE2ESummary{}, err
+	}
+	if err := client.verifyProviderCarrierBinding(ctx, cfg.APIBaseURL, providerCarrierBindingID); err != nil {
+		return USDIMarketplaceE2ESummary{}, err
+	}
+	providerSettlementBindingID, err := client.registerProviderSettlementBinding(ctx, cfg.APIBaseURL, provider.OrgID, cfg)
+	if err != nil {
+		return USDIMarketplaceE2ESummary{}, err
+	}
+
 	rfqID, err := client.createRFQ(ctx, cfg.APIBaseURL, buyer)
 	if err != nil {
 		return USDIMarketplaceE2ESummary{}, err
@@ -177,14 +199,6 @@ func RunUSDIMarketplaceE2E(ctx context.Context, cfg USDIMarketplaceE2EConfig) (U
 	}
 	orderID, err := client.awardRFQPrepaid(ctx, cfg.APIBaseURL, buyer.Token, rfqID, bidID)
 	if err != nil {
-		return USDIMarketplaceE2ESummary{}, err
-	}
-
-	providerCarrierBindingID, err := client.registerProviderCarrierBinding(ctx, cfg.APIBaseURL, provider.OrgID, cfg)
-	if err != nil {
-		return USDIMarketplaceE2ESummary{}, err
-	}
-	if err := client.verifyProviderCarrierBinding(ctx, cfg.APIBaseURL, providerCarrierBindingID); err != nil {
 		return USDIMarketplaceE2ESummary{}, err
 	}
 	carrierBindingID, err := client.bindOrderCarrier(ctx, cfg.APIBaseURL, cfg.GatewayServiceToken, orderID, "ms_1", providerCarrierBindingID)
@@ -323,27 +337,28 @@ func RunUSDIMarketplaceE2E(ctx context.Context, cfg USDIMarketplaceE2EConfig) (U
 	}
 
 	return USDIMarketplaceE2ESummary{
-		Asset:                     "USDI",
-		FaucetTxHash:              cfg.FaucetTxHash,
-		ExplorerProofURLs:         cfg.ExplorerProofURLs,
-		IntegrationIssues:         integrationIssues,
-		BuyerUserEmail:            buyer.Email,
-		ProviderUserEmail:         provider.Email,
-		BuyerOrgID:                buyer.OrgID,
-		ProviderOrgID:             provider.OrgID,
-		BuyerTopUpInvoice:         topUpInvoice,
-		BuyerTopUpFundingRecordID: topUpRecordID,
-		BuyerTopUpPaymentID:       topUpPaymentID,
-		RFQID:                     rfqID,
-		BidID:                     bidID,
-		OrderID:                   orderID,
-		CarrierProviderBindingID:  providerCarrierBindingID,
-		CarrierBindingID:          carrierBindingID,
-		CarrierExecutionID:        carrierExecutionID,
-		UsageChargeCount:          len(usageSteps),
-		ProviderPayoutRecordIDs:   providerPayoutRecordIDs,
-		FinalOrderStatus:          finalOrderStatus,
-		CodeAgentPolicy:           policy,
+		Asset:                       "USDI",
+		FaucetTxHash:                cfg.FaucetTxHash,
+		ExplorerProofURLs:           cfg.ExplorerProofURLs,
+		IntegrationIssues:           integrationIssues,
+		BuyerUserEmail:              buyer.Email,
+		ProviderUserEmail:           provider.Email,
+		BuyerOrgID:                  buyer.OrgID,
+		ProviderOrgID:               provider.OrgID,
+		BuyerTopUpInvoice:           topUpInvoice,
+		BuyerTopUpFundingRecordID:   topUpRecordID,
+		BuyerTopUpPaymentID:         topUpPaymentID,
+		RFQID:                       rfqID,
+		BidID:                       bidID,
+		OrderID:                     orderID,
+		CarrierProviderBindingID:    providerCarrierBindingID,
+		ProviderSettlementBindingID: providerSettlementBindingID,
+		CarrierBindingID:            carrierBindingID,
+		CarrierExecutionID:          carrierExecutionID,
+		UsageChargeCount:            len(usageSteps),
+		ProviderPayoutRecordIDs:     providerPayoutRecordIDs,
+		FinalOrderStatus:            finalOrderStatus,
+		CodeAgentPolicy:             policy,
 	}, nil
 }
 
@@ -594,6 +609,62 @@ func (c *smokeClient) installCarrierCodeAgent(ctx context.Context, baseURL, toke
 
 func (c *smokeClient) verifyProviderCarrierBinding(ctx context.Context, baseURL, bindingID string) error {
 	return c.postJSON(ctx, strings.TrimRight(baseURL, "/")+"/api/v1/carrier-bindings/"+bindingID+"/verify", map[string]any{}, nil)
+}
+
+func (c *smokeClient) registerProviderSettlementBinding(ctx context.Context, baseURL, providerOrgID string, cfg USDIMarketplaceE2EConfig) (string, error) {
+	if strings.TrimSpace(cfg.ProviderSettlementRPCURL) == "" {
+		return "", errors.New("provider settlement rpc url is required")
+	}
+	if strings.TrimSpace(cfg.ProviderSettlementP2PHost) == "" {
+		return "", errors.New("provider settlement p2p host is required")
+	}
+	if strings.TrimSpace(cfg.ProviderSettlementUDTTypeScriptJSON) == "" {
+		return "", errors.New("provider settlement udt type script json is required")
+	}
+
+	node := newReleaseRawFNNClient(cfg.ProviderSettlementRPCURL)
+	nodeInfo, err := node.NodeInfo(ctx)
+	if err != nil {
+		return "", fmt.Errorf("provider settlement node info: %w", err)
+	}
+	peerID, err := derivePeerIDFromNodeID(nodeInfo.NodeID)
+	if err != nil {
+		return "", fmt.Errorf("provider settlement peer id: %w", err)
+	}
+
+	var udtTypeScript platform.UDTTypeScript
+	if err := json.Unmarshal([]byte(cfg.ProviderSettlementUDTTypeScriptJSON), &udtTypeScript); err != nil {
+		return "", fmt.Errorf("provider settlement udt type script: %w", err)
+	}
+
+	var response struct {
+		Binding struct {
+			ID string `json:"id"`
+		} `json:"binding"`
+	}
+	err = c.postJSON(ctx, strings.TrimRight(baseURL, "/")+"/api/v1/provider-settlement-bindings", map[string]any{
+		"providerOrgId": providerOrgID,
+		"asset":         "USDI",
+		"peerId":        peerID,
+		"p2pAddress":    multiaddrForP2P(cfg.ProviderSettlementP2PHost, cfg.ProviderSettlementP2PPort, peerID),
+		"nodeRpcUrl":    cfg.ProviderSettlementRPCURL,
+		"udtTypeScript": map[string]any{
+			"codeHash": udtTypeScript.CodeHash,
+			"hashType": udtTypeScript.HashType,
+			"args":     udtTypeScript.Args,
+		},
+		"ownershipProof": "release-usdi-e2e",
+	}, &response)
+	if err != nil {
+		return "", fmt.Errorf("register provider settlement binding: %w", err)
+	}
+	if response.Binding.ID == "" {
+		return "", errors.New("register provider settlement binding: missing binding id")
+	}
+	if err := c.postJSON(ctx, strings.TrimRight(baseURL, "/")+"/api/v1/provider-settlement-bindings/"+response.Binding.ID+"/verify", map[string]any{}, nil); err != nil {
+		return "", fmt.Errorf("verify provider settlement binding: %w", err)
+	}
+	return response.Binding.ID, nil
 }
 
 func (c *smokeClient) bindOrderCarrier(ctx context.Context, baseURL, gatewayToken, orderID, milestoneID, carrierID string) (string, error) {
