@@ -1,6 +1,6 @@
 # Production Launch Checklist
 
-Last updated: `2026-03-13`
+Last updated: `2026-03-23`
 
 This checklist is the current internal source of truth for what still separates this repo from a formal production launch. It is intentionally split by `P0 / P1 / P2` and by functional owner so that each item can be assigned and signed off without interpretation drift.
 
@@ -9,6 +9,18 @@ Status values:
 - `done`: implemented and verified in this repo
 - `blocked`: technically ready to execute but blocked by external environment or credentials
 - `todo`: not yet implemented or not yet signed off
+
+## Demo-Ready
+
+These are the items that matter for a repeatable live demo. They are intentionally smaller than the production launch bar.
+
+| Owner | Item | Status | Acceptance | Evidence / Notes |
+| --- | --- | --- | --- | --- |
+| Platform / Backend | Fixed remote demo environment | `done` | Coolify environment runs the full live stack including Carrier, `fnn`, `fnn2`, `provider-fnn`, and `fiber-adapter` | See [deploy/coolify/README.md](../deploy/coolify/README.md) and [demo-environment.md](./demo-environment.md) |
+| Platform / Backend | One-click demo prepare and verify | `done` | `bun run release:demo:prepare` and `bun run release:demo:verify` return JSON artifacts and share one readiness verdict | See `cmd/release-demo-prepare`, `cmd/release-demo-verify`, and [env.md](./env.md) |
+| Product / Ops | Demo runbook | `done` | Presenter can follow a short live sequence without spelunking code or general engineering docs | See [demo-runbook.md](./demo-runbook.md) |
+| Frontend / Ops | Demo readiness surface | `done` | `/ops` shows the live verdict, blockers, buyer prefund, provider liquidity, and service health | See `/ops` and `GET /api/v1/ops/demo/status` |
+| Platform / Backend | Release posture synced to current reality | `done` | repo docs distinguish demo-ready from production-ready and no longer describe current demo posture as `mock-fiber` only | See [production-release-status.md](./production-release-status.md) |
 
 ## P0
 

@@ -340,6 +340,76 @@ func (a *App) RecoverProviderSettlement(providerOrgID string) (ProviderLiquidity
 	return pool, nil
 }
 
+func (a *App) WarmProviderSettlementPool(providerOrgID string, minimumAvailableCents int64) (ProviderLiquidityPool, error) {
+	a.mu.Lock()
+	settlementBinding, hasSettlementBinding := a.activeSettlementBindingLocked(providerOrgID)
+	if !hasSettlementBinding || settlementBinding.Status != "active" {
+		a.mu.Unlock()
+		return ProviderLiquidityPool{}, ErrProviderSettlementPoolUnavailable
+	}
+	currentPool, ok := a.settlementPools[providerOrgID]
+	if !ok {
+		a.mu.Unlock()
+		return ProviderLiquidityPool{}, fmt.Errorf("no settlement pool for provider %s", providerOrgID)
+	}
+	provisioner := a.settlementProvisioner
+	if provisioner == nil {
+		a.mu.Unlock()
+		return ProviderLiquidityPool{}, ErrProviderSettlementProvisionerMissing
+	}
+	warmTTL := a.settlementWarmTTL
+	a.mu.Unlock()
+
+	if minimumAvailableCents < 0 {
+		minimumAvailableCents = 0
+	}
+	if currentPool.Status == ProviderLiquidityPoolStatusDisconnected ||
+		currentPool.Status == ProviderLiquidityPoolStatusRecovering ||
+		currentPool.Status == ProviderLiquidityPoolStatusSuspended {
+		return ProviderLiquidityPool{}, ErrProviderSettlementPoolUnavailable
+	}
+
+	neededReserve := minimumAvailableCents
+	if currentPool.AvailableToAllocateCents > neededReserve {
+		neededReserve = currentPool.AvailableToAllocateCents
+	}
+	result, err := provisioner.EnsureProviderLiquidity(EnsureProviderLiquidityInput{
+		ProviderOrgID:      providerOrgID,
+		Binding:            settlementBinding,
+		NeededReserveCents: neededReserve,
+		CurrentPool:        currentPool,
+	})
+	if err != nil {
+		return ProviderLiquidityPool{}, fmt.Errorf("ensure provider liquidity: %w", err)
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	pool := a.settlementPools[providerOrgID]
+	now := a.now()
+	pool.ProviderSettlementBindingID = settlementBinding.ID
+	pool.ProviderOrgID = providerOrgID
+	pool.Asset = settlementBinding.Asset
+	pool.Status = ProviderLiquidityPoolStatusHealthy
+	pool.ReadyChannelCount = result.ReadyChannelCount
+	pool.TotalSpendableCents = result.TotalSpendableCents
+	pool.AvailableToAllocateCents = result.TotalSpendableCents - pool.ReservedOutstandingCents
+	if pool.AvailableToAllocateCents < 0 {
+		pool.AvailableToAllocateCents = 0
+	}
+	pool.LastHealthyAt = &now
+	pool.DisconnectReason = ""
+	if result.WarmUntil != nil {
+		pool.WarmUntil = result.WarmUntil
+	} else if warmTTL > 0 {
+		warmUntil := now.Add(warmTTL)
+		pool.WarmUntil = &warmUntil
+	}
+	a.settlementPools[providerOrgID] = pool
+	return pool, nil
+}
+
 func (a *App) maybeReserveProviderSettlementLiquidity(providerOrgID string, totalBudgetCents int64) (*ProviderLiquidityReservation, error) {
 	a.mu.Lock()
 	carrierBinding, hasCarrierBinding := a.activeCarrierBindingLocked(providerOrgID)

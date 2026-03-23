@@ -48,6 +48,80 @@ export default async function OpsPage({
         <StatCard icon={RiTimeLine} label="Pending payouts" value={`${data.summary.pendingWithdrawals}`} detail="Cash movement still in flight." tone={data.summary.pendingWithdrawals > 0 ? "warning" : "default"} />
       </section>
 
+      <section>
+        <SectionCard
+          eyebrow="Demo readiness"
+          title="Remote demo posture"
+          description="Use one strip to answer whether the live environment is safe to open. If this reads blocked, stop and fix the blockers before the demo."
+        >
+          {data.demoStatus ? (
+            <div className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-4">
+                <Card className="bg-white/82 p-5">
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Verdict</div>
+                  <div className="mt-2 font-display text-3xl tracking-[-0.04em]">
+                    {data.demoStatus.verdict}
+                  </div>
+                  <div className="mt-1 text-sm text-muted-foreground">Checked {formatShortDate(data.demoStatus.checkedAt)}</div>
+                </Card>
+                <Card className="bg-white/82 p-5">
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Buyer balance</div>
+                  <div className="mt-2 font-display text-3xl tracking-[-0.04em]">
+                    {data.demoStatus.buyerBalance.settledTopUpCents}
+                  </div>
+                  <div className="mt-1 text-sm text-muted-foreground">
+                    Min {data.demoStatus.buyerBalance.minimumRequiredCents} cents
+                  </div>
+                </Card>
+                <Card className="bg-white/82 p-5">
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Provider liquidity</div>
+                  <div className="mt-2 font-display text-3xl tracking-[-0.04em]">
+                    {data.demoStatus.providerSettlement.availableToAllocateCents}
+                  </div>
+                  <div className="mt-1 text-sm text-muted-foreground">
+                    {data.demoStatus.providerSettlement.readyChannelCount} ready channels
+                  </div>
+                </Card>
+                <Card className="bg-white/82 p-5">
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Prefix</div>
+                  <div className="mt-2 font-display text-3xl tracking-[-0.04em]">
+                    {data.demoStatus.resourcePrefix || "n/a"}
+                  </div>
+                  <div className="mt-1 text-sm text-muted-foreground">Fixed label for demo artifacts and runbook references.</div>
+                </Card>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-[24px] border border-border/70 bg-secondary/45 p-4">
+                  <div className="font-medium text-foreground">Blockers</div>
+                  <div className="mt-2 space-y-2 text-sm text-muted-foreground">
+                    {data.demoStatus.blockerReasons.length > 0 ? (
+                      data.demoStatus.blockerReasons.map((reason) => <div key={reason}>{reason}</div>)
+                    ) : (
+                      <div>No blockers. Live demo can start.</div>
+                    )}
+                  </div>
+                </div>
+                <div className="rounded-[24px] border border-border/70 bg-secondary/45 p-4">
+                  <div className="font-medium text-foreground">Service health</div>
+                  <div className="mt-2 grid gap-2 text-sm text-muted-foreground">
+                    {data.demoStatus.services.map((service) => (
+                      <div key={service.id} className="flex items-center justify-between gap-3">
+                        <span>{service.label}</span>
+                        <Badge variant={service.healthy ? "success" : "danger"}>{service.healthy ? "healthy" : "blocked"}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-[24px] border border-border/70 bg-secondary/45 p-4 text-sm text-muted-foreground">
+              Demo readiness is unavailable from the live control plane.
+            </div>
+          )}
+        </SectionCard>
+      </section>
+
       <section className="grid gap-6 xl:grid-cols-[1.02fr_0.98fr]">
         <SectionCard eyebrow="Primary queue" title="Needs review now" description="Disputes and operational review items share one surface so ops starts from action, not from tabs.">
           <div className="space-y-3">

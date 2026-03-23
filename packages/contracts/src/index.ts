@@ -163,6 +163,57 @@ export interface FundingRecord {
   updatedAt?: string;
 }
 
+export const demoVerdicts = ["ready", "blocked"] as const;
+export type DemoVerdict = (typeof demoVerdicts)[number];
+
+export interface DemoServiceStatus {
+  id: string;
+  label: string;
+  baseUrl?: string;
+  healthy: boolean;
+  detail?: string;
+}
+
+export interface DemoActorStatus {
+  role: string;
+  email?: string;
+  orgId?: string;
+  ready: boolean;
+  detail?: string;
+}
+
+export interface DemoBuyerBalanceStatus {
+  buyerOrgId?: string;
+  settledTopUpCents: number;
+  settledTopUpCount: number;
+  pendingTopUpCount: number;
+  minimumRequiredCents: number;
+  meetsMinimumThreshold: boolean;
+}
+
+export interface DemoProviderSettlementStatus {
+  providerOrgId?: string;
+  carrierBindingStatus?: string;
+  settlementBindingStatus?: string;
+  poolStatus?: string;
+  readyChannelCount: number;
+  availableToAllocateCents: number;
+  reservedOutstandingCents: number;
+  minimumRequiredCents: number;
+  meetsMinimumThreshold: boolean;
+}
+
+export interface DemoStatus {
+  checkedAt: string;
+  resourcePrefix?: string;
+  verdict: DemoVerdict;
+  blockerReasons: string[];
+  services: DemoServiceStatus[];
+  actors: DemoActorStatus[];
+  buyerBalance: DemoBuyerBalanceStatus;
+  providerSettlement: DemoProviderSettlementStatus;
+}
+
 export const sampleBuyerSummary = {
   activeOrders: 8,
   remainingCreditCents: 138_000,

@@ -13,9 +13,13 @@ This repository is structured so Coolify can manage each Go service as an indepe
 - `risk`
 - `execution`
 - `notification`
-- `fnn` (optional infra service; current app smoke still uses `mock-fiber`)
-- `fiber-adapter` (optional bridge service if you want local `tip.*` / `withdrawal.*` translation onto raw `fnn`)
-- `fnn2` (optional second raw FNN node if you want to rehearse channel bootstrap and real payment routing)
+- `carrier-daemon`
+- `carrier-gateway`
+- `remote-vps`
+- `fnn`
+- `fnn2`
+- `provider-fnn`
+- `fiber-adapter`
 - `postgres`
 - `redis`
 - `nats`
@@ -39,6 +43,29 @@ This repository is structured so Coolify can manage each Go service as an indepe
   - `FNN_ASSET`
   - `FNN_ASSET_SHA256`
 
+## Demo environment shape
+
+The current demo-ready topology assumes one fixed remote environment under Coolify with:
+
+- one buyer account
+- one provider account
+- one ops account
+- one active provider carrier binding
+- one active provider settlement binding
+- one platform treasury payer path over `fnn2`
+- one provider-owned settlement node over `provider-fnn`
+
+For the current live marketplace demo, treat `fnn`, `fnn2`, `provider-fnn`, `fiber-adapter`, `carrier-daemon`, `carrier-gateway`, and `remote-vps` as part of the standard stack rather than optional extras.
+
+Use the repo’s demo control-plane commands from that environment:
+
+```bash
+bun run release:demo:prepare
+bun run release:demo:verify
+```
+
+The ops home page then reflects the same verdict through `GET /api/v1/ops/demo/status`.
+
 ## Runtime settings
 
 - Keep all Go services on the same internal network.
@@ -48,9 +75,8 @@ This repository is structured so Coolify can manage each Go service as an indepe
 - Run `bootstrap` as a one-shot job before `iam`, `api-gateway`, `settlement`, and `settlement-reconciler`.
 - Run `settlement-reconciler` as a long-lived worker on the same internal network as `postgres` and `settlement`.
 - Keep `redis` on the same internal network as `iam` and `api-gateway`; the current production rate limiting depends on it.
-- If you also want raw Fiber node infra under Coolify, add the optional `fnn` service using [compose.fnn.yaml](../../compose.fnn.yaml) as the reference shape.
-- If you want to rehearse real raw-FNN payment routing, add both `fnn` and `fnn2` from [compose.fnn.yaml](../../compose.fnn.yaml), then run the dual-node smoke once those nodes are funded.
-- If you want a bridge between existing `tip.*` / `withdrawal.*` calls and raw `fnn`, add the optional `fiber-adapter` service from the same [compose.fnn.yaml](../../compose.fnn.yaml) overlay.
+- Use [compose.fnn.yaml](../../compose.fnn.yaml) as the reference shape for `fnn`, `fnn2`, `provider-fnn`, and `fiber-adapter`.
+- Use [compose.usdi-e2e.yaml](../../compose.usdi-e2e.yaml) as the reference shape for `carrier-daemon`, `carrier-gateway`, and `remote-vps`.
 
 ## Minimum environment variables
 
@@ -103,9 +129,7 @@ Optional `fiber-adapter` service env:
 
 ## Next steps
 
-- Provide real preproduction or production `Fiber` and `Carrier` endpoints and credentials.
-- Configure real Sentry alert rules and notification routing for the production project.
-- Run `bun run release:external-deps-smoke` from the target deployment environment.
-- Archive the resulting `release-manifest.json` as the deployment evidence package.
-- Complete the remaining `P0` items in [production-launch-checklist.md](../../docs/production-launch-checklist.md).
-- Implement and upstream the Carrier work described in [carrier-first-class-design.md](../../docs/carrier-first-class-design.md) and [carrier-pr-support.md](../../docs/carrier-pr-support.md).
+- Set the fixed demo actor IDs and credentials from [env.md](../../docs/env.md).
+- Run `bun run release:demo:prepare` once from the deployed environment to ensure bindings, prefund, and provider liquidity.
+- Run `bun run release:demo:verify` before each live session.
+- Follow [demo-environment.md](../../docs/demo-environment.md) and [demo-runbook.md](../../docs/demo-runbook.md) for operator-facing steps.

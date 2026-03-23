@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, mock } from "bun:test";
 
-import { getBuyerDashboardData, getFundingRecords, getListings, getOpsDashboardData, getOrders, getProviderDashboardData } from "./api";
+import { getBuyerDashboardData, getDemoStatus, getFundingRecords, getListings, getOpsDashboardData, getOrders, getProviderDashboardData } from "./api";
 
 const originalFetch = globalThis.fetch;
 
@@ -372,6 +372,23 @@ describe("api fallback", () => {
         });
       }
 
+      if (url.endsWith("/api/v1/ops/demo/status")) {
+        return new Response(JSON.stringify({
+          status: {
+            checkedAt: "2026-03-23T00:00:00Z",
+            verdict: "ready",
+            blockerReasons: [],
+            services: [{ id: "settlement", label: "Settlement", healthy: true }],
+            actors: [{ role: "buyer", ready: true }],
+            buyerBalance: { settledTopUpCents: 6000, settledTopUpCount: 1, pendingTopUpCount: 0, minimumRequiredCents: 5000, meetsMinimumThreshold: true },
+            providerSettlement: { readyChannelCount: 1, availableToAllocateCents: 8000, reservedOutstandingCents: 0, minimumRequiredCents: 5500, meetsMinimumThreshold: true },
+          },
+        }), {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+
       throw new Error(`unexpected url ${url}`);
     }) as unknown as typeof fetch;
 
@@ -383,5 +400,33 @@ describe("api fallback", () => {
     expect(data.summary.openDisputes).toBe(1);
     expect(data.pendingReviews[0]?.title).toContain("Open disputes");
     expect(data.riskFeed[0]?.detail).toContain("1 disputes");
+    expect(data.demoStatus?.verdict).toBe("ready");
+  });
+
+  it("reads the live demo status from the ops endpoint", async () => {
+    process.env.NEXT_PUBLIC_API_BASE_URL = "http://localhost:8080";
+    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe("http://localhost:8080/api/v1/ops/demo/status");
+      expect((init?.headers as Record<string, string>)?.Authorization).toBe("Bearer ops-token");
+      return new Response(JSON.stringify({
+        status: {
+          checkedAt: "2026-03-23T00:00:00Z",
+          verdict: "blocked",
+          blockerReasons: ["provider liquidity pool is below the demo threshold"],
+          services: [{ id: "carrier", label: "Carrier", healthy: false }],
+          actors: [{ role: "ops", ready: true }],
+          buyerBalance: { settledTopUpCents: 6000, settledTopUpCount: 1, pendingTopUpCount: 0, minimumRequiredCents: 5000, meetsMinimumThreshold: true },
+          providerSettlement: { readyChannelCount: 0, availableToAllocateCents: 0, reservedOutstandingCents: 0, minimumRequiredCents: 5500, meetsMinimumThreshold: false },
+        },
+      }), {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      });
+    }) as unknown as typeof fetch;
+
+    const status = await getDemoStatus({ authToken: "ops-token", requireLive: true });
+
+    expect(status?.verdict).toBe("blocked");
+    expect(status?.blockerReasons[0]).toContain("provider liquidity pool");
   });
 });
