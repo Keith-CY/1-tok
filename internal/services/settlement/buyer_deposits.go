@@ -262,6 +262,24 @@ func (s *BuyerDepositService) SyncDeposits(ctx context.Context) (BuyerDepositSyn
 		if sweepResult.SweptRawUnits <= 0 {
 			continue
 		}
+		existingSweeps, err := s.sweeps.List(BuyerDepositSweepFilter{BuyerOrgID: record.BuyerOrgID})
+		if err != nil {
+			return summary, err
+		}
+		if existingSweep, ok := findBuyerDepositSweepByTxHash(existingSweeps, sweepResult.SweepTxHash); ok {
+			if alreadyCredited, err := s.hasSettledBuyerTopUp(record.BuyerOrgID, sweepResult.SweepTxHash); err != nil {
+				return summary, err
+			} else if alreadyCredited {
+				continue
+			}
+			creditedCents := rawUnitsToCents(existingSweep.AmountRaw, s.rawUnitsPerWholeUSDI)
+			if err := s.saveBuyerTopUpFunding(record, firstNonEmptySweepAddress(existingSweep.TreasuryAddress, s.treasuryAddress), existingSweep.TxHash, creditedCents); err != nil {
+				return summary, err
+			}
+			summary.CreditedCents += creditedCents
+			summary.SweepCount++
+			continue
+		}
 		now := s.now()
 		sweepID, err := s.sweeps.NextID()
 		if err != nil {
@@ -282,33 +300,66 @@ func (s *BuyerDepositService) SyncDeposits(ctx context.Context) (BuyerDepositSyn
 			return summary, err
 		}
 
-		fundingID, err := s.funding.NextID()
-		if err != nil {
-			return summary, err
-		}
 		creditedCents := rawUnitsToCents(sweepResult.SweptRawUnits, s.rawUnitsPerWholeUSDI)
-		if err := s.funding.Save(FundingRecord{
-			ID:         fundingID,
-			Kind:       FundingRecordKindBuyerTopUp,
-			BuyerOrgID: record.BuyerOrgID,
-			Asset:      s.asset,
-			Amount:     centsToAmountString(creditedCents),
-			ExternalID: sweepResult.SweepTxHash,
-			State:      "SETTLED",
-			Destination: map[string]string{
-				"kind":            "CKB_ADDRESS_SWEEP",
-				"depositAddress":  record.Address,
-				"treasuryAddress": firstNonEmptySweepAddress(sweepResult.TreasuryAddress, s.treasuryAddress),
-			},
-			CreatedAt: now,
-			UpdatedAt: now,
-		}); err != nil {
+		if err := s.saveBuyerTopUpFunding(record, firstNonEmptySweepAddress(sweepResult.TreasuryAddress, s.treasuryAddress), sweepResult.SweepTxHash, creditedCents); err != nil {
 			return summary, err
 		}
 		summary.CreditedCents += creditedCents
 		summary.SweepCount++
 	}
 	return summary, nil
+}
+
+func (s *BuyerDepositService) hasSettledBuyerTopUp(buyerOrgID, externalID string) (bool, error) {
+	if strings.TrimSpace(externalID) == "" {
+		return false, nil
+	}
+	records, err := s.funding.List(FundingRecordFilter{Kind: FundingRecordKindBuyerTopUp, BuyerOrgID: buyerOrgID})
+	if err != nil {
+		return false, err
+	}
+	for _, record := range records {
+		if record.ExternalID == externalID && strings.EqualFold(record.State, "SETTLED") {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (s *BuyerDepositService) saveBuyerTopUpFunding(record BuyerDepositAddress, treasuryAddress, externalID string, creditedCents int64) error {
+	fundingID, err := s.funding.NextID()
+	if err != nil {
+		return err
+	}
+	now := s.now()
+	return s.funding.Save(FundingRecord{
+		ID:         fundingID,
+		Kind:       FundingRecordKindBuyerTopUp,
+		BuyerOrgID: record.BuyerOrgID,
+		Asset:      s.asset,
+		Amount:     centsToAmountString(creditedCents),
+		ExternalID: externalID,
+		State:      "SETTLED",
+		Destination: map[string]string{
+			"kind":            "CKB_ADDRESS_SWEEP",
+			"depositAddress":  record.Address,
+			"treasuryAddress": treasuryAddress,
+		},
+		CreatedAt: now,
+		UpdatedAt: now,
+	})
+}
+
+func findBuyerDepositSweepByTxHash(records []BuyerDepositSweepRecord, txHash string) (BuyerDepositSweepRecord, bool) {
+	if strings.TrimSpace(txHash) == "" {
+		return BuyerDepositSweepRecord{}, false
+	}
+	for _, record := range records {
+		if record.TxHash == txHash {
+			return record, true
+		}
+	}
+	return BuyerDepositSweepRecord{}, false
 }
 
 func rawUnitsToCents(rawUnits, rawUnitsPerWholeUSDI int64) int64 {

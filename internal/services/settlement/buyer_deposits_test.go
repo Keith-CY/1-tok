@@ -137,6 +137,74 @@ func TestBuyerDepositServiceSyncCreditsEntireConfirmedBalanceOnceThresholdReache
 	}
 }
 
+func TestBuyerDepositServiceSyncIsIdempotentForExistingSweepTxHash(t *testing.T) {
+	wallet := &stubBuyerDepositWallet{
+		derivedAddresses: map[int]string{
+			0: "ckt1qyqbuyer0address",
+		},
+		balances: map[string]BuyerDepositChainBalance{
+			"ckt1qyqbuyer0address": {
+				Address:            "ckt1qyqbuyer0address",
+				RawOnChainUnits:    1_300_000_000,
+				RawConfirmedUnits:  1_300_000_000,
+				ConfirmationBlocks: 24,
+			},
+		},
+		sweepResults: map[string]BuyerDepositSweepResult{
+			"ckt1qyqbuyer0address": {
+				SweepTxHash:     "0xsweep123",
+				SweptRawUnits:   1_300_000_000,
+				TreasuryAddress: "ckt1qyqtreasuryaddress",
+			},
+		},
+	}
+	funding := NewMemoryFundingRecordRepository()
+	sweeps := NewMemoryBuyerDepositSweepRepository()
+	service := NewBuyerDepositService(BuyerDepositServiceOptions{
+		Addresses:            NewMemoryBuyerDepositAddressRepository(),
+		Sweeps:               sweeps,
+		Funding:              funding,
+		Wallet:               wallet,
+		Asset:                "USDI",
+		TreasuryAddress:      "ckt1qyqtreasuryaddress",
+		MinSweepAmountRaw:    1_000_000_000,
+		ConfirmationBlocks:   24,
+		RawUnitsPerWholeUSDI: 100_000_000,
+		Now: func() time.Time {
+			return time.Date(2026, 3, 23, 12, 0, 0, 0, time.UTC)
+		},
+	})
+
+	if _, err := service.EnsureAddress(context.Background(), "buyer_1"); err != nil {
+		t.Fatalf("ensure address: %v", err)
+	}
+	if _, err := service.SyncDeposits(context.Background()); err != nil {
+		t.Fatalf("first sync deposits: %v", err)
+	}
+	if _, err := service.SyncDeposits(context.Background()); err != nil {
+		t.Fatalf("second sync deposits: %v", err)
+	}
+
+	records, err := funding.List(FundingRecordFilter{Kind: FundingRecordKindBuyerTopUp, BuyerOrgID: "buyer_1"})
+	if err != nil {
+		t.Fatalf("list funding records: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("expected one buyer credit after repeated sync, got %+v", records)
+	}
+
+	sweepRecords, err := sweeps.List(BuyerDepositSweepFilter{BuyerOrgID: "buyer_1"})
+	if err != nil {
+		t.Fatalf("list sweep records: %v", err)
+	}
+	if len(sweepRecords) != 1 {
+		t.Fatalf("expected one sweep record after repeated sync, got %+v", sweepRecords)
+	}
+	if len(wallet.sweepCalls) != 2 {
+		t.Fatalf("expected wallet sweep to be attempted twice, got %+v", wallet.sweepCalls)
+	}
+}
+
 func TestBuyerDepositServiceSyncLeavesBelowThresholdPending(t *testing.T) {
 	wallet := &stubBuyerDepositWallet{
 		derivedAddresses: map[int]string{

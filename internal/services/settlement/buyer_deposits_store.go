@@ -121,7 +121,9 @@ func (r *postgresBuyerDepositSweepRepository) NextID() (string, error) {
 }
 
 func (r *postgresBuyerDepositSweepRepository) Save(record BuyerDepositSweepRecord) error {
-	_, err := r.db.Exec(`
+	txHashValue := strings.TrimSpace(record.TxHash)
+	txHash := nullIfEmpty(txHashValue)
+	query := `
 		INSERT INTO settlement_buyer_deposit_sweeps (
 			id, buyer_org_id, asset, deposit_address, treasury_address, amount_raw, tx_hash, state, created_at, updated_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -133,7 +135,23 @@ func (r *postgresBuyerDepositSweepRepository) Save(record BuyerDepositSweepRecor
 			tx_hash = EXCLUDED.tx_hash,
 			state = EXCLUDED.state,
 			updated_at = EXCLUDED.updated_at
-	`, record.ID, record.BuyerOrgID, record.Asset, record.DepositAddress, record.TreasuryAddress, record.AmountRaw, nullIfEmpty(record.TxHash), record.State, record.CreatedAt, record.UpdatedAt)
+	`
+	if txHashValue != "" {
+		query = `
+			INSERT INTO settlement_buyer_deposit_sweeps (
+				id, buyer_org_id, asset, deposit_address, treasury_address, amount_raw, tx_hash, state, created_at, updated_at
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			ON CONFLICT (tx_hash) WHERE tx_hash IS NOT NULL DO UPDATE SET
+				buyer_org_id = EXCLUDED.buyer_org_id,
+				asset = EXCLUDED.asset,
+				deposit_address = EXCLUDED.deposit_address,
+				treasury_address = EXCLUDED.treasury_address,
+				amount_raw = EXCLUDED.amount_raw,
+				state = EXCLUDED.state,
+				updated_at = EXCLUDED.updated_at
+		`
+	}
+	_, err := r.db.Exec(query, record.ID, record.BuyerOrgID, record.Asset, record.DepositAddress, record.TreasuryAddress, record.AmountRaw, txHash, record.State, record.CreatedAt, record.UpdatedAt)
 	return err
 }
 
