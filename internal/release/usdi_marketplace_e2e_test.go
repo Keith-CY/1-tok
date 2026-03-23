@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -167,6 +168,32 @@ func TestBuyerDepositCreditWaitTimeout(t *testing.T) {
 	want := 24*usdiMarketplaceBuyerDepositBlockIntervalEstimate + usdiMarketplaceBuyerDepositConfirmationGrace
 	if got := buyerDepositCreditWaitTimeout(summary); got != want {
 		t.Fatalf("timeout with 24 confirmation blocks = %s, want %s", got, want)
+	}
+}
+
+func TestRequestUSDIFaucetRetriesTransientFailures(t *testing.T) {
+	var attempts int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/faucet" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		current := atomic.AddInt32(&attempts, 1)
+		if current < 3 {
+			http.Error(w, "temporary upstream failure", http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}))
+	defer server.Close()
+
+	err := requestUSDIFaucetWithRetry(context.Background(), server.Client(), USDIMarketplaceE2EConfig{
+		USDIFaucetAPIBase: server.URL,
+	}, "ckt1qyqtestaddress", "buyer-topup", 3, 0, 0)
+	if err != nil {
+		t.Fatalf("request usdi faucet with retry: %v", err)
+	}
+	if got := atomic.LoadInt32(&attempts); got != 3 {
+		t.Fatalf("attempts = %d, want 3", got)
 	}
 }
 

@@ -460,15 +460,32 @@ func (w *ckbBuyerDepositWallet) SweepToTreasury(ctx context.Context, record Buye
 	}
 	tx.Witnesses[0] = (&types.WitnessArgs{Lock: signature}).Serialize()
 
+	computedTxHash := tx.ComputeHash()
 	txHash, err := client.SendTransaction(ctx, tx)
 	if err != nil {
-		return BuyerDepositSweepResult{}, err
+		if isBuyerDepositDuplicateTransactionError(err) {
+			txHash = &computedTxHash
+		} else {
+			return BuyerDepositSweepResult{}, err
+		}
+	}
+	if txHash == nil {
+		txHash = &computedTxHash
 	}
 	return BuyerDepositSweepResult{
 		SweepTxHash:     txHash.Hex(),
 		SweptRawUnits:   confirmedRawUnits,
 		TreasuryAddress: treasuryAddress,
 	}, nil
+}
+
+func isBuyerDepositDuplicateTransactionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "PoolRejectedDuplicatedTransaction") ||
+		strings.Contains(message, "already exists in transaction_pool")
 }
 
 func buyerDepositOutPointKey(outPoint *types.OutPoint) string {

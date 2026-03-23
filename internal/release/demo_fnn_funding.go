@@ -24,9 +24,11 @@ const (
 	demoTopUpPayerMinimumCKBShannons = int64(10_000_000_000)
 	demoFaucetAmountCKB              = "100000"
 	demoFaucetWait                   = 20 * time.Second
+	demoFaucetRetryDelay             = 5 * time.Second
 	demoBalancePollInterval          = 5 * time.Second
 	demoBalanceWaitTimeout           = 2 * time.Minute
 	demoFaucetMaxAttempts            = 2
+	demoUSDIFaucetRequestAttempts    = 3
 	demoCKBBalanceMaxPages           = 20
 	demoCentsPerFNNUnit              = int64(100)
 	demoMinFNNFundingUnits           = int64(1)
@@ -237,14 +239,31 @@ func requestCKBFaucet(ctx context.Context, httpClient *http.Client, cfg USDIMark
 }
 
 func requestUSDIFaucet(ctx context.Context, httpClient *http.Client, cfg USDIMarketplaceE2EConfig, address, label string) error {
+	return requestUSDIFaucetWithRetry(ctx, httpClient, cfg, address, label, demoUSDIFaucetRequestAttempts, demoFaucetRetryDelay, demoFaucetWait)
+}
+
+func requestUSDIFaucetWithRetry(ctx context.Context, httpClient *http.Client, cfg USDIMarketplaceE2EConfig, address, label string, maxAttempts int, retryDelay, settleWait time.Duration) error {
 	url := strings.TrimRight(firstNonEmptyString(cfg.USDIFaucetAPIBase, "https://ckb-utilities.random-walk.co.jp/api"), "/") + "/faucet"
-	if err := postDemoJSON(ctx, httpClient, url, map[string]string{
-		"address": address,
-		"token":   "usdi",
-	}); err != nil {
-		return fmt.Errorf("request usdi faucet for %s: %w", label, err)
+	if maxAttempts <= 0 {
+		maxAttempts = 1
 	}
-	return sleepWithContext(ctx, demoFaucetWait)
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if err := postDemoJSON(ctx, httpClient, url, map[string]string{
+			"address": address,
+			"token":   "usdi",
+		}); err != nil {
+			lastErr = fmt.Errorf("request usdi faucet for %s: %w", label, err)
+			if attempt < maxAttempts && retryDelay > 0 {
+				if sleepErr := sleepWithContext(ctx, retryDelay); sleepErr != nil {
+					return sleepErr
+				}
+			}
+			continue
+		}
+		return sleepWithContext(ctx, settleWait)
+	}
+	return lastErr
 }
 
 func postDemoJSON(ctx context.Context, httpClient *http.Client, endpoint string, payload any) error {

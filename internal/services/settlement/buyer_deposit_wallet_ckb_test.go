@@ -317,3 +317,159 @@ func TestCKBBuyerDepositWalletSweepToTreasuryUsesPureCKBCellsForFees(t *testing.
 		t.Fatalf("list pure ckb cells: %v", err)
 	}
 }
+
+func TestCKBBuyerDepositWalletSweepToTreasuryTreatsDuplicatePoolTransactionAsSuccess(t *testing.T) {
+	const (
+		seed           = "buyer-deposit-duplicate-pool-seed"
+		udtCellDepHash = "0xaec423c2af7fe844b476333190096b10fc5726e6d9ac58a9b71f71ffac204fee"
+		rawUnits       = int64(1_000_000_000)
+	)
+
+	udtTypeScript := platform.UDTTypeScript{
+		CodeHash: "0xcc9dc33ef234e14bc788c43a4848556a5fb16401a04662fc55db9bb201987037",
+		HashType: "type",
+		Args:     "0x71fd1985b2971a9903e4d8ed0d59e6710166985217ca0681437883837b86162f",
+	}
+	treasuryScript := &types.Script{
+		CodeHash: types.HexToHash("0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8"),
+		HashType: types.HashTypeType,
+		Args:     mustBuyerDepositHexBytes(t, "0x4444444444444444444444444444444444444444"),
+	}
+	treasuryAddress, err := encodeBuyerDepositAddress(treasuryScript, types.NetworkTest)
+	if err != nil {
+		t.Fatalf("encode treasury address: %v", err)
+	}
+
+	walletIface, err := NewCKBBuyerDepositWallet(CKBBuyerDepositWalletConfig{
+		RPCURL:               "http://127.0.0.1",
+		MasterSeed:           seed,
+		Network:              types.NetworkTest,
+		UDTTypeScript:        udtTypeScript,
+		UDTCellDepTxHash:     udtCellDepHash,
+		UDTCellDepIndex:      0,
+		QueryPageLimit:       100,
+		QueryMaxPages:        20,
+		ConfirmationBlocks:   24,
+		RawUnitsPerWholeUSDI: defaultBuyerDepositRawUnitsPerWholeUSDI,
+	})
+	if err != nil {
+		t.Fatalf("new buyer deposit wallet: %v", err)
+	}
+	wallet := walletIface.(*ckbBuyerDepositWallet)
+
+	depositAddress, err := wallet.DeriveAddress(0)
+	if err != nil {
+		t.Fatalf("derive deposit address: %v", err)
+	}
+	senderScript, err := decodeBuyerDepositAddressScript(depositAddress)
+	if err != nil {
+		t.Fatalf("decode sender script: %v", err)
+	}
+	udtArgs, err := decodeHexBytes(udtTypeScript.Args)
+	if err != nil {
+		t.Fatalf("decode udt args: %v", err)
+	}
+	udtScript := &types.Script{
+		CodeHash: types.HexToHash(udtTypeScript.CodeHash),
+		HashType: parseCKBHashType(udtTypeScript.HashType),
+		Args:     udtArgs,
+	}
+	treasuryOutputData := encodeBuyerDepositSudtAmount(big.NewInt(rawUnits))
+	sudtCellCapacity := (&types.CellOutput{
+		Lock: treasuryScript,
+		Type: udtScript,
+	}).OccupiedCapacity(treasuryOutputData)
+	sudtCell := buyerDepositCKBCell{
+		BlockNumber: "0x1",
+		OutPoint: &types.OutPoint{
+			TxHash: types.HexToHash("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+			Index:  0,
+		},
+		Output: &types.CellOutput{
+			Capacity: sudtCellCapacity,
+			Lock:     senderScript,
+			Type:     udtScript,
+		},
+		OutputData: "0x00ca9a3b000000000000000000000000",
+	}
+	pureCKBCell := buyerDepositCKBCell{
+		BlockNumber: "0x1",
+		OutPoint: &types.OutPoint{
+			TxHash: types.HexToHash("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+			Index:  0,
+		},
+		Output: &types.CellOutput{
+			Capacity: 1_000_000_000,
+			Lock:     senderScript,
+		},
+		OutputData: "0x",
+	}
+
+	var sendCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Method string            `json:"method"`
+			Params []json.RawMessage `json:"params"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode rpc request: %v", err)
+		}
+		switch req.Method {
+		case "get_tip_block_number":
+			_, _ = fmt.Fprint(w, `{"jsonrpc":"2.0","id":"1","result":"0x100"}`)
+		case "get_cells":
+			filtered := strings.Contains(string(req.Params[0]), `"filter"`)
+			result := struct {
+				Objects    []buyerDepositCKBCell `json:"objects"`
+				LastCursor string                `json:"last_cursor"`
+			}{LastCursor: "0x"}
+			if filtered {
+				result.Objects = []buyerDepositCKBCell{sudtCell}
+			} else {
+				result.Objects = []buyerDepositCKBCell{pureCKBCell}
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0",
+				"id":      "1",
+				"result":  result,
+			})
+		case "send_transaction":
+			sendCalls++
+			var tx types.Transaction
+			if err := json.Unmarshal(req.Params[0], &tx); err != nil {
+				t.Fatalf("decode send_transaction payload: %v", err)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0",
+				"id":      "1",
+				"error": map[string]any{
+					"message": fmt.Sprintf("PoolRejectedDuplicatedTransaction: Transaction(%s) already exists in transaction_pool", tx.ComputeHash().Hex()),
+				},
+			})
+		default:
+			t.Fatalf("unexpected rpc method %s", req.Method)
+		}
+	}))
+	defer server.Close()
+	wallet.rawClient.endpoint = server.URL
+	wallet.cfg.RPCURL = server.URL
+
+	result, err := wallet.SweepToTreasury(context.Background(), BuyerDepositAddress{
+		BuyerOrgID:      "buyer_1",
+		Asset:           "USDI",
+		Address:         depositAddress,
+		DerivationIndex: 0,
+	}, treasuryAddress, 24)
+	if err != nil {
+		t.Fatalf("sweep to treasury: %v", err)
+	}
+	if sendCalls != 1 {
+		t.Fatalf("send transaction calls = %d, want 1", sendCalls)
+	}
+	if result.SweptRawUnits != rawUnits {
+		t.Fatalf("swept raw units = %d, want %d", result.SweptRawUnits, rawUnits)
+	}
+	if result.SweepTxHash == "" {
+		t.Fatal("expected sweep tx hash for duplicate transaction")
+	}
+}
