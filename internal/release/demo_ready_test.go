@@ -139,6 +139,12 @@ func TestRunDemoVerifyReturnsBlockedVerdict(t *testing.T) {
 }
 
 func TestRunDemoPrepareEnsuresBindingsAndWarmup(t *testing.T) {
+	originalEnsureDemoFNNBootstrap := ensureDemoFNNBootstrapFunc
+	defer func() {
+		ensureDemoFNNBootstrapFunc = originalEnsureDemoFNNBootstrap
+	}()
+	ensureDemoFNNBootstrapFunc = func(_ context.Context, _ DemoRunConfig) error { return nil }
+
 	var carrierRegistered bool
 	var warmupCalled bool
 	demoStatusCalls := 0
@@ -254,13 +260,25 @@ func TestRunDemoPrepareEnsuresBindingsAndWarmup(t *testing.T) {
 }
 
 func TestRunDemoPrepareEnsuresBuyerTopUpRailBeforePayment(t *testing.T) {
+	originalEnsureDemoFNNBootstrap := ensureDemoFNNBootstrapFunc
 	originalEnsureBuyerTopUpRail := ensureDemoBuyerTopUpRailFunc
 	defer func() {
+		ensureDemoFNNBootstrapFunc = originalEnsureDemoFNNBootstrap
 		ensureDemoBuyerTopUpRailFunc = originalEnsureBuyerTopUpRail
 	}()
 
+	callSequence := make([]string, 0, 2)
+	ensureDemoFNNBootstrapFunc = func(_ context.Context, cfg DemoRunConfig) error {
+		callSequence = append(callSequence, "bootstrap")
+		if cfg.USDI.PayerRPCURL != "http://fnn2:8227" {
+			t.Fatalf("payer rpc url = %q, want http://fnn2:8227", cfg.USDI.PayerRPCURL)
+		}
+		return nil
+	}
+
 	var buyerTopUpRailEnsured bool
 	ensureDemoBuyerTopUpRailFunc = func(_ context.Context, cfg USDIMarketplaceE2EConfig, minimumAvailableCents int64) error {
+		callSequence = append(callSequence, "rail")
 		buyerTopUpRailEnsured = true
 		if minimumAvailableCents != 5000 {
 			t.Fatalf("minimumAvailableCents = %d, want 5000", minimumAvailableCents)
@@ -403,6 +421,7 @@ func TestRunDemoPrepareEnsuresBuyerTopUpRailBeforePayment(t *testing.T) {
 			FiberAdapterBaseURL:         fiberServer.URL,
 			FiberAdapterAppID:           "app_local",
 			FiberAdapterHMACSecret:      "secret_local",
+			PayerRPCURL:                 "http://fnn2:8227",
 			BuyerTopUpInvoiceRPCURL:     "http://fnn:8227",
 			BuyerTopUpInvoiceP2PHost:    "fnn",
 			BuyerTopUpInvoiceP2PPort:    8228,
@@ -417,5 +436,8 @@ func TestRunDemoPrepareEnsuresBuyerTopUpRailBeforePayment(t *testing.T) {
 	}
 	if !buyerTopUpRailEnsured {
 		t.Fatal("expected buyer topup rail to be ensured before payment")
+	}
+	if len(callSequence) < 2 || callSequence[0] != "bootstrap" || callSequence[1] != "rail" {
+		t.Fatalf("call sequence = %v, want [bootstrap rail ...]", callSequence)
 	}
 }

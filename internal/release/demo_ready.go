@@ -117,6 +117,12 @@ func runDemoReady(ctx context.Context, cfg DemoRunConfig, mutate bool) (DemoRunS
 	}
 	summary.Status = status
 
+	if mutate && (!status.BuyerBalance.MeetsMinimumThreshold || !status.ProviderSettlement.MeetsMinimumThreshold) {
+		if err := ensureDemoFNNBootstrapFunc(ctx, cfg); err != nil {
+			return summary, fmt.Errorf("ensure demo fnn funding: %w", err)
+		}
+	}
+
 	if mutate && !status.BuyerBalance.MeetsMinimumThreshold {
 		topUpInvoice, topUpRecordID, err := client.createBuyerTopUp(ctx, cfg.Demo.SettlementBaseURL, buyer, cfg.Demo.SettlementServiceToken, cfg.Demo.BuyerTopUpAmount)
 		if err != nil {

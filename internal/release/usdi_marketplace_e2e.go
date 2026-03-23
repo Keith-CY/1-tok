@@ -56,6 +56,11 @@ type USDIMarketplaceE2EConfig struct {
 	IncludeCarrierProbe                 bool
 	FaucetTxHash                        string
 	ExplorerProofURLs                   []string
+	CKBRPCURL                           string
+	CKBFaucetAPIBase                    string
+	CKBFaucetFallbackAPIBase            string
+	USDIFaucetAPIBase                   string
+	PayerRPCURL                         string
 	BuyerTopUpInvoiceRPCURL             string
 	BuyerTopUpInvoiceP2PHost            string
 	BuyerTopUpInvoiceP2PPort            int
@@ -179,6 +184,11 @@ func USDIMarketplaceE2EConfigFromEnv() USDIMarketplaceE2EConfig {
 		IncludeCarrierProbe:                 envBool("RELEASE_USDI_E2E_INCLUDE_CARRIER_PROBE"),
 		FaucetTxHash:                        strings.TrimSpace(envOrDefault("RELEASE_USDI_E2E_FAUCET_TX_HASH", "")),
 		ExplorerProofURLs:                   splitCSV(envOrDefault("RELEASE_USDI_E2E_EXPLORER_PROOF_URLS", "")),
+		CKBRPCURL:                           envOrDefault("RELEASE_USDI_E2E_CKB_RPC_URL", envOrDefault("FNN_CKB_RPC_URL", envOrDefault("FNN2_CKB_RPC_URL", "https://testnet.ckbapp.dev/"))),
+		CKBFaucetAPIBase:                    envOrDefault("RELEASE_USDI_E2E_CKB_FAUCET_API_BASE", "https://faucet-api.nervos.org"),
+		CKBFaucetFallbackAPIBase:            envOrDefault("RELEASE_USDI_E2E_CKB_FAUCET_FALLBACK_API_BASE", "https://ckb-utilities.random-walk.co.jp/api"),
+		USDIFaucetAPIBase:                   envOrDefault("RELEASE_USDI_E2E_USDI_FAUCET_API_BASE", "https://ckb-utilities.random-walk.co.jp/api"),
+		PayerRPCURL:                         envOrDefault("RELEASE_USDI_E2E_PAYER_RPC_URL", envOrDefault("PROVIDER_SETTLEMENT_FNN_TREASURY_RPC_URL", "http://fnn2:8227")),
 		BuyerTopUpInvoiceRPCURL:             envOrDefault("RELEASE_USDI_E2E_TOPUP_INVOICE_RPC_URL", envOrDefault("FNN_INVOICE_RPC_URL", "http://fnn:8227")),
 		BuyerTopUpInvoiceP2PHost:            envOrDefault("RELEASE_USDI_E2E_TOPUP_INVOICE_P2P_HOST", "fnn"),
 		BuyerTopUpInvoiceP2PPort:            envIntOrDefault("RELEASE_USDI_E2E_TOPUP_INVOICE_P2P_PORT", 8228),
