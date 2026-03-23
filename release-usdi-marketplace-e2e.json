@@ -1,0 +1,65 @@
+{
+  "asset": "USDI",
+  "faucetTxHash": "0x8f9cc0f526a9720d430cf108563f7d5554055d02e02597a5d6f03c47ee59c85b",
+  "explorerProofUrls": [
+    "https://pudge.explorer.nervos.org/transaction/0x8f9cc0f526a9720d430cf108563f7d5554055d02e02597a5d6f03c47ee59c85b"
+  ],
+  "integrationIssues": [
+    "https://github.com/Keith-CY/carrier/issues/1595",
+    "carrier codeagent run probe skipped: missing OPENAI_API_KEY or OPENAI_CODEX_TOKEN"
+  ],
+  "buyerUserEmail": "buyer-1774273665729399896@example.com",
+  "providerUserEmail": "provider-1774273665729399896@example.com",
+  "buyerOrgId": "org_1",
+  "providerOrgId": "org_2",
+  "buyerTopUpInvoice": "fibt501pa5fw6y6c5zgfw0pnm6vk32lew65x9lhrdv3v242fjqcgmzxm9852c3jhc3clml0kld7j0daen3mudfzwtgdfhu5jefhwk83sd0avg37v2dcsder0yz8vqfy7y9vzl8h7ycue2at698ft6akmu99rvf5c8f4k84rxykx59xwf6rtgjlj6wjy4uqagw2x3jrcxfyveu5nnwmtw3zw38vc0s7l9hc6jeg3r6qjyyehjf9gg6g53pz6shdx88jdhklmnn78xk0y44qdzkczvt5fqtg5sse6x2h28tx9tsmdaqcd2sfa5nnyfg3f5l0ssamuqn3z052uzjp80g8crmyfthw868qtcl0ddrl4ny7ue397fggzwt0wpyg2jjs52qaqwj59l34keujsys449tm8dnjnjjat6kescv6w42kcprrnr6g",
+  "buyerTopUpFundingRecordId": "fund_1",
+  "buyerTopUpPaymentId": "0x99abc46d638906515e28e767faed0850b9fcb1fdfdf4a5965efd18e09d374ee2",
+  "bootstrapRfqId": "rfq_1",
+  "bootstrapBidId": "bid_1",
+  "bootstrapOrderId": "ord_1",
+  "bootstrapCarrierBindingId": "bind_1",
+  "bootstrapCarrierExecutionId": "job_1",
+  "bootstrapReservationId": "plr_1",
+  "bootstrapReservationChannel": "0x6d42ba70a146623e7dd6826feffa351c51803e7401c1a396361980b476c997b4",
+  "bootstrapReservationStatus": "released",
+  "bootstrapPayoutRecordIds": [
+    "fund_2",
+    "fund_3",
+    "fund_4"
+  ],
+  "reuseRfqId": "rfq_2",
+  "reuseBidId": "bid_2",
+  "reuseOrderId": "ord_2",
+  "reuseReservationId": "plr_2",
+  "reuseReservationInitialChannel": "0x31d81a0ed2f55ee256db66fea34322aba31136744c81e9af3a4d9373f28f52e1",
+  "reuseReservationChannel": "0x31d81a0ed2f55ee256db66fea34322aba31136744c81e9af3a4d9373f28f52e1",
+  "reuseReservationStatus": "released",
+  "reuseReservationReuseSource": "reused",
+  "reusePayoutRecordIds": [
+    "fund_5",
+    "fund_6",
+    "fund_7"
+  ],
+  "rfqId": "rfq_3",
+  "bidId": "bid_3",
+  "orderId": "ord_3",
+  "carrierProviderBindingId": "pcb_1",
+  "providerSettlementBindingId": "psb_1",
+  "carrierBindingId": "bind_3",
+  "carrierExecutionId": "job_3",
+  "reservationId": "plr_3",
+  "reservationInitialChannelId": "0x31d81a0ed2f55ee256db66fea34322aba31136744c81e9af3a4d9373f28f52e1",
+  "reservationChannelId": "0x31d81a0ed2f55ee256db66fea34322aba31136744c81e9af3a4d9373f28f52e1",
+  "reservationReuseSource": "reused",
+  "reservationStatus": "released",
+  "usageChargeCount": 2,
+  "providerPayoutRecordIds": [
+    "fund_8",
+    "fund_9",
+    "fund_10"
+  ],
+  "disconnectOrderStatus": "awaiting_payment_rail",
+  "recoveredOrderStatus": "running",
+  "finalOrderStatus": "completed"
+}
