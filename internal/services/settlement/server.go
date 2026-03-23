@@ -10,18 +10,19 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chenyu/1-tok/internal/httputil"
 	fiberclient "github.com/chenyu/1-tok/internal/integrations/fiber"
 	iamclient "github.com/chenyu/1-tok/internal/integrations/iam"
 	"github.com/chenyu/1-tok/internal/runtimeconfig"
 	"github.com/chenyu/1-tok/internal/serviceauth"
 	"github.com/chenyu/1-tok/internal/services/proxy"
-	"github.com/chenyu/1-tok/internal/httputil"
 )
 
 type Server struct {
 	inner         http.Handler
 	fiber         fiberclient.InvoiceClient
 	funding       FundingRecordRepository
+	deposits      *BuyerDepositService
 	auth          iamclient.Client
 	serviceTokens serviceauth.TokenSet
 }
@@ -30,6 +31,7 @@ type Options struct {
 	Upstream      string
 	Fiber         fiberclient.InvoiceClient
 	Funding       FundingRecordRepository
+	Deposits      *BuyerDepositService
 	Auth          iamclient.Client
 	ServiceToken  string
 	ServiceTokens serviceauth.TokenSet
@@ -80,6 +82,13 @@ func NewServerWithOptionsE(options Options) (*Server, error) {
 		}
 		options.Funding = funding
 	}
+	if options.Deposits == nil {
+		deposits, err := NewBuyerDepositServiceFromEnvE(options.Funding)
+		if err != nil {
+			return nil, fmt.Errorf("buyer deposits: %w", err)
+		}
+		options.Deposits = deposits
+	}
 	if options.Auth == nil {
 		options.Auth = iamclient.NewClientFromEnv()
 	}
@@ -105,6 +114,7 @@ func NewServerWithOptionsE(options Options) (*Server, error) {
 		}),
 		fiber:         options.Fiber,
 		funding:       options.Funding,
+		deposits:      options.Deposits,
 		auth:          options.Auth,
 		serviceTokens: options.ServiceTokens,
 	}, nil
@@ -125,6 +135,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodPost && r.URL.Path == "/v1/topups" {
 		s.handleCreateTopUp(w, r)
+		return
+	}
+
+	if r.Method == http.MethodGet && r.URL.Path == "/v1/buyer/deposit-address" {
+		s.handleGetBuyerDepositAddress(w, r)
+		return
+	}
+
+	if r.Method == http.MethodPost && r.URL.Path == "/v1/buyer/deposits/sync" {
+		s.handleSyncBuyerDeposits(w, r)
 		return
 	}
 
@@ -252,57 +272,75 @@ func (s *Server) handleCreateTopUp(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	if strings.TrimSpace(payload.Amount) == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required fields"})
-		return
-	}
 
 	buyerOrgID, err := s.resolveBuyerOrgOrInternal(r, payload.BuyerOrgID)
 	if err != nil {
 		httputil.WriteAuthError(w, err)
 		return
 	}
-	recordID, err := s.funding.NextID()
-	if err != nil {
-		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+
+	if s.deposits == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "buyer deposits are not configured"})
 		return
 	}
 
 	asset := defaultSettlementAsset(payload.Asset)
-	result, err := s.fiber.CreateInvoice(r.Context(), fiberclient.CreateInvoiceInput{
-		PostID:     "buyer_topup:" + buyerOrgID + ":" + recordID,
-		FromUserID: buyerOrgID,
-		ToUserID:   marketplaceTreasuryUserID(),
-		Asset:      asset,
-		Amount:     strings.TrimSpace(payload.Amount),
-		Message:    strings.TrimSpace(payload.Memo),
-	})
+	record, err := s.deposits.EnsureAddress(r.Context(), buyerOrgID)
 	if err != nil {
-		writeFiberError(w, err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-
-	now := time.Now().UTC()
-	if err := s.funding.Save(FundingRecord{
-		ID:         recordID,
-		Kind:       FundingRecordKindBuyerTopUp,
-		BuyerOrgID: buyerOrgID,
-		Asset:      asset,
-		Amount:     strings.TrimSpace(payload.Amount),
-		Invoice:    result.Invoice,
-		State:      "UNPAID",
-		CreatedAt:  now,
-		UpdatedAt:  now,
-	}); err != nil {
+	summary, err := s.deposits.GetSummary(r.Context(), buyerOrgID)
+	if err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
-	httputil.WriteJSON(w, http.StatusCreated, map[string]string{
-		"invoice":  result.Invoice,
-		"recordId": recordID,
-		"asset":    asset,
+	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
+		"buyerOrgId":         buyerOrgID,
+		"asset":              asset,
+		"address":            record.Address,
+		"confirmationBlocks": summary.ConfirmationBlocks,
+		"minimumSweepAmount": summary.MinimumSweepAmount,
+		"onChainBalance":     summary.OnChainBalance,
+		"confirmedBalance":   summary.ConfirmedBalance,
+		"creditedBalance":    summary.CreditedBalance,
 	})
+}
+
+func (s *Server) handleGetBuyerDepositAddress(w http.ResponseWriter, r *http.Request) {
+	if s.deposits == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "buyer deposits are not configured"})
+		return
+	}
+	buyerOrgID, err := s.resolveBuyerOrgOrInternal(r, r.URL.Query().Get("buyerOrgId"))
+	if err != nil {
+		httputil.WriteAuthError(w, err)
+		return
+	}
+	summary, err := s.deposits.GetSummary(r.Context(), buyerOrgID)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, summary)
+}
+
+func (s *Server) handleSyncBuyerDeposits(w http.ResponseWriter, r *http.Request) {
+	if err := s.authorizeInternalRoute(r); err != nil {
+		httputil.WriteAuthError(w, err)
+		return
+	}
+	if s.deposits == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "buyer deposits are not configured"})
+		return
+	}
+	summary, err := s.deposits.SyncDeposits(r.Context())
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, summary)
 }
 
 func (s *Server) handleGetInvoiceStatus(w http.ResponseWriter, r *http.Request) {
@@ -753,7 +791,6 @@ func (s *Server) resolveBuyerOrg(r *http.Request, requestedBuyerOrgID string) (s
 
 	return "", errors.New("buyer or ops membership is required")
 }
-
 
 func writeFiberError(w http.ResponseWriter, err error) {
 	if errors.Is(err, fiberclient.ErrNotConfigured) {

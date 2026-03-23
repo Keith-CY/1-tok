@@ -266,12 +266,10 @@ func TestRunDemoPrepareEnsuresBindingsAndWarmup(t *testing.T) {
 	}
 }
 
-func TestRunDemoPrepareEnsuresBuyerTopUpRailBeforePayment(t *testing.T) {
+func TestRunDemoPrepareCreditsBuyerDepositBeforeReady(t *testing.T) {
 	originalEnsureDemoFNNBootstrap := ensureDemoFNNBootstrapFunc
-	originalEnsureBuyerTopUpRail := ensureDemoBuyerTopUpRailFunc
 	defer func() {
 		ensureDemoFNNBootstrapFunc = originalEnsureDemoFNNBootstrap
-		ensureDemoBuyerTopUpRailFunc = originalEnsureBuyerTopUpRail
 	}()
 
 	callSequence := make([]string, 0, 2)
@@ -279,19 +277,6 @@ func TestRunDemoPrepareEnsuresBuyerTopUpRailBeforePayment(t *testing.T) {
 		callSequence = append(callSequence, "bootstrap")
 		if cfg.USDI.PayerRPCURL != "http://fnn2:8227" {
 			t.Fatalf("payer rpc url = %q, want http://fnn2:8227", cfg.USDI.PayerRPCURL)
-		}
-		return nil
-	}
-
-	var buyerTopUpRailEnsured bool
-	ensureDemoBuyerTopUpRailFunc = func(_ context.Context, cfg USDIMarketplaceE2EConfig, minimumAvailableCents int64) error {
-		callSequence = append(callSequence, "rail")
-		buyerTopUpRailEnsured = true
-		if minimumAvailableCents != 5000 {
-			t.Fatalf("minimumAvailableCents = %d, want 5000", minimumAvailableCents)
-		}
-		if cfg.BuyerTopUpInvoiceRPCURL != "http://fnn:8227" {
-			t.Fatalf("buyer topup invoice rpc url = %q, want http://fnn:8227", cfg.BuyerTopUpInvoiceRPCURL)
 		}
 		return nil
 	}
@@ -318,51 +303,62 @@ func TestRunDemoPrepareEnsuresBuyerTopUpRailBeforePayment(t *testing.T) {
 	}))
 	defer iamServer.Close()
 
-	settlementCalls := 0
+	depositSummaryCalls := 0
+	depositSynced := false
 	settlementServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/topups":
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"invoice":  "fibt_demo_topup",
-				"recordId": "fund_demo_topup",
-				"asset":    "USDI",
+				"buyerOrgId":         "org_demo_buyer",
+				"asset":              "USDI",
+				"address":            "ckt1qyqbuyer0address",
+				"confirmationBlocks": 24,
+				"minimumSweepAmount": "10.00",
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/buyer/deposit-address":
+			depositSummaryCalls++
+			payload := map[string]any{
+				"buyerOrgId":           "org_demo_buyer",
+				"asset":                "USDI",
+				"address":              "ckt1qyqbuyer0address",
+				"onChainBalance":       "50.00",
+				"confirmedBalance":     "50.00",
+				"creditedBalance":      "0.00",
+				"creditedBalanceCents": 0,
+				"minimumSweepAmount":   "10.00",
+				"confirmationBlocks":   24,
+				"rawOnChainUnits":      5_000_000_000,
+				"rawConfirmedUnits":    5_000_000_000,
+				"rawMinimumSweepUnits": 1_000_000_000,
+			}
+			if depositSynced {
+				payload["creditedBalance"] = "50.00"
+				payload["creditedBalanceCents"] = 5000
+			}
+			_ = json.NewEncoder(w).Encode(payload)
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/buyer/deposits/sync":
+			depositSynced = true
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"creditedCents": 5000,
+				"sweepCount":    1,
 			})
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/funding-records":
-			settlementCalls++
-			state := "UNPAID"
-			if settlementCalls >= 2 {
-				state = "SETTLED"
+			records := []map[string]any{}
+			if depositSynced {
+				records = append(records, map[string]any{
+					"id":         "fund_demo_topup",
+					"kind":       "buyer_topup",
+					"buyerOrgId": "org_demo_buyer",
+					"amount":     "50.00",
+					"state":      "SETTLED",
+				})
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"records": []map[string]any{
-					{"id": "fund_demo_topup", "kind": "buyer_topup", "buyerOrgId": "org_demo_buyer", "amount": "50.00", "state": state},
-				},
-			})
+			_ = json.NewEncoder(w).Encode(map[string]any{"records": records})
 		default:
 			t.Fatalf("unexpected settlement path %s %s", r.Method, r.URL.Path)
 		}
 	}))
 	defer settlementServer.Close()
-
-	fiberServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var rpc struct {
-			Method string `json:"method"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&rpc); err != nil {
-			t.Fatalf("decode fiber rpc: %v", err)
-		}
-		switch rpc.Method {
-		case "withdrawal.request":
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"jsonrpc": "2.0",
-				"id":      1,
-				"result":  map[string]any{"id": "wdreq_demo_topup", "state": "COMPLETED"},
-			})
-		default:
-			t.Fatalf("unexpected fiber rpc method %s", rpc.Method)
-		}
-	}))
-	defer fiberServer.Close()
 
 	statusCalls := 0
 	gatewayServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -373,13 +369,12 @@ func TestRunDemoPrepareEnsuresBuyerTopUpRailBeforePayment(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]any{"binding": map[string]any{"id": "psb_1", "status": "active"}})
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/ops/demo/status":
 			statusCalls++
-			ready := statusCalls >= 2
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"status": map[string]any{
 					"checkedAt":      "2026-03-23T00:00:00Z",
 					"resourcePrefix": "demo-live",
-					"verdict":        map[bool]string{true: "ready", false: "blocked"}[ready],
-					"blockerReasons": map[bool][]string{true: {}, false: {"buyer prefund balance is below the demo threshold"}}[ready],
+					"verdict":        "blocked",
+					"blockerReasons": []string{"buyer prefund balance is below the demo threshold"},
 					"actors": []map[string]any{
 						{"role": "buyer", "ready": true},
 						{"role": "provider", "ready": true},
@@ -387,10 +382,10 @@ func TestRunDemoPrepareEnsuresBuyerTopUpRailBeforePayment(t *testing.T) {
 					},
 					"buyerBalance": map[string]any{
 						"buyerOrgId":            "org_demo_buyer",
-						"settledTopUpCents":     map[bool]int64{true: 5000, false: 0}[ready],
-						"pendingTopUpCount":     map[bool]int64{true: 0, false: 1}[ready],
+						"settledTopUpCents":     0,
+						"pendingTopUpCount":     0,
 						"minimumRequiredCents":  5000,
-						"meetsMinimumThreshold": ready,
+						"meetsMinimumThreshold": false,
 					},
 					"providerSettlement": map[string]any{
 						"providerOrgId":            "org_demo_provider",
@@ -425,14 +420,9 @@ func TestRunDemoPrepareEnsuresBuyerTopUpRailBeforePayment(t *testing.T) {
 			ResourcePrefix:            "demo-live",
 		},
 		USDI: USDIMarketplaceE2EConfig{
-			FiberAdapterBaseURL:         fiberServer.URL,
-			FiberAdapterAppID:           "app_local",
-			FiberAdapterHMACSecret:      "secret_local",
-			PayerRPCURL:                 "http://fnn2:8227",
-			BuyerTopUpInvoiceRPCURL:     "http://fnn:8227",
-			BuyerTopUpInvoiceP2PHost:    "fnn",
-			BuyerTopUpInvoiceP2PPort:    8228,
-			BuyerTopUpUDTTypeScriptJSON: `{"codeHash":"0x1","hashType":"type","args":"0x2"}`,
+			PayerRPCURL:       "http://fnn2:8227",
+			SettlementBaseURL: settlementServer.URL,
+			USDIFaucetAPIBase: "http://faucet.invalid",
 		},
 	})
 	if err != nil {
@@ -441,11 +431,20 @@ func TestRunDemoPrepareEnsuresBuyerTopUpRailBeforePayment(t *testing.T) {
 	if summary.Status.Verdict != demoenv.VerdictReady {
 		t.Fatalf("verdict = %s, blockers=%v", summary.Status.Verdict, summary.Status.BlockerReasons)
 	}
-	if !buyerTopUpRailEnsured {
-		t.Fatal("expected buyer topup rail to be ensured before payment")
+	if summary.DepositAddress != "ckt1qyqbuyer0address" {
+		t.Fatalf("deposit address = %q, want ckt1qyqbuyer0address", summary.DepositAddress)
 	}
-	if len(callSequence) < 2 || callSequence[0] != "bootstrap" || callSequence[1] != "rail" {
-		t.Fatalf("call sequence = %v, want [bootstrap rail ...]", callSequence)
+	if summary.TopUpRecordID != "fund_demo_topup" {
+		t.Fatalf("top up record id = %q, want fund_demo_topup", summary.TopUpRecordID)
+	}
+	if !depositSynced || depositSummaryCalls < 2 {
+		t.Fatalf("depositSynced=%t depositSummaryCalls=%d", depositSynced, depositSummaryCalls)
+	}
+	if len(callSequence) != 1 || callSequence[0] != "bootstrap" {
+		t.Fatalf("call sequence = %v, want [bootstrap]", callSequence)
+	}
+	if statusCalls != 1 {
+		t.Fatalf("statusCalls = %d, want 1", statusCalls)
 	}
 }
 

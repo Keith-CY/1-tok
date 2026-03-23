@@ -16,7 +16,6 @@ import (
 )
 
 var ErrDemoNotReady = errors.New("demo environment is not ready")
-var ensureDemoBuyerTopUpRailFunc = ensureDemoBuyerTopUpRailLiquidity
 
 const (
 	activeCarrierBindingAlreadyExistsMessage    = "active binding already exists"
@@ -29,16 +28,17 @@ type DemoRunConfig struct {
 }
 
 type DemoRunSummary struct {
-	Status        demoenv.Status `json:"status"`
-	Actions       []string       `json:"actions,omitempty"`
-	BuyerOrgID    string         `json:"buyerOrgId,omitempty"`
-	ProviderOrgID string         `json:"providerOrgId,omitempty"`
-	OpsOrgID      string         `json:"opsOrgId,omitempty"`
-	BuyerEmail    string         `json:"buyerEmail,omitempty"`
-	ProviderEmail string         `json:"providerEmail,omitempty"`
-	OpsEmail      string         `json:"opsEmail,omitempty"`
-	TopUpInvoice  string         `json:"topUpInvoice,omitempty"`
-	TopUpRecordID string         `json:"topUpRecordId,omitempty"`
+	Status         demoenv.Status `json:"status"`
+	Actions        []string       `json:"actions,omitempty"`
+	BuyerOrgID     string         `json:"buyerOrgId,omitempty"`
+	ProviderOrgID  string         `json:"providerOrgId,omitempty"`
+	OpsOrgID       string         `json:"opsOrgId,omitempty"`
+	BuyerEmail     string         `json:"buyerEmail,omitempty"`
+	ProviderEmail  string         `json:"providerEmail,omitempty"`
+	OpsEmail       string         `json:"opsEmail,omitempty"`
+	TopUpInvoice   string         `json:"topUpInvoice,omitempty"`
+	DepositAddress string         `json:"depositAddress,omitempty"`
+	TopUpRecordID  string         `json:"topUpRecordId,omitempty"`
 }
 
 func DemoRunConfigFromEnv() DemoRunConfig {
@@ -126,20 +126,16 @@ func runDemoReady(ctx context.Context, cfg DemoRunConfig, mutate bool) (DemoRunS
 	}
 
 	if mutate && !status.BuyerBalance.MeetsMinimumThreshold {
-		topUpInvoice, topUpRecordID, err := client.createBuyerTopUp(ctx, cfg.Demo.SettlementBaseURL, buyer, cfg.Demo.SettlementServiceToken, cfg.Demo.BuyerTopUpAmount)
+		topUpSummary, err := client.createBuyerTopUp(ctx, cfg.Demo.SettlementBaseURL, buyer, cfg.Demo.SettlementServiceToken, cfg.Demo.BuyerTopUpAmount)
 		if err != nil {
 			return summary, err
 		}
-		summary.TopUpInvoice = topUpInvoice
-		summary.TopUpRecordID = topUpRecordID
+		summary.DepositAddress = topUpSummary.Address
 		topUpNeededCents := cfg.Demo.MinBuyerBalanceCents
 		if topUpAmountCents := parseDemoAmountToCents(cfg.Demo.BuyerTopUpAmount); topUpAmountCents > topUpNeededCents {
 			topUpNeededCents = topUpAmountCents
 		}
-		if err := ensureDemoBuyerTopUpRailFunc(ctx, cfg.USDI, topUpNeededCents); err != nil {
-			return summary, fmt.Errorf("ensure buyer topup rail: %w", err)
-		}
-		if _, err := client.payInvoiceViaFiber(ctx, cfg.USDI, buyer.OrgID, topUpInvoice, cfg.Demo.BuyerTopUpAmount, "USDI"); err != nil {
+		if _, err := client.waitBuyerDepositCredit(ctx, cfg.USDI, buyer, cfg.Demo.BuyerTopUpAmount); err != nil {
 			return summary, err
 		}
 		if _, err := client.waitFundingRecordState(ctx, cfg.Demo.SettlementBaseURL, buyer.Token, map[string]string{
@@ -147,6 +143,12 @@ func runDemoReady(ctx context.Context, cfg DemoRunConfig, mutate bool) (DemoRunS
 			"kind":       "buyer_topup",
 		}, 90*time.Second, "SETTLED"); err != nil {
 			return summary, err
+		}
+		if records, err := client.listFundingRecords(ctx, cfg.Demo.SettlementBaseURL, buyer.Token, map[string]string{
+			"buyerOrgId": summary.BuyerOrgID,
+			"kind":       "buyer_topup",
+		}); err == nil && len(records) > 0 {
+			summary.TopUpRecordID = records[len(records)-1].ID
 		}
 		buyerTopUpSettledCents = parseDemoAmountToCents(cfg.Demo.BuyerTopUpAmount)
 		summary.Actions = append(summary.Actions, "buyer top-up settled")
@@ -490,75 +492,6 @@ func errorContainsFold(err error, fragment string) bool {
 		return false
 	}
 	return strings.Contains(strings.ToLower(err.Error()), strings.ToLower(fragment))
-}
-
-func ensureDemoBuyerTopUpRailLiquidity(ctx context.Context, cfg USDIMarketplaceE2EConfig, minimumAvailableCents int64) error {
-	provisioner, err := platform.NewFNNProviderSettlementProvisionerFromEnv()
-	if err != nil {
-		return err
-	}
-	if provisioner == nil {
-		return nil
-	}
-
-	if strings.TrimSpace(cfg.BuyerTopUpInvoiceRPCURL) == "" {
-		return errors.New("buyer topup invoice rpc url is required")
-	}
-	if strings.TrimSpace(cfg.BuyerTopUpInvoiceP2PHost) == "" {
-		return errors.New("buyer topup invoice p2p host is required")
-	}
-	if strings.TrimSpace(cfg.BuyerTopUpUDTTypeScriptJSON) == "" {
-		return errors.New("buyer topup udt type script json is required")
-	}
-	if minimumAvailableCents <= 0 {
-		minimumAvailableCents = 5_000
-	}
-
-	udtTypeScript, err := parseProviderSettlementUDTTypeScriptJSON(cfg.BuyerTopUpUDTTypeScriptJSON)
-	if err != nil {
-		return fmt.Errorf("parse buyer topup udt type script: %w", err)
-	}
-
-	invoiceNode := newReleaseRawFNNClient(cfg.BuyerTopUpInvoiceRPCURL)
-	invoiceInfo, err := invoiceNode.NodeInfo(ctx)
-	if err != nil {
-		return fmt.Errorf("buyer topup invoice node info: %w", err)
-	}
-	peerID, err := derivePeerIDFromNodeID(invoiceInfo.NodeID)
-	if err != nil {
-		return fmt.Errorf("derive buyer topup invoice peer id: %w", err)
-	}
-
-	_, err = provisioner.EnsureProviderLiquidity(platform.EnsureProviderLiquidityInput{
-		ProviderOrgID: marketplaceTreasuryUserID,
-		Binding: platform.ProviderSettlementBinding{
-			ID:            "demo_topup_rail",
-			ProviderOrgID: marketplaceTreasuryUserID,
-			Asset:         "USDI",
-			PeerID:        peerID,
-			P2PAddress:    multiaddrForP2P(cfg.BuyerTopUpInvoiceP2PHost, cfg.BuyerTopUpInvoiceP2PPort, peerID),
-			NodeRPCURL:    cfg.BuyerTopUpInvoiceRPCURL,
-			UDTTypeScript: platform.UDTTypeScript{
-				CodeHash: udtTypeScript.CodeHash,
-				HashType: udtTypeScript.HashType,
-				Args:     udtTypeScript.Args,
-			},
-			Status: "active",
-		},
-		NeededReserveCents: minimumAvailableCents,
-		CurrentPool: platform.ProviderLiquidityPool{
-			ProviderSettlementBindingID: "demo_topup_rail",
-			ProviderOrgID:               marketplaceTreasuryUserID,
-			Asset:                       "USDI",
-			Status:                      platform.ProviderLiquidityPoolStatusHealthy,
-			TotalSpendableCents:         minimumAvailableCents,
-			AvailableToAllocateCents:    minimumAvailableCents,
-		},
-	})
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 func parseDemoAmountToCents(raw string) int64 {

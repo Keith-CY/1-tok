@@ -19,6 +19,23 @@ This file documents common environment variables used by 1-tok services.
 - `FIBER_RPC_URL`, `FIBER_APP_ID`, `FIBER_HMAC_SECRET`
 - `CARRIER_GATEWAY_URL`, `CARRIER_GATEWAY_API_TOKEN`
 
+## Buyer CKB deposit top-up
+
+These variables enable the buyer prefund flow where each buyer org gets a fixed CKB deposit address, deposits USDI on-chain, and receives USD credit only after the deposit is swept into treasury.
+
+- `BUYER_DEPOSIT_ENABLE`
+- `BUYER_DEPOSIT_WALLET_MASTER_SEED` (or `BUYER_DEPOSIT_WALLET_SEED`)
+- `BUYER_DEPOSIT_CKB_RPC_URL`
+- `BUYER_DEPOSIT_CKB_NETWORK`
+- `BUYER_DEPOSIT_TREASURY_ADDRESS`
+- `BUYER_DEPOSIT_UDT_TYPE_SCRIPT_JSON` or `FIBER_USDI_UDT_TYPE_SCRIPT_JSON`
+- `BUYER_DEPOSIT_UDT_CELL_DEP_TX_HASH`
+- `BUYER_DEPOSIT_UDT_CELL_DEP_INDEX`
+- optional: `BUYER_DEPOSIT_ASSET`
+- optional: `BUYER_DEPOSIT_MIN_USDI`
+- optional: `BUYER_DEPOSIT_CONFIRMATION_BLOCKS`
+- optional: `BUYER_DEPOSIT_RAW_UNITS_PER_WHOLE_USDI`
+
 ## Observability
 - `SENTRY_DSN`
 - `SENTRY_ENVIRONMENT`

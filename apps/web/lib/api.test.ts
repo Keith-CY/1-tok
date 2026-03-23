@@ -99,6 +99,7 @@ describe("api fallback", () => {
 
   it("builds buyer dashboard data from live listings and buyer-scoped orders", async () => {
     process.env.NEXT_PUBLIC_API_BASE_URL = "http://localhost:8080";
+    process.env.NEXT_PUBLIC_SETTLEMENT_BASE_URL = "http://localhost:8083";
     globalThis.fetch = mock(async (input: RequestInfo | URL) => {
       const url = String(input);
 
@@ -158,6 +159,26 @@ describe("api fallback", () => {
         );
       }
 
+      if (url.includes("/v1/buyer/deposit-address")) {
+        return new Response(
+          JSON.stringify({
+            buyerOrgId: "buyer_1",
+            asset: "USDI",
+            address: "ckt1qyqbuyer0address",
+            onChainBalance: "13.00",
+            confirmedBalance: "13.00",
+            creditedBalance: "10.00",
+            creditedBalanceCents: 1000,
+            minimumSweepAmount: "10.00",
+            confirmationBlocks: 24,
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          },
+        );
+      }
+
       throw new Error(`unexpected url ${url}`);
     }) as unknown as typeof fetch;
 
@@ -176,6 +197,8 @@ describe("api fallback", () => {
     expect(data.rfqBook[0]?.bidCount).toBe(2);
     expect(data.rfqBook[0]?.id).toBe("rfq_live_1");
     expect(data.rfqBook[0]?.bids[0]?.id).toBe("bid_live_1");
+    expect(data.deposit?.address).toBe("ckt1qyqbuyer0address");
+    expect(data.deposit?.onChainBalance).toBe("13.00");
   });
 
   it("builds provider dashboard data from live rfqs and provider bids", async () => {

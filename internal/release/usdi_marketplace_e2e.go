@@ -15,7 +15,6 @@ import (
 
 	"github.com/chenyu/1-tok/internal/carrier"
 	"github.com/chenyu/1-tok/internal/core"
-	fiberclient "github.com/chenyu/1-tok/internal/integrations/fiber"
 	"github.com/chenyu/1-tok/internal/platform"
 	"github.com/chenyu/1-tok/internal/serviceauth"
 	"github.com/chenyu/1-tok/internal/usageproof"
@@ -81,6 +80,7 @@ type USDIMarketplaceE2ESummary struct {
 	BuyerOrgID                  string   `json:"buyerOrgId"`
 	ProviderOrgID               string   `json:"providerOrgId"`
 	BuyerTopUpInvoice           string   `json:"buyerTopUpInvoice"`
+	BuyerDepositAddress         string   `json:"buyerDepositAddress,omitempty"`
 	BuyerTopUpFundingRecordID   string   `json:"buyerTopUpFundingRecordId"`
 	BuyerTopUpPaymentID         string   `json:"buyerTopUpPaymentId,omitempty"`
 	BootstrapRFQID              string   `json:"bootstrapRfqId,omitempty"`
@@ -231,15 +231,12 @@ func RunUSDIMarketplaceE2E(ctx context.Context, cfg USDIMarketplaceE2EConfig) (U
 		}
 	}
 
-	topUpInvoice, topUpRecordID, err := client.createBuyerTopUp(ctx, cfg.SettlementBaseURL, buyer, cfg.SettlementServiceToken, "50.00")
+	topUpSummary, err := client.createBuyerTopUp(ctx, cfg.SettlementBaseURL, buyer, cfg.SettlementServiceToken, "50.00")
 	if err != nil {
 		return USDIMarketplaceE2ESummary{}, err
 	}
-	topUpPaymentID, err := client.payInvoiceViaFiber(ctx, cfg, buyer.OrgID, topUpInvoice, "50.00", "USDI")
+	topUpSummary, err = client.waitBuyerDepositCredit(ctx, cfg, buyer, "50.00")
 	if err != nil {
-		return USDIMarketplaceE2ESummary{}, err
-	}
-	if err := client.syncSettledFeed(ctx, cfg.SettlementBaseURL, cfg.SettlementServiceToken); err != nil {
 		return USDIMarketplaceE2ESummary{}, err
 	}
 	if _, err := client.waitFundingRecordState(ctx, cfg.SettlementBaseURL, buyer.Token, map[string]string{
@@ -247,6 +244,13 @@ func RunUSDIMarketplaceE2E(ctx context.Context, cfg USDIMarketplaceE2EConfig) (U
 		"buyerOrgId": buyer.OrgID,
 	}, 30*time.Second, "SETTLED"); err != nil {
 		return USDIMarketplaceE2ESummary{}, fmt.Errorf("buyer topup not settled: %w", err)
+	}
+	topUpRecordID := ""
+	if records, err := client.listFundingRecords(ctx, cfg.SettlementBaseURL, buyer.Token, map[string]string{
+		"kind":       "buyer_topup",
+		"buyerOrgId": buyer.OrgID,
+	}); err == nil && len(records) > 0 {
+		topUpRecordID = records[len(records)-1].ID
 	}
 
 	providerCarrierBindingID, err := client.registerProviderCarrierBinding(ctx, cfg.APIBaseURL, provider.OrgID, cfg)
@@ -306,9 +310,10 @@ func RunUSDIMarketplaceE2E(ctx context.Context, cfg USDIMarketplaceE2EConfig) (U
 		ProviderUserEmail:           provider.Email,
 		BuyerOrgID:                  buyer.OrgID,
 		ProviderOrgID:               provider.OrgID,
-		BuyerTopUpInvoice:           topUpInvoice,
+		BuyerTopUpInvoice:           "",
+		BuyerDepositAddress:         topUpSummary.Address,
 		BuyerTopUpFundingRecordID:   topUpRecordID,
-		BuyerTopUpPaymentID:         topUpPaymentID,
+		BuyerTopUpPaymentID:         "",
 		BootstrapRFQID:              bootstrapOrder.RFQID,
 		BootstrapBidID:              bootstrapOrder.BidID,
 		BootstrapOrderID:            bootstrapOrder.OrderID,
@@ -565,53 +570,128 @@ func (c *smokeClient) awardRFQPrepaid(ctx context.Context, baseURL, token, rfqID
 	return response.Order.ID, nil
 }
 
-func (c *smokeClient) createBuyerTopUp(ctx context.Context, baseURL string, buyer actorIdentity, serviceToken string, amount string) (string, string, error) {
-	var response struct {
-		Invoice  string `json:"invoice"`
-		RecordID string `json:"recordId"`
-	}
+type buyerDepositSummaryResponse struct {
+	BuyerOrgID           string `json:"buyerOrgId"`
+	Asset                string `json:"asset"`
+	Address              string `json:"address"`
+	OnChainBalance       string `json:"onChainBalance"`
+	ConfirmedBalance     string `json:"confirmedBalance"`
+	CreditedBalance      string `json:"creditedBalance"`
+	CreditedBalanceCents int64  `json:"creditedBalanceCents"`
+	MinimumSweepAmount   string `json:"minimumSweepAmount"`
+	ConfirmationBlocks   uint64 `json:"confirmationBlocks"`
+	RawOnChainUnits      int64  `json:"rawOnChainUnits"`
+	RawConfirmedUnits    int64  `json:"rawConfirmedUnits"`
+	RawMinimumSweepUnits int64  `json:"rawMinimumSweepUnits"`
+}
+
+func (c *smokeClient) createBuyerTopUp(ctx context.Context, baseURL string, buyer actorIdentity, serviceToken string, amount string) (buyerDepositSummaryResponse, error) {
+	var response buyerDepositSummaryResponse
 	headers := authHeaders(buyer.Token)
 	if strings.TrimSpace(buyer.Token) == "" && strings.TrimSpace(serviceToken) != "" {
 		headers = map[string]string{serviceauth.HeaderName: strings.TrimSpace(serviceToken)}
 	}
 	payload := map[string]any{
-		"asset":  "USDI",
-		"amount": amount,
+		"asset": "USDI",
 	}
 	if strings.TrimSpace(buyer.Token) == "" {
 		payload["buyerOrgId"] = buyer.OrgID
 	}
 	err := c.postJSONWithHeaders(ctx, strings.TrimRight(baseURL, "/")+"/v1/topups", headers, payload, &response)
 	if err != nil {
-		return "", "", fmt.Errorf("create buyer topup: %w", err)
+		return buyerDepositSummaryResponse{}, fmt.Errorf("create buyer topup: %w", err)
 	}
-	if response.Invoice == "" || response.RecordID == "" {
-		return "", "", errors.New("create buyer topup: missing invoice or record id")
+	if response.Address == "" {
+		return buyerDepositSummaryResponse{}, errors.New("create buyer topup: missing deposit address")
 	}
-	return response.Invoice, response.RecordID, nil
+	return response, nil
 }
 
-func (c *smokeClient) payInvoiceViaFiber(ctx context.Context, cfg USDIMarketplaceE2EConfig, userID, invoice, amount, asset string) (string, error) {
-	if strings.TrimSpace(cfg.FiberAdapterBaseURL) == "" || strings.TrimSpace(cfg.FiberAdapterAppID) == "" || strings.TrimSpace(cfg.FiberAdapterHMACSecret) == "" {
-		return "", errors.New("fiber adapter config is required for usdi marketplace e2e")
-	}
-	client := fiberclient.NewClient(cfg.FiberAdapterBaseURL, cfg.FiberAdapterAppID, cfg.FiberAdapterHMACSecret)
-	result, err := client.RequestPayout(ctx, fiberclient.RequestPayoutInput{
-		UserID: userID,
-		Asset:  asset,
-		Amount: amount,
-		Destination: fiberclient.WithdrawalDestination{
-			Kind:           "PAYMENT_REQUEST",
-			PaymentRequest: invoice,
-		},
-	})
+func (c *smokeClient) getBuyerDepositSummary(ctx context.Context, baseURL string, buyer actorIdentity, serviceToken string) (buyerDepositSummaryResponse, error) {
+	var response buyerDepositSummaryResponse
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(baseURL, "/")+"/v1/buyer/deposit-address", nil)
 	if err != nil {
-		return "", fmt.Errorf("pay invoice via fiber adapter: %w", err)
+		return buyerDepositSummaryResponse{}, err
 	}
-	if strings.TrimSpace(result.ID) == "" {
-		return "", errors.New("pay invoice via fiber adapter: missing payout id")
+	headers := authHeaders(buyer.Token)
+	if strings.TrimSpace(buyer.Token) == "" && strings.TrimSpace(serviceToken) != "" {
+		headers = map[string]string{serviceauth.HeaderName: strings.TrimSpace(serviceToken)}
 	}
-	return result.ID, nil
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+	query := req.URL.Query()
+	if strings.TrimSpace(buyer.Token) == "" {
+		query.Set("buyerOrgId", buyer.OrgID)
+	}
+	req.URL.RawQuery = query.Encode()
+	res, err := c.httpClient.Do(req)
+	if err != nil {
+		return buyerDepositSummaryResponse{}, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= http.StatusBadRequest {
+		return buyerDepositSummaryResponse{}, statusError{StatusCode: res.StatusCode}
+	}
+	if err := json.NewDecoder(res.Body).Decode(&response); err != nil {
+		return buyerDepositSummaryResponse{}, err
+	}
+	return response, nil
+}
+
+func (c *smokeClient) syncBuyerDeposits(ctx context.Context, baseURL, serviceToken string) (struct {
+	CreditedCents int64 `json:"creditedCents"`
+	SweepCount    int   `json:"sweepCount"`
+}, error) {
+	var response struct {
+		CreditedCents int64 `json:"creditedCents"`
+		SweepCount    int   `json:"sweepCount"`
+	}
+	err := c.postJSONWithHeaders(ctx, strings.TrimRight(baseURL, "/")+"/v1/buyer/deposits/sync", map[string]string{
+		serviceauth.HeaderName: strings.TrimSpace(serviceToken),
+	}, map[string]any{}, &response)
+	if err != nil {
+		return struct {
+			CreditedCents int64 `json:"creditedCents"`
+			SweepCount    int   `json:"sweepCount"`
+		}{}, fmt.Errorf("sync buyer deposits: %w", err)
+	}
+	return response, nil
+}
+
+func (c *smokeClient) waitBuyerDepositCredit(ctx context.Context, cfg USDIMarketplaceE2EConfig, buyer actorIdentity, amount string) (buyerDepositSummaryResponse, error) {
+	targetCents := parseDemoAmountToCents(amount)
+	httpClient := &http.Client{Timeout: 15 * time.Second}
+	deadline := time.Now().Add(3 * time.Minute)
+	attempts := 0
+	for {
+		summary, err := c.getBuyerDepositSummary(ctx, cfg.SettlementBaseURL, buyer, cfg.SettlementServiceToken)
+		if err != nil {
+			return buyerDepositSummaryResponse{}, err
+		}
+		if summary.CreditedBalanceCents >= targetCents {
+			return summary, nil
+		}
+		if summary.RawOnChainUnits < summary.RawMinimumSweepUnits && attempts < 3 {
+			if err := requestUSDIFaucet(ctx, httpClient, cfg, summary.Address, "buyer-topup"); err != nil {
+				return buyerDepositSummaryResponse{}, err
+			}
+			attempts++
+		}
+		if summary.RawConfirmedUnits >= summary.RawMinimumSweepUnits {
+			if _, err := c.syncBuyerDeposits(ctx, cfg.SettlementBaseURL, cfg.SettlementServiceToken); err != nil {
+				return buyerDepositSummaryResponse{}, err
+			}
+		}
+		if time.Now().After(deadline) {
+			return buyerDepositSummaryResponse{}, fmt.Errorf("timeout waiting buyer deposit credit >= %s", amount)
+		}
+		select {
+		case <-ctx.Done():
+			return buyerDepositSummaryResponse{}, ctx.Err()
+		case <-time.After(3 * time.Second):
+		}
+	}
 }
 
 func (c *smokeClient) createProviderInvoiceViaProviderSettlementNode(ctx context.Context, cfg USDIMarketplaceE2EConfig, amount string) (string, error) {
