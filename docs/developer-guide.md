@@ -141,6 +141,8 @@ Use these documents as the source of truth:
 - Commercial model and settlement spec: [runtime-leasing-and-streaming-settlement.md](./runtime-leasing-and-streaming-settlement.md)
 - Launch checklist: [production-launch-checklist.md](./production-launch-checklist.md)
 - Production release posture: [production-release-status.md](./production-release-status.md)
+- Demo environment: [demo-environment.md](./demo-environment.md)
+- Demo runbook: [demo-runbook.md](./demo-runbook.md)
 - Carrier design: [carrier-first-class-design.md](./carrier-first-class-design.md)
 - Carrier upstream checklist: [carrier-pr-support.md](./carrier-pr-support.md)
 - API surface: [api-spec.json](./api-spec.json)

@@ -1,5 +1,6 @@
 import {
   type Bid,
+  type DemoStatus,
   type Dispute,
   type FundingRecord,
   type Listing,
@@ -98,6 +99,7 @@ export interface OpsDashboardData {
   riskFeed: Array<{ id: string; title: string; detail: string }>;
   fundingRecords: FundingRecord[];
   disputes: Dispute[];
+  demoStatus: DemoStatus | null;
 }
 
 
@@ -348,11 +350,12 @@ export async function getProviderOrderDetail(options: {
   };
 }
 export async function getOpsDashboardData(options: { authToken: string; requireLive?: boolean }): Promise<OpsDashboardData> {
-  const [providers, orders, fundingRecords, disputes] = await Promise.all([
+  const [providers, orders, fundingRecords, disputes, demoStatus] = await Promise.all([
     getProviders({ authToken: options.authToken, requireLive: options.requireLive }),
     getOrders({ authToken: options.authToken, requireLive: options.requireLive }),
     getFundingRecords({ authToken: options.authToken, requireLive: options.requireLive }),
     getDisputes({ authToken: options.authToken, requireLive: options.requireLive }),
+    getDemoStatus({ authToken: options.authToken, requireLive: options.requireLive }),
   ]);
   const settledInvoices = fundingRecords.filter((record) => record.kind === "invoice" && record.state === "SETTLED").length;
   const pendingWithdrawals = fundingRecords.filter(
@@ -383,7 +386,32 @@ export async function getOpsDashboardData(options: { authToken: string; requireL
     ],
     fundingRecords,
     disputes,
+    demoStatus,
   };
+}
+
+export async function getDemoStatus(options: { authToken: string; requireLive?: boolean }): Promise<DemoStatus | null> {
+  const baseUrl = resolveBaseUrl("api");
+  if (!baseUrl) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(`${baseUrl}/api/v1/ops/demo/status`, {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${options.authToken}`,
+      },
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const payload = (await response.json()) as { status?: DemoStatus };
+    return payload.status ?? null;
+  } catch {
+    return options.requireLive ? null : null;
+  }
 }
 
 async function readCollection<T>(path: string, key: string, fallback: T[], options?: CollectionRequestOptions): Promise<T[]> {

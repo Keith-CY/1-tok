@@ -429,3 +429,104 @@ func TestRecoverProviderSettlementResumesAwaitingOrders(t *testing.T) {
 		t.Fatalf("expected disconnect anomaly to be cleared, got %v", updated.Milestones[0].AnomalyFlags)
 	}
 }
+
+func TestWarmProviderSettlementPoolProvisionsLiquidityWithoutReservation(t *testing.T) {
+	app := NewAppWithMemory()
+	registerActiveCarrierBinding(t, app, "org_provider")
+
+	settlementBinding, _ := app.RegisterProviderSettlementBinding(ProviderSettlementBinding{
+		ProviderOrgID:         "org_provider",
+		Asset:                 "USDI",
+		PeerID:                "peer_provider",
+		P2PAddress:            "/dns4/provider/tcp/8228/p2p/peer_provider",
+		PaymentRequestBaseURL: "https://carrier.example.com/payment-requests",
+		UDTTypeScript: UDTTypeScript{
+			CodeHash: "0xudt",
+			HashType: "type",
+			Args:     "0x01",
+		},
+	})
+	app.VerifyProviderSettlementBinding(settlementBinding.ID)
+
+	provisioner := &stubSettlementProvisioner{
+		result: EnsureProviderLiquidityResult{
+			ChannelID:           "ch_warm_1",
+			ReuseSource:         ProviderLiquidityReuseNewChannel,
+			ReadyChannelCount:   1,
+			TotalSpendableCents: 8_000,
+		},
+	}
+	app.SetProviderSettlementProvisioner(provisioner)
+
+	pool, err := app.WarmProviderSettlementPool("org_provider", 5_500)
+	if err != nil {
+		t.Fatalf("warm provider settlement pool: %v", err)
+	}
+	if provisioner.calls != 1 {
+		t.Fatalf("provisioner calls = %d, want 1", provisioner.calls)
+	}
+	if provisioner.inputs[0].NeededReserveCents != 5_500 {
+		t.Fatalf("needed reserve = %d, want 5500", provisioner.inputs[0].NeededReserveCents)
+	}
+	if pool.Status != ProviderLiquidityPoolStatusHealthy {
+		t.Fatalf("pool status = %s, want healthy", pool.Status)
+	}
+	if pool.AvailableToAllocateCents != 8_000 {
+		t.Fatalf("available cents = %d, want 8000", pool.AvailableToAllocateCents)
+	}
+	if pool.ReservedOutstandingCents != 0 {
+		t.Fatalf("reserved cents = %d, want 0", pool.ReservedOutstandingCents)
+	}
+}
+
+func TestWarmProviderSettlementPoolReusesHealthyCapacity(t *testing.T) {
+	app := NewAppWithMemory()
+	registerActiveCarrierBinding(t, app, "org_provider")
+
+	settlementBinding, _ := app.RegisterProviderSettlementBinding(ProviderSettlementBinding{
+		ProviderOrgID:         "org_provider",
+		Asset:                 "USDI",
+		PeerID:                "peer_provider",
+		P2PAddress:            "/dns4/provider/tcp/8228/p2p/peer_provider",
+		PaymentRequestBaseURL: "https://carrier.example.com/payment-requests",
+		UDTTypeScript: UDTTypeScript{
+			CodeHash: "0xudt",
+			HashType: "type",
+			Args:     "0x01",
+		},
+	})
+	app.VerifyProviderSettlementBinding(settlementBinding.ID)
+
+	provisioner := &stubSettlementProvisioner{
+		result: EnsureProviderLiquidityResult{
+			ChannelID:           "ch_existing",
+			ReuseSource:         ProviderLiquidityReuseReused,
+			ReadyChannelCount:   1,
+			TotalSpendableCents: 8_000,
+		},
+	}
+	app.SetProviderSettlementProvisioner(provisioner)
+	app.settlementPools["org_provider"] = ProviderLiquidityPool{
+		ProviderSettlementBindingID: settlementBinding.ID,
+		ProviderOrgID:               "org_provider",
+		Asset:                       "USDI",
+		Status:                      ProviderLiquidityPoolStatusHealthy,
+		ReadyChannelCount:           1,
+		TotalSpendableCents:         8_000,
+		AvailableToAllocateCents:    8_000,
+	}
+
+	pool, err := app.WarmProviderSettlementPool("org_provider", 5_500)
+	if err != nil {
+		t.Fatalf("warm provider settlement pool: %v", err)
+	}
+	if provisioner.calls != 1 {
+		t.Fatalf("provisioner calls = %d, want 1", provisioner.calls)
+	}
+	if provisioner.inputs[0].NeededReserveCents != 8_000 {
+		t.Fatalf("needed reserve = %d, want 8000", provisioner.inputs[0].NeededReserveCents)
+	}
+	if pool.AvailableToAllocateCents != 8_000 {
+		t.Fatalf("available cents = %d, want 8000", pool.AvailableToAllocateCents)
+	}
+}

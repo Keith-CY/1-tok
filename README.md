@@ -52,6 +52,8 @@ Then follow the setup and smoke-test links in [docs/developer-guide.md](./docs/d
 - Health/readiness contract: [docs/health-readiness.md](./docs/health-readiness.md)
 - Production launch checklist: [docs/production-launch-checklist.md](./docs/production-launch-checklist.md)
 - Release readiness and launch posture: [docs/production-release-status.md](./docs/production-release-status.md)
+- Demo environment: [docs/demo-environment.md](./docs/demo-environment.md)
+- Demo runbook: [docs/demo-runbook.md](./docs/demo-runbook.md)
 - Commercial model and settlement spec: [docs/runtime-leasing-and-streaming-settlement.md](./docs/runtime-leasing-and-streaming-settlement.md)
 - Carrier integration design: [docs/carrier-first-class-design.md](./docs/carrier-first-class-design.md)
 - API surface: [docs/api-spec.json](./docs/api-spec.json)
