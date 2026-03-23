@@ -268,8 +268,10 @@ func TestRunDemoPrepareEnsuresBindingsAndWarmup(t *testing.T) {
 
 func TestRunDemoPrepareCreditsBuyerDepositBeforeReady(t *testing.T) {
 	originalEnsureDemoFNNBootstrap := ensureDemoFNNBootstrapFunc
+	originalEnsureBuyerDepositSweepCKBFeeBalance := ensureBuyerDepositSweepCKBFeeBalanceFunc
 	defer func() {
 		ensureDemoFNNBootstrapFunc = originalEnsureDemoFNNBootstrap
+		ensureBuyerDepositSweepCKBFeeBalanceFunc = originalEnsureBuyerDepositSweepCKBFeeBalance
 	}()
 
 	callSequence := make([]string, 0, 2)
@@ -278,6 +280,9 @@ func TestRunDemoPrepareCreditsBuyerDepositBeforeReady(t *testing.T) {
 		if cfg.USDI.PayerRPCURL != "http://fnn2:8227" {
 			t.Fatalf("payer rpc url = %q, want http://fnn2:8227", cfg.USDI.PayerRPCURL)
 		}
+		return nil
+	}
+	ensureBuyerDepositSweepCKBFeeBalanceFunc = func(context.Context, *releaseCKBRPCClient, *http.Client, USDIMarketplaceE2EConfig, string) error {
 		return nil
 	}
 

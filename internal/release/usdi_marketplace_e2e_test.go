@@ -209,6 +209,74 @@ func TestRequestUSDIFaucetRetriesTransientFailures(t *testing.T) {
 	}
 }
 
+func TestWaitBuyerDepositCreditRetriesFaucetFailures(t *testing.T) {
+	originalRequestUSDIFaucet := requestUSDIFaucetFunc
+	originalPollInterval := waitBuyerDepositCreditPollInterval
+	originalFaucetRetryDelay := waitBuyerDepositCreditFaucetRetryDelay
+	defer func() {
+		requestUSDIFaucetFunc = originalRequestUSDIFaucet
+		waitBuyerDepositCreditPollInterval = originalPollInterval
+		waitBuyerDepositCreditFaucetRetryDelay = originalFaucetRetryDelay
+	}()
+
+	waitBuyerDepositCreditPollInterval = 0
+	waitBuyerDepositCreditFaucetRetryDelay = 0
+
+	var faucetAttempts int32
+	requestUSDIFaucetFunc = func(_ context.Context, _ *http.Client, _ USDIMarketplaceE2EConfig, address, label string) error {
+		if address != "ckt1qyqbuyerdeposit" {
+			t.Fatalf("unexpected address %q", address)
+		}
+		if label != "buyer-topup" {
+			t.Fatalf("unexpected label %q", label)
+		}
+		if atomic.AddInt32(&faucetAttempts, 1) == 1 {
+			return io.EOF
+		}
+		return nil
+	}
+
+	var summaryCalls int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/buyer/deposit-address":
+			call := atomic.AddInt32(&summaryCalls, 1)
+			summary := map[string]any{
+				"address":             "ckt1qyqbuyerdeposit",
+				"asset":               "USDI",
+				"confirmationBlocks":  24,
+				"rawMinimumSweepUnits": 10,
+			}
+			if call >= 3 {
+				summary["creditedBalanceCents"] = 5000
+			} else {
+				summary["creditedBalanceCents"] = 0
+				summary["rawOnChainUnits"] = 0
+				summary["rawConfirmedUnits"] = 0
+			}
+			_ = json.NewEncoder(w).Encode(summary)
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := &smokeClient{httpClient: server.Client()}
+	summary, err := client.waitBuyerDepositCredit(context.Background(), USDIMarketplaceE2EConfig{
+		SettlementBaseURL:      server.URL,
+		SettlementServiceToken: "settlement-token",
+	}, actorIdentity{OrgID: "buyer_1"}, "50.00")
+	if err != nil {
+		t.Fatalf("wait buyer deposit credit: %v", err)
+	}
+	if summary.CreditedBalanceCents != 5000 {
+		t.Fatalf("credited balance cents = %d, want 5000", summary.CreditedBalanceCents)
+	}
+	if got := atomic.LoadInt32(&faucetAttempts); got != 2 {
+		t.Fatalf("faucet attempts = %d, want 2", got)
+	}
+}
+
 func TestRegisterProviderSettlementBindingUsesNodeInfoAndConfiguredUDTScript(t *testing.T) {
 	node := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		payload, err := io.ReadAll(r.Body)

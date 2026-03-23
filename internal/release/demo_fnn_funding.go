@@ -19,6 +19,7 @@ import (
 )
 
 var ensureDemoFNNBootstrapFunc = ensureDemoFNNBootstrapLiquidity
+var requestUSDIFaucetFunc = requestUSDIFaucet
 
 const (
 	demoTopUpPayerMinimumCKBShannons = int64(10_000_000_000)

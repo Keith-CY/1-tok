@@ -30,6 +30,10 @@ const usdiMarketplaceBuyerDepositBlockIntervalEstimate = 12 * time.Second
 const usdiMarketplaceBuyerDepositConfirmationGrace = 2 * time.Minute
 const usdiMarketplaceBuyerDepositSweepCKBThreshold = int64(20_000_000_000)
 
+var waitBuyerDepositCreditPollInterval = 3 * time.Second
+var waitBuyerDepositCreditFaucetRetryDelay = 10 * time.Second
+var ensureBuyerDepositSweepCKBFeeBalanceFunc = ensureBuyerDepositSweepCKBFeeBalance
+
 type USDIMarketplaceE2EConfig struct {
 	APIBaseURL                          string
 	IAMBaseURL                          string
@@ -668,8 +672,10 @@ func (c *smokeClient) waitBuyerDepositCredit(ctx context.Context, cfg USDIMarket
 	httpClient := &http.Client{Timeout: 15 * time.Second}
 	ckbClient := newReleaseCKBRPCClient(firstNonEmptyString(cfg.CKBRPCURL, "https://testnet.ckbapp.dev/"))
 	var deadline time.Time
-	attempts := 0
+	successfulFaucetRounds := 0
 	feeBalanceReady := false
+	var nextFaucetAttemptAt time.Time
+	var lastFaucetErr error
 	for {
 		summary, err := c.getBuyerDepositSummary(ctx, cfg.SettlementBaseURL, buyer, cfg.SettlementServiceToken)
 		if err != nil {
@@ -681,23 +687,28 @@ func (c *smokeClient) waitBuyerDepositCredit(ctx context.Context, cfg USDIMarket
 		if summary.CreditedBalanceCents >= targetCents {
 			return summary, nil
 		}
-		if summary.RawOnChainUnits < summary.RawMinimumSweepUnits && attempts < 3 {
-			if err := requestUSDIFaucet(ctx, httpClient, cfg, summary.Address, "buyer-topup"); err != nil {
-				return buyerDepositSummaryResponse{}, err
+		now := time.Now()
+		if summary.RawOnChainUnits < summary.RawMinimumSweepUnits && successfulFaucetRounds < 3 && (nextFaucetAttemptAt.IsZero() || !now.Before(nextFaucetAttemptAt)) {
+			if err := requestUSDIFaucetFunc(ctx, httpClient, cfg, summary.Address, "buyer-topup"); err != nil {
+				lastFaucetErr = err
+				nextFaucetAttemptAt = now.Add(waitBuyerDepositCreditFaucetRetryDelay)
+			} else {
+				successfulFaucetRounds++
+				lastFaucetErr = nil
+				nextFaucetAttemptAt = time.Time{}
+				deadline = extendBuyerDepositDeadline(deadline, now, summary)
 			}
-			attempts++
-			deadline = extendBuyerDepositDeadline(deadline, time.Now(), summary)
 		}
 		if summary.RawConfirmedUnits >= summary.RawMinimumSweepUnits {
 			if !feeBalanceReady {
-				if err := ensureBuyerDepositSweepCKBFeeBalance(ctx, ckbClient, httpClient, cfg, summary.Address); err != nil {
+				if err := ensureBuyerDepositSweepCKBFeeBalanceFunc(ctx, ckbClient, httpClient, cfg, summary.Address); err != nil {
 					return buyerDepositSummaryResponse{}, err
 				}
 				feeBalanceReady = true
 			}
 			if _, err := c.syncBuyerDeposits(ctx, cfg.SettlementBaseURL, cfg.SettlementServiceToken); err != nil {
 				if isStatusCode(err, http.StatusInternalServerError) {
-					if err := ensureBuyerDepositSweepCKBFeeBalance(ctx, ckbClient, httpClient, cfg, summary.Address); err != nil {
+					if err := ensureBuyerDepositSweepCKBFeeBalanceFunc(ctx, ckbClient, httpClient, cfg, summary.Address); err != nil {
 						return buyerDepositSummaryResponse{}, fmt.Errorf("sync buyer deposits after rechecking fee balance: %w (fee balance: %v)", err, err)
 					}
 					feeBalanceReady = true
@@ -707,12 +718,15 @@ func (c *smokeClient) waitBuyerDepositCredit(ctx context.Context, cfg USDIMarket
 			}
 		}
 		if time.Now().After(deadline) {
+			if lastFaucetErr != nil {
+				return buyerDepositSummaryResponse{}, fmt.Errorf("timeout waiting buyer deposit credit >= %s after faucet error: %w", amount, lastFaucetErr)
+			}
 			return buyerDepositSummaryResponse{}, fmt.Errorf("timeout waiting buyer deposit credit >= %s", amount)
 		}
 		select {
 		case <-ctx.Done():
 			return buyerDepositSummaryResponse{}, ctx.Err()
-		case <-time.After(3 * time.Second):
+		case <-time.After(waitBuyerDepositCreditPollInterval):
 		}
 	}
 }
