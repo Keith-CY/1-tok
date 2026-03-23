@@ -669,8 +669,8 @@ func nextID(prefix string) string {
 
 func resolveUSDIUdtTypeScript(ctx context.Context, node rawNode) (rpcUdtTypeScript, error) {
 	if envJSON := strings.TrimSpace(os.Getenv("FIBER_USDI_UDT_TYPE_SCRIPT_JSON")); envJSON != "" {
-		var script rpcUdtTypeScript
-		if err := json.Unmarshal([]byte(envJSON), &script); err != nil {
+		script, err := parseRPCUdtTypeScriptJSON(envJSON)
+		if err != nil {
 			return rpcUdtTypeScript{}, errors.New("FIBER_USDI_UDT_TYPE_SCRIPT_JSON must be valid JSON")
 		}
 		if !script.valid() {
@@ -686,6 +686,22 @@ func resolveUSDIUdtTypeScript(ctx context.Context, node rawNode) (rpcUdtTypeScri
 	script := pickUSDIUdtTypeScript(nodeInfo)
 	if !script.valid() {
 		return rpcUdtTypeScript{}, errors.New("node_info does not expose a usable USDI udt_type_script")
+	}
+	return script, nil
+}
+
+func parseRPCUdtTypeScriptJSON(raw string) (rpcUdtTypeScript, error) {
+	var script rpcUdtTypeScript
+	trimmed := strings.TrimSpace(raw)
+	if err := json.Unmarshal([]byte(trimmed), &script); err != nil {
+		if strings.Contains(trimmed, `\"`) {
+			normalized := strings.ReplaceAll(trimmed, `\"`, `"`)
+			if retryErr := json.Unmarshal([]byte(normalized), &script); retryErr != nil {
+				return rpcUdtTypeScript{}, err
+			}
+		} else {
+			return rpcUdtTypeScript{}, err
+		}
 	}
 	return script, nil
 }

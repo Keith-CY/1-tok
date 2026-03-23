@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 )
 
 var ErrDemoNotReady = errors.New("demo environment is not ready")
+var ensureDemoBuyerTopUpRailFunc = ensureDemoBuyerTopUpRailLiquidity
 
 const (
 	activeCarrierBindingAlreadyExistsMessage    = "active binding already exists"
@@ -114,6 +116,14 @@ func runDemoReady(ctx context.Context, cfg DemoRunConfig, mutate bool) (DemoRunS
 		return summary, err
 	}
 	summary.Status = status
+	buyerTopUpSettledCents := int64(0)
+	providerPoolWarmed := (*platform.ProviderLiquidityPool)(nil)
+
+	if mutate && (!status.BuyerBalance.MeetsMinimumThreshold || !status.ProviderSettlement.MeetsMinimumThreshold) {
+		if err := ensureDemoFNNBootstrapFunc(ctx, cfg); err != nil {
+			return summary, fmt.Errorf("ensure demo fnn funding: %w", err)
+		}
+	}
 
 	if mutate && !status.BuyerBalance.MeetsMinimumThreshold {
 		topUpInvoice, topUpRecordID, err := client.createBuyerTopUp(ctx, cfg.Demo.SettlementBaseURL, buyer, cfg.Demo.SettlementServiceToken, cfg.Demo.BuyerTopUpAmount)
@@ -122,6 +132,13 @@ func runDemoReady(ctx context.Context, cfg DemoRunConfig, mutate bool) (DemoRunS
 		}
 		summary.TopUpInvoice = topUpInvoice
 		summary.TopUpRecordID = topUpRecordID
+		topUpNeededCents := cfg.Demo.MinBuyerBalanceCents
+		if topUpAmountCents := parseDemoAmountToCents(cfg.Demo.BuyerTopUpAmount); topUpAmountCents > topUpNeededCents {
+			topUpNeededCents = topUpAmountCents
+		}
+		if err := ensureDemoBuyerTopUpRailFunc(ctx, cfg.USDI, topUpNeededCents); err != nil {
+			return summary, fmt.Errorf("ensure buyer topup rail: %w", err)
+		}
 		if _, err := client.payInvoiceViaFiber(ctx, cfg.USDI, buyer.OrgID, topUpInvoice, cfg.Demo.BuyerTopUpAmount, "USDI"); err != nil {
 			return summary, err
 		}
@@ -131,25 +148,81 @@ func runDemoReady(ctx context.Context, cfg DemoRunConfig, mutate bool) (DemoRunS
 		}, 90*time.Second, "SETTLED"); err != nil {
 			return summary, err
 		}
+		buyerTopUpSettledCents = parseDemoAmountToCents(cfg.Demo.BuyerTopUpAmount)
 		summary.Actions = append(summary.Actions, "buyer top-up settled")
 	}
 
 	if mutate && !status.ProviderSettlement.MeetsMinimumThreshold {
-		if _, err := client.warmDemoProviderLiquidity(ctx, cfg.Demo.APIBaseURL, ops.Token, summary.ProviderOrgID, cfg.Demo.MinProviderLiquidityCents); err != nil {
+		pool, err := client.warmDemoProviderLiquidity(ctx, cfg.Demo.APIBaseURL, ops.Token, summary.ProviderOrgID, cfg.Demo.MinProviderLiquidityCents)
+		if err != nil {
 			return summary, err
 		}
+		providerPoolWarmed = &pool
 		summary.Actions = append(summary.Actions, "provider liquidity warmed")
 	}
 
-	status, err = client.getDemoStatus(ctx, cfg.Demo.APIBaseURL, ops.Token)
-	if err != nil {
-		return summary, err
+	if mutate {
+		summary.Status = buildPreparedDemoStatus(cfg, summary, status, buyerTopUpSettledCents, providerPoolWarmed)
+	} else {
+		summary.Status = status
 	}
-	summary.Status = status
 	if summary.Status.Verdict != demoenv.VerdictReady {
 		return summary, ErrDemoNotReady
 	}
 	return summary, nil
+}
+
+func buildPreparedDemoStatus(cfg DemoRunConfig, summary DemoRunSummary, current demoenv.Status, buyerTopUpSettledCents int64, providerPoolWarmed *platform.ProviderLiquidityPool) demoenv.Status {
+	status := demoenv.Status{
+		ResourcePrefix: firstNonEmptyString(current.ResourcePrefix, cfg.Demo.ResourcePrefix),
+		Services:       append([]demoenv.ServiceStatus(nil), current.Services...),
+		Actors: []demoenv.ActorStatus{
+			preparedDemoActorStatus("buyer", summary.BuyerEmail, summary.BuyerOrgID),
+			preparedDemoActorStatus("provider", summary.ProviderEmail, summary.ProviderOrgID),
+			preparedDemoActorStatus("ops", summary.OpsEmail, summary.OpsOrgID),
+		},
+		BuyerBalance:       current.BuyerBalance,
+		ProviderSettlement: current.ProviderSettlement,
+	}
+
+	status.BuyerBalance.BuyerOrgID = summary.BuyerOrgID
+	status.BuyerBalance.MinimumRequiredCents = cfg.Demo.MinBuyerBalanceCents
+	if buyerTopUpSettledCents > 0 {
+		status.BuyerBalance.SettledTopUpCents += buyerTopUpSettledCents
+		status.BuyerBalance.SettledTopUpCount++
+		if status.BuyerBalance.PendingTopUpCount > 0 {
+			status.BuyerBalance.PendingTopUpCount--
+		}
+	}
+	status.BuyerBalance.MeetsMinimumThreshold = status.BuyerBalance.SettledTopUpCents >= status.BuyerBalance.MinimumRequiredCents
+
+	status.ProviderSettlement.ProviderOrgID = summary.ProviderOrgID
+	status.ProviderSettlement.MinimumRequiredCents = cfg.Demo.MinProviderLiquidityCents
+	status.ProviderSettlement.CarrierBindingStatus = firstNonEmptyString(status.ProviderSettlement.CarrierBindingStatus, "active")
+	status.ProviderSettlement.SettlementBindingStatus = firstNonEmptyString(status.ProviderSettlement.SettlementBindingStatus, "active")
+	if providerPoolWarmed != nil {
+		status.ProviderSettlement.PoolStatus = string(providerPoolWarmed.Status)
+		status.ProviderSettlement.ReadyChannelCount = providerPoolWarmed.ReadyChannelCount
+		status.ProviderSettlement.AvailableToAllocateCents = providerPoolWarmed.AvailableToAllocateCents
+		status.ProviderSettlement.ReservedOutstandingCents = providerPoolWarmed.ReservedOutstandingCents
+	}
+	status.ProviderSettlement.MeetsMinimumThreshold =
+		strings.EqualFold(status.ProviderSettlement.CarrierBindingStatus, "active") &&
+			strings.EqualFold(status.ProviderSettlement.SettlementBindingStatus, "active") &&
+			strings.EqualFold(status.ProviderSettlement.PoolStatus, string(platform.ProviderLiquidityPoolStatusHealthy)) &&
+			status.ProviderSettlement.AvailableToAllocateCents >= status.ProviderSettlement.MinimumRequiredCents
+
+	return demoenv.FinalizeStatus(status)
+}
+
+func preparedDemoActorStatus(role, email, orgID string) demoenv.ActorStatus {
+	return demoenv.ActorStatus{
+		Role:   role,
+		Email:  email,
+		OrgID:  orgID,
+		Ready:  strings.TrimSpace(orgID) != "",
+		Detail: "resolved during demo prepare",
+	}
 }
 
 func ensureDemoActor(ctx context.Context, client *smokeClient, baseURL string, cfg demoenv.ActorConfig, allowSignup bool) (actorIdentity, bool, error) {
@@ -417,4 +490,85 @@ func errorContainsFold(err error, fragment string) bool {
 		return false
 	}
 	return strings.Contains(strings.ToLower(err.Error()), strings.ToLower(fragment))
+}
+
+func ensureDemoBuyerTopUpRailLiquidity(ctx context.Context, cfg USDIMarketplaceE2EConfig, minimumAvailableCents int64) error {
+	provisioner, err := platform.NewFNNProviderSettlementProvisionerFromEnv()
+	if err != nil {
+		return err
+	}
+	if provisioner == nil {
+		return nil
+	}
+
+	if strings.TrimSpace(cfg.BuyerTopUpInvoiceRPCURL) == "" {
+		return errors.New("buyer topup invoice rpc url is required")
+	}
+	if strings.TrimSpace(cfg.BuyerTopUpInvoiceP2PHost) == "" {
+		return errors.New("buyer topup invoice p2p host is required")
+	}
+	if strings.TrimSpace(cfg.BuyerTopUpUDTTypeScriptJSON) == "" {
+		return errors.New("buyer topup udt type script json is required")
+	}
+	if minimumAvailableCents <= 0 {
+		minimumAvailableCents = 5_000
+	}
+
+	udtTypeScript, err := parseProviderSettlementUDTTypeScriptJSON(cfg.BuyerTopUpUDTTypeScriptJSON)
+	if err != nil {
+		return fmt.Errorf("parse buyer topup udt type script: %w", err)
+	}
+
+	invoiceNode := newReleaseRawFNNClient(cfg.BuyerTopUpInvoiceRPCURL)
+	invoiceInfo, err := invoiceNode.NodeInfo(ctx)
+	if err != nil {
+		return fmt.Errorf("buyer topup invoice node info: %w", err)
+	}
+	peerID, err := derivePeerIDFromNodeID(invoiceInfo.NodeID)
+	if err != nil {
+		return fmt.Errorf("derive buyer topup invoice peer id: %w", err)
+	}
+
+	_, err = provisioner.EnsureProviderLiquidity(platform.EnsureProviderLiquidityInput{
+		ProviderOrgID: marketplaceTreasuryUserID,
+		Binding: platform.ProviderSettlementBinding{
+			ID:            "demo_topup_rail",
+			ProviderOrgID: marketplaceTreasuryUserID,
+			Asset:         "USDI",
+			PeerID:        peerID,
+			P2PAddress:    multiaddrForP2P(cfg.BuyerTopUpInvoiceP2PHost, cfg.BuyerTopUpInvoiceP2PPort, peerID),
+			NodeRPCURL:    cfg.BuyerTopUpInvoiceRPCURL,
+			UDTTypeScript: platform.UDTTypeScript{
+				CodeHash: udtTypeScript.CodeHash,
+				HashType: udtTypeScript.HashType,
+				Args:     udtTypeScript.Args,
+			},
+			Status: "active",
+		},
+		NeededReserveCents: minimumAvailableCents,
+		CurrentPool: platform.ProviderLiquidityPool{
+			ProviderSettlementBindingID: "demo_topup_rail",
+			ProviderOrgID:               marketplaceTreasuryUserID,
+			Asset:                       "USDI",
+			Status:                      platform.ProviderLiquidityPoolStatusHealthy,
+			TotalSpendableCents:         minimumAvailableCents,
+			AvailableToAllocateCents:    minimumAvailableCents,
+		},
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func parseDemoAmountToCents(raw string) int64 {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0
+	}
+	parsed, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return 0
+	}
+	return int64(parsed * 100)
 }

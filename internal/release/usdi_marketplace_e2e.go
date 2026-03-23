@@ -56,6 +56,15 @@ type USDIMarketplaceE2EConfig struct {
 	IncludeCarrierProbe                 bool
 	FaucetTxHash                        string
 	ExplorerProofURLs                   []string
+	CKBRPCURL                           string
+	CKBFaucetAPIBase                    string
+	CKBFaucetFallbackAPIBase            string
+	USDIFaucetAPIBase                   string
+	PayerRPCURL                         string
+	BuyerTopUpInvoiceRPCURL             string
+	BuyerTopUpInvoiceP2PHost            string
+	BuyerTopUpInvoiceP2PPort            int
+	BuyerTopUpUDTTypeScriptJSON         string
 	ProviderSettlementRPCURL            string
 	ProviderSettlementP2PHost           string
 	ProviderSettlementP2PPort           int
@@ -175,6 +184,15 @@ func USDIMarketplaceE2EConfigFromEnv() USDIMarketplaceE2EConfig {
 		IncludeCarrierProbe:                 envBool("RELEASE_USDI_E2E_INCLUDE_CARRIER_PROBE"),
 		FaucetTxHash:                        strings.TrimSpace(envOrDefault("RELEASE_USDI_E2E_FAUCET_TX_HASH", "")),
 		ExplorerProofURLs:                   splitCSV(envOrDefault("RELEASE_USDI_E2E_EXPLORER_PROOF_URLS", "")),
+		CKBRPCURL:                           envOrDefault("RELEASE_USDI_E2E_CKB_RPC_URL", envOrDefault("FNN_CKB_RPC_URL", envOrDefault("FNN2_CKB_RPC_URL", "https://testnet.ckbapp.dev/"))),
+		CKBFaucetAPIBase:                    envOrDefault("RELEASE_USDI_E2E_CKB_FAUCET_API_BASE", "https://faucet-api.nervos.org"),
+		CKBFaucetFallbackAPIBase:            envOrDefault("RELEASE_USDI_E2E_CKB_FAUCET_FALLBACK_API_BASE", "https://ckb-utilities.random-walk.co.jp/api"),
+		USDIFaucetAPIBase:                   envOrDefault("RELEASE_USDI_E2E_USDI_FAUCET_API_BASE", "https://ckb-utilities.random-walk.co.jp/api"),
+		PayerRPCURL:                         envOrDefault("RELEASE_USDI_E2E_PAYER_RPC_URL", envOrDefault("PROVIDER_SETTLEMENT_FNN_TREASURY_RPC_URL", "http://fnn2:8227")),
+		BuyerTopUpInvoiceRPCURL:             envOrDefault("RELEASE_USDI_E2E_TOPUP_INVOICE_RPC_URL", envOrDefault("FNN_INVOICE_RPC_URL", "http://fnn:8227")),
+		BuyerTopUpInvoiceP2PHost:            envOrDefault("RELEASE_USDI_E2E_TOPUP_INVOICE_P2P_HOST", "fnn"),
+		BuyerTopUpInvoiceP2PPort:            envIntOrDefault("RELEASE_USDI_E2E_TOPUP_INVOICE_P2P_PORT", 8228),
+		BuyerTopUpUDTTypeScriptJSON:         envOrDefault("RELEASE_USDI_E2E_TOPUP_UDT_TYPE_SCRIPT_JSON", envOrDefault("FIBER_USDI_UDT_TYPE_SCRIPT_JSON", "")),
 		ProviderSettlementRPCURL:            envOrDefault("RELEASE_USDI_E2E_PROVIDER_SETTLEMENT_RPC_URL", "http://provider-fnn:8227"),
 		ProviderSettlementP2PHost:           envOrDefault("RELEASE_USDI_E2E_PROVIDER_SETTLEMENT_P2P_HOST", "provider-fnn"),
 		ProviderSettlementP2PPort:           envIntOrDefault("RELEASE_USDI_E2E_PROVIDER_SETTLEMENT_P2P_PORT", 8228),
@@ -934,8 +952,16 @@ func (c *smokeClient) registerProviderSettlementBinding(ctx context.Context, bas
 
 func parseProviderSettlementUDTTypeScriptJSON(raw string) (platform.UDTTypeScript, error) {
 	var payload map[string]any
-	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
-		return platform.UDTTypeScript{}, err
+	trimmed := strings.TrimSpace(raw)
+	if err := json.Unmarshal([]byte(trimmed), &payload); err != nil {
+		if strings.Contains(trimmed, `\"`) {
+			normalized := strings.ReplaceAll(trimmed, `\"`, `"`)
+			if retryErr := json.Unmarshal([]byte(normalized), &payload); retryErr != nil {
+				return platform.UDTTypeScript{}, err
+			}
+		} else {
+			return platform.UDTTypeScript{}, err
+		}
 	}
 	readString := func(keys ...string) string {
 		for _, key := range keys {

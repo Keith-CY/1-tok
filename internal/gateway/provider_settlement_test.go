@@ -92,6 +92,17 @@ func TestProviderSettlementBindingLifecycleEndpoints(t *testing.T) {
 	}
 }
 
+func TestProviderSettlementBindingGetNotFound(t *testing.T) {
+	server := NewServer()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/provider-settlement-bindings/nonexistent", nil)
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+	if res.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%s", res.Code, res.Body.String())
+	}
+}
+
 func TestGetProviderSettlementPoolEndpoint(t *testing.T) {
 	app := platform.NewAppWithMemory()
 	server := NewServerWithApp(app)

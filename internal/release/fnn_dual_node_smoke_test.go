@@ -11,6 +11,25 @@ import (
 	"time"
 )
 
+func TestRawNodeInfoUnmarshalIncludesDefaultFundingLockScript(t *testing.T) {
+	var info rawNodeInfo
+	err := json.Unmarshal([]byte(`{
+		"node_id":"0x01",
+		"auto_accept_channel_ckb_funding_amount":"0x2540be400",
+		"default_funding_lock_script":{
+			"code_hash":"0xabc",
+			"hash_type":"type",
+			"args":"0x00112233445566778899aabbccddeeff00112233"
+		}
+	}`), &info)
+	if err != nil {
+		t.Fatalf("unmarshal raw node info: %v", err)
+	}
+	if got := info.DefaultFundingLockScript.Args; got != "0x00112233445566778899aabbccddeeff00112233" {
+		t.Fatalf("default funding lock args = %q", got)
+	}
+}
+
 func TestRunFNNDualNodeSmokeBootstrapsChannelAndPaysThroughAdapter(t *testing.T) {
 	var invoiceMethods []string
 	invoiceNode := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -348,7 +367,7 @@ func TestRunFNNDualNodeSmokeReconnectTreatsAlreadyConnectedAsSuccess(t *testing.
 				_ = json.NewEncoder(w).Encode(map[string]any{
 					"jsonrpc": "2.0",
 					"id":      1,
-					"error": map[string]any{"message": "Peer already connected"},
+					"error":   map[string]any{"message": "Peer already connected"},
 				})
 				return
 			}
@@ -397,7 +416,7 @@ func TestRunFNNDualNodeSmokeReconnectTreatsAlreadyConnectedAsSuccess(t *testing.
 				_ = json.NewEncoder(w).Encode(map[string]any{
 					"jsonrpc": "2.0",
 					"id":      1,
-					"error": map[string]any{"message": "already connected"},
+					"error":   map[string]any{"message": "already connected"},
 				})
 				return
 			}
@@ -418,7 +437,7 @@ func TestRunFNNDualNodeSmokeReconnectTreatsAlreadyConnectedAsSuccess(t *testing.
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"jsonrpc": "2.0",
 				"id":      1,
-				"result": map[string]any{"temporary_channel_id": "tmp_retry_2"},
+				"result":  map[string]any{"temporary_channel_id": "tmp_retry_2"},
 			})
 		case "list_channels":
 			_ = json.NewEncoder(w).Encode(map[string]any{

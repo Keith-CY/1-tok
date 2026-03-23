@@ -2064,7 +2064,7 @@ func (a *App) GetProviderCarrierBinding(providerOrgID string) (ProviderCarrierBi
 	if idx, ok := a.carrierBindingsByOrg[providerOrgID]; ok && idx >= 0 && idx < len(a.carrierBindings) {
 		return a.carrierBindings[idx], nil
 	}
-	return ProviderCarrierBinding{}, fmt.Errorf("no carrier binding for provider %s", providerOrgID)
+	return ProviderCarrierBinding{}, fmt.Errorf("%w: %s", ErrProviderCarrierBindingNotFound, providerOrgID)
 }
 
 func (a *App) reindexCarrierBindings() {
