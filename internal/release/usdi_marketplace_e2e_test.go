@@ -552,3 +552,13 @@ func TestParseProviderSettlementUDTTypeScriptJSONSupportsCamelAndSnakeCase(t *te
 		t.Fatalf("unexpected camelCase script: %+v", camelCase)
 	}
 }
+
+func TestParseProviderSettlementUDTTypeScriptJSONSupportsEscapedEnvJSON(t *testing.T) {
+	script, err := parseProviderSettlementUDTTypeScriptJSON(`{\"code_hash\":\"0xudt\",\"hash_type\":\"type\",\"args\":\"0x01\"}`)
+	if err != nil {
+		t.Fatalf("parse escaped env json: %v", err)
+	}
+	if script.CodeHash != "0xudt" || script.HashType != "type" || script.Args != "0x01" {
+		t.Fatalf("unexpected escaped env script: %+v", script)
+	}
+}

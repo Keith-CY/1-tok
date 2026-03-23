@@ -934,8 +934,16 @@ func (c *smokeClient) registerProviderSettlementBinding(ctx context.Context, bas
 
 func parseProviderSettlementUDTTypeScriptJSON(raw string) (platform.UDTTypeScript, error) {
 	var payload map[string]any
-	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
-		return platform.UDTTypeScript{}, err
+	trimmed := strings.TrimSpace(raw)
+	if err := json.Unmarshal([]byte(trimmed), &payload); err != nil {
+		if strings.Contains(trimmed, `\"`) {
+			normalized := strings.ReplaceAll(trimmed, `\"`, `"`)
+			if retryErr := json.Unmarshal([]byte(normalized), &payload); retryErr != nil {
+				return platform.UDTTypeScript{}, err
+			}
+		} else {
+			return platform.UDTTypeScript{}, err
+		}
 	}
 	readString := func(keys ...string) string {
 		for _, key := range keys {
