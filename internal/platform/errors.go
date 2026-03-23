@@ -27,6 +27,8 @@ var (
 	ErrBidNotBelongToRFQ  = errors.New("bid does not belong to rfq")
 
 	// Provider errors
+	ErrProviderCarrierBindingNotFound        = errors.New("provider carrier binding not found")
+	ErrProviderSettlementBindingNotFound     = errors.New("provider settlement binding not found")
 	ErrProviderSuspended                    = errors.New("provider carrier binding is suspended")
 	ErrProviderSettlementBindingRequired    = errors.New("provider settlement binding is required")
 	ErrProviderSettlementPoolUnavailable    = errors.New("provider settlement pool is unavailable")

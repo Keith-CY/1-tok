@@ -150,7 +150,7 @@ func (a *App) GetProviderSettlementBinding(providerOrgID string) (ProviderSettle
 	if idx, ok := a.settlementBindingsByOrg[providerOrgID]; ok && idx >= 0 && idx < len(a.settlementBindings) {
 		return a.settlementBindings[idx], nil
 	}
-	return ProviderSettlementBinding{}, fmt.Errorf("no settlement binding for provider %s", providerOrgID)
+	return ProviderSettlementBinding{}, fmt.Errorf("%w: %s", ErrProviderSettlementBindingNotFound, providerOrgID)
 }
 
 func (a *App) VerifyProviderSettlementBinding(bindingID string) (ProviderSettlementBinding, error) {

@@ -2457,6 +2457,8 @@ func TestWriteGatewayError_NotFound(t *testing.T) {
 		platform.ErrRFQNotFound,
 		platform.ErrBidNotFound,
 		platform.ErrDisputeNotFound,
+		platform.ErrProviderCarrierBindingNotFound,
+		platform.ErrProviderSettlementBindingNotFound,
 	} {
 		rec := httptest.NewRecorder()
 		writeGatewayError(rec, err)
@@ -8552,9 +8554,8 @@ func TestCarrierBinding_GetNotFound(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/carrier-bindings/nonexistent", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	// Should return error (no binding for this org)
-	if w.Code == http.StatusCreated {
-		t.Error("should not succeed for nonexistent binding")
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%s", w.Code, w.Body.String())
 	}
 }
 

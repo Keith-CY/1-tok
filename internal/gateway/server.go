@@ -1237,7 +1237,9 @@ func writeGatewayError(w http.ResponseWriter, err error) {
 		errors.Is(err, core.ErrMilestoneNotFound),
 		errors.Is(err, platform.ErrRFQNotFound),
 		errors.Is(err, platform.ErrBidNotFound),
-		errors.Is(err, platform.ErrDisputeNotFound):
+		errors.Is(err, platform.ErrDisputeNotFound),
+		errors.Is(err, platform.ErrProviderCarrierBindingNotFound),
+		errors.Is(err, platform.ErrProviderSettlementBindingNotFound):
 		httputil.WriteError(w, http.StatusNotFound, httputil.ErrCodeNotFound, err.Error())
 	case errors.Is(err, platform.ErrProviderSuspended):
 		httputil.WriteError(w, http.StatusForbidden, httputil.ErrCodeForbidden, err.Error())
