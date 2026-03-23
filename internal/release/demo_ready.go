@@ -116,6 +116,8 @@ func runDemoReady(ctx context.Context, cfg DemoRunConfig, mutate bool) (DemoRunS
 		return summary, err
 	}
 	summary.Status = status
+	buyerTopUpSettledCents := int64(0)
+	providerPoolWarmed := (*platform.ProviderLiquidityPool)(nil)
 
 	if mutate && (!status.BuyerBalance.MeetsMinimumThreshold || !status.ProviderSettlement.MeetsMinimumThreshold) {
 		if err := ensureDemoFNNBootstrapFunc(ctx, cfg); err != nil {
@@ -146,25 +148,81 @@ func runDemoReady(ctx context.Context, cfg DemoRunConfig, mutate bool) (DemoRunS
 		}, 90*time.Second, "SETTLED"); err != nil {
 			return summary, err
 		}
+		buyerTopUpSettledCents = parseDemoAmountToCents(cfg.Demo.BuyerTopUpAmount)
 		summary.Actions = append(summary.Actions, "buyer top-up settled")
 	}
 
 	if mutate && !status.ProviderSettlement.MeetsMinimumThreshold {
-		if _, err := client.warmDemoProviderLiquidity(ctx, cfg.Demo.APIBaseURL, ops.Token, summary.ProviderOrgID, cfg.Demo.MinProviderLiquidityCents); err != nil {
+		pool, err := client.warmDemoProviderLiquidity(ctx, cfg.Demo.APIBaseURL, ops.Token, summary.ProviderOrgID, cfg.Demo.MinProviderLiquidityCents)
+		if err != nil {
 			return summary, err
 		}
+		providerPoolWarmed = &pool
 		summary.Actions = append(summary.Actions, "provider liquidity warmed")
 	}
 
-	status, err = client.getDemoStatus(ctx, cfg.Demo.APIBaseURL, ops.Token)
-	if err != nil {
-		return summary, err
+	if mutate {
+		summary.Status = buildPreparedDemoStatus(cfg, summary, status, buyerTopUpSettledCents, providerPoolWarmed)
+	} else {
+		summary.Status = status
 	}
-	summary.Status = status
 	if summary.Status.Verdict != demoenv.VerdictReady {
 		return summary, ErrDemoNotReady
 	}
 	return summary, nil
+}
+
+func buildPreparedDemoStatus(cfg DemoRunConfig, summary DemoRunSummary, current demoenv.Status, buyerTopUpSettledCents int64, providerPoolWarmed *platform.ProviderLiquidityPool) demoenv.Status {
+	status := demoenv.Status{
+		ResourcePrefix: firstNonEmptyString(current.ResourcePrefix, cfg.Demo.ResourcePrefix),
+		Services:       append([]demoenv.ServiceStatus(nil), current.Services...),
+		Actors: []demoenv.ActorStatus{
+			preparedDemoActorStatus("buyer", summary.BuyerEmail, summary.BuyerOrgID),
+			preparedDemoActorStatus("provider", summary.ProviderEmail, summary.ProviderOrgID),
+			preparedDemoActorStatus("ops", summary.OpsEmail, summary.OpsOrgID),
+		},
+		BuyerBalance:       current.BuyerBalance,
+		ProviderSettlement: current.ProviderSettlement,
+	}
+
+	status.BuyerBalance.BuyerOrgID = summary.BuyerOrgID
+	status.BuyerBalance.MinimumRequiredCents = cfg.Demo.MinBuyerBalanceCents
+	if buyerTopUpSettledCents > 0 {
+		status.BuyerBalance.SettledTopUpCents += buyerTopUpSettledCents
+		status.BuyerBalance.SettledTopUpCount++
+		if status.BuyerBalance.PendingTopUpCount > 0 {
+			status.BuyerBalance.PendingTopUpCount--
+		}
+	}
+	status.BuyerBalance.MeetsMinimumThreshold = status.BuyerBalance.SettledTopUpCents >= status.BuyerBalance.MinimumRequiredCents
+
+	status.ProviderSettlement.ProviderOrgID = summary.ProviderOrgID
+	status.ProviderSettlement.MinimumRequiredCents = cfg.Demo.MinProviderLiquidityCents
+	status.ProviderSettlement.CarrierBindingStatus = firstNonEmptyString(status.ProviderSettlement.CarrierBindingStatus, "active")
+	status.ProviderSettlement.SettlementBindingStatus = firstNonEmptyString(status.ProviderSettlement.SettlementBindingStatus, "active")
+	if providerPoolWarmed != nil {
+		status.ProviderSettlement.PoolStatus = string(providerPoolWarmed.Status)
+		status.ProviderSettlement.ReadyChannelCount = providerPoolWarmed.ReadyChannelCount
+		status.ProviderSettlement.AvailableToAllocateCents = providerPoolWarmed.AvailableToAllocateCents
+		status.ProviderSettlement.ReservedOutstandingCents = providerPoolWarmed.ReservedOutstandingCents
+	}
+	status.ProviderSettlement.MeetsMinimumThreshold =
+		strings.EqualFold(status.ProviderSettlement.CarrierBindingStatus, "active") &&
+			strings.EqualFold(status.ProviderSettlement.SettlementBindingStatus, "active") &&
+			strings.EqualFold(status.ProviderSettlement.PoolStatus, string(platform.ProviderLiquidityPoolStatusHealthy)) &&
+			status.ProviderSettlement.AvailableToAllocateCents >= status.ProviderSettlement.MinimumRequiredCents
+
+	return demoenv.FinalizeStatus(status)
+}
+
+func preparedDemoActorStatus(role, email, orgID string) demoenv.ActorStatus {
+	return demoenv.ActorStatus{
+		Role:   role,
+		Email:  email,
+		OrgID:  orgID,
+		Ready:  strings.TrimSpace(orgID) != "",
+		Detail: "resolved during demo prepare",
+	}
 }
 
 func ensureDemoActor(ctx context.Context, client *smokeClient, baseURL string, cfg demoenv.ActorConfig, allowSignup bool) (actorIdentity, bool, error) {
