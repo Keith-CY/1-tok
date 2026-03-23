@@ -179,9 +179,9 @@ type releaseRawFNNClient struct {
 }
 
 type rawNodeInfo struct {
-	NodeID                            string `json:"node_id"`
-	AutoAcceptChannelCKBFundingAmount string `json:"auto_accept_channel_ckb_funding_amount"`
-	DefaultFundingLockScript          rawScript
+	NodeID                            string              `json:"node_id"`
+	AutoAcceptChannelCKBFundingAmount string              `json:"auto_accept_channel_ckb_funding_amount"`
+	DefaultFundingLockScript          rawScript           `json:"default_funding_lock_script"`
 	UDTCfgInfos                       []rawNodeUDTCfgInfo `json:"udt_cfg_infos"`
 }
 
