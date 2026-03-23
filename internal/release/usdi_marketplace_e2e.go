@@ -676,7 +676,7 @@ func (c *smokeClient) waitBuyerDepositCredit(ctx context.Context, cfg USDIMarket
 			return buyerDepositSummaryResponse{}, err
 		}
 		if deadline.IsZero() {
-			deadline = time.Now().Add(buyerDepositCreditWaitTimeout(summary))
+			deadline = extendBuyerDepositDeadline(deadline, time.Now(), summary)
 		}
 		if summary.CreditedBalanceCents >= targetCents {
 			return summary, nil
@@ -686,6 +686,7 @@ func (c *smokeClient) waitBuyerDepositCredit(ctx context.Context, cfg USDIMarket
 				return buyerDepositSummaryResponse{}, err
 			}
 			attempts++
+			deadline = extendBuyerDepositDeadline(deadline, time.Now(), summary)
 		}
 		if summary.RawConfirmedUnits >= summary.RawMinimumSweepUnits {
 			if !feeBalanceReady {
@@ -726,6 +727,14 @@ func buyerDepositCreditWaitTimeout(summary buyerDepositSummaryResponse) time.Dur
 		return estimated
 	}
 	return timeout
+}
+
+func extendBuyerDepositDeadline(deadline, now time.Time, summary buyerDepositSummaryResponse) time.Time {
+	candidate := now.Add(buyerDepositCreditWaitTimeout(summary))
+	if deadline.IsZero() || candidate.After(deadline) {
+		return candidate
+	}
+	return deadline
 }
 
 func ensureBuyerDepositSweepCKBFeeBalance(ctx context.Context, ckbClient *releaseCKBRPCClient, httpClient *http.Client, cfg USDIMarketplaceE2EConfig, address string) error {

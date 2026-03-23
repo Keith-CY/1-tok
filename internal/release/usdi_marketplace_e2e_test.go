@@ -171,6 +171,18 @@ func TestBuyerDepositCreditWaitTimeout(t *testing.T) {
 	}
 }
 
+func TestExtendBuyerDepositDeadlineExtendsForAdditionalFaucetRound(t *testing.T) {
+	summary := buyerDepositSummaryResponse{ConfirmationBlocks: 24}
+	firstNow := time.Date(2026, 3, 23, 18, 52, 0, 0, time.UTC)
+	firstDeadline := extendBuyerDepositDeadline(time.Time{}, firstNow, summary)
+	secondNow := firstNow.Add(2 * time.Minute)
+	secondDeadline := extendBuyerDepositDeadline(firstDeadline, secondNow, summary)
+
+	if !secondDeadline.After(firstDeadline) {
+		t.Fatalf("second deadline %s should extend first deadline %s", secondDeadline, firstDeadline)
+	}
+}
+
 func TestRequestUSDIFaucetRetriesTransientFailures(t *testing.T) {
 	var attempts int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
