@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 )
 
 var ErrDemoNotReady = errors.New("demo environment is not ready")
+var ensureDemoBuyerTopUpRailFunc = ensureDemoBuyerTopUpRailLiquidity
 
 const (
 	activeCarrierBindingAlreadyExistsMessage    = "active binding already exists"
@@ -122,6 +124,13 @@ func runDemoReady(ctx context.Context, cfg DemoRunConfig, mutate bool) (DemoRunS
 		}
 		summary.TopUpInvoice = topUpInvoice
 		summary.TopUpRecordID = topUpRecordID
+		topUpNeededCents := cfg.Demo.MinBuyerBalanceCents
+		if topUpAmountCents := parseDemoAmountToCents(cfg.Demo.BuyerTopUpAmount); topUpAmountCents > topUpNeededCents {
+			topUpNeededCents = topUpAmountCents
+		}
+		if err := ensureDemoBuyerTopUpRailFunc(ctx, cfg.USDI, topUpNeededCents); err != nil {
+			return summary, fmt.Errorf("ensure buyer topup rail: %w", err)
+		}
 		if _, err := client.payInvoiceViaFiber(ctx, cfg.USDI, buyer.OrgID, topUpInvoice, cfg.Demo.BuyerTopUpAmount, "USDI"); err != nil {
 			return summary, err
 		}
@@ -417,4 +426,85 @@ func errorContainsFold(err error, fragment string) bool {
 		return false
 	}
 	return strings.Contains(strings.ToLower(err.Error()), strings.ToLower(fragment))
+}
+
+func ensureDemoBuyerTopUpRailLiquidity(ctx context.Context, cfg USDIMarketplaceE2EConfig, minimumAvailableCents int64) error {
+	provisioner, err := platform.NewFNNProviderSettlementProvisionerFromEnv()
+	if err != nil {
+		return err
+	}
+	if provisioner == nil {
+		return nil
+	}
+
+	if strings.TrimSpace(cfg.BuyerTopUpInvoiceRPCURL) == "" {
+		return errors.New("buyer topup invoice rpc url is required")
+	}
+	if strings.TrimSpace(cfg.BuyerTopUpInvoiceP2PHost) == "" {
+		return errors.New("buyer topup invoice p2p host is required")
+	}
+	if strings.TrimSpace(cfg.BuyerTopUpUDTTypeScriptJSON) == "" {
+		return errors.New("buyer topup udt type script json is required")
+	}
+	if minimumAvailableCents <= 0 {
+		minimumAvailableCents = 5_000
+	}
+
+	udtTypeScript, err := parseProviderSettlementUDTTypeScriptJSON(cfg.BuyerTopUpUDTTypeScriptJSON)
+	if err != nil {
+		return fmt.Errorf("parse buyer topup udt type script: %w", err)
+	}
+
+	invoiceNode := newReleaseRawFNNClient(cfg.BuyerTopUpInvoiceRPCURL)
+	invoiceInfo, err := invoiceNode.NodeInfo(ctx)
+	if err != nil {
+		return fmt.Errorf("buyer topup invoice node info: %w", err)
+	}
+	peerID, err := derivePeerIDFromNodeID(invoiceInfo.NodeID)
+	if err != nil {
+		return fmt.Errorf("derive buyer topup invoice peer id: %w", err)
+	}
+
+	_, err = provisioner.EnsureProviderLiquidity(platform.EnsureProviderLiquidityInput{
+		ProviderOrgID: marketplaceTreasuryUserID,
+		Binding: platform.ProviderSettlementBinding{
+			ID:            "demo_topup_rail",
+			ProviderOrgID: marketplaceTreasuryUserID,
+			Asset:         "USDI",
+			PeerID:        peerID,
+			P2PAddress:    multiaddrForP2P(cfg.BuyerTopUpInvoiceP2PHost, cfg.BuyerTopUpInvoiceP2PPort, peerID),
+			NodeRPCURL:    cfg.BuyerTopUpInvoiceRPCURL,
+			UDTTypeScript: platform.UDTTypeScript{
+				CodeHash: udtTypeScript.CodeHash,
+				HashType: udtTypeScript.HashType,
+				Args:     udtTypeScript.Args,
+			},
+			Status: "active",
+		},
+		NeededReserveCents: minimumAvailableCents,
+		CurrentPool: platform.ProviderLiquidityPool{
+			ProviderSettlementBindingID: "demo_topup_rail",
+			ProviderOrgID:               marketplaceTreasuryUserID,
+			Asset:                       "USDI",
+			Status:                      platform.ProviderLiquidityPoolStatusHealthy,
+			TotalSpendableCents:         minimumAvailableCents,
+			AvailableToAllocateCents:    minimumAvailableCents,
+		},
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func parseDemoAmountToCents(raw string) int64 {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0
+	}
+	parsed, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return 0
+	}
+	return int64(parsed * 100)
 }

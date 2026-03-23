@@ -56,6 +56,10 @@ type USDIMarketplaceE2EConfig struct {
 	IncludeCarrierProbe                 bool
 	FaucetTxHash                        string
 	ExplorerProofURLs                   []string
+	BuyerTopUpInvoiceRPCURL             string
+	BuyerTopUpInvoiceP2PHost            string
+	BuyerTopUpInvoiceP2PPort            int
+	BuyerTopUpUDTTypeScriptJSON         string
 	ProviderSettlementRPCURL            string
 	ProviderSettlementP2PHost           string
 	ProviderSettlementP2PPort           int
@@ -175,6 +179,10 @@ func USDIMarketplaceE2EConfigFromEnv() USDIMarketplaceE2EConfig {
 		IncludeCarrierProbe:                 envBool("RELEASE_USDI_E2E_INCLUDE_CARRIER_PROBE"),
 		FaucetTxHash:                        strings.TrimSpace(envOrDefault("RELEASE_USDI_E2E_FAUCET_TX_HASH", "")),
 		ExplorerProofURLs:                   splitCSV(envOrDefault("RELEASE_USDI_E2E_EXPLORER_PROOF_URLS", "")),
+		BuyerTopUpInvoiceRPCURL:             envOrDefault("RELEASE_USDI_E2E_TOPUP_INVOICE_RPC_URL", envOrDefault("FNN_INVOICE_RPC_URL", "http://fnn:8227")),
+		BuyerTopUpInvoiceP2PHost:            envOrDefault("RELEASE_USDI_E2E_TOPUP_INVOICE_P2P_HOST", "fnn"),
+		BuyerTopUpInvoiceP2PPort:            envIntOrDefault("RELEASE_USDI_E2E_TOPUP_INVOICE_P2P_PORT", 8228),
+		BuyerTopUpUDTTypeScriptJSON:         envOrDefault("RELEASE_USDI_E2E_TOPUP_UDT_TYPE_SCRIPT_JSON", envOrDefault("FIBER_USDI_UDT_TYPE_SCRIPT_JSON", "")),
 		ProviderSettlementRPCURL:            envOrDefault("RELEASE_USDI_E2E_PROVIDER_SETTLEMENT_RPC_URL", "http://provider-fnn:8227"),
 		ProviderSettlementP2PHost:           envOrDefault("RELEASE_USDI_E2E_PROVIDER_SETTLEMENT_P2P_HOST", "provider-fnn"),
 		ProviderSettlementP2PPort:           envIntOrDefault("RELEASE_USDI_E2E_PROVIDER_SETTLEMENT_P2P_PORT", 8228),
