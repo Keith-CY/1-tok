@@ -293,7 +293,9 @@ contains_open_channel_peer_not_ready_error() {
   local message="${1,,}"
   [[ "${message}" == *"peer not found"* ]] \
     || [[ "${message}" == *"peer not ready"* ]] \
-    || [[ "${message}" == *"temporarily unavailable"* ]]
+    || [[ "${message}" == *"temporarily unavailable"* ]] \
+    || [[ "${message}" == *"waiting for peer to send init message"* ]] \
+    || ([[ "${message}" == *"feature not found"* ]] && [[ "${message}" == *"peer"* ]])
 }
 
 contains_accept_channel_ignorable_error() {
