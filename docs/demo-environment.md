@@ -38,11 +38,40 @@ The org IDs are part of the environment contract. Do not treat them as discovera
 - `redis`
 - `nats`
 
+## Coolify topology
+
+Deploy the stack from [deploy/coolify/testnet.compose.yaml](../deploy/coolify/testnet.compose.yaml).
+
+Public entrypoints:
+
+- `web`
+- `api-gateway`
+- `settlement`
+
+Internal-only services:
+
+- `iam`
+- `marketplace`
+- `settlement-reconciler`
+- `execution`
+- `risk`
+- `notification`
+- `carrier-daemon`
+- `carrier-gateway`
+- `remote-vps`
+- `fnn`
+- `fnn2`
+- `provider-fnn`
+- `fiber-adapter`
+- `postgres`
+- `redis`
+- `nats`
+
 ## Readiness contract
 
 The demo is only considered ready when:
 
-- `bun run release:demo:verify` returns `ready`
+- the ops control plane reports `ready`
 - `/ops` shows `Demo readiness` as `ready`
 - buyer prefund is above `DEMO_MIN_BUYER_BALANCE_CENTS`
 - provider liquidity is above `DEMO_MIN_PROVIDER_LIQUIDITY_CENTS`
@@ -52,13 +81,9 @@ The demo is only considered ready when:
 
 ## Preparation flow
 
-Run this from the deployed environment before a live demo:
+Run this from the deployed environment before a live demo by pressing `Prepare demo` on `/ops`.
 
-```bash
-bun run release:demo:prepare
-```
-
-This command will:
+The prepare flow will:
 
 - log in or create the fixed buyer, provider, and ops actors
 - ensure the provider carrier binding is active
@@ -69,10 +94,6 @@ This command will:
 
 ## Verification flow
 
-Run this immediately before the live session:
+Immediately before the live session, refresh `/ops` and confirm `Demo readiness = ready`.
 
-```bash
-bun run release:demo:verify
-```
-
-If it returns `blocked`, do not start the live demo.
+If the control plane remains `blocked`, do not start the live demo.

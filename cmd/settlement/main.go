@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/chenyu/1-tok/internal/httputil"
-	"github.com/chenyu/1-tok/internal/server"
 	"github.com/chenyu/1-tok/internal/observability"
+	"github.com/chenyu/1-tok/internal/server"
 	"github.com/chenyu/1-tok/internal/services/settlement"
 )
 
@@ -20,7 +20,7 @@ func main() {
 	defer shutdown(2 * time.Second)
 
 	log.Printf("settlement listening on %s", addr)
-	handler := httputil.LimitBody(settlement.NewServer(), 0)
+	handler := httputil.CORS(envOrDefault("CORS_ALLOWED_ORIGIN", "*"), httputil.LimitBody(settlement.NewServer(), 0))
 	if err := server.Run(addr, httputil.AccessLog("settlement", observability.WrapHTTP("settlement", handler)), 0); err != nil {
 		log.Fatal(err)
 	}

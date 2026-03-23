@@ -4,15 +4,16 @@
 
 10 minutes before start:
 
-1. Run `bun run release:demo:verify`.
-2. Open `/ops` and confirm `Demo readiness` reads `ready`.
+1. Open `/ops`.
+2. If the environment is cold or has drifted, press `Prepare demo`.
+3. Refresh `/ops` and confirm `Demo readiness` reads `ready`.
 3. Log in the three browsers or profiles you will use:
    - buyer
    - provider
    - ops
 4. Keep `/ops` open during the walkthrough.
 
-If verification returns `blocked`, stop and fix the blockers first. Do not improvise a live recovery path during the demo.
+If readiness stays `blocked`, stop and fix the blockers first. Do not improvise a live recovery path during the demo.
 
 ## Live sequence
 

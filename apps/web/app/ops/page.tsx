@@ -26,6 +26,7 @@ export default async function OpsPage({
   const creditReason = String(params?.creditReason ?? "");
   const resolvedDisputeId = String(params?.resolvedDisputeId ?? "");
   const disputeStatus = String(params?.disputeStatus ?? "");
+  const demoPrepared = String(params?.demoPrepared ?? "");
   const error = String(params?.error ?? "");
 
   const openDisputes = data.disputes.filter((item) => item.status !== "resolved").slice(0, 3);
@@ -54,6 +55,24 @@ export default async function OpsPage({
           title="Remote demo posture"
           description="Use one strip to answer whether the live environment is safe to open. If this reads blocked, stop and fix the blockers before the demo."
         >
+          <div className="mb-4 flex flex-wrap gap-3">
+            <form action="/ops/demo/prepare" method="post">
+              <Button type="submit">Prepare demo</Button>
+            </form>
+            <Button asChild variant="outline">
+              <Link href="/ops">Refresh status</Link>
+            </Button>
+          </div>
+          {demoPrepared === "success" ? (
+            <div className="mb-4 rounded-[24px] border border-emerald-200 bg-emerald-50/90 p-4 text-sm text-emerald-900">
+              Demo prepare completed. Re-check the readiness strip before opening the live walkthrough.
+            </div>
+          ) : null}
+          {error === "demo-prepare-failed" ? (
+            <div className="mb-4 rounded-[24px] border border-rose-200 bg-rose-50/90 p-4 text-sm text-rose-900">
+              Demo prepare failed. Inspect blockers below before retrying.
+            </div>
+          ) : null}
           {data.demoStatus ? (
             <div className="space-y-4">
               <div className="grid gap-3 md:grid-cols-4">

@@ -1,17 +1,27 @@
-# Coolify Deployment Notes
+# Coolify Testnet Deployment
 
-This repository is structured so Coolify can manage each Go service as an independent container build using `Dockerfile.go-service`.
+Use Coolify's Docker Compose application flow against the public repo:
 
-## Suggested services
+- Repository: `https://github.com/Keith-CY/1-tok`
+- Initial branch: `feat/demo-ready-environment`
+- Compose path: `deploy/coolify/testnet.compose.yaml`
+- Project: `1-tok`
+- Environment: `testnet`
 
-- `bootstrap`
+After PR #201 merges, switch the tracked branch to `main` and keep auto-deploy enabled.
+
+## Stack shape
+
+The `testnet` stack is a full live demo environment. Treat these as standard services, not optional sidecars:
+
+- `web`
 - `api-gateway`
 - `iam`
 - `marketplace`
 - `settlement`
 - `settlement-reconciler`
-- `risk`
 - `execution`
+- `risk`
 - `notification`
 - `carrier-daemon`
 - `carrier-gateway`
@@ -23,113 +33,73 @@ This repository is structured so Coolify can manage each Go service as an indepe
 - `postgres`
 - `redis`
 - `nats`
-- `web`
+- `bootstrap` as a one-shot migration/bootstrap job
 
-`e2e-runner` is not a long-lived production service. It exists only for Dockerized end-to-end validation and CI.
+`mock-fiber`, `mock-carrier`, and the CI-only E2E runners do not belong in the Coolify deployment.
 
-## Build settings for Go services
+## Public ingress
 
-- Build context: repository root
-- Dockerfile: `Dockerfile.go-service`
-- Build arg `SERVICE`: one of `bootstrap`, `api-gateway`, `iam`, `marketplace`, `settlement`, `settlement-reconciler`, `risk`, `execution`, `notification`
-- Build arg `SERVICE`: one of `bootstrap`, `api-gateway`, `iam`, `marketplace`, `settlement`, `settlement-reconciler`, `risk`, `execution`, `notification`, `fiber-adapter`
+Attach Coolify-generated domains to:
 
-## Build settings for optional `fnn`
+- `web` on port `3000`
+- `api-gateway` on port `8080`
+- `settlement` on port `8083`
 
-- Build context: repository root
-- Dockerfile: `deploy/fnn/Dockerfile`
-- Build args:
-  - `FNN_VERSION`
-  - `FNN_ASSET`
-  - `FNN_ASSET_SHA256`
+`iam` stays internal. The Next app talks to it over `IAM_BASE_URL=http://iam:8081`.
 
-## Demo environment shape
+Set these public URLs in Coolify env:
 
-The current demo-ready topology assumes one fixed remote environment under Coolify with:
+- `PUBLIC_WEB_URL`
+- `PUBLIC_API_BASE_URL`
+- `PUBLIC_SETTLEMENT_BASE_URL`
 
-- one buyer account
-- one provider account
-- one ops account
-- one active provider carrier binding
-- one active provider settlement binding
-- one platform treasury payer path over `fnn2`
-- one provider-owned settlement node over `provider-fnn`
+`api-gateway` and `settlement` both use `CORS_ALLOWED_ORIGIN=${PUBLIC_WEB_URL}`.
 
-For the current live marketplace demo, treat `fnn`, `fnn2`, `provider-fnn`, `fiber-adapter`, `carrier-daemon`, `carrier-gateway`, and `remote-vps` as part of the standard stack rather than optional extras.
+## Required env and secrets
 
-Use the repo’s demo control-plane commands from that environment:
+Core platform:
 
-```bash
-bun run release:demo:prepare
-bun run release:demo:verify
-```
-
-The ops home page then reflects the same verdict through `GET /api/v1/ops/demo/status`.
-
-## Runtime settings
-
-- Keep all Go services on the same internal network.
-- Expose only `api-gateway`, `web`, and optionally `iam` externally.
-- Mount persistent volume for `postgres`.
-- Enable JetStream for `nats`.
-- Run `bootstrap` as a one-shot job before `iam`, `api-gateway`, `settlement`, and `settlement-reconciler`.
-- Run `settlement-reconciler` as a long-lived worker on the same internal network as `postgres` and `settlement`.
-- Keep `redis` on the same internal network as `iam` and `api-gateway`; the current production rate limiting depends on it.
-- Use [compose.fnn.yaml](../../compose.fnn.yaml) as the reference shape for `fnn`, `fnn2`, `provider-fnn`, and `fiber-adapter`.
-- Use [compose.usdi-e2e.yaml](../../compose.usdi-e2e.yaml) as the reference shape for `carrier-daemon`, `carrier-gateway`, and `remote-vps`.
-
-## Minimum environment variables
-
-- `DATABASE_URL=postgres://...`
-- `API_GATEWAY_ADDR=:8080`
-- `IAM_ADDR=:8081`
-- `MARKETPLACE_ADDR=:8082`
-- `SETTLEMENT_ADDR=:8083`
-- `RISK_ADDR=:8084`
-- `EXECUTION_ADDR=:8085`
-- `NOTIFICATION_ADDR=:8086`
-- `REDIS_URL=redis://...`
-- `RATE_LIMIT_ENFORCE=true`
-- `RATE_LIMIT_TRUST_PROXY=true`
-- `RATE_LIMIT_TRUSTED_HOPS=1`
-- `ONE_TOK_REQUIRE_PERSISTENCE=true`
-- `ONE_TOK_REQUIRE_BOOTSTRAP=true`
-- `ONE_TOK_REQUIRE_EXTERNALS=true`
-- `SENTRY_DSN`
-- `NEXT_PUBLIC_SENTRY_DSN`
-- `SENTRY_ENVIRONMENT`
-- `SENTRY_RELEASE`
-- `SENTRY_TRACES_SAMPLE_RATE`
-- `API_GATEWAY_EXECUTION_TOKEN` or `API_GATEWAY_EXECUTION_TOKENS`
-- `EXECUTION_EVENT_TOKEN` or `EXECUTION_EVENT_TOKENS`
-- `EXECUTION_GATEWAY_TOKEN` or `EXECUTION_GATEWAY_TOKENS`
-- `SETTLEMENT_SERVICE_TOKEN` or `SETTLEMENT_SERVICE_TOKENS`
-- `FIBER_RPC_URL`
+- `POSTGRES_PASSWORD`
+- `ONE_TOK_EXECUTION_GATEWAY_TOKEN`
+- `ONE_TOK_EXECUTION_EVENT_TOKEN`
+- `ONE_TOK_SETTLEMENT_SERVICE_TOKEN`
 - `FIBER_APP_ID`
 - `FIBER_HMAC_SECRET`
-- `CARRIER_GATEWAY_URL`
-- `CARRIER_GATEWAY_API_TOKEN`
-- `SETTLEMENT_RECONCILER_INTERVAL=30s`
-
-Optional `fnn` service env:
-
-- `FNN_VERSION`
-- `FNN_ASSET`
-- `FNN_ASSET_SHA256`
 - `FIBER_SECRET_KEY_PASSWORD`
-- `FNN_CKB_RPC_URL`
-- `FNN_PUBLISHED_RPC_PORT`
-- `FNN_PUBLISHED_P2P_PORT`
+- `FIBER_USDI_UDT_TYPE_SCRIPT_JSON`
+- `CARRIER_SERVER_API_TOKEN`
+- `CARRIER_GATEWAY_API_TOKEN`
 
-Optional `fiber-adapter` service env:
+Carrier / remote execution:
 
-- `FIBER_ADAPTER_ADDR`
-- `FNN_INVOICE_RPC_URL`
-- `FNN_PAYER_RPC_URL`
+- `CARRIER_E2E_REMOTE_AUTHORIZED_KEY`
+- `CARRIER_REMOTE_PRIVATE_KEY_BASE64`
+- optional: `OPENAI_API_KEY`, `OPENAI_CODEX_TOKEN`, `OPENAI_BASE_URL`
+- optional build args override: `CARRIER_REPO_URL`, `CARRIER_REF`
 
-## Next steps
+Demo actors:
 
-- Set the fixed demo actor IDs and credentials from [env.md](../../docs/env.md).
-- Run `bun run release:demo:prepare` once from the deployed environment to ensure bindings, prefund, and provider liquidity.
-- Run `bun run release:demo:verify` before each live session.
-- Follow [demo-environment.md](../../docs/demo-environment.md) and [demo-runbook.md](../../docs/demo-runbook.md) for operator-facing steps.
+- `DEMO_BUYER_EMAIL`, `DEMO_BUYER_PASSWORD`
+- `DEMO_PROVIDER_EMAIL`, `DEMO_PROVIDER_PASSWORD`
+- `DEMO_OPS_EMAIL`, `DEMO_OPS_PASSWORD`
+- optional stable names: `DEMO_*_NAME`, `DEMO_*_ORG_NAME`
+- optional pinned org IDs: `DEMO_BUYER_ORG_ID`, `DEMO_PROVIDER_ORG_ID`, `DEMO_OPS_ORG_ID`
+
+The org IDs are now optional. If omitted, the control plane resolves them by logging in with the configured demo accounts.
+
+## Operator flow
+
+After the stack is healthy:
+
+1. Log into `/ops`.
+2. Use the `Prepare demo` action on the ops page.
+3. Refresh `/ops` and confirm `Demo readiness` shows `ready`.
+4. Run the live walkthrough from [docs/demo-runbook.md](../../docs/demo-runbook.md).
+
+The same readiness verdict is available from `GET /api/v1/ops/demo/status`.
+
+## Notes
+
+- `carrier-daemon` and `carrier-gateway` build directly from the public `carrier` repo at `CARRIER_REF`; Coolify does not rely on the untracked local `./.deps/carrier` directory.
+- `carrier-gateway` writes its SSH private key from `CARRIER_REMOTE_PRIVATE_KEY_BASE64` into `/keys/id_ed25519` at container startup, so no host-path secret mount is required.
+- Use [docs/demo-environment.md](../../docs/demo-environment.md) and [docs/env.md](../../docs/env.md) as the environment contract for readiness thresholds and demo actor defaults.

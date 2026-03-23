@@ -37,21 +37,17 @@ Repo-local release work already in place:
 The repo is now strong enough for a live remote demo when all of these are true:
 
 - the fixed Coolify environment is up
-- `bun run release:demo:prepare` has already been run for that environment
-- `bun run release:demo:verify` returns `ready`
+- the ops-side demo prepare flow has already been run for that environment
 - `/ops` shows `Demo readiness` as `ready`
+- [deploy/coolify/testnet.compose.yaml](../deploy/coolify/testnet.compose.yaml) is the deployed stack definition
 
-The shortest operator path is now:
-
-```bash
-bun run release:demo:prepare
-bun run release:demo:verify
-```
+The shortest operator path is now `/ops -> Prepare demo -> refresh /ops`.
 
 The demo-specific runbooks now live in:
 
 - [demo-environment.md](./demo-environment.md)
 - [demo-runbook.md](./demo-runbook.md)
+- [deploy/coolify/README.md](../deploy/coolify/README.md)
 
 ## Production Blockers
 

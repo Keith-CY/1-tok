@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 	"github.com/chenyu/1-tok/internal/demoenv"
 	iamclient "github.com/chenyu/1-tok/internal/integrations/iam"
 	"github.com/chenyu/1-tok/internal/platform"
+	"github.com/chenyu/1-tok/internal/release"
 )
 
 func TestDemoStatusEndpointRequiresOpsAuth(t *testing.T) {
@@ -172,5 +174,80 @@ func TestDemoWarmupEndpointWarmsProviderLiquidity(t *testing.T) {
 	}
 	if response.Pool.AvailableToAllocateCents != 8_000 {
 		t.Fatalf("available cents = %d, want 8000", response.Pool.AvailableToAllocateCents)
+	}
+}
+
+func TestDemoPrepareEndpointReturnsSummary(t *testing.T) {
+	server, err := NewServerWithOptionsE(Options{
+		App: platform.NewAppWithMemory(),
+		IAM: &stubIAMClient{actor: iamclient.Actor{
+			UserID: "ops_user",
+			Memberships: []iamclient.ActorMembership{
+				{OrganizationID: "org_demo_ops", OrganizationKind: "ops", Role: "ops_reviewer"},
+			},
+		}},
+		DemoPrepare: func(_ context.Context) (release.DemoRunSummary, error) {
+			return release.DemoRunSummary{
+				Status: demoenv.Status{
+					Verdict: demoenv.VerdictReady,
+				},
+				Actions: []string{"buyer top-up settled", "provider liquidity warmed"},
+			}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/ops/demo/prepare", nil)
+	req.Header.Set("Authorization", "Bearer ops-token")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("status code = %d, body=%s", res.Code, res.Body.String())
+	}
+
+	var response struct {
+		Summary release.DemoRunSummary `json:"summary"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Summary.Status.Verdict != demoenv.VerdictReady {
+		t.Fatalf("verdict = %s, want ready", response.Summary.Status.Verdict)
+	}
+	if len(response.Summary.Actions) != 2 {
+		t.Fatalf("actions = %v, want 2 entries", response.Summary.Actions)
+	}
+}
+
+func TestDemoPrepareEndpointReturnsConflictWhenBlocked(t *testing.T) {
+	server, err := NewServerWithOptionsE(Options{
+		App: platform.NewAppWithMemory(),
+		IAM: &stubIAMClient{actor: iamclient.Actor{
+			UserID: "ops_user",
+			Memberships: []iamclient.ActorMembership{
+				{OrganizationID: "org_demo_ops", OrganizationKind: "ops", Role: "ops_reviewer"},
+			},
+		}},
+		DemoPrepare: func(_ context.Context) (release.DemoRunSummary, error) {
+			return release.DemoRunSummary{
+				Status: demoenv.Status{
+					Verdict:        demoenv.VerdictBlocked,
+					BlockerReasons: []string{"buyer prefund balance is below the demo threshold"},
+				},
+			}, release.ErrDemoNotReady
+		},
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/ops/demo/prepare", nil)
+	req.Header.Set("Authorization", "Bearer ops-token")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+	if res.Code != http.StatusConflict {
+		t.Fatalf("status code = %d, want 409, body=%s", res.Code, res.Body.String())
 	}
 }

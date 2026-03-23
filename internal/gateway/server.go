@@ -5,15 +5,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/chenyu/1-tok/internal/demoenv"
 	"github.com/chenyu/1-tok/internal/carrier"
 	"github.com/chenyu/1-tok/internal/core"
+	"github.com/chenyu/1-tok/internal/demoenv"
 	"github.com/chenyu/1-tok/internal/httputil"
 	iamclient "github.com/chenyu/1-tok/internal/integrations/iam"
 	"github.com/chenyu/1-tok/internal/notifications"
 	"github.com/chenyu/1-tok/internal/observability"
 	"github.com/chenyu/1-tok/internal/platform"
 	"github.com/chenyu/1-tok/internal/ratelimit"
+	"github.com/chenyu/1-tok/internal/release"
 	"github.com/chenyu/1-tok/internal/runtimeconfig"
 	"github.com/chenyu/1-tok/internal/serviceauth"
 	"github.com/chenyu/1-tok/internal/usageproof"
@@ -43,6 +44,7 @@ type Server struct {
 	evidence        *carrier.EvidenceStore
 	ledger          *carrier.EventLedger
 	demoConfig      demoenv.Config
+	demoPrepare     func(context.Context) (release.DemoRunSummary, error)
 }
 
 func NewServer() *Server {
@@ -67,6 +69,7 @@ type Options struct {
 	Carrier                       *carrier.Service
 	ProviderSettlementProvisioner platform.ProviderSettlementProvisioner
 	DemoConfig                    *demoenv.Config
+	DemoPrepare                   func(context.Context) (release.DemoRunSummary, error)
 }
 
 func NewServerWithOptions(options Options) *Server {
@@ -121,6 +124,12 @@ func NewServerWithOptionsE(options Options) (*Server, error) {
 	if options.DemoConfig != nil {
 		demoConfig = *options.DemoConfig
 	}
+	demoPrepare := options.DemoPrepare
+	if demoPrepare == nil {
+		demoPrepare = func(ctx context.Context) (release.DemoRunSummary, error) {
+			return release.RunDemoPrepare(ctx, release.DemoRunConfigFromEnv())
+		}
+	}
 	// Wire notifications to the app via adapter
 	options.App.SetNotifier(&webhookNotifierAdapter{svc: webhookSvc})
 	return &Server{
@@ -133,6 +142,7 @@ func NewServerWithOptionsE(options Options) (*Server, error) {
 		evidence:        carrier.NewEvidenceStore(),
 		ledger:          carrier.NewEventLedger(),
 		demoConfig:      demoConfig,
+		demoPrepare:     demoPrepare,
 	}, nil
 }
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -149,6 +159,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleFiberExposure(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/ops/demo/status":
 		s.handleDemoStatus(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/ops/demo/prepare":
+		s.handleDemoPrepare(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/ops/demo/warmup":
 		s.handleDemoWarmup(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/provider-applications":

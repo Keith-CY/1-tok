@@ -28,6 +28,19 @@ This file documents common environment variables used by 1-tok services.
 
 These variables back the fixed remote demo environment, the `release:demo:prepare` / `release:demo:verify` commands, and the ops demo-readiness surface.
 
+Coolify testnet ingress:
+
+- `PUBLIC_WEB_URL`
+- `PUBLIC_API_BASE_URL`
+- `PUBLIC_SETTLEMENT_BASE_URL`
+
+Coolify carrier build / secrets:
+
+- `CARRIER_REPO_URL`
+- `CARRIER_REF`
+- `CARRIER_E2E_REMOTE_AUTHORIZED_KEY`
+- `CARRIER_REMOTE_PRIVATE_KEY_BASE64`
+
 - `DEMO_API_BASE_URL`
 - `DEMO_IAM_BASE_URL`
 - `DEMO_SETTLEMENT_BASE_URL`
@@ -57,6 +70,8 @@ Fixed demo actors:
 - `DEMO_OPS_NAME`
 - `DEMO_OPS_ORG_NAME`
 - `DEMO_OPS_ORG_ID`
+
+The `DEMO_*_ORG_ID` values are optional for a fresh deployment. If omitted, the control plane resolves the org IDs by logging in with the configured demo credentials.
 
 Demo prep also reuses the existing USDI marketplace E2E env for Carrier, Fiber, and provider settlement node wiring:
 

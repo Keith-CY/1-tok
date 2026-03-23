@@ -1,0 +1,27 @@
+FROM golang:1.25.0-alpine AS builder
+
+ARG CARRIER_REPO_URL=https://github.com/Keith-CY/carrier.git
+ARG CARRIER_REF=706b071b5c04be95a3cfbf3dea13768b3d43f214
+
+RUN apk add --no-cache git
+
+WORKDIR /src
+
+RUN git init \
+  && git remote add origin "${CARRIER_REPO_URL}" \
+  && git fetch --depth 1 origin "${CARRIER_REF}" \
+  && git checkout FETCH_HEAD
+
+RUN go mod download
+RUN CGO_ENABLED=0 GOOS=linux go build -o /out/carrier ./cmd/carrier
+
+FROM alpine:3.20
+
+RUN apk add --no-cache ca-certificates openssh-client
+
+COPY --from=builder /out/carrier /usr/local/bin/carrier
+COPY deploy/carrier/gateway-entrypoint.sh /usr/local/bin/carrier-gateway-entrypoint.sh
+RUN chmod +x /usr/local/bin/carrier-gateway-entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/carrier-gateway-entrypoint.sh"]
+CMD ["carrier", "--help"]
