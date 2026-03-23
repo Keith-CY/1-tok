@@ -81,6 +81,9 @@ OPEN_CHANNEL_INIT_RETRY_INTERVAL_SECONDS="${OPEN_CHANNEL_INIT_RETRY_INTERVAL_SEC
 ACCEPT_CHANNEL_RETRIES="${ACCEPT_CHANNEL_RETRIES:-20}"
 ACCEPT_CHANNEL_RETRY_INTERVAL_SECONDS="${ACCEPT_CHANNEL_RETRY_INTERVAL_SECONDS:-2}"
 CHANNEL_ACCEPT_RETRY_INTERVAL_ATTEMPTS="${E2E_CHANNEL_ACCEPT_RETRY_INTERVAL_ATTEMPTS:-6}"
+CHANNEL_BOOTSTRAP_PROVISION_RETRIES="${E2E_CHANNEL_BOOTSTRAP_PROVISION_RETRIES:-3}"
+CHANNEL_READY_ATTEMPTS_PER_ROUND="${E2E_CHANNEL_READY_ATTEMPTS_PER_ROUND:-60}"
+CHANNEL_READY_STUCK_NEGOTIATING_ATTEMPTS="${E2E_CHANNEL_READY_STUCK_NEGOTIATING_ATTEMPTS:-20}"
 FIBER_TESTNET_CONTRACTS_ISSUE_URL="${FIBER_TESTNET_CONTRACTS_ISSUE_URL:-https://github.com/nervosnetwork/fiber/issues/1226}"
 DEFAULT_USDI_TYPE_SCRIPT_JSON='{"code_hash":"0xcc9dc33ef234e14bc788c43a4848556a5fb16401a04662fc55db9bb201987037","hash_type":"type","args":"0x71fd1985b2971a9903e4d8ed0d59e6710166985217ca0681437883837b86162f"}'
 BUYER_DEPOSIT_ENABLE="${BUYER_DEPOSIT_ENABLE:-true}"
@@ -1028,6 +1031,7 @@ wait_until_channel_ready() {
   local temporary_channel_id="${2:-}"
   local accept_funding_amount_hex="${3:-}"
   local seen_channel=0
+  local asymmetric_negotiating_attempts=0
   for ((i = 1; i <= attempts; i++)); do
     local payer_resp invoice_resp payer_state invoice_state payer_count invoice_count
     payer_resp="$(list_channels_by_peer "${FNN2_PUBLISHED_RPC_PORT}" "${INVOICE_PEER_ID}")"
@@ -1046,8 +1050,19 @@ wait_until_channel_ready() {
       seen_channel=1
     fi
     if [[ "${seen_channel}" -eq 1 && "${payer_count}" -eq 0 && "${invoice_count}" -eq 0 ]]; then
-      echo "channel dropped before ready" >&2
-      exit 1
+      return 2
+    fi
+    if [[ "${payer_count}" -gt 0 && "${invoice_count}" -eq 0 && "${payer_state}" == "NEGOTIATING_FUNDING" ]]; then
+      asymmetric_negotiating_attempts=$((asymmetric_negotiating_attempts + 1))
+    elif [[ "${invoice_count}" -gt 0 && "${payer_count}" -eq 0 && "${invoice_state}" == "NEGOTIATING_FUNDING" ]]; then
+      asymmetric_negotiating_attempts=$((asymmetric_negotiating_attempts + 1))
+    else
+      asymmetric_negotiating_attempts=0
+    fi
+    if [[ "${CHANNEL_READY_STUCK_NEGOTIATING_ATTEMPTS}" =~ ^[0-9]+$ \
+      && "${CHANNEL_READY_STUCK_NEGOTIATING_ATTEMPTS}" -gt 0 \
+      && "${asymmetric_negotiating_attempts}" -ge "${CHANNEL_READY_STUCK_NEGOTIATING_ATTEMPTS}" ]]; then
+      return 2
     fi
     if [[ -n "${temporary_channel_id}" \
       && "${invoice_state}" == "AWAITING_CHANNEL_READY" \
@@ -1060,8 +1075,7 @@ wait_until_channel_ready() {
       return 0
     fi
     if [[ "${payer_state}" == "CLOSED" || "${invoice_state}" == "CLOSED" ]]; then
-      echo "channel closed before ready" >&2
-      exit 1
+      return 2
     fi
     sleep 2
   done
@@ -1136,15 +1150,34 @@ bootstrap_usdi_channel() {
   funding_amount="$(resolve_usdi_channel_funding_amount)"
   funding_amount_hex="$(to_hex_quantity "${funding_amount}")"
   accept_funding_hex="${USDI_AUTO_ACCEPT_AMOUNT_HEX:-${funding_amount_hex}}"
-  open_channel_from_payer "${INVOICE_PEER_ID}" "${funding_amount_hex}" "${USDI_TYPE_SCRIPT_JSON}" "${invoice_addr}" "${payer_addr}"
-  accept_channel_on_invoice_node "${OPEN_CHANNEL_TEMPORARY_ID}" "${accept_funding_hex}"
-  if ! wait_until_channel_ready 180 "${OPEN_CHANNEL_TEMPORARY_ID}" "${accept_funding_hex}"; then
+  local provision_attempt wait_rc
+  for ((provision_attempt = 1; provision_attempt <= CHANNEL_BOOTSTRAP_PROVISION_RETRIES; provision_attempt++)); do
+    OPEN_CHANNEL_TEMPORARY_ID=""
+    connect_peer_on_port "${FNN2_PUBLISHED_RPC_PORT}" "${invoice_addr}" "payer-to-invoice"
+    connect_peer_on_port "${FNN_PUBLISHED_RPC_PORT}" "${payer_addr}" "invoice-to-payer"
+    open_channel_from_payer "${INVOICE_PEER_ID}" "${funding_amount_hex}" "${USDI_TYPE_SCRIPT_JSON}" "${invoice_addr}" "${payer_addr}"
     accept_channel_on_invoice_node "${OPEN_CHANNEL_TEMPORARY_ID}" "${accept_funding_hex}"
-    wait_until_channel_ready 180 "${OPEN_CHANNEL_TEMPORARY_ID}" "${accept_funding_hex}" || {
-      echo "timed out waiting for ckb channel readiness" >&2
-      exit 1
-    }
-  fi
+    wait_rc=0
+    if ! wait_until_channel_ready "${CHANNEL_READY_ATTEMPTS_PER_ROUND}" "${OPEN_CHANNEL_TEMPORARY_ID}" "${accept_funding_hex}"; then
+      wait_rc=$?
+      accept_channel_on_invoice_node "${OPEN_CHANNEL_TEMPORARY_ID}" "${accept_funding_hex}"
+      if ! wait_until_channel_ready "${CHANNEL_READY_ATTEMPTS_PER_ROUND}" "${OPEN_CHANNEL_TEMPORARY_ID}" "${accept_funding_hex}"; then
+        wait_rc=$?
+      else
+        wait_rc=0
+      fi
+    fi
+    if [[ "${wait_rc}" -eq 0 ]]; then
+      break
+    fi
+    if [[ "${provision_attempt}" -lt "${CHANNEL_BOOTSTRAP_PROVISION_RETRIES}" ]]; then
+      log "ckb channel still not ready after provision attempt=${provision_attempt}; reconnecting and reopening"
+      sleep "${OPEN_CHANNEL_INIT_RETRY_INTERVAL_SECONDS}"
+      continue
+    fi
+    echo "timed out waiting for ckb channel readiness" >&2
+    exit 1
+  done
   wait_until_usdi_channel_ready 180 || {
     echo "timed out waiting for usdi channel readiness" >&2
     exit 1
