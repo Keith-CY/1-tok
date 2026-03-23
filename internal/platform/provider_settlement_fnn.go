@@ -151,7 +151,8 @@ func (p *fnnProviderSettlementProvisioner) EnsureProviderLiquidity(input EnsureP
 		return EnsureProviderLiquidityResult{}, errors.New("provider settlement binding p2pAddress is required")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), p.cfg.WaitTimeout)
+	overallTimeout := p.cfg.WaitTimeout * time.Duration(maxInt(1, p.cfg.OpenChannelRetries))
+	ctx, cancel := context.WithTimeout(context.Background(), overallTimeout)
 	defer cancel()
 
 	treasuryNode := newProviderSettlementRawFNNClient(p.cfg.TreasuryRPCURL)
@@ -215,23 +216,41 @@ func (p *fnnProviderSettlementProvisioner) EnsureProviderLiquidity(input EnsureP
 	if err != nil {
 		return EnsureProviderLiquidityResult{}, fmt.Errorf("funding amount: %w", err)
 	}
-	temporaryChannelID, err := openProviderSettlementChannelWithRetry(ctx, treasuryNode, providerPeerID, fundingHex, input.Binding.UDTTypeScript, p.cfg.OpenChannelRetries, p.cfg.PollInterval, func(ctx context.Context) error {
-		return connectProviderSettlementPeers(ctx, treasuryNode, providerNode, providerP2PAddress, treasuryP2PAddress)
-	})
-	if err != nil {
-		return EnsureProviderLiquidityResult{}, fmt.Errorf("open channel: %w", err)
-	}
-
 	acceptFundingHex := providerSettlementAcceptFundingHex(providerInfo, input.Binding.UDTTypeScript)
 	if acceptFundingHex == "" {
 		acceptFundingHex = "0x1"
 	}
-	if err := acceptProviderSettlementChannelWithRetry(ctx, providerNode, temporaryChannelID, acceptFundingHex, p.cfg.AcceptChannelRetries, p.cfg.PollInterval); err != nil {
-		return EnsureProviderLiquidityResult{}, fmt.Errorf("accept channel: %w", err)
+
+	reconnect := func(ctx context.Context) error {
+		return connectProviderSettlementPeers(ctx, treasuryNode, providerNode, providerP2PAddress, treasuryP2PAddress)
 	}
 
-	if err := waitForProviderSettlementChannelReady(ctx, treasuryNode, providerNode, providerPeerID, treasuryPeerID, temporaryChannelID, acceptFundingHex, input.Binding.UDTTypeScript, p.cfg.PollInterval, p.cfg.AcceptRetryEvery, p.cfg.AcceptChannelRetries); err != nil {
-		return EnsureProviderLiquidityResult{}, err
+	var temporaryChannelID string
+	for provisionAttempt := 1; provisionAttempt <= maxInt(1, p.cfg.OpenChannelRetries); provisionAttempt++ {
+		temporaryChannelID, err = openProviderSettlementChannelWithRetry(ctx, treasuryNode, providerPeerID, fundingHex, input.Binding.UDTTypeScript, p.cfg.OpenChannelRetries, p.cfg.PollInterval, reconnect)
+		if err != nil {
+			return EnsureProviderLiquidityResult{}, fmt.Errorf("open channel: %w", err)
+		}
+		if err := acceptProviderSettlementChannelWithRetry(ctx, providerNode, temporaryChannelID, acceptFundingHex, p.cfg.AcceptChannelRetries, p.cfg.PollInterval); err != nil {
+			if provisionAttempt < maxInt(1, p.cfg.OpenChannelRetries) && isProviderSettlementProvisionRetryable(err) {
+				if reconnectErr := reconnect(ctx); reconnectErr != nil {
+					return EnsureProviderLiquidityResult{}, reconnectErr
+				}
+				continue
+			}
+			return EnsureProviderLiquidityResult{}, fmt.Errorf("accept channel: %w", err)
+		}
+
+		if err := waitForProviderSettlementChannelReady(ctx, treasuryNode, providerNode, providerPeerID, treasuryPeerID, temporaryChannelID, acceptFundingHex, input.Binding.UDTTypeScript, p.cfg.PollInterval, p.cfg.AcceptRetryEvery, p.cfg.AcceptChannelRetries); err != nil {
+			if provisionAttempt < maxInt(1, p.cfg.OpenChannelRetries) && isProviderSettlementProvisionRetryable(err) {
+				if reconnectErr := reconnect(ctx); reconnectErr != nil {
+					return EnsureProviderLiquidityResult{}, reconnectErr
+				}
+				continue
+			}
+			return EnsureProviderLiquidityResult{}, err
+		}
+		break
 	}
 
 	fundingCents := fundingUnitsToCents(fundingUnits, p.cfg.CentsPerUnit)
@@ -629,6 +648,17 @@ func isProviderSettlementAcceptRetryable(err error) bool {
 	message := strings.ToLower(err.Error())
 	return strings.Contains(message, "no channel with temp id") ||
 		strings.Contains(message, "temporary_channel_id") && strings.Contains(message, "not found")
+}
+
+func isProviderSettlementProvisionRetryable(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return isProviderSettlementAcceptRetryable(err) ||
+		strings.Contains(message, "timeout waiting provider settlement channel to reach channel_ready") ||
+		strings.Contains(message, "failed to fund channel") ||
+		strings.Contains(message, "error decoding response body")
 }
 
 func deriveProviderSettlementPeerIDFromNodeID(nodeID string) (string, error) {
