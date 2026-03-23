@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":"accept-channel-1-1774240579-6076","method":"accept_channel","params":[{"temporary_channel_id":"0x40e7bc58c6ad765521520ebca49f22b1fc7ca0100e31d3f6646b4b5b29d26644","funding_amount":"0x3b9aca00"}]}
