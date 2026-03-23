@@ -1,0 +1,474 @@
+execution-1  | 2026/03/23 08:14:02 execution listening on :8085
+execution-1  | 2026/03/23 08:14:03 access service="execution" method="GET" path="/healthz" status=200 duration=15µs remote="172.18.0.21:38470"
+remote-vps-1  | Server listening on 0.0.0.0 port 22.
+remote-vps-1  | Server listening on :: port 22.
+remote-vps-1  | kex_exchange_identification: Connection closed by remote host
+remote-vps-1  | Connection closed by 127.0.0.1 port 41950
+remote-vps-1  | kex_exchange_identification: Connection closed by remote host
+remote-vps-1  | Connection closed by 127.0.0.1 port 41956
+remote-vps-1  | Accepted publickey for carrier from 172.18.0.15 port 55356 ssh2: ED25519 SHA256:VDxQgPFPB3chu8HOArg3iOTEcd3B7FHhdXEVcXE5tc4
+remote-vps-1  | Received disconnect from 172.18.0.15 port 55356:11: disconnected by user
+remote-vps-1  | Disconnected from user carrier 172.18.0.15 port 55356
+remote-vps-1  | Accepted publickey for carrier from 172.18.0.15 port 55366 ssh2: ED25519 SHA256:VDxQgPFPB3chu8HOArg3iOTEcd3B7FHhdXEVcXE5tc4
+remote-vps-1  | Received disconnect from 172.18.0.15 port 55366:11: disconnected by user
+remote-vps-1  | Disconnected from user carrier 172.18.0.15 port 55366
+remote-vps-1  | Accepted publickey for carrier from 172.18.0.15 port 55368 ssh2: ED25519 SHA256:VDxQgPFPB3chu8HOArg3iOTEcd3B7FHhdXEVcXE5tc4
+remote-vps-1  | Received disconnect from 172.18.0.15 port 55368:11: disconnected by user
+remote-vps-1  | Disconnected from user carrier 172.18.0.15 port 55368
+remote-vps-1  | Accepted publickey for carrier from 172.18.0.15 port 55376 ssh2: ED25519 SHA256:VDxQgPFPB3chu8HOArg3iOTEcd3B7FHhdXEVcXE5tc4
+remote-vps-1  | kex_exchange_identification: Connection closed by remote host
+remote-vps-1  | Connection closed by 127.0.0.1 port 55276
+remote-vps-1  | Received disconnect from 172.18.0.15 port 55376:11: disconnected by user
+remote-vps-1  | Disconnected from user carrier 172.18.0.15 port 55376
+remote-vps-1  | Accepted publickey for carrier from 172.18.0.15 port 55386 ssh2: ED25519 SHA256:VDxQgPFPB3chu8HOArg3iOTEcd3B7FHhdXEVcXE5tc4
+remote-vps-1  | Received disconnect from 172.18.0.15 port 55386:11: disconnected by user
+remote-vps-1  | Disconnected from user carrier 172.18.0.15 port 55386
+remote-vps-1  | Accepted publickey for carrier from 172.18.0.15 port 55400 ssh2: ED25519 SHA256:VDxQgPFPB3chu8HOArg3iOTEcd3B7FHhdXEVcXE5tc4
+remote-vps-1  | Received disconnect from 172.18.0.15 port 55400:11: disconnected by user
+remote-vps-1  | Disconnected from user carrier 172.18.0.15 port 55400
+remote-vps-1  | Accepted publickey for carrier from 172.18.0.15 port 55416 ssh2: ED25519 SHA256:VDxQgPFPB3chu8HOArg3iOTEcd3B7FHhdXEVcXE5tc4
+remote-vps-1  | Received disconnect from 172.18.0.15 port 55416:11: disconnected by user
+remote-vps-1  | Disconnected from user carrier 172.18.0.15 port 55416
+remote-vps-1  | kex_exchange_identification: Connection closed by remote host
+remote-vps-1  | Connection closed by 127.0.0.1 port 55280
+remote-vps-1  | kex_exchange_identification: Connection closed by remote host
+remote-vps-1  | Connection closed by 127.0.0.1 port 46376
+remote-vps-1  | kex_exchange_identification: Connection closed by remote host
+remote-vps-1  | Connection closed by 127.0.0.1 port 46380
+remote-vps-1  | kex_exchange_identification: Connection closed by remote host
+remote-vps-1  | Connection closed by 127.0.0.1 port 37100
+remote-vps-1  | kex_exchange_identification: Connection closed by remote host
+remote-vps-1  | Connection closed by 127.0.0.1 port 37116
+remote-vps-1  | kex_exchange_identification: Connection closed by remote host
+remote-vps-1  | Connection closed by 127.0.0.1 port 48228
+remote-vps-1  | kex_exchange_identification: Connection closed by remote host
+remote-vps-1  | Connection closed by 127.0.0.1 port 48244
+remote-vps-1  | kex_exchange_identification: Connection closed by remote host
+remote-vps-1  | Connection closed by 127.0.0.1 port 44574
+remote-vps-1  | kex_exchange_identification: Connection closed by remote host
+remote-vps-1  | Connection closed by 127.0.0.1 port 44576
+remote-vps-1  | kex_exchange_identification: Connection closed by remote host
+remote-vps-1  | Connection closed by 127.0.0.1 port 34708
+remote-vps-1  | kex_exchange_identification: Connection closed by remote host
+remote-vps-1  | Connection closed by 127.0.0.1 port 34710
+remote-vps-1  | kex_exchange_identification: Connection closed by remote host
+remote-vps-1  | Connection closed by 127.0.0.1 port 35396
+remote-vps-1  | kex_exchange_identification: Connection closed by remote host
+remote-vps-1  | Connection closed by 127.0.0.1 port 35400
+remote-vps-1  | kex_exchange_identification: Connection closed by remote host
+remote-vps-1  | Connection closed by 127.0.0.1 port 46216
+remote-vps-1  | kex_exchange_identification: Connection closed by remote host
+remote-vps-1  | Connection closed by 127.0.0.1 port 46222
+remote-vps-1  | kex_exchange_identification: Connection closed by remote host
+remote-vps-1  | Connection closed by 127.0.0.1 port 50300
+remote-vps-1  | kex_exchange_identification: Connection closed by remote host
+remote-vps-1  | Connection closed by 127.0.0.1 port 50302
+postgres-1    | The files belonging to this database system will be owned by user "postgres".
+postgres-1    | This user must also own the server process.
+postgres-1    | 
+postgres-1    | The database cluster will be initialized with locale "en_US.utf8".
+postgres-1    | The default database encoding has accordingly been set to "UTF8".
+postgres-1    | The default text search configuration will be set to "english".
+postgres-1    | 
+postgres-1    | Data page checksums are disabled.
+postgres-1    | 
+postgres-1    | fixing permissions on existing directory /var/lib/postgresql/data ... ok
+postgres-1    | creating subdirectories ... ok
+postgres-1    | selecting dynamic shared memory implementation ... posix
+postgres-1    | selecting default max_connections ... 100
+postgres-1    | selecting default shared_buffers ... 128MB
+postgres-1    | selecting default time zone ... UTC
+postgres-1    | creating configuration files ... ok
+postgres-1    | running bootstrap script ... ok
+postgres-1    | sh: locale: not found
+postgres-1    | 2026-03-23 08:08:52.231 UTC [34] WARNING:  no usable system locales were found
+postgres-1    | performing post-bootstrap initialization ... ok
+postgres-1    | syncing data to disk ... ok
+postgres-1    | 
+postgres-1    | initdb: warning: enabling "trust" authentication for local connections
+postgres-1    | 
+postgres-1    | Success. You can now start the database server using:
+postgres-1    | 
+postgres-1    |     pg_ctl -D /var/lib/postgresql/data -l logfile start
+postgres-1    | 
+postgres-1    | initdb: hint: You can change this by editing pg_hba.conf or using the option -A, or --auth-local and --auth-host, the next time you run initdb.
+postgres-1    | waiting for server to start....2026-03-23 08:08:52.994 UTC [40] LOG:  starting PostgreSQL 16.13 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+postgres-1    | 2026-03-23 08:08:52.995 UTC [40] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+postgres-1    | 2026-03-23 08:08:52.999 UTC [43] LOG:  database system was shut down at 2026-03-23 08:08:52 UTC
+postgres-1    | 2026-03-23 08:08:53.005 UTC [40] LOG:  database system is ready to accept connections
+postgres-1    |  done
+postgres-1    | server started
+postgres-1    | CREATE DATABASE
+postgres-1    | 
+postgres-1    | 
+postgres-1    | /usr/local/bin/docker-entrypoint.sh: ignoring /docker-entrypoint-initdb.d/*
+postgres-1    | 
+postgres-1    | waiting for server to shut down...2026-03-23 08:08:53.191 UTC [40] LOG:  received fast shutdown request
+postgres-1    | .2026-03-23 08:08:53.192 UTC [40] LOG:  aborting any active transactions
+postgres-1    | 2026-03-23 08:08:53.198 UTC [40] LOG:  background worker "logical replication launcher" (PID 46) exited with exit code 1
+postgres-1    | 2026-03-23 08:08:53.199 UTC [41] LOG:  shutting down
+postgres-1    | 2026-03-23 08:08:53.200 UTC [41] LOG:  checkpoint starting: shutdown immediate
+postgres-1    | 2026-03-23 08:08:53.219 UTC [41] LOG:  checkpoint complete: wrote 926 buffers (5.7%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.016 s, sync=0.002 s, total=0.020 s; sync files=301, longest=0.001 s, average=0.001 s; distance=4272 kB, estimate=4272 kB; lsn=0/191E928, redo lsn=0/191E928
+postgres-1    | 2026-03-23 08:08:53.226 UTC [40] LOG:  database system is shut down
+postgres-1    |  done
+postgres-1    | server stopped
+postgres-1    | 
+postgres-1    | PostgreSQL init process complete; ready for start up.
+postgres-1    | 
+postgres-1    | 2026-03-23 08:08:53.331 UTC [1] LOG:  starting PostgreSQL 16.13 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+postgres-1    | 2026-03-23 08:08:53.331 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+postgres-1    | 2026-03-23 08:08:53.331 UTC [1] LOG:  listening on IPv6 address "::", port 5432
+postgres-1    | 2026-03-23 08:08:53.332 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+postgres-1    | 2026-03-23 08:08:53.335 UTC [62] LOG:  database system was shut down at 2026-03-23 08:08:53 UTC
+postgres-1    | 2026-03-23 08:08:53.340 UTC [1] LOG:  database system is ready to accept connections
+postgres-1    | 2026-03-23 08:13:53.425 UTC [60] LOG:  checkpoint starting: time
+postgres-1    | 2026-03-23 08:14:10.270 UTC [60] LOG:  checkpoint complete: wrote 171 buffers (1.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=16.832 s, sync=0.011 s, total=16.845 s; sync files=138, longest=0.002 s, average=0.001 s; distance=880 kB, estimate=880 kB; lsn=0/19FE268, redo lsn=0/19FA9F0
+settlement-reconciler-1  | 2026/03/23 08:09:02 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:09:07 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:09:12 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:09:17 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:09:22 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:09:27 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:09:32 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:09:37 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:09:42 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:09:47 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:09:52 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:09:57 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:10:02 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:10:07 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:10:12 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:10:17 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:10:22 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:10:27 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:10:32 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:10:37 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:10:42 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:10:47 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:10:52 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:10:57 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:11:02 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:11:07 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:11:12 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:11:17 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:11:22 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:11:27 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:11:32 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:11:37 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:11:42 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:11:47 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:11:52 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:11:57 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:12:02 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:12:07 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:12:12 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:12:17 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:12:22 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:12:27 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:12:32 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:12:37 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:12:42 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:12:47 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:12:52 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:12:57 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:13:02 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:13:07 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:13:12 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:13:17 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:13:22 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:13:27 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:13:32 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:13:37 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:13:42 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:13:47 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:13:52 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:13:57 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:14:02 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:14:07 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:14:12 settlement reconciler synced invoices=1 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:14:17 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:14:22 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:14:27 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:14:32 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:14:37 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:14:42 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:14:47 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:14:52 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:14:57 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:15:02 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:15:07 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:15:12 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:15:17 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:15:22 settlement reconciler synced invoices=0 withdrawals=0
+settlement-reconciler-1  | 2026/03/23 08:15:27 settlement reconciler synced invoices=0 withdrawals=0
+marketplace-1            | 2026/03/23 08:08:56 marketplace listening on :8082
+provider-fnn-1           | No wallet key found, generating /data/ckb/key
+provider-fnn-1           |   [2m2026-03-23T08:15:13.848260Z[0m [31mERROR[0m [1;31mfnn::fiber::network[0m[31m: [31mFailed to accept channel: Invalid parameter: No channel with temp id Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2) found[0m
+provider-fnn-1           |     [2;3mat[0m crates/fiber-lib/src/fiber/network.rs:1714
+provider-fnn-1           | 
+provider-fnn-1           |   [2m2026-03-23T08:15:13.848288Z[0m [31mERROR[0m [1;31mfnn::rpc::channel[0m[31m: [31mchannel request params AcceptChannelParams { temporary_channel_id: Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2), funding_amount: 1000000000, shutdown_script: None, max_tlc_value_in_flight: None, max_tlc_number_in_flight: None, tlc_min_value: None, tlc_fee_proportional_millionths: None, tlc_expiry_delta: None } => error: "Invalid parameter: No channel with temp id Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2) found"[0m
+provider-fnn-1           |     [2;3mat[0m crates/fiber-lib/src/rpc/channel.rs:498
+provider-fnn-1           | 
+provider-fnn-1           |   [2m2026-03-23T08:15:15.849355Z[0m [31mERROR[0m [1;31mfnn::fiber::network[0m[31m: [31mFailed to accept channel: Invalid parameter: No channel with temp id Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2) found[0m
+provider-fnn-1           |     [2;3mat[0m crates/fiber-lib/src/fiber/network.rs:1714
+provider-fnn-1           | 
+provider-fnn-1           |   [2m2026-03-23T08:15:15.849390Z[0m [31mERROR[0m [1;31mfnn::rpc::channel[0m[31m: [31mchannel request params AcceptChannelParams { temporary_channel_id: Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2), funding_amount: 1000000000, shutdown_script: None, max_tlc_value_in_flight: None, max_tlc_number_in_flight: None, tlc_min_value: None, tlc_fee_proportional_millionths: None, tlc_expiry_delta: None } => error: "Invalid parameter: No channel with temp id Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2) found"[0m
+provider-fnn-1           |     [2;3mat[0m crates/fiber-lib/src/rpc/channel.rs:498
+provider-fnn-1           | 
+provider-fnn-1           |   [2m2026-03-23T08:15:17.850864Z[0m [31mERROR[0m [1;31mfnn::fiber::network[0m[31m: [31mFailed to accept channel: Invalid parameter: No channel with temp id Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2) found[0m
+provider-fnn-1           |     [2;3mat[0m crates/fiber-lib/src/fiber/network.rs:1714
+provider-fnn-1           | 
+provider-fnn-1           |   [2m2026-03-23T08:15:17.850895Z[0m [31mERROR[0m [1;31mfnn::rpc::channel[0m[31m: [31mchannel request params AcceptChannelParams { temporary_channel_id: Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2), funding_amount: 1000000000, shutdown_script: None, max_tlc_value_in_flight: None, max_tlc_number_in_flight: None, tlc_min_value: None, tlc_fee_proportional_millionths: None, tlc_expiry_delta: None } => error: "Invalid parameter: No channel with temp id Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2) found"[0m
+provider-fnn-1           |     [2;3mat[0m crates/fiber-lib/src/rpc/channel.rs:498
+provider-fnn-1           | 
+provider-fnn-1           |   [2m2026-03-23T08:15:19.853846Z[0m [31mERROR[0m [1;31mfnn::fiber::network[0m[31m: [31mFailed to accept channel: Invalid parameter: No channel with temp id Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2) found[0m
+provider-fnn-1           |     [2;3mat[0m crates/fiber-lib/src/fiber/network.rs:1714
+provider-fnn-1           | 
+provider-fnn-1           |   [2m2026-03-23T08:15:19.853877Z[0m [31mERROR[0m [1;31mfnn::rpc::channel[0m[31m: [31mchannel request params AcceptChannelParams { temporary_channel_id: Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2), funding_amount: 1000000000, shutdown_script: None, max_tlc_value_in_flight: None, max_tlc_number_in_flight: None, tlc_min_value: None, tlc_fee_proportional_millionths: None, tlc_expiry_delta: None } => error: "Invalid parameter: No channel with temp id Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2) found"[0m
+fnn-1                    | Current database version: [20251219152333], latest db version: [20251219152333]
+mock-carrier-1           | 2026/03/23 08:13:51 mock-carrier listening on :8787
+provider-fnn-1           |     [2;3mat[0m crates/fiber-lib/src/rpc/channel.rs:498
+provider-fnn-1           | 
+provider-fnn-1           |   [2m2026-03-23T08:15:21.854417Z[0m [31mERROR[0m [1;31mfnn::fiber::network[0m[31m: [31mFailed to accept channel: Invalid parameter: No channel with temp id Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2) found[0m
+provider-fnn-1           |     [2;3mat[0m crates/fiber-lib/src/fiber/network.rs:1714
+provider-fnn-1           | 
+provider-fnn-1           |   [2m2026-03-23T08:15:21.854449Z[0m [31mERROR[0m [1;31mfnn::rpc::channel[0m[31m: [31mchannel request params AcceptChannelParams { temporary_channel_id: Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2), funding_amount: 1000000000, shutdown_script: None, max_tlc_value_in_flight: None, max_tlc_number_in_flight: None, tlc_min_value: None, tlc_fee_proportional_millionths: None, tlc_expiry_delta: None } => error: "Invalid parameter: No channel with temp id Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2) found"[0m
+provider-fnn-1           |     [2;3mat[0m crates/fiber-lib/src/rpc/channel.rs:498
+provider-fnn-1           | 
+provider-fnn-1           |   [2m2026-03-23T08:15:23.855328Z[0m [31mERROR[0m [1;31mfnn::fiber::network[0m[31m: [31mFailed to accept channel: Invalid parameter: No channel with temp id Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2) found[0m
+provider-fnn-1           |     [2;3mat[0m crates/fiber-lib/src/fiber/network.rs:1714
+provider-fnn-1           | 
+provider-fnn-1           |   [2m2026-03-23T08:15:23.855358Z[0m [31mERROR[0m [1;31mfnn::rpc::channel[0m[31m: [31mchannel request params AcceptChannelParams { temporary_channel_id: Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2), funding_amount: 1000000000, shutdown_script: None, max_tlc_value_in_flight: None, max_tlc_number_in_flight: None, tlc_min_value: None, tlc_fee_proportional_millionths: None, tlc_expiry_delta: None } => error: "Invalid parameter: No channel with temp id Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2) found"[0m
+provider-fnn-1           |     [2;3mat[0m crates/fiber-lib/src/rpc/channel.rs:498
+provider-fnn-1           | 
+provider-fnn-1           |   [2m2026-03-23T08:15:25.856894Z[0m [31mERROR[0m [1;31mfnn::fiber::network[0m[31m: [31mFailed to accept channel: Invalid parameter: No channel with temp id Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2) found[0m
+provider-fnn-1           |     [2;3mat[0m crates/fiber-lib/src/fiber/network.rs:1714
+provider-fnn-1           | 
+provider-fnn-1           |   [2m2026-03-23T08:15:25.856930Z[0m [31mERROR[0m [1;31mfnn::rpc::channel[0m[31m: [31mchannel request params AcceptChannelParams { temporary_channel_id: Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2), funding_amount: 1000000000, shutdown_script: None, max_tlc_value_in_flight: None, max_tlc_number_in_flight: None, tlc_min_value: None, tlc_fee_proportional_millionths: None, tlc_expiry_delta: None } => error: "Invalid parameter: No channel with temp id Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2) found"[0m
+provider-fnn-1           |     [2;3mat[0m crates/fiber-lib/src/rpc/channel.rs:498
+provider-fnn-1           | 
+provider-fnn-1           |   [2m2026-03-23T08:15:27.858406Z[0m [31mERROR[0m [1;31mfnn::fiber::network[0m[31m: [31mFailed to accept channel: Invalid parameter: No channel with temp id Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2) found[0m
+provider-fnn-1           |     [2;3mat[0m crates/fiber-lib/src/fiber/network.rs:1714
+provider-fnn-1           | 
+provider-fnn-1           |   [2m2026-03-23T08:15:27.858438Z[0m [31mERROR[0m [1;31mfnn::rpc::channel[0m[31m: [31mchannel request params AcceptChannelParams { temporary_channel_id: Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2), funding_amount: 1000000000, shutdown_script: None, max_tlc_value_in_flight: None, max_tlc_number_in_flight: None, tlc_min_value: None, tlc_fee_proportional_millionths: None, tlc_expiry_delta: None } => error: "Invalid parameter: No channel with temp id Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2) found"[0m
+provider-fnn-1           |     [2;3mat[0m crates/fiber-lib/src/rpc/channel.rs:498
+provider-fnn-1           | 
+provider-fnn-1           |   [2m2026-03-23T08:15:29.859365Z[0m [31mERROR[0m [1;31mfnn::fiber::network[0m[31m: [31mFailed to accept channel: Invalid parameter: No channel with temp id Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2) found[0m
+provider-fnn-1           |     [2;3mat[0m crates/fiber-lib/src/fiber/network.rs:1714
+provider-fnn-1           | 
+provider-fnn-1           |   [2m2026-03-23T08:15:29.859404Z[0m [31mERROR[0m [1;31mfnn::rpc::channel[0m[31m: [31mchannel request params AcceptChannelParams { temporary_channel_id: Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2), funding_amount: 1000000000, shutdown_script: None, max_tlc_value_in_flight: None, max_tlc_number_in_flight: None, tlc_min_value: None, tlc_fee_proportional_millionths: None, tlc_expiry_delta: None } => error: "Invalid parameter: No channel with temp id Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2) found"[0m
+provider-fnn-1           |     [2;3mat[0m crates/fiber-lib/src/rpc/channel.rs:498
+provider-fnn-1           | 
+provider-fnn-1           |   [2m2026-03-23T08:15:31.860388Z[0m [31mERROR[0m [1;31mfnn::fiber::network[0m[31m: [31mFailed to accept channel: Invalid parameter: No channel with temp id Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2) found[0m
+provider-fnn-1           |     [2;3mat[0m crates/fiber-lib/src/fiber/network.rs:1714
+provider-fnn-1           | 
+provider-fnn-1           |   [2m2026-03-23T08:15:31.860422Z[0m [31mERROR[0m [1;31mfnn::rpc::channel[0m[31m: [31mchannel request params AcceptChannelParams { temporary_channel_id: Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2), funding_amount: 1000000000, shutdown_script: None, max_tlc_value_in_flight: None, max_tlc_number_in_flight: None, tlc_min_value: None, tlc_fee_proportional_millionths: None, tlc_expiry_delta: None } => error: "Invalid parameter: No channel with temp id Hash256(0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2) found"[0m
+provider-fnn-1           |     [2;3mat[0m crates/fiber-lib/src/rpc/channel.rs:498
+provider-fnn-1           | 
+settlement-1             | 2026/03/23 08:14:02 settlement listening on :8083
+settlement-1             | 2026/03/23 08:14:03 access service="settlement" method="GET" path="/healthz" status=200 duration=17µs remote="172.18.0.21:40372"
+settlement-1             | 2026/03/23 08:14:07 access service="settlement" method="POST" path="/v1/topups" status=201 duration=10.993ms remote="172.18.0.21:40380"
+settlement-1             | 2026/03/23 08:14:07 access service="settlement" method="GET" path="/v1/settled-feed" status=200 duration=1.762ms remote="172.18.0.21:40380"
+settlement-1             | 2026/03/23 08:14:07 access service="settlement" method="GET" path="/v1/funding-records" status=200 duration=5.696ms remote="172.18.0.21:40394"
+settlement-1             | 2026/03/23 08:14:09 access service="settlement" method="GET" path="/v1/funding-records" status=200 duration=2.243ms remote="172.18.0.21:40394"
+settlement-1             | 2026/03/23 08:14:11 access service="settlement" method="GET" path="/v1/funding-records" status=200 duration=2.333ms remote="172.18.0.21:40394"
+settlement-1             | 2026/03/23 08:14:13 access service="settlement" method="GET" path="/v1/funding-records" status=200 duration=2.058ms remote="172.18.0.21:40394"
+settlement-1             | 2026/03/23 08:15:31 access service="settlement" method="POST" path="/v1/provider-payouts" status=201 duration=4.249ms remote="172.18.0.21:40394"
+settlement-1             | 2026/03/23 08:15:31 access service="settlement" method="POST" path="/v1/provider-payouts" status=201 duration=3.18ms remote="172.18.0.21:40394"
+settlement-1             | 2026/03/23 08:15:31 access service="settlement" method="POST" path="/v1/provider-payouts" status=201 duration=3.728ms remote="172.18.0.21:40394"
+settlement-1             | 2026/03/23 08:15:31 access service="settlement" method="GET" path="/v1/funding-records" status=200 duration=1.338ms remote="172.18.0.21:40394"
+settlement-1             | 2026/03/23 08:15:31 access service="settlement" method="POST" path="/v1/provider-payouts" status=201 duration=3.765ms remote="172.18.0.21:40394"
+settlement-1             | 2026/03/23 08:15:31 access service="settlement" method="POST" path="/v1/provider-payouts" status=201 duration=3.363ms remote="172.18.0.21:40394"
+settlement-1             | 2026/03/23 08:15:31 access service="settlement" method="POST" path="/v1/provider-payouts" status=201 duration=3.759ms remote="172.18.0.21:40394"
+settlement-1             | 2026/03/23 08:15:31 access service="settlement" method="GET" path="/v1/funding-records" status=200 duration=1.785ms remote="172.18.0.21:40394"
+settlement-1             | 2026/03/23 08:15:31 access service="settlement" method="POST" path="/v1/provider-payouts" status=201 duration=12.285ms remote="172.18.0.21:40394"
+settlement-1             | 2026/03/23 08:15:32 access service="settlement" method="POST" path="/v1/provider-payouts" status=201 duration=3.541ms remote="172.18.0.21:40394"
+settlement-1             | 2026/03/23 08:15:32 access service="settlement" method="POST" path="/v1/provider-payouts" status=201 duration=2.784ms remote="172.18.0.21:40394"
+settlement-1             | 2026/03/23 08:15:32 access service="settlement" method="GET" path="/v1/funding-records" status=200 duration=1.199ms remote="172.18.0.21:40394"
+web-1                    | ▲ Next.js 16.1.6
+web-1                    | - Local:         http://415a53409d53:3000
+web-1                    | - Network:       http://415a53409d53:3000
+web-1                    | 
+web-1                    | ✓ Starting...
+web-1                    | ✓ Ready in 438ms
+nats-1                   | [1] 2026/03/23 08:08:51.276324 [INF] Starting nats-server
+nats-1                   | [1] 2026/03/23 08:08:51.276531 [INF]   Version:  2.10.29
+nats-1                   | [1] 2026/03/23 08:08:51.276535 [INF]   Git:      [f91ddd8]
+nats-1                   | [1] 2026/03/23 08:08:51.276538 [INF]   Name:     NCEX5YVEHUNIX3DMFWDF7R2U72OJU7XTAHSR6FPR3Y23MX2JF5EQCFMF
+nats-1                   | [1] 2026/03/23 08:08:51.276542 [INF]   Node:     Sc42fNI3
+nats-1                   | [1] 2026/03/23 08:08:51.276546 [INF]   ID:       NCEX5YVEHUNIX3DMFWDF7R2U72OJU7XTAHSR6FPR3Y23MX2JF5EQCFMF
+nats-1                   | [1] 2026/03/23 08:08:51.277189 [INF] Starting JetStream
+nats-1                   | [1] 2026/03/23 08:08:51.277305 [WRN] Temporary storage directory used, data could be lost on system reboot
+nats-1                   | [1] 2026/03/23 08:08:51.278800 [INF]     _ ___ _____ ___ _____ ___ ___   _   __  __
+nats-1                   | [1] 2026/03/23 08:08:51.279096 [INF]  _ | | __|_   _/ __|_   _| _ \ __| /_\ |  \/  |
+nats-1                   | [1] 2026/03/23 08:08:51.279104 [INF] | || | _|  | | \__ \ | | |   / _| / _ \| |\/| |
+nats-1                   | [1] 2026/03/23 08:08:51.279107 [INF]  \__/|___| |_| |___/ |_| |_|_\___/_/ \_\_|  |_|
+nats-1                   | [1] 2026/03/23 08:08:51.279109 [INF] 
+nats-1                   | [1] 2026/03/23 08:08:51.279112 [INF]          https://docs.nats.io/jetstream
+nats-1                   | [1] 2026/03/23 08:08:51.279114 [INF] 
+nats-1                   | [1] 2026/03/23 08:08:51.279116 [INF] ---------------- JETSTREAM ----------------
+nats-1                   | [1] 2026/03/23 08:08:51.279122 [INF]   Max Memory:      11.71 GB
+nats-1                   | [1] 2026/03/23 08:08:51.279125 [INF]   Max Storage:     62.20 GB
+nats-1                   | [1] 2026/03/23 08:08:51.279128 [INF]   Store Directory: "/tmp/nats/jetstream"
+nats-1                   | [1] 2026/03/23 08:08:51.279131 [INF] -------------------------------------------
+nats-1                   | [1] 2026/03/23 08:08:51.279668 [INF] Listening for client connections on 0.0.0.0:4222
+nats-1                   | [1] 2026/03/23 08:08:51.280194 [INF] Server is ready
+fnn2-1                   | Current database version: [20251219152333], latest db version: [20251219152333]
+fnn2-1                   |   [2m2026-03-23T08:14:13.841154Z[0m [31mERROR[0m [1;31mfnn::fiber::network[0m[31m: [31mFailed to create channel: Invalid parameter: Peer PeerId(QmZiDPEScMnWLKJpCqDV6vLCW7jaEbStBGfUxgUqsv6utj)'s feature not found, waiting for peer to send Init message[0m
+fnn2-1                   |     [2;3mat[0m crates/fiber-lib/src/fiber/network.rs:1700
+fnn2-1                   | 
+fnn2-1                   |   [2m2026-03-23T08:14:13.841184Z[0m [31mERROR[0m [1;31mfnn::rpc::channel[0m[31m: [31mchannel request params OpenChannelParams { peer_id: PeerId(QmZiDPEScMnWLKJpCqDV6vLCW7jaEbStBGfUxgUqsv6utj), funding_amount: 50, public: None, funding_udt_type_script: Some(Script { code_hash: H256 ( [ 0xcc, 0x9d, 0xc3, 0x3e, 0xf2, 0x34, 0xe1, 0x4b, 0xc7, 0x88, 0xc4, 0x3a, 0x48, 0x48, 0x55, 0x6a, 0x5f, 0xb1, 0x64, 0x01, 0xa0, 0x46, 0x62, 0xfc, 0x55, 0xdb, 0x9b, 0xb2, 0x01, 0x98, 0x70, 0x37 ] ), hash_type: Type, args: JsonBytes(b"q\xfd\x19\x85\xb2\x97\x1a\x99\x03\xe4\xd8\xed\rY\xe6q\x01f\x98R\x17\xca\x06\x81Cx\x83\x83{\x86\x16/") }), shutdown_script: None, commitment_delay_epoch: None, commitment_fee_rate: None, funding_fee_rate: None, tlc_expiry_delta: None, tlc_min_value: None, tlc_fee_proportional_millionths: Some(0), max_tlc_value_in_flight: None, max_tlc_number_in_flight: None } => error: "Invalid parameter: Peer PeerId(QmZiDPEScMnWLKJpCqDV6vLCW7jaEbStBGfUxgUqsv6utj)'s feature not found, waiting for peer to send Init message"[0m
+fnn2-1                   |     [2;3mat[0m crates/fiber-lib/src/rpc/channel.rs:473
+fnn2-1                   | 
+mock-fiber-1             | 2026/03/23 08:13:51 mock-fiber listening on :8090
+redis-1                  | 1:C 23 Mar 2026 08:08:51.266 # WARNING Memory overcommit must be enabled! Without it, a background save or replication may fail under low memory condition. Being disabled, it can also cause failures without low memory condition, see https://github.com/jemalloc/jemalloc/issues/1328. To fix this issue add 'vm.overcommit_memory = 1' to /etc/sysctl.conf and then reboot or run the command 'sysctl vm.overcommit_memory=1' for this to take effect.
+redis-1                  | 1:C 23 Mar 2026 08:08:51.267 * oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+redis-1                  | 1:C 23 Mar 2026 08:08:51.267 * Redis version=7.4.8, bits=64, commit=00000000, modified=0, pid=1, just started
+redis-1                  | 1:C 23 Mar 2026 08:08:51.267 * Configuration loaded
+redis-1                  | 1:M 23 Mar 2026 08:08:51.267 * monotonic clock: POSIX clock_gettime
+redis-1                  | 1:M 23 Mar 2026 08:08:51.268 * Running mode=standalone, port=6379.
+redis-1                  | 1:M 23 Mar 2026 08:08:51.268 * Server initialized
+redis-1                  | 1:M 23 Mar 2026 08:08:51.268 * Ready to accept connections tcp
+fiber-adapter-1          | 2026/03/23 08:13:56 fiber-adapter listening on :8091
+fiber-adapter-1          | 2026/03/23 08:14:01 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=57µs remote="127.0.0.1:33060"
+fiber-adapter-1          | 2026/03/23 08:14:06 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=57µs remote="127.0.0.1:37334"
+fiber-adapter-1          | 2026/03/23 08:14:07 access service="fiber-adapter" method="POST" path="/" status=200 duration=2.049ms remote="172.18.0.20:55888"
+fiber-adapter-1          | 2026/03/23 08:14:07 access service="fiber-adapter" method="POST" path="/" status=200 duration=3.92ms remote="172.18.0.21:59836"
+fiber-adapter-1          | 2026/03/23 08:14:07 access service="fiber-adapter" method="POST" path="/" status=200 duration=1.301ms remote="172.18.0.20:55888"
+fiber-adapter-1          | 2026/03/23 08:14:11 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=34µs remote="127.0.0.1:37338"
+fiber-adapter-1          | 2026/03/23 08:14:12 access service="fiber-adapter" method="POST" path="/" status=200 duration=1.189ms remote="172.18.0.18:55808"
+fiber-adapter-1          | 2026/03/23 08:14:17 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=33µs remote="127.0.0.1:46100"
+fiber-adapter-1          | 2026/03/23 08:14:22 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=32µs remote="127.0.0.1:46106"
+fiber-adapter-1          | 2026/03/23 08:14:27 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=44µs remote="127.0.0.1:51994"
+fiber-adapter-1          | 2026/03/23 08:14:32 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=33µs remote="127.0.0.1:53050"
+fiber-adapter-1          | 2026/03/23 08:14:37 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=36µs remote="127.0.0.1:53052"
+fiber-adapter-1          | 2026/03/23 08:14:42 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=39µs remote="127.0.0.1:41670"
+fiber-adapter-1          | 2026/03/23 08:14:47 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=38µs remote="127.0.0.1:41684"
+fiber-adapter-1          | 2026/03/23 08:14:52 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=53µs remote="127.0.0.1:46934"
+fiber-adapter-1          | 2026/03/23 08:14:57 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=38µs remote="127.0.0.1:46940"
+fiber-adapter-1          | 2026/03/23 08:15:02 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=65µs remote="127.0.0.1:37582"
+fiber-adapter-1          | 2026/03/23 08:15:07 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=79µs remote="127.0.0.1:37598"
+fiber-adapter-1          | 2026/03/23 08:15:12 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=45µs remote="127.0.0.1:43404"
+fiber-adapter-1          | 2026/03/23 08:15:17 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=65µs remote="127.0.0.1:43410"
+fiber-adapter-1          | 2026/03/23 08:15:22 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=36µs remote="127.0.0.1:36530"
+fiber-adapter-1          | 2026/03/23 08:15:27 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=35µs remote="127.0.0.1:36540"
+fiber-adapter-1          | 2026/03/23 08:15:31 access service="fiber-adapter" method="POST" path="/" status=200 duration=2.857ms remote="172.18.0.20:55888"
+fiber-adapter-1          | 2026/03/23 08:15:31 access service="fiber-adapter" method="POST" path="/" status=200 duration=2.077ms remote="172.18.0.20:55888"
+fiber-adapter-1          | 2026/03/23 08:15:31 access service="fiber-adapter" method="POST" path="/" status=200 duration=2.611ms remote="172.18.0.20:55888"
+fiber-adapter-1          | 2026/03/23 08:15:31 access service="fiber-adapter" method="POST" path="/" status=200 duration=2.641ms remote="172.18.0.20:55888"
+fiber-adapter-1          | 2026/03/23 08:15:31 access service="fiber-adapter" method="POST" path="/" status=200 duration=2.215ms remote="172.18.0.20:55888"
+fiber-adapter-1          | 2026/03/23 08:15:31 access service="fiber-adapter" method="POST" path="/" status=200 duration=2.806ms remote="172.18.0.20:55888"
+fiber-adapter-1          | 2026/03/23 08:15:31 access service="fiber-adapter" method="POST" path="/" status=200 duration=8.126ms remote="172.18.0.20:55888"
+fiber-adapter-1          | 2026/03/23 08:15:32 access service="fiber-adapter" method="POST" path="/" status=200 duration=2.401ms remote="172.18.0.20:55888"
+fiber-adapter-1          | 2026/03/23 08:15:32 access service="fiber-adapter" method="POST" path="/" status=200 duration=1.98ms remote="172.18.0.20:55888"
+usdi-e2e-runner-1        | {"asset":"USDI","faucetTxHash":"0x0574f546946048f4459d7f78535bc9851855f71961711c251cfb9b634f8de1c7","explorerProofUrls":["https://pudge.explorer.nervos.org/transaction/0x0574f546946048f4459d7f78535bc9851855f71961711c251cfb9b634f8de1c7"],"integrationIssues":["https://github.com/Keith-CY/carrier/issues/1595","carrier codeagent run probe skipped: missing OPENAI_API_KEY or OPENAI_CODEX_TOKEN"],"buyerUserEmail":"buyer-1774253647634761414@example.com","providerUserEmail":"provider-1774253647634761414@example.com","buyerOrgId":"org_1","providerOrgId":"org_2","buyerTopUpInvoice":"fibt501pa5fw6y6c5zgfw0pnm6vk6mnus9y9p2genczl0xzfr86nft6smv0ceqkshdeu0qhawzztc2g27g725pcmv2qeeuzcvg6ax9exqwpg6l3kk9wyd4vylaghmyljd5jc0ghpfdlrxgl65unl4vsvgazy0yljwxrdx8060ca67xqd6jd98tfnayyfyhlyu5s67y5as6th0pgce5tt2p0pe2pmedwnwlfa68fc30au9lear4tqx46pnyta6q27jjl8fncg9y8us893ljaktrl39f3qdhf7vts4k4hswl9nykepsmv6l6wk38mm6772zuh4sn3xuafdyksqugmcjw94gcepw9vtx3mqk70yp5xe466uf8sgljc96mg9t2rqs5f760ek68aw8k3gw5uk8gljznmqf0798eqde8a2n4xd6fcpsf807j","buyerTopUpFundingRecordId":"fund_1","buyerTopUpPaymentId":"0xfcb628fe2bd434c4da003a7a7353d29e383e336bc7d906bedb10a61ba77325aa","bootstrapRfqId":"rfq_1","bootstrapBidId":"bid_1","bootstrapOrderId":"ord_1","bootstrapCarrierBindingId":"bind_1","bootstrapCarrierExecutionId":"job_1","bootstrapReservationId":"plr_1","bootstrapReservationChannel":"0xe86e3b62c42a58a146ceb182fbbfd7798a864aa135d68f8afac4e3b7bc0a3bb2","bootstrapReservationStatus":"released","bootstrapPayoutRecordIds":["fund_2","fund_3","fund_4"],"reuseRfqId":"rfq_2","reuseBidId":"bid_2","reuseOrderId":"ord_2","reuseReservationId":"plr_2","reuseReservationInitialChannel":"0xb74630013eff8b4c81ffe0052fb2e254cdbe88e63e230072e5050abee2ed13dd","reuseReservationChannel":"0xb74630013eff8b4c81ffe0052fb2e254cdbe88e63e230072e5050abee2ed13dd","reuseReservationStatus":"released","reuseReservationReuseSource":"reused","reusePayoutRecordIds":["fund_5","fund_6","fund_7"],"rfqId":"rfq_3","bidId":"bid_3","orderId":"ord_3","carrierProviderBindingId":"pcb_1","providerSettlementBindingId":"psb_1","carrierBindingId":"bind_3","carrierExecutionId":"job_3","reservationId":"plr_3","reservationInitialChannelId":"0xb74630013eff8b4c81ffe0052fb2e254cdbe88e63e230072e5050abee2ed13dd","reservationChannelId":"0xb74630013eff8b4c81ffe0052fb2e254cdbe88e63e230072e5050abee2ed13dd","reservationReuseSource":"reused","reservationStatus":"released","usageChargeCount":2,"providerPayoutRecordIds":["fund_8","fund_9","fund_10"],"disconnectOrderStatus":"awaiting_payment_rail","recoveredOrderStatus":"running","finalOrderStatus":"completed"}
+carrier-daemon-1         | {"time":"2026-03-23T08:13:51.083138007Z","level":"INFO","msg":"initializing carrier daemon"}
+carrier-daemon-1         | carrier daemon booted (listen=0.0.0.0:8788 log=info/text)
+carrier-daemon-1         | catalog (active):
+carrier-daemon-1         | - Codex CLI (codex): active
+carrier-daemon-1         | - OpenClaw (openclaw): active
+carrier-daemon-1         | - OpenCode (opencode): active
+carrier-daemon-1         | - PicoClaw (picoclaw): active
+carrier-daemon-1         | - ZeroClaw (zeroclaw): active
+carrier-daemon-1         | catalog (candidate, unlisted):
+carrier-daemon-1         | - NanoClaw (nanoclaw): candidate [candidate]
+carrier-daemon-1         | - Pi Mono (pi-mono): candidate [candidate]
+carrier-daemon-1         | {"time":"2026-03-23T08:13:51.101227885Z","level":"INFO","msg":"carrier daemon booted"}
+carrier-daemon-1         | 
+carrier-daemon-1         |   PAIR_CODE: pair-b0ff54eb3159e555afa09aa930f1a726
+carrier-daemon-1         |   (expires in 5 minutes)
+carrier-daemon-1         | 
+carrier-daemon-1         | HTTP API listening on 0.0.0.0:8788
+iam-1                    | 2026/03/23 08:13:52 iam listening on :8081
+iam-1                    | 2026/03/23 08:14:07 access service="iam" method="POST" path="/v1/signup" status=201 duration=75.928ms remote="172.18.0.21:38242"
+iam-1                    | 2026/03/23 08:14:07 access service="iam" method="POST" path="/v1/signup" status=201 duration=69.518ms remote="172.18.0.21:38242"
+iam-1                    | 2026/03/23 08:14:07 access service="iam" method="GET" path="/v1/me" status=200 duration=2.737ms remote="172.18.0.20:48152"
+iam-1                    | 2026/03/23 08:14:07 access service="iam" method="GET" path="/v1/me" status=200 duration=1.185ms remote="172.18.0.20:48152"
+iam-1                    | 2026/03/23 08:14:09 access service="iam" method="GET" path="/v1/me" status=200 duration=1.227ms remote="172.18.0.20:48152"
+iam-1                    | 2026/03/23 08:14:11 access service="iam" method="GET" path="/v1/me" status=200 duration=1.21ms remote="172.18.0.20:48152"
+iam-1                    | 2026/03/23 08:14:13 access service="iam" method="GET" path="/v1/me" status=200 duration=1.16ms remote="172.18.0.20:48152"
+iam-1                    | 2026/03/23 08:14:13 access service="iam" method="GET" path="/v1/me" status=200 duration=789µs remote="172.18.0.12:60490"
+iam-1                    | 2026/03/23 08:14:13 access service="iam" method="GET" path="/v1/me" status=200 duration=421µs remote="172.18.0.12:60490"
+iam-1                    | 2026/03/23 08:14:13 access service="iam" method="GET" path="/v1/me" status=200 duration=421µs remote="172.18.0.12:60490"
+iam-1                    | 2026/03/23 08:14:13 access service="iam" method="GET" path="/v1/me" status=200 duration=439µs remote="172.18.0.12:60490"
+iam-1                    | 2026/03/23 08:14:13 access service="iam" method="GET" path="/v1/me" status=200 duration=441µs remote="172.18.0.12:60490"
+iam-1                    | 2026/03/23 08:14:13 access service="iam" method="GET" path="/v1/me" status=200 duration=439µs remote="172.18.0.12:60490"
+iam-1                    | 2026/03/23 08:15:31 access service="iam" method="GET" path="/v1/me" status=200 duration=677µs remote="172.18.0.12:60490"
+iam-1                    | 2026/03/23 08:15:31 access service="iam" method="GET" path="/v1/me" status=200 duration=557µs remote="172.18.0.20:48152"
+iam-1                    | 2026/03/23 08:15:31 access service="iam" method="GET" path="/v1/me" status=200 duration=395µs remote="172.18.0.12:60490"
+iam-1                    | 2026/03/23 08:15:31 access service="iam" method="GET" path="/v1/me" status=200 duration=451µs remote="172.18.0.12:60490"
+iam-1                    | 2026/03/23 08:15:31 access service="iam" method="GET" path="/v1/me" status=200 duration=432µs remote="172.18.0.12:60490"
+iam-1                    | 2026/03/23 08:15:31 access service="iam" method="GET" path="/v1/me" status=200 duration=443µs remote="172.18.0.12:60490"
+iam-1                    | 2026/03/23 08:15:31 access service="iam" method="GET" path="/v1/me" status=200 duration=409µs remote="172.18.0.12:60490"
+iam-1                    | 2026/03/23 08:15:31 access service="iam" method="GET" path="/v1/me" status=200 duration=431µs remote="172.18.0.12:60490"
+iam-1                    | 2026/03/23 08:15:31 access service="iam" method="GET" path="/v1/me" status=200 duration=408µs remote="172.18.0.12:60490"
+iam-1                    | 2026/03/23 08:15:31 access service="iam" method="GET" path="/v1/me" status=200 duration=454µs remote="172.18.0.12:60490"
+iam-1                    | 2026/03/23 08:15:31 access service="iam" method="GET" path="/v1/me" status=200 duration=447µs remote="172.18.0.12:60490"
+iam-1                    | 2026/03/23 08:15:31 access service="iam" method="GET" path="/v1/me" status=200 duration=682µs remote="172.18.0.20:48152"
+iam-1                    | 2026/03/23 08:15:31 access service="iam" method="GET" path="/v1/me" status=200 duration=682µs remote="172.18.0.12:60490"
+iam-1                    | 2026/03/23 08:15:31 access service="iam" method="GET" path="/v1/me" status=200 duration=641µs remote="172.18.0.12:60490"
+iam-1                    | 2026/03/23 08:15:31 access service="iam" method="GET" path="/v1/me" status=200 duration=706µs remote="172.18.0.12:60490"
+iam-1                    | 2026/03/23 08:15:31 access service="iam" method="GET" path="/v1/me" status=200 duration=667µs remote="172.18.0.12:60490"
+iam-1                    | 2026/03/23 08:15:31 access service="iam" method="GET" path="/v1/me" status=200 duration=656µs remote="172.18.0.12:60490"
+iam-1                    | 2026/03/23 08:15:31 access service="iam" method="GET" path="/v1/me" status=200 duration=669µs remote="172.18.0.12:60490"
+iam-1                    | 2026/03/23 08:15:31 access service="iam" method="GET" path="/v1/me" status=200 duration=580µs remote="172.18.0.12:60490"
+iam-1                    | 2026/03/23 08:15:31 access service="iam" method="GET" path="/v1/me" status=200 duration=642µs remote="172.18.0.12:60490"
+iam-1                    | 2026/03/23 08:15:31 access service="iam" method="GET" path="/v1/me" status=200 duration=683µs remote="172.18.0.12:60490"
+iam-1                    | 2026/03/23 08:15:31 access service="iam" method="GET" path="/v1/me" status=200 duration=606µs remote="172.18.0.12:60490"
+iam-1                    | 2026/03/23 08:15:32 access service="iam" method="GET" path="/v1/me" status=200 duration=533µs remote="172.18.0.12:60490"
+iam-1                    | 2026/03/23 08:15:32 access service="iam" method="GET" path="/v1/me" status=200 duration=497µs remote="172.18.0.20:48152"
+iam-1                    | 2026/03/23 08:15:32 access service="iam" method="GET" path="/v1/me" status=200 duration=462µs remote="172.18.0.12:60490"
+iam-1                    | 2026/03/23 08:15:32 access service="iam" method="GET" path="/v1/me" status=200 duration=526µs remote="172.18.0.12:60490"
+bootstrap-1              | 2026/03/23 08:13:51 bootstrap completed
+carrier-gateway-1        | 2026/03/23 08:13:56 [gateway] CARRIER_DISCORD_PUBLIC_KEY is not set — all Discord webhook requests will be rejected
+carrier-gateway-1        | 2026/03/23 08:13:56 [gateway/telegram] transport disabled: missing CARRIER_TELEGRAM_BOT_TOKEN
+carrier-gateway-1        | 2026/03/23 08:13:56 [gateway] listening on http://0.0.0.0:8787
+api-gateway-1            | 2026/03/23 08:13:52 api-gateway listening on :8080
+api-gateway-1            | 2026/03/23 08:14:03 access service="api-gateway" method="GET" path="/healthz" status=200 duration=35µs remote="172.18.0.21:58958"
+api-gateway-1            | 2026/03/23 08:14:13 access service="api-gateway" method="POST" path="/api/v1/carrier-bindings" status=201 duration=167µs remote="172.18.0.21:34274"
+api-gateway-1            | 2026/03/23 08:14:13 access service="api-gateway" method="POST" path="/api/v1/carrier-bindings/pcb_1/verify" status=200 duration=19µs remote="172.18.0.21:34274"
+api-gateway-1            | 2026/03/23 08:14:13 access service="api-gateway" method="POST" path="/api/v1/provider-settlement-bindings" status=201 duration=81µs remote="172.18.0.21:34280"
+api-gateway-1            | 2026/03/23 08:14:13 access service="api-gateway" method="POST" path="/api/v1/provider-settlement-bindings/psb_1/verify" status=200 duration=21µs remote="172.18.0.21:34280"
+api-gateway-1            | 2026/03/23 08:14:13 access service="api-gateway" method="POST" path="/api/v1/rfqs" status=201 duration=6.803ms remote="172.18.0.21:34290"
+api-gateway-1            | 2026/03/23 08:14:13 access service="api-gateway" method="POST" path="/api/v1/rfqs/rfq_1/bids" status=201 duration=4.591ms remote="172.18.0.21:34290"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="POST" path="/api/v1/rfqs/rfq_1/award" status=200 duration=1m18.034457s remote="172.18.0.21:34290"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="GET" path="/api/v1/orders/ord_1/provider-settlement-reservation" status=200 duration=1.298ms remote="172.18.0.21:34290"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="POST" path="/api/v1/orders/ord_1/milestones/ms_1/bind-carrier" status=201 duration=77µs remote="172.18.0.21:34290"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="POST" path="/api/v1/orders/ord_1/milestones/ms_1/jobs" status=201 duration=110µs remote="172.18.0.21:34290"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=560µs remote="172.18.0.21:34290"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=1.924ms remote="172.18.0.21:45138"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=1.827ms remote="172.18.0.21:45148"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=774µs remote="172.18.0.21:45164"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=1.494ms remote="172.18.0.21:45166"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="GET" path="/api/v1/orders/ord_1" status=200 duration=1.222ms remote="172.18.0.21:45170"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="GET" path="/api/v1/orders/ord_1/provider-settlement-reservation" status=200 duration=877µs remote="172.18.0.21:45170"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="POST" path="/api/v1/rfqs" status=201 duration=2.254ms remote="172.18.0.21:45170"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="POST" path="/api/v1/rfqs/rfq_2/bids" status=201 duration=2.425ms remote="172.18.0.21:45170"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="POST" path="/api/v1/rfqs/rfq_2/award" status=200 duration=6.749ms remote="172.18.0.21:45170"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="GET" path="/api/v1/orders/ord_2/provider-settlement-reservation" status=200 duration=879µs remote="172.18.0.21:45170"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="POST" path="/api/v1/orders/ord_2/milestones/ms_1/bind-carrier" status=201 duration=44µs remote="172.18.0.21:45170"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="POST" path="/api/v1/orders/ord_2/milestones/ms_1/jobs" status=201 duration=33µs remote="172.18.0.21:45170"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=355µs remote="172.18.0.21:45170"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=1.468ms remote="172.18.0.21:45178"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=1.731ms remote="172.18.0.21:45190"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=710µs remote="172.18.0.21:45192"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=1.738ms remote="172.18.0.21:45204"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="GET" path="/api/v1/orders/ord_2" status=200 duration=1.781ms remote="172.18.0.21:45214"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="GET" path="/api/v1/orders/ord_2/provider-settlement-reservation" status=200 duration=1.347ms remote="172.18.0.21:45214"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="POST" path="/api/v1/rfqs" status=201 duration=3.2ms remote="172.18.0.21:45214"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="POST" path="/api/v1/rfqs/rfq_3/bids" status=201 duration=3.452ms remote="172.18.0.21:45214"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="POST" path="/api/v1/rfqs/rfq_3/award" status=200 duration=12.489ms remote="172.18.0.21:45214"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="GET" path="/api/v1/orders/ord_3/provider-settlement-reservation" status=200 duration=1.285ms remote="172.18.0.21:45214"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="POST" path="/api/v1/orders/ord_3/milestones/ms_1/bind-carrier" status=201 duration=40µs remote="172.18.0.21:45214"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="POST" path="/api/v1/orders/ord_3/milestones/ms_1/jobs" status=201 duration=83µs remote="172.18.0.21:45214"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=538µs remote="172.18.0.21:45214"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=1.854ms remote="172.18.0.21:45226"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="POST" path="/api/v1/provider-settlement-bindings/org_2/disconnect" status=200 duration=931µs remote="172.18.0.21:45238"
+api-gateway-1            | 2026/03/23 08:15:31 access service="api-gateway" method="GET" path="/api/v1/orders/ord_3" status=200 duration=1.441ms remote="172.18.0.21:45238"
+api-gateway-1            | 2026/03/23 08:15:32 access service="api-gateway" method="POST" path="/api/v1/provider-settlement-bindings/org_2/recover" status=200 duration=3.997ms remote="172.18.0.21:45238"
+api-gateway-1            | 2026/03/23 08:15:32 access service="api-gateway" method="GET" path="/api/v1/orders/ord_3" status=200 duration=1.248ms remote="172.18.0.21:45238"
+api-gateway-1            | 2026/03/23 08:15:32 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=1.747ms remote="172.18.0.21:45238"
+api-gateway-1            | 2026/03/23 08:15:32 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=554µs remote="172.18.0.21:45244"
+api-gateway-1            | 2026/03/23 08:15:32 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=1.303ms remote="172.18.0.21:45256"
+api-gateway-1            | 2026/03/23 08:15:32 access service="api-gateway" method="GET" path="/api/v1/orders/ord_3" status=200 duration=1.193ms remote="172.18.0.21:45272"
+api-gateway-1            | 2026/03/23 08:15:32 access service="api-gateway" method="GET" path="/api/v1/orders/ord_3/provider-settlement-reservation" status=200 duration=1.036ms remote="172.18.0.21:45272"
