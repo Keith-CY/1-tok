@@ -305,13 +305,14 @@ func TestRunDemoPrepareCreditsBuyerDepositBeforeReady(t *testing.T) {
 
 	depositSummaryCalls := 0
 	depositSynced := false
+	const demoBuyerDepositAddress = "ckt1qyqfth8m4fevfzh5hhd088s78qcdjjp8cehs7z8jhw"
 	settlementServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/topups":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"buyerOrgId":         "org_demo_buyer",
 				"asset":              "USDI",
-				"address":            "ckt1qyqbuyer0address",
+				"address":            demoBuyerDepositAddress,
 				"confirmationBlocks": 24,
 				"minimumSweepAmount": "10.00",
 			})
@@ -320,7 +321,7 @@ func TestRunDemoPrepareCreditsBuyerDepositBeforeReady(t *testing.T) {
 			payload := map[string]any{
 				"buyerOrgId":           "org_demo_buyer",
 				"asset":                "USDI",
-				"address":              "ckt1qyqbuyer0address",
+				"address":              demoBuyerDepositAddress,
 				"onChainBalance":       "50.00",
 				"confirmedBalance":     "50.00",
 				"creditedBalance":      "0.00",
@@ -431,8 +432,8 @@ func TestRunDemoPrepareCreditsBuyerDepositBeforeReady(t *testing.T) {
 	if summary.Status.Verdict != demoenv.VerdictReady {
 		t.Fatalf("verdict = %s, blockers=%v", summary.Status.Verdict, summary.Status.BlockerReasons)
 	}
-	if summary.DepositAddress != "ckt1qyqbuyer0address" {
-		t.Fatalf("deposit address = %q, want ckt1qyqbuyer0address", summary.DepositAddress)
+	if summary.DepositAddress != demoBuyerDepositAddress {
+		t.Fatalf("deposit address = %q, want %s", summary.DepositAddress, demoBuyerDepositAddress)
 	}
 	if summary.TopUpRecordID != "fund_demo_topup" {
 		t.Fatalf("top up record id = %q, want fund_demo_topup", summary.TopUpRecordID)

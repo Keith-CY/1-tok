@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/chenyu/1-tok/internal/platform"
+	"github.com/nervosnetwork/ckb-sdk-go/v2/crypto/bech32"
+	"github.com/nervosnetwork/ckb-sdk-go/v2/types"
 )
 
 var ensureDemoFNNBootstrapFunc = ensureDemoFNNBootstrapLiquidity
@@ -449,6 +451,103 @@ func deriveCKBTestnetAddressFromLockArgs(lockArgs string) (string, error) {
 		builder.WriteByte(bech32Charset[value])
 	}
 	return builder.String(), nil
+}
+
+func decodeCKBAddressToRawScript(encoded string) (rawScript, error) {
+	encoding, hrp, decoded, err := bech32.Decode(strings.TrimSpace(encoded))
+	if err != nil {
+		return rawScript{}, err
+	}
+	network, err := releaseNetworkFromAddressHRP(hrp)
+	if err != nil {
+		return rawScript{}, err
+	}
+	payload, err := bech32.ConvertBits(decoded, 5, 8, false)
+	if err != nil {
+		return rawScript{}, err
+	}
+	if len(payload) == 0 {
+		return rawScript{}, errors.New("ckb address payload is empty")
+	}
+	switch payload[0] {
+	case 0x00:
+		if encoding != bech32.BECH32M {
+			return rawScript{}, errors.New("payload header 0x00 must use bech32m")
+		}
+		if len(payload) < 34 {
+			return rawScript{}, errors.New("full ckb address payload is too short")
+		}
+		hashType, err := types.DeserializeHashTypeByte(payload[33])
+		if err != nil {
+			return rawScript{}, err
+		}
+		return rawScript{
+			CodeHash: "0x" + hex.EncodeToString(payload[1:33]),
+			HashType: string(hashType),
+			Args:     "0x" + hex.EncodeToString(payload[34:]),
+		}, nil
+	case 0x01:
+		if encoding != bech32.BECH32 {
+			return rawScript{}, errors.New("payload header 0x01 must use bech32")
+		}
+		if len(payload) < 2 {
+			return rawScript{}, errors.New("short ckb address payload is too short")
+		}
+		codeHash, hashType, err := releaseShortCodeHash(network, payload[1])
+		if err != nil {
+			return rawScript{}, err
+		}
+		return rawScript{
+			CodeHash: codeHash,
+			HashType: hashType,
+			Args:     "0x" + hex.EncodeToString(payload[2:]),
+		}, nil
+	case 0x02, 0x04:
+		if encoding != bech32.BECH32 {
+			return rawScript{}, errors.New("payload header 0x02 or 0x04 must use bech32")
+		}
+		if len(payload) < 33 {
+			return rawScript{}, errors.New("full bech32 ckb address payload is too short")
+		}
+		hashType := "data"
+		if payload[0] == 0x04 {
+			hashType = "type"
+		}
+		return rawScript{
+			CodeHash: "0x" + hex.EncodeToString(payload[1:33]),
+			HashType: hashType,
+			Args:     "0x" + hex.EncodeToString(payload[33:]),
+		}, nil
+	default:
+		return rawScript{}, fmt.Errorf("unsupported ckb address payload header 0x%x", payload[0])
+	}
+}
+
+func releaseNetworkFromAddressHRP(hrp string) (types.Network, error) {
+	switch strings.TrimSpace(hrp) {
+	case "ckb":
+		return types.NetworkMain, nil
+	case "ckt":
+		return types.NetworkTest, nil
+	default:
+		return 0, fmt.Errorf("unsupported ckb address hrp %q", hrp)
+	}
+}
+
+func releaseShortCodeHash(network types.Network, codeHashIndex byte) (string, string, error) {
+	switch codeHashIndex {
+	case 0x00:
+		return "0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8", "type", nil
+	case 0x01:
+		return "0x5c5069eb0857efc65e1bca0c07df34c31663b3622fd3876c876320fc9634e2a8", "type", nil
+	case 0x02:
+		if network == types.NetworkMain {
+			return "0xd369597ff47f29fbc0d47d2e3775370d1250b85140c670e4718af712983a2354", "type", nil
+		}
+		return "0x3419a1c09eb2567f6552ee7a8ecffd64155cffe0f1796e6e61ec088d740c1356", "type", nil
+	default:
+		return "", "", fmt.Errorf("unsupported short code hash index 0x%x", codeHashIndex)
+	}
 }
 
 const bech32Charset = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"

@@ -124,6 +124,7 @@ func loadBuyerDepositServiceOptionsFromEnv() (BuyerDepositWallet, BuyerDepositSe
 	}
 
 	rawUnitsPerWhole := envInt64WithFallback("BUYER_DEPOSIT_RAW_UNITS_PER_WHOLE_USDI", defaultBuyerDepositRawUnitsPerWholeUSDI)
+	network := envCKBNetwork("BUYER_DEPOSIT_CKB_NETWORK", types.NetworkTest)
 	confirmationBlocks := envUint64WithFallback("BUYER_DEPOSIT_CONFIRMATION_BLOCKS", 24)
 	minSweepRaw := rawUnitsPerWhole * 10
 	if raw := strings.TrimSpace(os.Getenv("BUYER_DEPOSIT_MIN_USDI")); raw != "" {
@@ -137,15 +138,15 @@ func loadBuyerDepositServiceOptionsFromEnv() (BuyerDepositWallet, BuyerDepositSe
 		}
 		return nil, BuyerDepositServiceOptions{}, nil
 	}
-	var udtTypeScript platform.UDTTypeScript
-	if err := json.Unmarshal([]byte(udtTypeScriptRaw), &udtTypeScript); err != nil {
+	udtTypeScript, err := parseBuyerDepositUDTTypeScriptJSON(udtTypeScriptRaw)
+	if err != nil {
 		return nil, BuyerDepositServiceOptions{}, fmt.Errorf("parse buyer deposit udt type script: %w", err)
 	}
 
 	wallet, err := NewCKBBuyerDepositWallet(CKBBuyerDepositWalletConfig{
 		RPCURL:               firstNonEmptyEnv("BUYER_DEPOSIT_CKB_RPC_URL", "FNN_CKB_RPC_URL", "FNN2_CKB_RPC_URL"),
 		MasterSeed:           firstNonEmptyEnv("BUYER_DEPOSIT_WALLET_MASTER_SEED", "BUYER_DEPOSIT_WALLET_SEED"),
-		Network:              envCKBNetwork("BUYER_DEPOSIT_CKB_NETWORK", types.NetworkTest),
+		Network:              network,
 		UDTTypeScript:        udtTypeScript,
 		UDTCellDepTxHash:     strings.TrimSpace(os.Getenv("BUYER_DEPOSIT_UDT_CELL_DEP_TX_HASH")),
 		UDTCellDepIndex:      uint32(envIntWithFallback("BUYER_DEPOSIT_UDT_CELL_DEP_INDEX", 0)),
@@ -158,9 +159,9 @@ func loadBuyerDepositServiceOptionsFromEnv() (BuyerDepositWallet, BuyerDepositSe
 		return nil, BuyerDepositServiceOptions{}, err
 	}
 
-	treasuryAddress := strings.TrimSpace(os.Getenv("BUYER_DEPOSIT_TREASURY_ADDRESS"))
-	if treasuryAddress == "" {
-		return nil, BuyerDepositServiceOptions{}, errors.New("BUYER_DEPOSIT_TREASURY_ADDRESS is required")
+	treasuryAddress, err := resolveBuyerDepositTreasuryAddress(network)
+	if err != nil {
+		return nil, BuyerDepositServiceOptions{}, err
 	}
 
 	return wallet, BuyerDepositServiceOptions{
@@ -177,6 +178,59 @@ func buyerDepositEnvEnabled() bool {
 		return true
 	}
 	return firstNonEmptyEnv("BUYER_DEPOSIT_WALLET_MASTER_SEED", "BUYER_DEPOSIT_WALLET_SEED") != ""
+}
+
+func resolveBuyerDepositTreasuryAddress(network types.Network) (string, error) {
+	if treasuryAddress := strings.TrimSpace(os.Getenv("BUYER_DEPOSIT_TREASURY_ADDRESS")); treasuryAddress != "" {
+		return treasuryAddress, nil
+	}
+	rpcURL := firstNonEmptyEnv("BUYER_DEPOSIT_TREASURY_RPC_URL", "PROVIDER_SETTLEMENT_FNN_TREASURY_RPC_URL", "FNN_PAYER_RPC_URL")
+	if rpcURL == "" {
+		return "", errors.New("BUYER_DEPOSIT_TREASURY_ADDRESS is required")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	treasuryAddress, err := discoverBuyerDepositTreasuryAddressFromRPC(ctx, rpcURL, network)
+	if err != nil {
+		return "", fmt.Errorf("resolve buyer deposit treasury address from %s: %w", rpcURL, err)
+	}
+	return treasuryAddress, nil
+}
+
+func parseBuyerDepositUDTTypeScriptJSON(raw string) (platform.UDTTypeScript, error) {
+	var payload map[string]any
+	trimmed := strings.TrimSpace(raw)
+	if err := json.Unmarshal([]byte(trimmed), &payload); err != nil {
+		if strings.Contains(trimmed, `\"`) {
+			normalized := strings.ReplaceAll(trimmed, `\"`, `"`)
+			if retryErr := json.Unmarshal([]byte(normalized), &payload); retryErr != nil {
+				return platform.UDTTypeScript{}, err
+			}
+		} else {
+			return platform.UDTTypeScript{}, err
+		}
+	}
+	readString := func(keys ...string) string {
+		for _, key := range keys {
+			value, ok := payload[key]
+			if !ok {
+				continue
+			}
+			if text, ok := value.(string); ok {
+				return strings.TrimSpace(text)
+			}
+		}
+		return ""
+	}
+	script := platform.UDTTypeScript{
+		CodeHash: readString("codeHash", "code_hash"),
+		HashType: readString("hashType", "hash_type"),
+		Args:     readString("args"),
+	}
+	if strings.TrimSpace(script.CodeHash) == "" || strings.TrimSpace(script.HashType) == "" || strings.TrimSpace(script.Args) == "" {
+		return platform.UDTTypeScript{}, errors.New("missing code hash, hash type, or args")
+	}
+	return script, nil
 }
 
 func (w *ckbBuyerDepositWallet) DeriveAddress(index int) (string, error) {
@@ -354,6 +408,38 @@ func (w *ckbBuyerDepositWallet) SweepToTreasury(ctx context.Context, record Buye
 	}
 
 	fee := tx.CalculateFee(defaultBuyerDepositCKBFeeRate)
+	if totalInputCapacity < treasuryOutput.Capacity+fee+changeOccupied {
+		feeCells, err := w.rawClient.listPureCKBCells(ctx, lockScript, w.cfg.QueryPageLimit, w.cfg.QueryMaxPages)
+		if err != nil {
+			return BuyerDepositSweepResult{}, err
+		}
+		existingInputs := make(map[string]struct{}, len(tx.Inputs))
+		for _, input := range tx.Inputs {
+			if input == nil || input.PreviousOutput == nil {
+				continue
+			}
+			existingInputs[buyerDepositOutPointKey(input.PreviousOutput)] = struct{}{}
+		}
+		for _, cell := range feeCells {
+			if cell.OutPoint == nil || cell.Output == nil {
+				continue
+			}
+			if _, exists := existingInputs[buyerDepositOutPointKey(cell.OutPoint)]; exists {
+				continue
+			}
+			tx.Inputs = append(tx.Inputs, &types.CellInput{
+				Since:          0,
+				PreviousOutput: cell.OutPoint,
+			})
+			tx.Witnesses = append(tx.Witnesses, []byte{})
+			existingInputs[buyerDepositOutPointKey(cell.OutPoint)] = struct{}{}
+			totalInputCapacity += cell.Output.Capacity
+			fee = tx.CalculateFee(defaultBuyerDepositCKBFeeRate)
+			if totalInputCapacity >= treasuryOutput.Capacity+fee+changeOccupied {
+				break
+			}
+		}
+	}
 	switch {
 	case totalInputCapacity >= treasuryOutput.Capacity+fee+changeOccupied:
 		changeOutput.Capacity = totalInputCapacity - treasuryOutput.Capacity - fee
@@ -364,8 +450,8 @@ func (w *ckbBuyerDepositWallet) SweepToTreasury(ctx context.Context, record Buye
 		return BuyerDepositSweepResult{}, errors.New("buyer deposit sweep: insufficient ckb capacity to sweep confirmed usdi")
 	}
 
-	inputGroup := make([]int, 0, len(inputs))
-	for index := range inputs {
+	inputGroup := make([]int, 0, len(tx.Inputs))
+	for index := range tx.Inputs {
 		inputGroup = append(inputGroup, index)
 	}
 	signature, err := signBuyerDepositTransaction(tx, inputGroup, tx.Witnesses[0], key)
@@ -383,6 +469,13 @@ func (w *ckbBuyerDepositWallet) SweepToTreasury(ctx context.Context, record Buye
 		SweptRawUnits:   confirmedRawUnits,
 		TreasuryAddress: treasuryAddress,
 	}, nil
+}
+
+func buyerDepositOutPointKey(outPoint *types.OutPoint) string {
+	if outPoint == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s:%d", outPoint.TxHash.Hex(), outPoint.Index)
 }
 
 func (w *ckbBuyerDepositWallet) deriveKey(index int) (*buyerDepositSecp256k1Key, error) {
@@ -717,6 +810,35 @@ func (c *buyerDepositCKBRPCClient) tipBlockNumber(ctx context.Context) (uint64, 
 	return parseHexUint64(result), nil
 }
 
+func discoverBuyerDepositTreasuryAddressFromRPC(ctx context.Context, endpoint string, network types.Network) (string, error) {
+	client := &buyerDepositCKBRPCClient{
+		endpoint:   strings.TrimRight(strings.TrimSpace(endpoint), "/"),
+		httpClient: &http.Client{Timeout: 10 * time.Second},
+	}
+	var result struct {
+		DefaultFundingLockScript struct {
+			CodeHash string `json:"code_hash"`
+			HashType string `json:"hash_type"`
+			Args     string `json:"args"`
+		} `json:"default_funding_lock_script"`
+	}
+	if err := client.Call(ctx, "node_info", []any{}, &result); err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(result.DefaultFundingLockScript.CodeHash) == "" || strings.TrimSpace(result.DefaultFundingLockScript.Args) == "" {
+		return "", errors.New("node_info missing default_funding_lock_script")
+	}
+	args, err := decodeHexBytes(result.DefaultFundingLockScript.Args)
+	if err != nil {
+		return "", fmt.Errorf("decode treasury lock args: %w", err)
+	}
+	return encodeBuyerDepositAddress(&types.Script{
+		CodeHash: types.HexToHash(result.DefaultFundingLockScript.CodeHash),
+		HashType: parseCKBHashType(result.DefaultFundingLockScript.HashType),
+		Args:     args,
+	}, network)
+}
+
 func (c *buyerDepositCKBRPCClient) listSUDTCells(ctx context.Context, lockScript platform.UDTTypeScript, typeScript platform.UDTTypeScript, pageLimit, maxPages int) ([]buyerDepositCKBCell, error) {
 	cells := make([]buyerDepositCKBCell, 0)
 	cursor := "0x"
@@ -747,6 +869,42 @@ func (c *buyerDepositCKBRPCClient) listSUDTCells(ctx context.Context, lockScript
 			return nil, err
 		}
 		cells = append(cells, result.Objects...)
+		if len(result.Objects) == 0 || strings.TrimSpace(result.LastCursor) == "" || result.LastCursor == cursor {
+			break
+		}
+		cursor = result.LastCursor
+	}
+	return cells, nil
+}
+
+func (c *buyerDepositCKBRPCClient) listPureCKBCells(ctx context.Context, lockScript platform.UDTTypeScript, pageLimit, maxPages int) ([]buyerDepositCKBCell, error) {
+	cells := make([]buyerDepositCKBCell, 0)
+	cursor := "0x"
+	for page := 0; page < maxPages; page++ {
+		params := []any{map[string]any{
+			"script": map[string]string{
+				"code_hash": lockScript.CodeHash,
+				"hash_type": lockScript.HashType,
+				"args":      lockScript.Args,
+			},
+			"script_type": "lock",
+		}, "asc", fmt.Sprintf("0x%x", pageLimit)}
+		if cursor != "0x" {
+			params = append(params, cursor)
+		}
+		var result struct {
+			Objects    []buyerDepositCKBCell `json:"objects"`
+			LastCursor string                `json:"last_cursor"`
+		}
+		if err := c.Call(ctx, "get_cells", params, &result); err != nil {
+			return nil, err
+		}
+		for _, cell := range result.Objects {
+			if cell.Output == nil || cell.Output.Type != nil {
+				continue
+			}
+			cells = append(cells, cell)
+		}
 		if len(result.Objects) == 0 || strings.TrimSpace(result.LastCursor) == "" || result.LastCursor == cursor {
 			break
 		}

@@ -158,6 +158,18 @@ func TestUSDIMarketplaceE2EConfigFromEnvDefaultsProviderSettlementToDedicatedNod
 	}
 }
 
+func TestBuyerDepositCreditWaitTimeout(t *testing.T) {
+	if got := buyerDepositCreditWaitTimeout(buyerDepositSummaryResponse{}); got != usdiMarketplaceBuyerDepositCreditWaitFloor {
+		t.Fatalf("timeout without confirmation blocks = %s, want %s", got, usdiMarketplaceBuyerDepositCreditWaitFloor)
+	}
+
+	summary := buyerDepositSummaryResponse{ConfirmationBlocks: 24}
+	want := 24*usdiMarketplaceBuyerDepositBlockIntervalEstimate + usdiMarketplaceBuyerDepositConfirmationGrace
+	if got := buyerDepositCreditWaitTimeout(summary); got != want {
+		t.Fatalf("timeout with 24 confirmation blocks = %s, want %s", got, want)
+	}
+}
+
 func TestRegisterProviderSettlementBindingUsesNodeInfoAndConfiguredUDTScript(t *testing.T) {
 	node := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		payload, err := io.ReadAll(r.Body)
