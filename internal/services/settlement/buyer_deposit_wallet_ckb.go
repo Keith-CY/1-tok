@@ -3,7 +3,7 @@ package settlement
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -15,13 +15,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/btcsuite/btcd/btcec"
 	"github.com/chenyu/1-tok/internal/platform"
 	"github.com/chenyu/1-tok/internal/runtimeconfig"
-	"github.com/nervosnetwork/ckb-sdk-go/v2/address"
-	"github.com/nervosnetwork/ckb-sdk-go/v2/crypto/secp256k1"
+	"github.com/nervosnetwork/ckb-sdk-go/v2/crypto/bech32"
+	"github.com/nervosnetwork/ckb-sdk-go/v2/crypto/blake2b"
 	"github.com/nervosnetwork/ckb-sdk-go/v2/rpc"
-	"github.com/nervosnetwork/ckb-sdk-go/v2/systemscript"
-	"github.com/nervosnetwork/ckb-sdk-go/v2/transaction/signer"
 	"github.com/nervosnetwork/ckb-sdk-go/v2/types"
 )
 
@@ -60,6 +59,10 @@ type buyerDepositCKBCell struct {
 	OutPoint    *types.OutPoint   `json:"out_point"`
 	Output      *types.CellOutput `json:"output"`
 	OutputData  string            `json:"output_data"`
+}
+
+type buyerDepositSecp256k1Key struct {
+	privateKey *btcec.PrivateKey
 }
 
 func NewCKBBuyerDepositWallet(cfg CKBBuyerDepositWalletConfig) (BuyerDepositWallet, error) {
@@ -181,8 +184,8 @@ func (w *ckbBuyerDepositWallet) DeriveAddress(index int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	script := systemscript.Secp256K1Blake160SignhashAll(key)
-	return address.Address{Script: script, Network: w.cfg.Network}.Encode()
+	script := buyerDepositSecp256k1LockScript(key.PubKeyCompressed())
+	return encodeBuyerDepositAddress(script, w.cfg.Network)
 }
 
 func (w *ckbBuyerDepositWallet) QueryBalance(ctx context.Context, record BuyerDepositAddress) (BuyerDepositChainBalance, error) {
@@ -276,11 +279,11 @@ func (w *ckbBuyerDepositWallet) SweepToTreasury(ctx context.Context, record Buye
 	}
 	defer client.Close()
 
-	senderAddr, err := address.Decode(senderAddress)
+	senderScript, err := decodeBuyerDepositAddressScript(senderAddress)
 	if err != nil {
 		return BuyerDepositSweepResult{}, err
 	}
-	treasuryAddr, err := address.Decode(treasuryAddress)
+	treasuryScript, err := decodeBuyerDepositAddressScript(treasuryAddress)
 	if err != nil {
 		return BuyerDepositSweepResult{}, err
 	}
@@ -303,28 +306,25 @@ func (w *ckbBuyerDepositWallet) SweepToTreasury(ctx context.Context, record Buye
 		})
 	}
 
-	treasuryOutputData := systemscript.EncodeSudtAmount(big.NewInt(confirmedRawUnits))
+	treasuryOutputData := encodeBuyerDepositSudtAmount(big.NewInt(confirmedRawUnits))
 	treasuryOutput := &types.CellOutput{
-		Lock: treasuryAddr.Script,
+		Lock: treasuryScript,
 		Type: udtScript,
 	}
 	treasuryOutput.Capacity = treasuryOutput.OccupiedCapacity(treasuryOutputData)
 
 	changeOutput := &types.CellOutput{
-		Lock: senderAddr.Script,
+		Lock: senderScript,
 	}
 	changeOutputData := []byte{}
 	changeOccupied := changeOutput.OccupiedCapacity(changeOutputData)
 
-	secpInfo := systemscript.GetInfo(w.cfg.Network, systemscript.Secp256k1Blake160SighashAll)
-	if secpInfo == nil || secpInfo.OutPoint == nil {
+	secpDep, err := buyerDepositSecpCellDep(w.cfg.Network)
+	if err != nil {
 		return BuyerDepositSweepResult{}, errors.New("buyer deposit secp256k1 sighash-all dep is unavailable for configured network")
 	}
 	cellDeps := []*types.CellDep{
-		{
-			OutPoint: secpInfo.OutPoint,
-			DepType:  secpInfo.DepType,
-		},
+		secpDep,
 		{
 			OutPoint: &types.OutPoint{
 				TxHash: types.HexToHash(w.cfg.UDTCellDepTxHash),
@@ -368,7 +368,7 @@ func (w *ckbBuyerDepositWallet) SweepToTreasury(ctx context.Context, record Buye
 	for index := range inputs {
 		inputGroup = append(inputGroup, index)
 	}
-	signature, err := signer.SignTransaction(tx, inputGroup, tx.Witnesses[0], key)
+	signature, err := signBuyerDepositTransaction(tx, inputGroup, tx.Witnesses[0], key)
 	if err != nil {
 		return BuyerDepositSweepResult{}, err
 	}
@@ -385,27 +385,269 @@ func (w *ckbBuyerDepositWallet) SweepToTreasury(ctx context.Context, record Buye
 	}, nil
 }
 
-func (w *ckbBuyerDepositWallet) deriveKey(index int) (*secp256k1.Secp256k1Key, error) {
+func (w *ckbBuyerDepositWallet) deriveKey(index int) (*buyerDepositSecp256k1Key, error) {
 	seed := strings.TrimSpace(w.cfg.MasterSeed)
 	for attempt := 0; attempt < defaultBuyerDepositKeyRetryLimit; attempt++ {
-		hash := sha256.Sum256([]byte(fmt.Sprintf("%s:%d:%d", seed, index, attempt)))
-		key, err := secp256k1.ToKey(hash[:])
-		if err == nil {
-			return key, nil
+		hash := blake2b.Blake256([]byte(fmt.Sprintf("%s:%d:%d", seed, index, attempt)))
+		scalar := new(big.Int).SetBytes(hash)
+		if scalar.Sign() <= 0 || scalar.Cmp(btcec.S256().N) >= 0 {
+			continue
 		}
+		privateKey, _ := btcec.PrivKeyFromBytes(btcec.S256(), hash)
+		return &buyerDepositSecp256k1Key{privateKey: privateKey}, nil
 	}
 	return nil, fmt.Errorf("unable to derive valid buyer deposit key for index %d", index)
 }
 
+func (k *buyerDepositSecp256k1Key) Bytes() []byte {
+	if k == nil || k.privateKey == nil {
+		return nil
+	}
+	return k.privateKey.Serialize()
+}
+
+func (k *buyerDepositSecp256k1Key) PubKeyCompressed() []byte {
+	if k == nil || k.privateKey == nil {
+		return nil
+	}
+	return k.privateKey.PubKey().SerializeCompressed()
+}
+
+func (k *buyerDepositSecp256k1Key) Sign(data []byte) ([]byte, error) {
+	if k == nil || k.privateKey == nil {
+		return nil, errors.New("buyer deposit key is required")
+	}
+	compact, err := btcec.SignCompact(btcec.S256(), k.privateKey, data, true)
+	if err != nil {
+		return nil, err
+	}
+	if len(compact) != 65 {
+		return nil, fmt.Errorf("unexpected compact signature length %d", len(compact))
+	}
+	recoveryID := compact[0] - 27
+	if recoveryID >= 4 {
+		recoveryID -= 4
+	}
+	signature := append([]byte{}, compact[1:]...)
+	signature = append(signature, recoveryID)
+	return signature, nil
+}
+
+func signBuyerDepositTransaction(tx *types.Transaction, group []int, witnessPlaceholder []byte, key *buyerDepositSecp256k1Key) ([]byte, error) {
+	inputsLen := len(tx.Inputs)
+	for i := 0; i < len(group); i++ {
+		if i > 0 && group[i] <= group[i-1] {
+			return nil, fmt.Errorf("group index is not in ascending order")
+		}
+		if group[i] > inputsLen {
+			return nil, fmt.Errorf("group index %d is greater than input length %d", group[i], inputsLen)
+		}
+	}
+
+	msg := tx.ComputeHash().Bytes()
+	lengthBuffer := make([]byte, 8)
+	binary.LittleEndian.PutUint64(lengthBuffer, uint64(len(witnessPlaceholder)))
+	msg = append(msg, lengthBuffer...)
+	msg = append(msg, witnessPlaceholder...)
+
+	indexes := make([]int, 0, len(group)+len(tx.Witnesses))
+	for i := 1; i < len(group); i++ {
+		indexes = append(indexes, group[i])
+	}
+	for i := inputsLen; i < len(tx.Witnesses); i++ {
+		indexes = append(indexes, i)
+	}
+	for _, witnessIndex := range indexes {
+		witness := tx.Witnesses[witnessIndex]
+		witnessLength := make([]byte, 8)
+		binary.LittleEndian.PutUint64(witnessLength, uint64(len(witness)))
+		msg = append(msg, witnessLength...)
+		msg = append(msg, witness...)
+	}
+
+	return key.Sign(blake2b.Blake256(msg))
+}
+
+func buyerDepositSecp256k1LockScript(compressedPubKey []byte) *types.Script {
+	return &types.Script{
+		CodeHash: types.HexToHash("0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8"),
+		HashType: types.HashTypeType,
+		Args:     blake2b.Blake160(compressedPubKey),
+	}
+}
+
+func buyerDepositSecpCellDep(network types.Network) (*types.CellDep, error) {
+	switch network {
+	case types.NetworkMain:
+		return &types.CellDep{
+			OutPoint: &types.OutPoint{
+				TxHash: types.HexToHash("0x71a7ba8fc96349fea0ed3a5c47992e3b4084b031a42264a018e0072e8172e46c"),
+				Index:  0,
+			},
+			DepType: types.DepTypeDepGroup,
+		}, nil
+	case types.NetworkTest, types.NetworkPreview:
+		return &types.CellDep{
+			OutPoint: &types.OutPoint{
+				TxHash: types.HexToHash("0xf8de3bb47d055cdf460d93a2a6e1b05f7432f9777c8c474abf4eec1d4aee5d37"),
+				Index:  0,
+			},
+			DepType: types.DepTypeDepGroup,
+		}, nil
+	default:
+		return nil, fmt.Errorf("unsupported buyer deposit network %q", network)
+	}
+}
+
+func encodeBuyerDepositSudtAmount(amount *big.Int) []byte {
+	out := make([]byte, 16)
+	amount.FillBytes(out)
+	for left, right := 0, len(out)-1; left < right; left, right = left+1, right-1 {
+		out[left], out[right] = out[right], out[left]
+	}
+	return out
+}
+
+func encodeBuyerDepositAddress(script *types.Script, network types.Network) (string, error) {
+	if script == nil {
+		return "", errors.New("buyer deposit address script is required")
+	}
+	payload := []byte{0x00}
+	payload = append(payload, script.CodeHash.Bytes()...)
+	hashType, err := types.SerializeHashTypeByte(script.HashType)
+	if err != nil {
+		return "", err
+	}
+	payload = append(payload, hashType)
+	payload = append(payload, script.Args...)
+	payload, err = bech32.ConvertBits(payload, 8, 5, true)
+	if err != nil {
+		return "", err
+	}
+	hrp, err := buyerDepositAddressHRP(network)
+	if err != nil {
+		return "", err
+	}
+	return bech32.EncodeWithBech32m(hrp, payload)
+}
+
+func decodeBuyerDepositAddressScript(encoded string) (*types.Script, error) {
+	encoding, hrp, decoded, err := bech32.Decode(encoded)
+	if err != nil {
+		return nil, err
+	}
+	network, err := buyerDepositNetworkFromHRP(hrp)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := bech32.ConvertBits(decoded, 5, 8, false)
+	if err != nil {
+		return nil, err
+	}
+	if len(payload) == 0 {
+		return nil, errors.New("buyer deposit address payload is empty")
+	}
+	switch payload[0] {
+	case 0x00:
+		if encoding != bech32.BECH32M {
+			return nil, errors.New("payload header 0x00 must use bech32m")
+		}
+		if len(payload) < 34 {
+			return nil, errors.New("buyer deposit full address payload is too short")
+		}
+		hashType, err := types.DeserializeHashTypeByte(payload[33])
+		if err != nil {
+			return nil, err
+		}
+		return &types.Script{
+			CodeHash: types.BytesToHash(payload[1:33]),
+			HashType: hashType,
+			Args:     payload[34:],
+		}, nil
+	case 0x01:
+		if encoding != bech32.BECH32 {
+			return nil, errors.New("payload header 0x01 must use bech32")
+		}
+		if len(payload) < 2 {
+			return nil, errors.New("buyer deposit short address payload is too short")
+		}
+		codeHash, hashType, err := buyerDepositShortCodeHash(network, payload[1])
+		if err != nil {
+			return nil, err
+		}
+		return &types.Script{
+			CodeHash: codeHash,
+			HashType: hashType,
+			Args:     payload[2:],
+		}, nil
+	case 0x02, 0x04:
+		if encoding != bech32.BECH32 {
+			return nil, errors.New("payload header 0x02 or 0x04 must use bech32")
+		}
+		if len(payload) < 33 {
+			return nil, errors.New("buyer deposit full bech32 payload is too short")
+		}
+		hashType := types.HashTypeData
+		if payload[0] == 0x04 {
+			hashType = types.HashTypeType
+		}
+		return &types.Script{
+			CodeHash: types.BytesToHash(payload[1:33]),
+			HashType: hashType,
+			Args:     payload[33:],
+		}, nil
+	default:
+		return nil, fmt.Errorf("unsupported buyer deposit address payload header 0x%x", payload[0])
+	}
+}
+
+func buyerDepositAddressHRP(network types.Network) (string, error) {
+	switch network {
+	case types.NetworkMain:
+		return "ckb", nil
+	case types.NetworkTest, types.NetworkPreview:
+		return "ckt", nil
+	default:
+		return "", fmt.Errorf("unsupported buyer deposit network %q", network)
+	}
+}
+
+func buyerDepositNetworkFromHRP(hrp string) (types.Network, error) {
+	switch hrp {
+	case "ckb":
+		return types.NetworkMain, nil
+	case "ckt":
+		return types.NetworkTest, nil
+	default:
+		return 0, fmt.Errorf("unsupported buyer deposit address hrp %q", hrp)
+	}
+}
+
+func buyerDepositShortCodeHash(network types.Network, codeHashIndex byte) (types.Hash, types.ScriptHashType, error) {
+	switch codeHashIndex {
+	case 0x00:
+		return types.HexToHash("0x9bd7e06f3ecf4be0f2fcd2188b23f1b9fcc88e5d4b65a8637b17723bbda3cce8"), types.HashTypeType, nil
+	case 0x01:
+		return types.HexToHash("0x5c5069eb0857efc65e1bca0c07df34c31663b3622fd3876c876320fc9634e2a8"), types.HashTypeType, nil
+	case 0x02:
+		if network == types.NetworkMain {
+			return types.HexToHash("0xd369597ff47f29fbc0d47d2e3775370d1250b85140c670e4718af712983a2354"), types.HashTypeType, nil
+		}
+		return types.HexToHash("0x3419a1c09eb2567f6552ee7a8ecffd64155cffe0f1796e6e61ec088d740c1356"), types.HashTypeType, nil
+	default:
+		return types.Hash{}, "", fmt.Errorf("unsupported buyer deposit short code hash index 0x%x", codeHashIndex)
+	}
+}
+
 func (w *ckbBuyerDepositWallet) lockScriptForRecord(record BuyerDepositAddress) (platform.UDTTypeScript, error) {
-	addr, err := address.Decode(record.Address)
+	addr, err := decodeBuyerDepositAddressScript(record.Address)
 	if err != nil {
 		return platform.UDTTypeScript{}, err
 	}
 	return platform.UDTTypeScript{
-		CodeHash: addr.Script.CodeHash.Hex(),
-		HashType: string(addr.Script.HashType),
-		Args:     "0x" + hex.EncodeToString(addr.Script.Args),
+		CodeHash: addr.CodeHash.Hex(),
+		HashType: string(addr.HashType),
+		Args:     "0x" + hex.EncodeToString(addr.Args),
 	}, nil
 }
 
