@@ -146,7 +146,7 @@ services:
     restart: unless-stopped
     environment:
       FIBER_SECRET_KEY_PASSWORD: ${FIBER_SECRET_KEY_PASSWORD:?FIBER_SECRET_KEY_PASSWORD must be set}
-      FNN_CKB_RPC_URL: ${FNN2_CKB_RPC_URL:-${FNN_CKB_RPC_URL:-https://testnet.ckbapp.dev/}}
+      FNN_CKB_RPC_URL: ${FNN2_CKB_RPC_URL:-https://testnet.ckbapp.dev/}
     expose:
       - "8227"
       - "8228"
@@ -170,7 +170,7 @@ services:
     restart: unless-stopped
     environment:
       FIBER_SECRET_KEY_PASSWORD: ${FIBER_SECRET_KEY_PASSWORD:?FIBER_SECRET_KEY_PASSWORD must be set}
-      FNN_CKB_RPC_URL: ${PROVIDER_FNN_CKB_RPC_URL:-${FNN_CKB_RPC_URL:-https://testnet.ckbapp.dev/}}
+      FNN_CKB_RPC_URL: ${PROVIDER_FNN_CKB_RPC_URL:-https://testnet.ckbapp.dev/}
     expose:
       - "8227"
       - "8228"
