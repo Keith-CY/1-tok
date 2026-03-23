@@ -14,10 +14,11 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /out/service ./cmd/${SERVICE}
 
 FROM alpine:3.20
 
+ARG SERVICE_PORT=8080
 RUN addgroup -S app && adduser -S app -G app
 WORKDIR /srv
 COPY --from=builder /out/service /usr/local/bin/service
 
 USER app
-EXPOSE 8080
+EXPOSE ${SERVICE_PORT}
 ENTRYPOINT ["/usr/local/bin/service"]

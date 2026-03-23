@@ -189,6 +189,7 @@ services:
       dockerfile: Dockerfile.go-service
       args:
         SERVICE: fiber-adapter
+        SERVICE_PORT: 8091
     restart: unless-stopped
     environment:
       FIBER_ADAPTER_ADDR: ":8091"
@@ -233,6 +234,7 @@ services:
       dockerfile: Dockerfile.go-service
       args:
         SERVICE: iam
+        SERVICE_PORT: 8081
     restart: unless-stopped
     environment:
       IAM_ADDR: ":8081"
@@ -263,6 +265,7 @@ services:
       dockerfile: Dockerfile.go-service
       args:
         SERVICE: api-gateway
+        SERVICE_PORT: 8080
     restart: unless-stopped
     environment:
       API_GATEWAY_ADDR: ":8080"
@@ -371,6 +374,7 @@ services:
       dockerfile: Dockerfile.go-service
       args:
         SERVICE: marketplace
+        SERVICE_PORT: 8082
     restart: unless-stopped
     environment:
       MARKETPLACE_ADDR: ":8082"
@@ -391,6 +395,7 @@ services:
       dockerfile: Dockerfile.go-service
       args:
         SERVICE: settlement
+        SERVICE_PORT: 8083
     restart: unless-stopped
     environment:
       SETTLEMENT_ADDR: ":8083"
@@ -458,6 +463,7 @@ services:
       dockerfile: Dockerfile.go-service
       args:
         SERVICE: risk
+        SERVICE_PORT: 8084
     restart: unless-stopped
     environment:
       RISK_ADDR: ":8084"
@@ -478,6 +484,7 @@ services:
       dockerfile: Dockerfile.go-service
       args:
         SERVICE: execution
+        SERVICE_PORT: 8085
     restart: unless-stopped
     environment:
       EXECUTION_ADDR: ":8085"
@@ -505,6 +512,7 @@ services:
       dockerfile: Dockerfile.go-service
       args:
         SERVICE: notification
+        SERVICE_PORT: 8086
     restart: unless-stopped
     environment:
       NOTIFICATION_ADDR: ":8086"
