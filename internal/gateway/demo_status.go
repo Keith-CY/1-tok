@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -47,7 +48,7 @@ func (s *Server) handleDemoWarmup(w http.ResponseWriter, r *http.Request) {
 		MinimumAvailableCents int64  `json:"minimumAvailableCents"`
 	}
 	if r.Body != nil {
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil && !errors.Is(err, context.Canceled) && err.Error() != "EOF" {
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, io.EOF) {
 			httputil.WriteError(w, http.StatusBadRequest, httputil.ErrCodeValidation, "invalid json")
 			return
 		}

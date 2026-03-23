@@ -256,6 +256,8 @@ jobs:
     name: USDI Marketplace E2E
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository
+    outputs:
+      result: ${{ steps.usdi_e2e_result.outputs.result }}
     permissions:
       contents: write
       pull-requests: write
@@ -279,6 +281,7 @@ jobs:
       - name: Retry USDI marketplace e2e once
         id: usdi_e2e_retry
         if: steps.usdi_e2e.outcome == 'failure'
+        continue-on-error: true
         env:
           E2E_USDI_SCREENSHOT_OUTPUT_DIR: ${{ github.workspace }}/.artifacts/usdi-e2e
         run: |
@@ -289,10 +292,14 @@ jobs:
       - name: Resolve USDI e2e result
         if: always()
         id: usdi_e2e_result
+        env:
+          USDI_E2E_ARTIFACT_DIR: .artifacts/usdi-e2e
         run: |
           result=failure
           if [ "${{ steps.usdi_e2e.outcome }}" = "success" ] || [ "${{ steps.usdi_e2e_retry.outcome }}" = "success" ]; then
             result=success
+          elif [ -f "${USDI_E2E_ARTIFACT_DIR}/failure-hints.txt" ]; then
+            result=known_failure
           fi
           echo "result=${result}" >> "$GITHUB_OUTPUT"
 
@@ -336,6 +343,7 @@ jobs:
           TMP_DIR: ${{ steps.screenshot_ref.outputs.tmp_dir }}
           MANIFEST_PATH: .artifacts/usdi-e2e/manifest.json
           SUMMARY_PATH: .artifacts/usdi-e2e/release-usdi-marketplace-e2e.json
+          FAILURE_HINTS_PATH: .artifacts/usdi-e2e/failure-hints.txt
           CARRIER_ISSUE_URL: https://github.com/Keith-CY/carrier/issues/1595
           FIBER_ISSUE_URL: https://github.com/nervosnetwork/fiber/issues/1226
         run: |
@@ -347,6 +355,8 @@ jobs:
           result = os.environ.get("USDI_E2E_RESULT", "failure")
           summary_path = Path(os.environ["SUMMARY_PATH"])
           summary = json.loads(summary_path.read_text(encoding="utf-8")) if summary_path.exists() else {}
+          failure_hints_path = Path(os.environ["FAILURE_HINTS_PATH"])
+          failure_hints = failure_hints_path.read_text(encoding="utf-8").strip() if failure_hints_path.exists() else ""
           manifest = []
           base = ""
           tmp_dir = os.environ.get("TMP_DIR", "")
@@ -408,6 +418,18 @@ jobs:
                 f"![{title}]({base}/{row['path']})",
                 "",
               ])
+          elif result == "known_failure":
+            lines.extend([
+              "- Classified as `known_failure`: an upstream dependency failed in a way this repository already recognizes as a known external blocker.",
+            ])
+            if failure_hints:
+              lines.extend([
+                "",
+                "```text",
+                failure_hints,
+                "```",
+                "",
+              ])
           elif result != "success":
             lines.extend([
               "- Blocker: the real Fiber testnet nodes failed before the marketplace flow reached faucet/top-up/order execution.",
@@ -456,6 +478,10 @@ jobs:
               core.info(`Created USDI e2e comment ${created.data.id}`);
             }
 
+      - name: Fail on unexpected USDI e2e failures
+        if: always() && steps.usdi_e2e_result.outputs.result == 'failure'
+        run: exit 1
+
   report:
     name: Report
     runs-on: ubuntu-latest
@@ -497,7 +523,7 @@ jobs:
           UNIT_RESULT: ${{ needs.unit.result }}
           INTEGRATION_RESULT: ${{ needs.integration.result }}
           PORTAL_RESULT: ${{ needs.portal_ux.result }}
-          USDI_E2E_RESULT: ${{ needs.usdi_marketplace_e2e.result }}
+          USDI_E2E_RESULT: ${{ needs.usdi_marketplace_e2e.outputs.result || needs.usdi_marketplace_e2e.result }}
           PORTAL_GOV_SKIPPED: ${{ needs.portal_ux.outputs.skipped }}
           PORTAL_UI_CHECK_RUN: ${{ needs.portal_ux.outputs.ranUiCheck }}
           PORTAL_CONFIG_VALIDATION_RUN: ${{ needs.portal_ux.outputs.ranConfigValidation }}

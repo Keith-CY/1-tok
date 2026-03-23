@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -46,6 +47,19 @@ func TestEnsureDemoActorSignsUpWhenAllowed(t *testing.T) {
 	}
 	if actor.OrgID != "org_demo_buyer" {
 		t.Fatalf("actor org id = %s", actor.OrgID)
+	}
+}
+
+func TestErrorContainsFold(t *testing.T) {
+	err := fmt.Errorf("register provider carrier binding: %w", errors.New("Active Binding Already Exists For Provider org_demo_provider"))
+	if !errorContainsFold(err, activeCarrierBindingAlreadyExistsMessage) {
+		t.Fatal("expected case-insensitive wrapped match")
+	}
+	if errorContainsFold(err, activeSettlementBindingAlreadyExistsMessage) {
+		t.Fatal("did not expect settlement fragment to match carrier error")
+	}
+	if errorContainsFold(nil, activeCarrierBindingAlreadyExistsMessage) {
+		t.Fatal("nil error should never match")
 	}
 }
 

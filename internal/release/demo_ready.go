@@ -16,6 +16,11 @@ import (
 
 var ErrDemoNotReady = errors.New("demo environment is not ready")
 
+const (
+	activeCarrierBindingAlreadyExistsMessage    = "active binding already exists"
+	activeSettlementBindingAlreadyExistsMessage = "active settlement binding already exists"
+)
+
 type DemoRunConfig struct {
 	Demo demoenv.Config
 	USDI USDIMarketplaceE2EConfig
@@ -328,7 +333,7 @@ func (c *smokeClient) ensureProviderCarrierBinding(ctx context.Context, baseURL,
 	}
 	bindingID, err := c.registerProviderCarrierBinding(ctx, baseURL, providerOrgID, cfg)
 	if err != nil {
-		if !strings.Contains(strings.ToLower(err.Error()), "active binding already exists") {
+		if !errorContainsFold(err, activeCarrierBindingAlreadyExistsMessage) {
 			return err
 		}
 		binding, getErr := c.getProviderCarrierBinding(ctx, baseURL, providerOrgID)
@@ -349,7 +354,7 @@ func (c *smokeClient) ensureProviderSettlementBinding(ctx context.Context, baseU
 		return err
 	}
 	_, err = c.registerProviderSettlementBinding(ctx, baseURL, providerOrgID, cfg)
-	if err != nil && !strings.Contains(strings.ToLower(err.Error()), "active settlement binding already exists") {
+	if err != nil && !errorContainsFold(err, activeSettlementBindingAlreadyExistsMessage) {
 		return err
 	}
 	return nil
@@ -405,4 +410,11 @@ func postJSONBytes(body any) (*bytes.Reader, error) {
 		return nil, err
 	}
 	return bytes.NewReader(encoded), nil
+}
+
+func errorContainsFold(err error, fragment string) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), strings.ToLower(fragment))
 }

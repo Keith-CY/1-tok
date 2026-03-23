@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"log"
 	"os"
 	"strconv"
@@ -27,9 +26,6 @@ func main() {
 		log.Fatal(encodeErr)
 	}
 	if err != nil {
-		if errors.Is(err, release.ErrDemoNotReady) {
-			log.Fatal(err)
-		}
 		log.Fatal(err)
 	}
 }
