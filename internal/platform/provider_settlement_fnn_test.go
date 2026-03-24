@@ -39,6 +39,7 @@ func TestFNNProviderSettlementProvisioner_OpensChannelWhenPoolCannotReuse(t *tes
 
 	var treasuryOpenPayload map[string]any
 	var treasuryMethods []string
+	treasuryListCalls := 0
 	treasuryNode := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		payload, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -64,6 +65,11 @@ func TestFNNProviderSettlementProvisioner_OpensChannelWhenPoolCannotReuse(t *tes
 		case "connect_peer":
 			_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": 1, "result": map[string]any{}})
 		case "list_channels":
+			treasuryListCalls++
+			tempState := "AWAITING_CHANNEL_READY"
+			if treasuryListCalls >= 3 {
+				tempState = "CHANNEL_READY"
+			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"jsonrpc": "2.0",
 				"id":      1,
@@ -72,6 +78,16 @@ func TestFNNProviderSettlementProvisioner_OpensChannelWhenPoolCannotReuse(t *tes
 						{
 							"channel_id": "ch_ready_1",
 							"state":      "CHANNEL_READY",
+							"enabled":    true,
+							"funding_udt_type_script": map[string]any{
+								"code_hash": "0xudt",
+								"hash_type": "type",
+								"args":      "0x01",
+							},
+						},
+						{
+							"channel_id": "tmp_provider_1",
+							"state":      tempState,
 							"enabled":    true,
 							"funding_udt_type_script": map[string]any{
 								"code_hash": "0xudt",
@@ -106,6 +122,7 @@ func TestFNNProviderSettlementProvisioner_OpensChannelWhenPoolCannotReuse(t *tes
 
 	var providerAcceptPayload map[string]any
 	var providerMethods []string
+	providerListCalls := 0
 	providerNode := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		payload, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -143,6 +160,11 @@ func TestFNNProviderSettlementProvisioner_OpensChannelWhenPoolCannotReuse(t *tes
 		case "connect_peer":
 			_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": 1, "result": map[string]any{}})
 		case "list_channels":
+			providerListCalls++
+			tempState := "AWAITING_CHANNEL_READY"
+			if providerListCalls >= 3 {
+				tempState = "CHANNEL_READY"
+			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"jsonrpc": "2.0",
 				"id":      1,
@@ -151,6 +173,16 @@ func TestFNNProviderSettlementProvisioner_OpensChannelWhenPoolCannotReuse(t *tes
 						{
 							"channel_id": "ch_ready_1",
 							"state":      "CHANNEL_READY",
+							"enabled":    true,
+							"funding_udt_type_script": map[string]any{
+								"code_hash": "0xudt",
+								"hash_type": "type",
+								"args":      "0x01",
+							},
+						},
+						{
+							"channel_id": "tmp_provider_1",
+							"state":      tempState,
 							"enabled":    true,
 							"funding_udt_type_script": map[string]any{
 								"code_hash": "0xudt",
@@ -233,6 +265,9 @@ func TestFNNProviderSettlementProvisioner_OpensChannelWhenPoolCannotReuse(t *tes
 	if got := providerAcceptPayload["funding_amount"]; got != "0x3b9aca00" {
 		t.Fatalf("accept funding_amount = %v, want 0x3b9aca00", got)
 	}
+	if treasuryListCalls < 3 || providerListCalls < 3 {
+		t.Fatalf("list_channels calls treasury=%d provider=%d, want polling until tmp_provider_1 turns ready", treasuryListCalls, providerListCalls)
+	}
 }
 
 func TestFNNProviderSettlementProvisioner_RetriesOpenChannelAfterPeerInitRace(t *testing.T) {
@@ -274,7 +309,7 @@ func TestFNNProviderSettlementProvisioner_RetriesOpenChannelAfterPeerInitRace(t 
 				"result": map[string]any{
 					"channels": []map[string]any{
 						{
-							"channel_id": "ch_ready_1",
+							"channel_id": "tmp_provider_1",
 							"state":      state,
 							"enabled":    true,
 							"funding_udt_type_script": map[string]any{
@@ -360,7 +395,7 @@ func TestFNNProviderSettlementProvisioner_RetriesOpenChannelAfterPeerInitRace(t 
 				"result": map[string]any{
 					"channels": []map[string]any{
 						{
-							"channel_id": "ch_ready_1",
+							"channel_id": "tmp_provider_1",
 							"state":      state,
 							"enabled":    true,
 							"funding_udt_type_script": map[string]any{
@@ -469,7 +504,7 @@ func TestFNNProviderSettlementProvisioner_TreatsAlreadyConnectedAsReconnectSucce
 				"result": map[string]any{
 					"channels": []map[string]any{
 						{
-							"channel_id": "ch_ready_1",
+							"channel_id": "tmp_provider_1",
 							"state":      state,
 							"enabled":    true,
 							"funding_udt_type_script": map[string]any{
@@ -565,7 +600,7 @@ func TestFNNProviderSettlementProvisioner_TreatsAlreadyConnectedAsReconnectSucce
 				"result": map[string]any{
 					"channels": []map[string]any{
 						{
-							"channel_id": "ch_ready_1",
+							"channel_id": "tmp_provider_1",
 							"state":      state,
 							"enabled":    true,
 							"funding_udt_type_script": map[string]any{
@@ -661,7 +696,7 @@ func TestFNNProviderSettlementProvisioner_ReopensChannelWhenAcceptLosesTemporary
 				"result": map[string]any{
 					"channels": []map[string]any{
 						{
-							"channel_id": "ch_retry_accept",
+							"channel_id": fmt.Sprintf("tmp_provider_%d", treasuryOpenCalls),
 							"state":      state,
 							"enabled":    true,
 							"funding_udt_type_script": map[string]any{
@@ -749,7 +784,7 @@ func TestFNNProviderSettlementProvisioner_ReopensChannelWhenAcceptLosesTemporary
 				"result": map[string]any{
 					"channels": []map[string]any{
 						{
-							"channel_id": "ch_retry_accept",
+							"channel_id": fmt.Sprintf("tmp_provider_%d", treasuryOpenCalls),
 							"state":      state,
 							"enabled":    true,
 							"funding_udt_type_script": map[string]any{
@@ -969,6 +1004,45 @@ func TestFNNProviderSettlementProvisioner_ReusesReadyChannelWhenPoolCapacitySuff
 	}
 }
 
+func TestMatchingReadyChannelIDRequiresSameReadyChannelOnBothSides(t *testing.T) {
+	treasuryChannels := providerSettlementRawChannelList{
+		Channels: []providerSettlementRawChannel{
+			{
+				ChannelID: "ch_ready_treasury",
+				State:     "CHANNEL_READY",
+				Enabled:   true,
+				FundingUDTTypeScript: providerSettlementRawUDTTypeScript{
+					CodeHash: "0xudt",
+					HashType: "type",
+					Args:     "0x01",
+				},
+			},
+		},
+	}
+	providerChannels := providerSettlementRawChannelList{
+		Channels: []providerSettlementRawChannel{
+			{
+				ChannelID: "ch_ready_provider",
+				State:     "CHANNEL_READY",
+				Enabled:   true,
+				FundingUDTTypeScript: providerSettlementRawUDTTypeScript{
+					CodeHash: "0xudt",
+					HashType: "type",
+					Args:     "0x01",
+				},
+			},
+		},
+	}
+
+	if channelID, ok := matchingReadyChannelID(treasuryChannels, providerChannels, UDTTypeScript{
+		CodeHash: "0xudt",
+		HashType: "type",
+		Args:     "0x01",
+	}); ok || channelID != "" {
+		t.Fatalf("matchingReadyChannelID() = (%q, %t), want no match", channelID, ok)
+	}
+}
+
 func TestFNNProviderSettlementProvisioner_ReacceptsWhileAwaitingChannelReady(t *testing.T) {
 	const providerPeerID = "QmdWHo7ejoqhoXN56bFAWQtFtewPkrUSMA64Wp9XnB4n13"
 
@@ -1015,7 +1089,7 @@ func TestFNNProviderSettlementProvisioner_ReacceptsWhileAwaitingChannelReady(t *
 				"result": map[string]any{
 					"channels": []map[string]any{
 						{
-							"channel_id": "ch_ready_1",
+							"channel_id": "tmp_provider_1",
 							"state":      state,
 							"enabled":    true,
 							"funding_udt_type_script": map[string]any{
@@ -1084,7 +1158,7 @@ func TestFNNProviderSettlementProvisioner_ReacceptsWhileAwaitingChannelReady(t *
 				"result": map[string]any{
 					"channels": []map[string]any{
 						{
-							"channel_id": "ch_ready_1",
+							"channel_id": "tmp_provider_1",
 							"state":      state,
 							"enabled":    true,
 							"funding_udt_type_script": map[string]any{

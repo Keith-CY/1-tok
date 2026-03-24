@@ -299,6 +299,12 @@ func TestCarrierAwardExecutorSettlesOrderAfterSuccessfulRun(t *testing.T) {
 	if runInput.Capability != "run_shell" {
 		t.Fatalf("capability = %s, want run_shell", runInput.Capability)
 	}
+	if runInput.StdoutPath != "/workspace/1tok/"+order.ID+"/ms_1/result.md.stdout.log" {
+		t.Fatalf("stdout path = %q, want report stdout path", runInput.StdoutPath)
+	}
+	if runInput.StderrPath != "/workspace/1tok/"+order.ID+"/ms_1/result.md.stderr.log" {
+		t.Fatalf("stderr path = %q, want report stderr path", runInput.StderrPath)
+	}
 	if !strings.Contains(runInput.Command, ".bash_profile") {
 		t.Fatalf("command = %q, want profile bootstrap", runInput.Command)
 	}
@@ -325,5 +331,130 @@ func TestCarrierAwardExecutorSettlesOrderAfterSuccessfulRun(t *testing.T) {
 	}
 	if jobs[0].State != carrier.JobStateCompleted {
 		t.Fatalf("job state = %s, want completed", jobs[0].State)
+	}
+}
+
+func TestCarrierAwardExecutorFailsJobWithOutputPathsWhenCommandExitsNonZero(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	carrierSvc := carrier.NewService()
+
+	providerBinding, err := app.RegisterCarrierBinding(platform.ProviderCarrierBinding{
+		ProviderOrgID:  "provider_1",
+		CarrierBaseURL: "https://carrier.example.com",
+		HostID:         "host_1",
+		AgentID:        "agent_1",
+		Backend:        "codex",
+		WorkspaceRoot:  "/workspace",
+	})
+	if err != nil {
+		t.Fatalf("register binding: %v", err)
+	}
+	if _, err := app.VerifyCarrierBinding(providerBinding.ID); err != nil {
+		t.Fatalf("verify binding: %v", err)
+	}
+	settlementBinding, err := app.RegisterProviderSettlementBinding(platform.ProviderSettlementBinding{
+		ProviderOrgID: "provider_1",
+		Asset:         "USDI",
+		PeerID:        "peer_provider",
+		P2PAddress:    "/dns4/provider/tcp/8228/p2p/peer_provider",
+		NodeRPCURL:    "http://provider:8227",
+		UDTTypeScript: platform.UDTTypeScript{
+			CodeHash: "0xudt",
+			HashType: "type",
+			Args:     "0x01",
+		},
+	})
+	if err != nil {
+		t.Fatalf("register settlement binding: %v", err)
+	}
+	if _, err := app.VerifyProviderSettlementBinding(settlementBinding.ID); err != nil {
+		t.Fatalf("verify settlement binding: %v", err)
+	}
+	app.SetProviderSettlementProvisioner(&stubGatewayCarrierSettlementProvisioner{
+		result: platform.EnsureProviderLiquidityResult{
+			ChannelID:           "ch_gateway_1",
+			ReuseSource:         platform.ProviderLiquidityReuseNewChannel,
+			ReadyChannelCount:   1,
+			TotalSpendableCents: 5_000,
+		},
+	})
+
+	rfq, err := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID:         "buyer_1",
+		Title:              "Research 3 vendors",
+		Category:           "research",
+		Scope:              "Compare 3 Japanese AI call-center vendors.",
+		BudgetCents:        4_000,
+		ResponseDeadlineAt: time.Date(2099, 3, 26, 14, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("create rfq: %v", err)
+	}
+	bid, err := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "provider_1",
+		Message:       "bid",
+		Milestones: []platform.BidMilestoneInput{{
+			ID:             "ms_1",
+			Title:          "Service delivery",
+			BasePriceCents: 3_200,
+			BudgetCents:    3_200,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("create bid: %v", err)
+	}
+	awardedRFQ, order, err := app.AwardRFQ(rfq.ID, platform.AwardRFQInput{
+		BidID:       bid.ID,
+		FundingMode: "prepaid",
+	})
+	if err != nil {
+		t.Fatalf("award rfq: %v", err)
+	}
+
+	client := &stubCodeAgentClient{
+		runResult: carrierclient.CodeAgentRunResult{
+			Backend: "codex",
+			Result: carrierclient.CodeAgentRunOutput{
+				OK:             false,
+				PolicyDecision: "allow",
+			},
+		},
+	}
+	executor := &carrierOrderAutoExecutor{
+		app:     app,
+		carrier: carrierSvc,
+		clientForBinding: func(platform.ProviderCarrierBinding) carrierclient.CodeAgentClient {
+			return client
+		},
+	}
+
+	err = executor.Execute(context.Background(), carrierAwardExecutionInput{
+		RFQ:     awardedRFQ,
+		Order:   order,
+		Binding: providerBinding,
+	})
+	if err == nil {
+		t.Fatal("expected carrier execution error")
+	}
+	if !strings.Contains(err.Error(), "carrier command failed") {
+		t.Fatalf("error = %q, want carrier command failure", err)
+	}
+	if !strings.Contains(err.Error(), "result.md.stdout.log") || !strings.Contains(err.Error(), "result.md.stderr.log") {
+		t.Fatalf("error = %q, want stdout/stderr paths", err)
+	}
+
+	carrierBinding, err := carrierSvc.GetBinding(order.ID, "ms_1")
+	if err != nil {
+		t.Fatalf("get carrier binding: %v", err)
+	}
+	jobs, err := carrierSvc.ListJobs(carrierBinding.ID)
+	if err != nil {
+		t.Fatalf("list jobs: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("jobs = %d, want 1", len(jobs))
+	}
+	if jobs[0].State != carrier.JobStateFailed {
+		t.Fatalf("job state = %s, want failed", jobs[0].State)
 	}
 }

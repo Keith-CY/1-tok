@@ -66,7 +66,7 @@ func ConfigFromEnv() Config {
 			OrganizationID:   strings.TrimSpace(os.Getenv("DEMO_OPS_ORG_ID")),
 		},
 		MinBuyerBalanceCents:      envInt64OrDefault("DEMO_MIN_BUYER_BALANCE_CENTS", 5_000),
-		MinProviderLiquidityCents: envInt64OrDefault("DEMO_MIN_PROVIDER_LIQUIDITY_CENTS", 5_500),
+		MinProviderLiquidityCents: envInt64OrDefault("DEMO_MIN_PROVIDER_LIQUIDITY_CENTS", 88_000),
 		BuyerTopUpAmount:          envOrDefault("DEMO_BUYER_TOPUP_AMOUNT", "50.00"),
 		ResourcePrefix:            envOrDefault("DEMO_RESOURCE_PREFIX", "demo-live"),
 	}

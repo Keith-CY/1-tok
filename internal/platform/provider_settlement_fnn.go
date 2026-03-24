@@ -440,7 +440,11 @@ func waitForProviderSettlementChannelReady(ctx context.Context, treasuryNode, pr
 		if err != nil {
 			return fmt.Errorf("list provider channels: %w", err)
 		}
-		if _, ok := matchingReadyChannelID(treasuryChannels, providerChannels, udtTypeScript); ok {
+		if strings.TrimSpace(temporaryChannelID) != "" {
+			if providerSettlementChannelReadyOnBothSides(temporaryChannelID, treasuryChannels, providerChannels, udtTypeScript) {
+				return nil
+			}
+		} else if _, ok := matchingReadyChannelID(treasuryChannels, providerChannels, udtTypeScript); ok {
 			return nil
 		}
 		if strings.TrimSpace(temporaryChannelID) != "" &&
@@ -462,15 +466,66 @@ func waitForProviderSettlementChannelReady(ctx context.Context, treasuryNode, pr
 }
 
 func matchingReadyChannelID(treasuryChannels, providerChannels providerSettlementRawChannelList, udtTypeScript UDTTypeScript) (string, bool) {
-	treasuryID := firstReadyProviderSettlementChannelID(treasuryChannels, udtTypeScript)
-	providerID := firstReadyProviderSettlementChannelID(providerChannels, udtTypeScript)
-	if treasuryID == "" || providerID == "" {
-		return "", false
+	readyOnTreasury := make(map[string]struct{}, len(treasuryChannels.Channels))
+	for _, channel := range treasuryChannels.Channels {
+		if normalizeProviderSettlementChannelState(channel.State) != "CHANNEL_READY" {
+			continue
+		}
+		if hasProviderSettlementUDTScript(udtTypeScript) && !providerSettlementUDTScriptsMatch(channel.FundingUDTTypeScript, udtTypeScript) {
+			continue
+		}
+		channelID := strings.TrimSpace(channel.ChannelID)
+		if channelID == "" {
+			continue
+		}
+		readyOnTreasury[channelID] = struct{}{}
 	}
-	if treasuryID != "" {
-		return treasuryID, true
+
+	for _, channel := range providerChannels.Channels {
+		if normalizeProviderSettlementChannelState(channel.State) != "CHANNEL_READY" {
+			continue
+		}
+		if hasProviderSettlementUDTScript(udtTypeScript) && !providerSettlementUDTScriptsMatch(channel.FundingUDTTypeScript, udtTypeScript) {
+			continue
+		}
+		channelID := strings.TrimSpace(channel.ChannelID)
+		if channelID == "" {
+			continue
+		}
+		if _, ok := readyOnTreasury[channelID]; ok {
+			return channelID, true
+		}
 	}
-	return providerID, true
+	return "", false
+}
+
+func providerSettlementChannelReadyOnBothSides(channelID string, treasuryChannels, providerChannels providerSettlementRawChannelList, udtTypeScript UDTTypeScript) bool {
+	target := strings.TrimSpace(channelID)
+	if target == "" {
+		return false
+	}
+	return providerSettlementSpecificChannelReady(treasuryChannels, target, udtTypeScript) &&
+		providerSettlementSpecificChannelReady(providerChannels, target, udtTypeScript)
+}
+
+func providerSettlementSpecificChannelReady(channels providerSettlementRawChannelList, channelID string, udtTypeScript UDTTypeScript) bool {
+	target := strings.TrimSpace(channelID)
+	if target == "" {
+		return false
+	}
+	for _, channel := range channels.Channels {
+		if strings.TrimSpace(channel.ChannelID) != target {
+			continue
+		}
+		if normalizeProviderSettlementChannelState(channel.State) != "CHANNEL_READY" {
+			return false
+		}
+		if hasProviderSettlementUDTScript(udtTypeScript) && !providerSettlementUDTScriptsMatch(channel.FundingUDTTypeScript, udtTypeScript) {
+			return false
+		}
+		return true
+	}
+	return false
 }
 
 func providerSettlementAcceptFundingHex(info providerSettlementNodeInfo, udtTypeScript UDTTypeScript) string {

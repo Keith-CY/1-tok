@@ -71,6 +71,8 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 	}
 
 	reportPath := carrierReportPath(input.Binding.WorkspaceRoot, input.Order.ID, milestone.ID)
+	stdoutPath := carrierStdoutPath(reportPath)
+	stderrPath := carrierStderrPath(reportPath)
 	command := buildCarrierRunCommand(reportPath, buildCarrierPrompt(input.RFQ, input.Order, milestone))
 
 	runResult, err := e.clientForBinding(input.Binding).RunCodeAgent(ctx, carrierclient.CodeAgentRunInput{
@@ -81,13 +83,20 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 		Capability:    "run_shell",
 		Command:       command,
 		TimeoutSec:    900,
+		StdoutPath:    stdoutPath,
+		StderrPath:    stderrPath,
 	})
 	if err != nil {
 		_, _ = e.carrier.FailJob(job.ID, err.Error())
 		return err
 	}
-	if !runResult.Result.OK || !strings.EqualFold(strings.TrimSpace(runResult.Result.PolicyDecision), "allow") {
+	if !strings.EqualFold(strings.TrimSpace(runResult.Result.PolicyDecision), "allow") {
 		err := fmt.Errorf("carrier policy decision rejected run: ok=%t decision=%s", runResult.Result.OK, runResult.Result.PolicyDecision)
+		_, _ = e.carrier.FailJob(job.ID, err.Error())
+		return err
+	}
+	if !runResult.Result.OK {
+		err := buildCarrierCommandFailure(stdoutPath, stderrPath)
 		_, _ = e.carrier.FailJob(job.ID, err.Error())
 		return err
 	}
@@ -123,6 +132,14 @@ func runningMilestone(order *core.Order) *core.Milestone {
 func carrierReportPath(workspaceRoot, orderID, milestoneID string) string {
 	root := firstNonEmptyString(strings.TrimSpace(workspaceRoot), "/workspace")
 	return path.Join(root, "1tok", strings.TrimSpace(orderID), strings.TrimSpace(milestoneID), "result.md")
+}
+
+func carrierStdoutPath(reportPath string) string {
+	return strings.TrimSpace(reportPath) + ".stdout.log"
+}
+
+func carrierStderrPath(reportPath string) string {
+	return strings.TrimSpace(reportPath) + ".stderr.log"
 }
 
 func carrierJobInput(rfq platform.RFQ, order *core.Order, milestone *core.Milestone) string {
@@ -169,6 +186,10 @@ func buildCarrierRunCommand(reportPath, prompt string) string {
 			shellQuote(prompt),
 		)),
 	)
+}
+
+func buildCarrierCommandFailure(stdoutPath, stderrPath string) error {
+	return fmt.Errorf("carrier command failed: stdout=%s stderr=%s", stdoutPath, stderrPath)
 }
 
 func orderTitle(order *core.Order) string {
