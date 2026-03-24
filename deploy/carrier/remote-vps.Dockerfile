@@ -23,7 +23,8 @@ RUN mkdir -p /var/run/sshd /home/carrier/.ssh /home/carrier/.npm-global/bin /hom
   && ssh-keygen -A
 
 COPY deploy/carrier/remote-vps-entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+COPY deploy/carrier/setup-remote-vps-home.sh /usr/local/bin/setup-remote-vps-home.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/setup-remote-vps-home.sh
 
 EXPOSE 22
 
