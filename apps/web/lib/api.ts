@@ -1,5 +1,6 @@
 import {
   type Bid,
+  type BuyerDepositSummary,
   type DemoStatus,
   type Dispute,
   type FundingRecord,
@@ -26,6 +27,7 @@ export interface BuyerDashboardData {
     settledTopUps: number;
     pendingTopUps: number;
   };
+  deposit: BuyerDepositSummary | null;
   recommendedListings: Listing[];
   activeOrders: Order[];
   rfqBook: Array<{
@@ -141,11 +143,16 @@ export async function getBuyerDashboardData(options: {
   buyerOrgId: string;
   requireLive?: boolean;
 }): Promise<BuyerDashboardData> {
-  const [recommendedListings, orders, rfqs, fundingRecords] = await Promise.all([
+  const [recommendedListings, orders, rfqs, fundingRecords, deposit] = await Promise.all([
     getListings({ authToken: options.authToken, requireLive: options.requireLive }),
     getOrders({ authToken: options.authToken, requireLive: options.requireLive }),
     getRFQs({ authToken: options.authToken, requireLive: options.requireLive }),
     getFundingRecords({ authToken: options.authToken, requireLive: options.requireLive }),
+    getBuyerDepositSummary({
+      authToken: options.authToken,
+      buyerOrgId: options.buyerOrgId,
+      requireLive: options.requireLive,
+    }),
   ]);
   const activeOrders = orders.filter((order) => order.buyerOrgId === options.buyerOrgId);
   const buyerRFQs = rfqs.filter((rfq) => rfq.buyerOrgId === options.buyerOrgId);
@@ -190,6 +197,7 @@ export async function getBuyerDashboardData(options: {
       settledTopUps: settledTopUps.length,
       pendingTopUps: pendingTopUps.length,
     },
+    deposit,
     recommendedListings,
     activeOrders,
     rfqBook,
@@ -211,6 +219,23 @@ export async function getBuyerDashboardData(options: {
       },
     ],
   };
+}
+
+export async function getBuyerDepositSummary(options: {
+  authToken: string;
+  buyerOrgId: string;
+  requireLive?: boolean;
+}): Promise<BuyerDepositSummary | null> {
+  const baseUrl = resolveBaseUrl("settlement");
+  if (!baseUrl) {
+    return null;
+  }
+
+  return readJSONFromBase<BuyerDepositSummary>(
+    baseUrl,
+    `/v1/buyer/deposit-address?buyerOrgId=${encodeURIComponent(options.buyerOrgId)}`,
+    options,
+  );
 }
 
 export async function getProviderDashboardData(options: {
@@ -450,6 +475,28 @@ async function readCollectionFromBase<T>(
     return Array.isArray(value) ? (value as T[]) : options?.requireLive ? empty : fallback;
   } catch {
     return options?.requireLive ? empty : fallback;
+  }
+}
+
+async function readJSONFromBase<T>(
+  baseUrl: string,
+  path: string,
+  options?: CollectionRequestOptions,
+): Promise<T | null> {
+  try {
+    const response = await fetch(`${baseUrl}${path}`, {
+      headers: {
+        Accept: "application/json",
+        ...(options?.authToken ? { Authorization: `Bearer ${options.authToken}` } : {}),
+      },
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      return null;
+    }
+    return (await response.json()) as T;
+  } catch {
+    return null;
   }
 }
 

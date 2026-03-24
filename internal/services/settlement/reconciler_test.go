@@ -210,6 +210,62 @@ func TestReconcilerSyncPendingWithdrawalsUpdatesPendingProviderStatuses(t *testi
 	}
 }
 
+func TestReconcilerSyncDepositsSweepsConfirmedBuyerBalance(t *testing.T) {
+	funding := NewMemoryFundingRecordRepository()
+	deposits := NewBuyerDepositService(BuyerDepositServiceOptions{
+		Addresses: NewMemoryBuyerDepositAddressRepository(),
+		Sweeps:    NewMemoryBuyerDepositSweepRepository(),
+		Funding:   funding,
+		Wallet: &stubBuyerDepositWallet{
+			derivedAddresses: map[int]string{0: "ckt1qyqbuyer0address"},
+			balances: map[string]BuyerDepositChainBalance{
+				"ckt1qyqbuyer0address": {
+					Address:            "ckt1qyqbuyer0address",
+					RawOnChainUnits:    1_300_000_000,
+					RawConfirmedUnits:  1_300_000_000,
+					ConfirmationBlocks: 24,
+				},
+			},
+			sweepResults: map[string]BuyerDepositSweepResult{
+				"ckt1qyqbuyer0address": {
+					SweepTxHash:     "0xsweep123",
+					SweptRawUnits:   1_300_000_000,
+					TreasuryAddress: "ckt1qyqtreasuryaddress",
+				},
+			},
+		},
+		Asset:                "USDI",
+		TreasuryAddress:      "ckt1qyqtreasuryaddress",
+		MinSweepAmountRaw:    1_000_000_000,
+		ConfirmationBlocks:   24,
+		RawUnitsPerWholeUSDI: 100_000_000,
+	})
+	if _, err := deposits.EnsureAddress(context.Background(), "buyer_1"); err != nil {
+		t.Fatalf("ensure address: %v", err)
+	}
+
+	reconciler := NewReconciler(ReconcilerOptions{
+		Fiber:    &stubReconcilerFiberClient{},
+		Funding:  funding,
+		Deposits: deposits,
+	})
+
+	summary, err := reconciler.Sync(context.Background())
+	if err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if summary.DepositSweepUpdates != 1 {
+		t.Fatalf("expected 1 deposit sweep update, got %+v", summary)
+	}
+	records, err := funding.List(FundingRecordFilter{Kind: FundingRecordKindBuyerTopUp, BuyerOrgID: "buyer_1"})
+	if err != nil {
+		t.Fatalf("list buyer topups: %v", err)
+	}
+	if len(records) != 1 || records[0].State != "SETTLED" || records[0].Amount != "13.00" {
+		t.Fatalf("unexpected credited topups: %+v", records)
+	}
+}
+
 func TestNewReconciler(t *testing.T) {
 	fiber := &stubFiberClient{}
 	funding := NewMemoryFundingRecordRepository()
@@ -375,9 +431,9 @@ func (errorFiberClient) ListWithdrawalStatuses(context.Context, string) (fibercl
 }
 
 type countingFiberClient struct {
-	callCount   int
-	failUntil   int
-	statusResult fiberclient.InvoiceStatusResult
+	callCount         int
+	failUntil         int
+	statusResult      fiberclient.InvoiceStatusResult
 	withdrawalsResult fiberclient.WithdrawalStatusResult
 }
 
@@ -615,7 +671,7 @@ func TestIsTerminalWithdrawalState(t *testing.T) {
 func TestRunReconcilerLoop_ErrorThenRecover(t *testing.T) {
 	callCount := 0
 	fiber := &countingFiberClient{
-		failUntil: 1, // Fail first call only
+		failUntil:    1, // Fail first call only
 		statusResult: fiberclient.InvoiceStatusResult{State: "paid"},
 	}
 	funding := NewMemoryFundingRecordRepository()

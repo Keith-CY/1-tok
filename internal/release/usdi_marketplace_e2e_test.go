@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -155,6 +157,234 @@ func TestUSDIMarketplaceE2EConfigFromEnvDefaultsProviderSettlementToDedicatedNod
 	}
 	if cfg.ProviderSettlementP2PPort != 8228 {
 		t.Fatalf("provider settlement p2p port = %d, want 8228", cfg.ProviderSettlementP2PPort)
+	}
+}
+
+func TestBuyerDepositCreditWaitTimeout(t *testing.T) {
+	if got := buyerDepositCreditWaitTimeout(buyerDepositSummaryResponse{}); got != usdiMarketplaceBuyerDepositCreditWaitFloor {
+		t.Fatalf("timeout without confirmation blocks = %s, want %s", got, usdiMarketplaceBuyerDepositCreditWaitFloor)
+	}
+
+	summary := buyerDepositSummaryResponse{ConfirmationBlocks: 24}
+	want := 24*usdiMarketplaceBuyerDepositBlockIntervalEstimate + usdiMarketplaceBuyerDepositConfirmationGrace
+	if got := buyerDepositCreditWaitTimeout(summary); got != want {
+		t.Fatalf("timeout with 24 confirmation blocks = %s, want %s", got, want)
+	}
+}
+
+func TestExtendBuyerDepositDeadlineExtendsForAdditionalFaucetRound(t *testing.T) {
+	summary := buyerDepositSummaryResponse{ConfirmationBlocks: 24}
+	firstNow := time.Date(2026, 3, 23, 18, 52, 0, 0, time.UTC)
+	firstDeadline := extendBuyerDepositDeadline(time.Time{}, firstNow, summary)
+	secondNow := firstNow.Add(2 * time.Minute)
+	secondDeadline := extendBuyerDepositDeadline(firstDeadline, secondNow, summary)
+
+	if !secondDeadline.After(firstDeadline) {
+		t.Fatalf("second deadline %s should extend first deadline %s", secondDeadline, firstDeadline)
+	}
+}
+
+func TestRequestUSDIFaucetRetriesTransientFailures(t *testing.T) {
+	var attempts int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/faucet" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		current := atomic.AddInt32(&attempts, 1)
+		if current < 3 {
+			http.Error(w, "temporary upstream failure", http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}))
+	defer server.Close()
+
+	err := requestUSDIFaucetWithRetry(context.Background(), server.Client(), USDIMarketplaceE2EConfig{
+		USDIFaucetAPIBase: server.URL,
+	}, "ckt1qyqtestaddress", "buyer-topup", 3, 0, 0)
+	if err != nil {
+		t.Fatalf("request usdi faucet with retry: %v", err)
+	}
+	if got := atomic.LoadInt32(&attempts); got != 3 {
+		t.Fatalf("attempts = %d, want 3", got)
+	}
+}
+
+func TestWaitBuyerDepositCreditRetriesFaucetFailures(t *testing.T) {
+	originalRequestUSDIFaucet := requestUSDIFaucetFunc
+	originalPollInterval := waitBuyerDepositCreditPollInterval
+	originalFaucetRetryDelay := waitBuyerDepositCreditFaucetRetryDelay
+	defer func() {
+		requestUSDIFaucetFunc = originalRequestUSDIFaucet
+		waitBuyerDepositCreditPollInterval = originalPollInterval
+		waitBuyerDepositCreditFaucetRetryDelay = originalFaucetRetryDelay
+	}()
+
+	waitBuyerDepositCreditPollInterval = 0
+	waitBuyerDepositCreditFaucetRetryDelay = 0
+
+	var faucetAttempts int32
+	requestUSDIFaucetFunc = func(_ context.Context, _ *http.Client, _ USDIMarketplaceE2EConfig, address, label string) error {
+		if address != "ckt1qyqbuyerdeposit" {
+			t.Fatalf("unexpected address %q", address)
+		}
+		if label != "buyer-topup" {
+			t.Fatalf("unexpected label %q", label)
+		}
+		if atomic.AddInt32(&faucetAttempts, 1) == 1 {
+			return io.EOF
+		}
+		return nil
+	}
+
+	var summaryCalls int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/buyer/deposit-address":
+			call := atomic.AddInt32(&summaryCalls, 1)
+			summary := map[string]any{
+				"address":             "ckt1qyqbuyerdeposit",
+				"asset":               "USDI",
+				"confirmationBlocks":  24,
+				"rawMinimumSweepUnits": 10,
+			}
+			if call >= 3 {
+				summary["creditedBalanceCents"] = 5000
+			} else {
+				summary["creditedBalanceCents"] = 0
+				summary["rawOnChainUnits"] = 0
+				summary["rawConfirmedUnits"] = 0
+			}
+			_ = json.NewEncoder(w).Encode(summary)
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := &smokeClient{httpClient: server.Client()}
+	summary, err := client.waitBuyerDepositCredit(context.Background(), USDIMarketplaceE2EConfig{
+		SettlementBaseURL:      server.URL,
+		SettlementServiceToken: "settlement-token",
+	}, actorIdentity{OrgID: "buyer_1"}, "50.00")
+	if err != nil {
+		t.Fatalf("wait buyer deposit credit: %v", err)
+	}
+	if summary.CreditedBalanceCents != 5000 {
+		t.Fatalf("credited balance cents = %d, want 5000", summary.CreditedBalanceCents)
+	}
+	if got := atomic.LoadInt32(&faucetAttempts); got != 2 {
+		t.Fatalf("faucet attempts = %d, want 2", got)
+	}
+}
+
+func TestRunUSDIMarketplaceE2EAcceptsMinimumTenUSDITopup(t *testing.T) {
+	const buyerDepositAddress = "ckt1qyqfth8m4fevfzh5hhd088s78qcdjjp8cehs7z8jhw"
+	originalRequestUSDIFaucet := requestUSDIFaucetFunc
+	originalPollInterval := waitBuyerDepositCreditPollInterval
+	defer func() {
+		requestUSDIFaucetFunc = originalRequestUSDIFaucet
+		waitBuyerDepositCreditPollInterval = originalPollInterval
+	}()
+
+	waitBuyerDepositCreditPollInterval = 0
+	requestUSDIFaucetFunc = func(context.Context, *http.Client, USDIMarketplaceE2EConfig, string, string) error {
+		return nil
+	}
+
+	var settlementSummaryCalls int32
+	settlementServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/healthz":
+			_, _ = w.Write([]byte(`{"status":"ok"}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/topups":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"buyerOrgId":            "buyer_1",
+				"asset":                 "USDI",
+				"address":               buyerDepositAddress,
+				"creditedBalanceCents":  0,
+				"rawMinimumSweepUnits":  10,
+				"confirmationBlocks":   24,
+				"minimumSweepAmount":   "10.00",
+				"creditedBalance":      "0.00",
+				"onChainBalance":       "0.00",
+				"confirmedBalance":     "0.00",
+				"rawOnChainUnits":      0,
+				"rawConfirmedUnits":    0,
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/buyer/deposit-address":
+			atomic.AddInt32(&settlementSummaryCalls, 1)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"buyerOrgId":            "buyer_1",
+				"asset":                 "USDI",
+				"address":               buyerDepositAddress,
+				"creditedBalanceCents":  1000,
+				"rawMinimumSweepUnits":  10,
+				"confirmationBlocks":   24,
+				"minimumSweepAmount":   "10.00",
+				"creditedBalance":      "10.00",
+				"onChainBalance":       "10.00",
+				"confirmedBalance":     "10.00",
+				"rawOnChainUnits":      10,
+				"rawConfirmedUnits":    10,
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/funding-records":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"records": []map[string]any{
+					{
+						"id":         "fund_topup",
+						"kind":       "buyer_topup",
+						"buyerOrgId": "buyer_1",
+						"asset":      "USDI",
+						"amount":     "10.00",
+						"state":      "SETTLED",
+					},
+				},
+			})
+		default:
+			t.Fatalf("unexpected settlement request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer settlementServer.Close()
+
+	gatewayServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/healthz":
+			_, _ = w.Write([]byte(`{"status":"ok"}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/carrier-bindings":
+			http.Error(w, `{"error":"stop after topup"}`, http.StatusTeapot)
+		default:
+			t.Fatalf("unexpected gateway request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer gatewayServer.Close()
+
+	executionServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/healthz" {
+			_, _ = w.Write([]byte(`{"status":"ok"}`))
+			return
+		}
+		t.Fatalf("unexpected execution request %s %s", r.Method, r.URL.Path)
+	}))
+	defer executionServer.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	_, err := RunUSDIMarketplaceE2E(ctx, USDIMarketplaceE2EConfig{
+		APIBaseURL:             gatewayServer.URL,
+		SettlementBaseURL:      settlementServer.URL,
+		SettlementServiceToken: "settlement-token",
+		ExecutionBaseURL:       executionServer.URL,
+	})
+	if err == nil {
+		t.Fatal("expected carrier binding stop error")
+	}
+	if !strings.Contains(err.Error(), "register provider carrier binding") {
+		t.Fatalf("error = %v, want carrier binding failure after successful topup", err)
+	}
+	if got := atomic.LoadInt32(&settlementSummaryCalls); got == 0 {
+		t.Fatal("expected buyer deposit summary to be queried")
 	}
 }
 

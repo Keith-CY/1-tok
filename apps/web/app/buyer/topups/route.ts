@@ -16,11 +16,7 @@ export async function POST(request: Request) {
   }
 
   const form = await request.formData();
-  const amount = String(form.get("amount") ?? "").trim();
   const asset = String(form.get("asset") ?? "USDI").trim();
-  if (!amount) {
-    return redirectToPortal(request, "/buyer", "topup-failed");
-  }
 
   const response = await fetch(`${settlementBaseURL}/v1/topups`, {
     method: "POST",
@@ -29,7 +25,7 @@ export async function POST(request: Request) {
       Authorization: `Bearer ${viewer.token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ amount, asset }),
+    body: JSON.stringify({ asset }),
     cache: "no-store",
   }).catch(() => null);
 

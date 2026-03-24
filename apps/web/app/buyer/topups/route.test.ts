@@ -11,7 +11,7 @@ afterEach(() => {
 });
 
 describe("buyer topup route", () => {
-  it("creates a USDI topup intent using the authenticated buyer membership", async () => {
+  it("ensures a buyer deposit address using the authenticated buyer membership", async () => {
     process.env.IAM_BASE_URL = "http://iam.internal";
     process.env.NEXT_PUBLIC_SETTLEMENT_BASE_URL = "http://settlement.internal";
 
@@ -31,11 +31,10 @@ describe("buyer topup route", () => {
       expect(init?.method).toBe("POST");
       expect((init?.headers as Record<string, string>)?.Authorization).toBe("Bearer tok_123");
       expect(JSON.parse(String(init?.body))).toMatchObject({
-        amount: "25.00",
         asset: "USDI",
       });
 
-      return new Response(JSON.stringify({ invoice: "inv_topup_1", recordId: "fund_topup_1" }), {
+      return new Response(JSON.stringify({ address: "ckt1qyqbuyer0address", asset: "USDI", confirmationBlocks: 24 }), {
         status: 201,
         headers: { "Content-Type": "application/json" },
       });

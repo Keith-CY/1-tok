@@ -23,6 +23,7 @@ export default async function BuyerPage({
   });
   const params = await searchParams;
   const topUp = String(params?.topup ?? "");
+  const deposit = data.deposit;
 
   const openRequests = [...data.rfqBook]
     .filter((item) => item.status === "open")
@@ -58,7 +59,7 @@ export default async function BuyerPage({
             icon={RiPriceTag3Line}
             label="Prepaid balance"
             value={formatMoney(data.summary.prepaidBalanceCents)}
-            detail={`${data.summary.settledTopUps} settled USDI top-ups`}
+            detail={deposit ? `${deposit.creditedBalance} credited from CKB deposits` : `${data.summary.settledTopUps} settled USDI top-ups`}
           />
           <MetricStrip
             icon={RiAuctionLine}
@@ -126,34 +127,30 @@ export default async function BuyerPage({
 
         <div className="space-y-6">
           <SectionCard
-            eyebrow="USDI top-up"
-            title="Prefund the platform wallet"
-            description="Buyers top up in USDI on CKB, while the marketplace keeps the portfolio view in USD."
+            eyebrow="CKB deposit"
+            title="Deposit USDI to your buyer address"
+            description="Each buyer org gets a fixed CKB address. Send at least 10 USDI there; after 24 blocks the platform sweeps confirmed USDI to treasury and credits your USD balance."
           >
             <div className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <SpotMetric label="Settled top-ups" value={`${data.summary.settledTopUps}`} />
-                <SpotMetric label="Pending top-ups" value={`${data.summary.pendingTopUps}`} />
-              </div>
-              <form id="top-up" action="/buyer/topups" method="post" className="grid gap-3">
-                <input type="hidden" name="asset" value="USDI" />
-                <input
-                  type="text"
-                  name="amount"
-                  defaultValue="25.00"
-                  className="rounded-md border border-border bg-background px-3 py-2 text-sm"
-                />
-                <Button type="submit" className="w-full justify-between">
-                  Top up USDI
-                  <RiArrowRightUpLine className="size-4" />
-                </Button>
-              </form>
+              {deposit ? (
+                <>
+                  <div className="rounded-md border border-border bg-background px-3 py-3 font-mono text-sm break-all">{deposit.address}</div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <SpotMetric label="Address USDI" value={deposit.onChainBalance} />
+                    <SpotMetric label="Confirmed USDI" value={deposit.confirmedBalance} />
+                    <SpotMetric label="Credited USD" value={deposit.creditedBalance} />
+                    <SpotMetric label="Sweep threshold" value={`${deposit.minimumSweepAmount} / ${deposit.confirmationBlocks} blocks`} />
+                  </div>
+                </>
+              ) : (
+                <Card className="border-dashed p-6 text-sm text-muted-foreground">Settlement has not exposed a buyer deposit address yet.</Card>
+              )}
               <div className="text-sm text-muted-foreground">
                 {topUp === "success"
-                  ? "Top-up intent created. Pay the USDI invoice to increase available balance."
+                  ? "Deposit address refreshed."
                   : topUp === "failed"
-                    ? "Top-up creation failed. Try again after checking settlement connectivity."
-                    : "Create a USDI top-up intent before awarding new work."}
+                    ? "Deposit address lookup failed. Try again after checking settlement connectivity."
+                    : "Transfer USDI to the address above. Credits only finalize after the deposit is confirmed and swept into treasury."}
               </div>
             </div>
           </SectionCard>

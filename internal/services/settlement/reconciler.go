@@ -12,18 +12,21 @@ import (
 )
 
 type Reconciler struct {
-	fiber   fiberclient.InvoiceClient
-	funding FundingRecordRepository
+	fiber    fiberclient.InvoiceClient
+	funding  FundingRecordRepository
+	deposits *BuyerDepositService
 }
 
 type ReconcilerOptions struct {
-	Fiber   fiberclient.InvoiceClient
-	Funding FundingRecordRepository
+	Fiber    fiberclient.InvoiceClient
+	Funding  FundingRecordRepository
+	Deposits *BuyerDepositService
 }
 
 type ReconcileSummary struct {
-	InvoiceUpdates    int
-	WithdrawalUpdates int
+	InvoiceUpdates      int
+	WithdrawalUpdates   int
+	DepositSweepUpdates int
 }
 
 func NewReconciler(options ReconcilerOptions) *Reconciler {
@@ -46,10 +49,18 @@ func NewReconcilerE(options ReconcilerOptions) (*Reconciler, error) {
 		}
 		options.Funding = funding
 	}
+	if options.Deposits == nil {
+		deposits, err := NewBuyerDepositServiceFromEnvE(options.Funding)
+		if err != nil {
+			return nil, fmt.Errorf("buyer deposits: %w", err)
+		}
+		options.Deposits = deposits
+	}
 
 	return &Reconciler{
-		fiber:   options.Fiber,
-		funding: options.Funding,
+		fiber:    options.Fiber,
+		funding:  options.Funding,
+		deposits: options.Deposits,
 	}, nil
 }
 
@@ -64,9 +75,15 @@ func (r *Reconciler) Sync(ctx context.Context) (ReconcileSummary, error) {
 		return ReconcileSummary{}, err
 	}
 
+	depositSweepUpdates, err := r.syncBuyerDeposits(ctx)
+	if err != nil {
+		return ReconcileSummary{}, err
+	}
+
 	return ReconcileSummary{
-		InvoiceUpdates:    invoiceUpdates,
-		WithdrawalUpdates: withdrawalUpdates,
+		InvoiceUpdates:      invoiceUpdates,
+		WithdrawalUpdates:   withdrawalUpdates,
+		DepositSweepUpdates: depositSweepUpdates,
 	}, nil
 }
 
@@ -90,7 +107,7 @@ func RunReconcilerLoop(ctx context.Context, reconciler *Reconciler, interval tim
 		if err != nil {
 			return err
 		}
-		logger.Printf("settlement reconciler synced invoices=%d withdrawals=%d", summary.InvoiceUpdates, summary.WithdrawalUpdates)
+		logger.Printf("settlement reconciler synced invoices=%d withdrawals=%d deposit_sweeps=%d", summary.InvoiceUpdates, summary.WithdrawalUpdates, summary.DepositSweepUpdates)
 		return nil
 	}
 
@@ -181,6 +198,17 @@ func (r *Reconciler) syncPendingWithdrawals(ctx context.Context) (int, error) {
 	}
 
 	return updates, nil
+}
+
+func (r *Reconciler) syncBuyerDeposits(ctx context.Context) (int, error) {
+	if r.deposits == nil {
+		return 0, nil
+	}
+	summary, err := r.deposits.SyncDeposits(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return summary.SweepCount, nil
 }
 
 func isSettledInvoiceState(state string) bool {

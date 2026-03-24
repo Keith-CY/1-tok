@@ -154,7 +154,9 @@ func (r *postgresFundingRecordRepository) Save(record FundingRecord) error {
 		return err
 	}
 
-	_, err = r.db.Exec(`
+	externalIDValue := strings.TrimSpace(record.ExternalID)
+	externalID := nullIfEmpty(externalIDValue)
+	query := `
 		INSERT INTO settlement_funding_records (
 			id, kind, order_id, milestone_id, buyer_org_id, provider_org_id, asset, amount,
 			invoice, external_id, state, destination, created_at, updated_at
@@ -172,7 +174,28 @@ func (r *postgresFundingRecordRepository) Save(record FundingRecord) error {
 			state = EXCLUDED.state,
 			destination = EXCLUDED.destination,
 			updated_at = EXCLUDED.updated_at
-	`, record.ID, string(record.Kind), nullIfEmpty(record.OrderID), nullIfEmpty(record.MilestoneID), nullIfEmpty(record.BuyerOrgID), nullIfEmpty(record.ProviderOrgID), record.Asset, record.Amount, nullIfEmpty(record.Invoice), nullIfEmpty(record.ExternalID), record.State, destination, record.CreatedAt, record.UpdatedAt)
+	`
+	if externalIDValue != "" {
+		query = `
+			INSERT INTO settlement_funding_records (
+				id, kind, order_id, milestone_id, buyer_org_id, provider_org_id, asset, amount,
+				invoice, external_id, state, destination, created_at, updated_at
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+			ON CONFLICT (external_id) WHERE external_id IS NOT NULL DO UPDATE SET
+				kind = EXCLUDED.kind,
+				order_id = EXCLUDED.order_id,
+				milestone_id = EXCLUDED.milestone_id,
+				buyer_org_id = EXCLUDED.buyer_org_id,
+				provider_org_id = EXCLUDED.provider_org_id,
+				asset = EXCLUDED.asset,
+				amount = EXCLUDED.amount,
+				invoice = EXCLUDED.invoice,
+				state = EXCLUDED.state,
+				destination = EXCLUDED.destination,
+				updated_at = EXCLUDED.updated_at
+		`
+	}
+	_, err = r.db.Exec(query, record.ID, string(record.Kind), nullIfEmpty(record.OrderID), nullIfEmpty(record.MilestoneID), nullIfEmpty(record.BuyerOrgID), nullIfEmpty(record.ProviderOrgID), record.Asset, record.Amount, nullIfEmpty(record.Invoice), externalID, record.State, destination, record.CreatedAt, record.UpdatedAt)
 	return err
 }
 
