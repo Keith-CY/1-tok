@@ -9,6 +9,10 @@ import { SectionCard, WorkspaceShell } from "@/components/workspace-shell";
 import { getOrders } from "@/lib/api";
 import { requirePortalViewer } from "@/lib/viewer";
 
+export const metadata = {
+  title: "Buyer Order",
+};
+
 export const dynamic = "force-dynamic";
 
 export default async function OrderDetailPage({ params }: { params: Promise<{ orderId: string }> }) {

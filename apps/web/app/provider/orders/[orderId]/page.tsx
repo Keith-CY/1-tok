@@ -9,6 +9,10 @@ import { DetailChip, SectionCard, WorkspaceShell } from "@/components/workspace-
 import { getProviderOrderDetail } from "@/lib/api";
 import { requirePortalViewer } from "@/lib/viewer";
 
+export const metadata = {
+  title: "Provider Order",
+};
+
 export const dynamic = "force-dynamic";
 
 export default async function ProviderOrderPage({ params }: { params: Promise<{ orderId: string }> }) {

@@ -1,12 +1,17 @@
 import Link from "next/link";
-import { RiArrowRightUpLine, RiAuctionLine, RiPriceTag3Line, RiTimeLine } from "react-icons/ri";
+import { RiArrowRightUpLine, RiAuctionLine } from "react-icons/ri";
 
 import { formatMoney } from "@1tok/contracts";
+import { BuyerDepositPanel } from "@/components/buyer-deposit-panel";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { SectionCard, WorkspaceShell } from "@/components/workspace-shell";
 import { getBuyerDashboardData } from "@/lib/api";
 import { requirePortalViewer } from "@/lib/viewer";
+
+export const metadata = {
+  title: "Buyer",
+};
 
 export const dynamic = "force-dynamic";
 
@@ -39,67 +44,61 @@ export default async function BuyerPage({
   return (
     <WorkspaceShell
       role="buyer"
-      title="Open request board"
-      description="See the market the same way providers do: budget, low proposal, proposal count, and deadline in one place."
-      status={`${openRequests.length} live requests`}
-      actions={[
-        { href: "/buyer/rfqs/create", label: "Post request" },
-        { href: awardedWorkHref, label: "Awarded work", variant: "outline" },
-      ]}
+      title="Request board"
+      description="Post against a visible budget, watch proposals clear into view, and move winning work into delivery."
+      status={`${openRequests.length} open requests`}
     >
-      <section className="rounded-md border border-border bg-card">
-        <div className="grid gap-px bg-border lg:grid-cols-[1.15fr_0.95fr_0.9fr_0.9fr]">
-          <MetricStrip
-            icon={RiAuctionLine}
-            label="Live request book"
-            value={openRequests.length ? `${openRequests.length} requests` : "No live requests"}
-            detail="Price and timing stay visible."
-          />
-          <MetricStrip
-            icon={RiPriceTag3Line}
-            label="Prepaid balance"
-            value={formatMoney(data.summary.prepaidBalanceCents)}
-            detail={deposit ? `${deposit.creditedBalance} credited from CKB deposits` : `${data.summary.settledTopUps} settled USDI top-ups`}
-          />
-          <MetricStrip
-            icon={RiAuctionLine}
-            label="Lowest live price"
-            value={liveFloor ? formatMoney(liveFloor) : "-"}
-            detail={liveFloor ? "Current market floor" : "No price yet"}
-          />
-          <MetricStrip
-            icon={RiTimeLine}
-            label="Closing in 72 hrs"
-            value={`${closingSoon}`}
-            detail="Requests nearing award"
-          />
-        </div>
+      <section className="grid gap-3 lg:grid-cols-[1.15fr_0.95fr_0.9fr_0.9fr]">
+        <MetricStrip
+          icon={RiAuctionLine}
+          label="Live request book"
+          value={openRequests.length ? `${openRequests.length} requests` : "No live requests"}
+          detail="Price and timing stay visible."
+        />
+        <MetricStrip
+          icon={RiAuctionLine}
+          label="Prepaid balance"
+          value={formatMoney(data.summary.prepaidBalanceCents)}
+          detail={deposit ? `${deposit.creditedBalance} credited from CKB deposits` : `${data.summary.settledTopUps} settled USDI top-ups`}
+        />
+        <MetricStrip
+          icon={RiAuctionLine}
+          label="Lowest live price"
+          value={liveFloor ? formatMoney(liveFloor) : "-"}
+          detail={liveFloor ? "Current market floor" : "No price yet"}
+        />
+        <MetricStrip
+          icon={RiAuctionLine}
+          label="Closing in 72 hrs"
+          value={`${closingSoon}`}
+          detail="Requests nearing award"
+        />
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[1.62fr_0.82fr] xl:items-start">
+      <section className="grid gap-8 xl:grid-cols-[minmax(0,1.56fr)_22rem] xl:items-start">
         <SectionCard
-          eyebrow="Live request feed"
+          eyebrow="Open requests"
           title="Price-first request feed"
-          description="This board stays focused on the numbers that decide who gets the work."
+          description="Every row holds the same facts providers see before they quote: budget, current floor, spread, and deadline."
         >
           <div className="space-y-3">
             {openRequests.length === 0 ? (
-              <Card className="border-dashed p-6 text-sm text-muted-foreground">No live requests right now. Post a new request to start a market.</Card>
+              <Card className="bg-card p-6 text-sm text-muted-foreground">No live requests right now. Post a new request to start a market.</Card>
             ) : (
               openRequests.slice(0, 8).map((item, index) => {
                 const low = getLowestBid(item);
 
                 return (
                   <div key={item.id} className="market-row">
-                    <div className="grid gap-4 xl:grid-cols-[1.7fr_0.72fr_0.72fr_0.62fr_0.62fr_auto] xl:items-center">
-                      <div className="min-w-0 space-y-2">
-                        <div className="text-xs font-medium text-primary">{marketSignal(item.bidCount, index)}</div>
-                        <h3 className="text-lg font-semibold leading-tight tracking-tight break-words text-balance">{item.title}</h3>
+                    <div className="grid gap-5 xl:grid-cols-[1.7fr_0.74fr_0.74fr_0.68fr_0.62fr_auto] xl:items-end">
+                      <div className="min-w-0 space-y-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-accent">{marketSignal(item.bidCount, index)}</div>
+                        <h3 className="font-display text-2xl font-medium leading-[1.05] tracking-[-0.02em] break-words text-balance">{item.title}</h3>
                       </div>
                       <FeedMetric label="Budget" value={formatMoney(item.budgetCents)} emphasize />
                       <FeedMetric label="Current low" value={low ? formatMoney(low.quoteCents) : "No price"} />
                       <FeedMetric label="Spread" value={low ? formatMoney(Math.max(item.budgetCents - low.quoteCents, 0)) : "Open"} />
-                      <div className="space-y-1 text-sm text-muted-foreground">
+                      <div className="space-y-2 text-sm leading-7 text-muted-foreground">
                         <div>{formatProposalCount(item.bidCount)}</div>
                         <div>{formatDate(item.responseDeadlineAt)}</div>
                       </div>
@@ -125,43 +124,57 @@ export default async function BuyerPage({
           </div>
         </SectionCard>
 
-        <div className="space-y-6">
+        <div className="space-y-8">
           <SectionCard
-            eyebrow="CKB deposit"
-            title="Deposit USDI to your buyer address"
-            description="Each buyer org gets a fixed CKB address. Send at least 10 USDI there; after 24 blocks the platform sweeps confirmed USDI to treasury and credits your USD balance."
+            eyebrow="Client controls"
+            title="Post and review"
+            description="Keep new work, funded balance, and delivery follow-up in one compact rail."
           >
+            <div className="grid gap-3">
+              <Button asChild className="w-full justify-between">
+                <Link href="/buyer/rfqs/create">
+                  Post request
+                  <RiArrowRightUpLine className="size-4" />
+                </Link>
+              </Button>
+              <Button asChild variant="outline" className="w-full justify-between">
+                <Link href={awardedWorkHref}>
+                  Review delivery
+                  <RiArrowRightUpLine className="size-4" />
+                </Link>
+              </Button>
+            </div>
+          </SectionCard>
+
+          <SectionCard eyebrow="Fund buyer balance" title="">
             <div className="space-y-4">
-              {deposit ? (
-                <>
-                  <div className="rounded-md border border-border bg-background px-3 py-3 font-mono text-sm break-all">{deposit.address}</div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <SpotMetric label="Address USDI" value={deposit.onChainBalance} />
-                    <SpotMetric label="Confirmed USDI" value={deposit.confirmedBalance} />
-                    <SpotMetric label="Credited USD" value={deposit.creditedBalance} />
-                    <SpotMetric label="Sweep threshold" value={`${deposit.minimumSweepAmount} / ${deposit.confirmationBlocks} blocks`} />
+              <BuyerDepositPanel deposit={deposit} topUp={topUp} />
+
+              <div className="market-card px-5 py-5 opacity-60">
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-2">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">Bank top up USD</div>
+                      <div className="font-display text-[clamp(1.15rem,1.7vw,1.45rem)] font-medium leading-[1] tracking-[-0.03em] text-balance">
+                        USD bank funding
+                      </div>
+                    </div>
+                    <span className="bg-card px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                      Coming soon
+                    </span>
                   </div>
-                </>
-              ) : (
-                <Card className="border-dashed p-6 text-sm text-muted-foreground">Settlement has not exposed a buyer deposit address yet.</Card>
-              )}
-              <div className="text-sm text-muted-foreground">
-                {topUp === "success"
-                  ? "Deposit address refreshed."
-                  : topUp === "failed"
-                    ? "Deposit address lookup failed. Try again after checking settlement connectivity."
-                    : "Transfer USDI to the address above. Credits only finalize after the deposit is confirmed and swept into treasury."}
+                </div>
               </div>
             </div>
           </SectionCard>
 
           <SectionCard
-            eyebrow="Top request now"
+            eyebrow="Top request"
             title={topRequest?.title ?? "No live request"}
-            description="This is the clearest current market view for a client watching proposals come in."
+            description="The clearest current market view for the client side of the board."
           >
             {topRequest ? (
-              <div className="space-y-4">
+              <div className="space-y-5">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <SpotMetric label="Budget" value={formatMoney(topRequest.budgetCents)} />
                   <SpotMetric label="Current low" value={getLowestBid(topRequest) ? formatMoney(getLowestBid(topRequest)!.quoteCents) : "No price"} />
@@ -187,25 +200,27 @@ export default async function BuyerPage({
                 )}
               </div>
             ) : (
-              <Card className="border-dashed p-6 text-sm text-muted-foreground">No live request is available right now.</Card>
+              <Card className="bg-card p-6 text-sm text-muted-foreground">No live request is available right now.</Card>
             )}
           </SectionCard>
 
           <SectionCard
-            eyebrow="Awarded work"
+            eyebrow="Delivery lane"
             title="Closed on price"
-            description="These requests already moved out of market pricing and into delivery."
+            description="Requests that already cleared the board and moved into execution."
           >
             <div className="grid gap-4">
               {awarded.length === 0 ? (
-                <Card className="border-dashed p-6 text-sm text-muted-foreground">No awarded requests yet.</Card>
+                <Card className="bg-card p-6 text-sm text-muted-foreground">No awarded requests yet.</Card>
               ) : (
                 awarded.map((order) => (
                   <div key={order.id} className="market-card p-5">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 space-y-2">
-                        <div className="text-xs text-primary">{order.status === "running" ? "In delivery" : order.status}</div>
-                        <h3 className="text-lg font-semibold tracking-tight break-words text-balance">{order.id}</h3>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-accent">
+                          {order.status === "running" ? "In delivery" : order.status}
+                        </div>
+                        <h3 className="font-display text-2xl font-medium tracking-[-0.02em] break-words text-balance">{order.id}</h3>
                       </div>
                       <div className="font-mono text-xl font-semibold tabular-nums text-foreground">{order.milestones.length}</div>
                     </div>
@@ -228,7 +243,7 @@ export default async function BuyerPage({
 }
 
 function MetricStrip({
-  icon: Icon,
+  icon: _Icon,
   label,
   value,
   detail,
@@ -239,13 +254,12 @@ function MetricStrip({
   detail: string;
 }) {
   return (
-    <div className="space-y-2 bg-card px-5 py-5">
-      <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-        <Icon className="size-4 text-primary" />
-        {label}
+    <div className="market-card px-5 py-6">
+      <div className="space-y-3">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">{label}</div>
+        <div className="font-mono text-3xl font-semibold tracking-tight tabular-nums text-foreground">{value}</div>
+        <div className="max-w-xs text-sm leading-7 text-muted-foreground">{detail}</div>
       </div>
-      <div className="font-mono text-3xl font-semibold tracking-tight tabular-nums text-foreground">{value}</div>
-      <div className="text-sm text-muted-foreground">{detail}</div>
     </div>
   );
 }
@@ -261,8 +275,8 @@ function FeedMetric({
 }) {
   return (
     <div className="min-w-0">
-      <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">{label}</div>
-      <div className={emphasize ? "price-inline mt-2 break-words" : "mt-2 font-mono text-xl font-semibold leading-tight tracking-tight tabular-nums break-words text-foreground"}>
+      <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">{label}</div>
+      <div className={emphasize ? "price-inline mt-3 break-words" : "mt-3 font-mono text-xl font-semibold leading-tight tracking-tight tabular-nums break-words text-foreground"}>
         {value}
       </div>
     </div>
@@ -271,9 +285,9 @@ function FeedMetric({
 
 function SpotMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-border bg-secondary/50 px-4 py-4">
-      <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">{label}</div>
-      <div className="mt-2 font-mono text-2xl font-semibold tracking-tight tabular-nums text-foreground">{value}</div>
+    <div className="bg-card px-5 py-5">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">{label}</div>
+      <div className="mt-3 font-mono text-2xl font-semibold tracking-tight tabular-nums text-foreground">{value}</div>
     </div>
   );
 }

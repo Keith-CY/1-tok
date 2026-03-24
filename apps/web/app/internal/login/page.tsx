@@ -3,6 +3,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
+export const metadata = {
+  title: "Ops Sign In",
+};
+
 export const dynamic = "force-dynamic";
 
 const errorMessages: Record<string, string> = {

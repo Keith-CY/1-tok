@@ -2,26 +2,32 @@
 @import "tw-animate-css";
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(0.998 0.001 264);
-  --foreground: oklch(0.19 0.02 264);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.19 0.02 264);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.19 0.02 264);
-  --primary: oklch(0.55 0.19 257);
-  --primary-foreground: oklch(0.995 0.002 264);
-  --secondary: oklch(0.976 0.006 255);
-  --secondary-foreground: oklch(0.22 0.02 264);
-  --muted: oklch(0.982 0.004 255);
-  --muted-foreground: oklch(0.53 0.03 264);
-  --accent: oklch(0.96 0.014 257);
-  --accent-foreground: oklch(0.24 0.02 264);
-  --destructive: oklch(0.61 0.2 27);
-  --destructive-foreground: oklch(0.99 0.002 264);
-  --border: oklch(0.89 0.01 255);
-  --input: oklch(0.89 0.01 255);
-  --ring: oklch(0.56 0.2 258);
+  --radius: 0px;
+  --background: #f9f9f9;
+  --foreground: #1a1c1c;
+  --card: #ffffff;
+  --card-foreground: #1a1c1c;
+  --popover: #ffffff;
+  --popover-foreground: #1a1c1c;
+  --primary: #000000;
+  --primary-foreground: #f9f9f9;
+  --secondary: #f3f3f3;
+  --secondary-foreground: #1a1c1c;
+  --muted: #efefef;
+  --muted-foreground: #5b5d60;
+  --accent: #8d3424;
+  --accent-foreground: #f9f9f9;
+  --destructive: #8a1d1d;
+  --destructive-foreground: #f9f9f9;
+  --border: rgba(26, 28, 28, 0.16);
+  --input: rgba(26, 28, 28, 0.2);
+  --ring: rgba(141, 52, 36, 0.24);
+  --surface-low: #f3f3f3;
+  --surface-lowest: #ffffff;
+  --surface-highest: #e2e2e2;
+  --accent-weak: rgba(141, 52, 36, 0.1);
+  --accent-medium: rgba(141, 52, 36, 0.18);
+  --ambient-shadow: 0 20px 40px rgba(0, 0, 0, 0.06);
 }
 
 @theme inline {
@@ -47,37 +53,67 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
 }
 
 @layer base {
   * {
-    @apply border-border;
+    @apply border-transparent;
   }
 
   html {
-    background: hsl(var(--background));
+    background: var(--background);
   }
 
   body {
-    @apply min-h-dvh bg-background text-foreground antialiased;
+    min-height: 100dvh;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.5) 0%, rgba(243, 243, 243, 0.72) 100%),
+      var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans), sans-serif;
+    font-feature-settings: "liga" 1, "kern" 1;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-display), serif;
+    letter-spacing: -0.02em;
   }
 
   a {
     @apply text-inherit no-underline;
   }
 
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--muted-foreground);
+  }
+
   ::selection {
-    @apply bg-primary/15 text-foreground;
+    background: var(--accent-medium);
+    color: var(--foreground);
   }
 }
 
 @layer components {
   .market-card {
-    @apply rounded-md border border-border bg-card shadow-[0_10px_30px_-18px_rgba(15,23,42,0.16)] transition-[transform,box-shadow,border-color] duration-150 hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[0_18px_40px_-20px_rgba(37,99,235,0.24)];
+    @apply bg-card text-card-foreground shadow-[0_20px_40px_rgba(0,0,0,0.06)] transition-colors duration-150 hover:bg-secondary;
+  }
+
+  .market-row {
+    @apply bg-card px-5 py-6 transition-colors duration-150 hover:bg-secondary;
+  }
+
+  .market-metric {
+    @apply bg-secondary px-5 py-5;
   }
 
   .price-display {
@@ -89,15 +125,16 @@
   }
 
   .eyebrow-pill {
-    @apply inline-flex items-center gap-2 rounded-md border border-primary/15 bg-primary/5 px-3 py-1 text-xs font-medium text-primary;
+    @apply inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.26em] text-accent;
   }
 
-  .market-row {
-    @apply rounded-md border border-border bg-card px-4 py-4 shadow-[0_10px_30px_-18px_rgba(15,23,42,0.16)] transition-[transform,box-shadow,border-color] duration-150 hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[0_18px_40px_-20px_rgba(37,99,235,0.22)];
+  .sheet-stack {
+    @apply bg-secondary shadow-[0_20px_40px_rgba(0,0,0,0.06)];
   }
 
-  .market-metric {
-    @apply rounded-md border border-border bg-card px-4 py-4 shadow-[0_10px_24px_-18px_rgba(15,23,42,0.14)];
+  .ghost-outline {
+    outline: 1px solid rgba(26, 28, 28, 0.2);
+    outline-offset: -1px;
   }
 }
 
