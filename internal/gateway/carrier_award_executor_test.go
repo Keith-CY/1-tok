@@ -299,6 +299,9 @@ func TestCarrierAwardExecutorSettlesOrderAfterSuccessfulRun(t *testing.T) {
 	if runInput.Capability != "run_shell" {
 		t.Fatalf("capability = %s, want run_shell", runInput.Capability)
 	}
+	if !strings.Contains(runInput.Command, ".bash_profile") {
+		t.Fatalf("command = %q, want profile bootstrap", runInput.Command)
+	}
 	if !strings.Contains(runInput.Command, "codex exec") {
 		t.Fatalf("command = %q, want codex exec", runInput.Command)
 	}

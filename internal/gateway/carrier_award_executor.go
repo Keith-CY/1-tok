@@ -161,10 +161,13 @@ func buildCarrierPrompt(rfq platform.RFQ, order *core.Order, milestone *core.Mil
 func buildCarrierRunCommand(reportPath, prompt string) string {
 	reportDir := path.Dir(reportPath)
 	return fmt.Sprintf(
-		"mkdir -p %s && codex exec --skip-git-repo-check --output-last-message %s %s",
-		shellQuote(reportDir),
-		shellQuote(reportPath),
-		shellQuote(prompt),
+		"bash -lc %s",
+		shellQuote(fmt.Sprintf(
+			"source \"$HOME/.bash_profile\" >/dev/null 2>&1 || true; mkdir -p %s && codex exec --skip-git-repo-check --output-last-message %s %s",
+			shellQuote(reportDir),
+			shellQuote(reportPath),
+			shellQuote(prompt),
+		)),
 	)
 }
 
