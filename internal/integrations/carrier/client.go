@@ -14,9 +14,17 @@ import (
 )
 
 type CodeAgentClient interface {
+	InstallCodeAgent(ctx context.Context, input CodeAgentInstallInput) error
 	GetCodeAgentHealth(ctx context.Context, input CodeAgentHealthInput) (CodeAgentHealthResult, error)
 	GetCodeAgentVersion(ctx context.Context, input CodeAgentVersionInput) (CodeAgentVersionResult, error)
 	RunCodeAgent(ctx context.Context, input CodeAgentRunInput) (CodeAgentRunResult, error)
+}
+
+type CodeAgentInstallInput struct {
+	HostID        string
+	AgentID       string
+	Backend       string
+	WorkspaceRoot string
 }
 
 type CodeAgentHealthInput struct {
@@ -94,6 +102,41 @@ func NewClient(baseURL, apiToken string) *Client {
 
 func NewClientFromEnv() CodeAgentClient {
 	return NewClient(os.Getenv("CARRIER_GATEWAY_URL"), os.Getenv("CARRIER_GATEWAY_API_TOKEN"))
+}
+
+func (c *Client) InstallCodeAgent(ctx context.Context, input CodeAgentInstallInput) error {
+	body, err := json.Marshal(map[string]any{
+		"backend":       input.Backend,
+		"workspaceRoot": input.WorkspaceRoot,
+	})
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+codeAgentPath(input.HostID, input.AgentID, "install"), bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+	if c.apiToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiToken)
+	}
+
+	res, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+
+	responseBody, err := io.ReadAll(io.LimitReader(res.Body, 10<<20))
+	if err != nil {
+		return err
+	}
+	if res.StatusCode >= http.StatusBadRequest {
+		return fmt.Errorf("carrier gateway returned %d: %s", res.StatusCode, strings.TrimSpace(string(responseBody)))
+	}
+	return nil
 }
 
 func (c *Client) GetCodeAgentHealth(ctx context.Context, input CodeAgentHealthInput) (CodeAgentHealthResult, error) {

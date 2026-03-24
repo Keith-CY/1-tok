@@ -28,6 +28,10 @@ func (s *stubCarrierClient) GetCodeAgentHealth(_ context.Context, input carrierc
 	return s.healthResult, nil
 }
 
+func (s *stubCarrierClient) InstallCodeAgent(_ context.Context, _ carrierclient.CodeAgentInstallInput) error {
+	return nil
+}
+
 func (s *stubCarrierClient) GetCodeAgentVersion(_ context.Context, input carrierclient.CodeAgentVersionInput) (carrierclient.CodeAgentVersionResult, error) {
 	s.versionInput = input
 	return s.versionResult, nil
@@ -415,7 +419,7 @@ func TestCarrierEvent_Success(t *testing.T) {
 	payload, _ := json.Marshal(map[string]any{
 		"orderId": "ord_1", "milestoneId": "ms_1",
 		"eventType": "usage_reported",
-		"payload": map[string]any{"kind": "token", "amountCents": 100},
+		"payload":   map[string]any{"kind": "token", "amountCents": 100},
 	})
 	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/events", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
@@ -609,7 +613,7 @@ func TestCarrierEvent_WithGatewayForward(t *testing.T) {
 	payload, _ := json.Marshal(map[string]any{
 		"orderId": "ord_1", "milestoneId": "ms_1",
 		"eventType": "usage_reported",
-		"payload": map[string]any{"kind": "token", "amountCents": 200},
+		"payload":   map[string]any{"kind": "token", "amountCents": 200},
 	})
 	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/events", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
@@ -628,7 +632,7 @@ func TestPostJSON_ClosedServer(t *testing.T) {
 	payload, _ := json.Marshal(map[string]any{
 		"orderId": "ord_1", "milestoneId": "ms_1",
 		"eventType": "usage_reported",
-		"payload": map[string]any{"kind": "token", "amountCents": 100},
+		"payload":   map[string]any{"kind": "token", "amountCents": 100},
 	})
 	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/events", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
@@ -661,7 +665,7 @@ func TestCarrierEvent_SettleAction(t *testing.T) {
 	payload, _ := json.Marshal(map[string]any{
 		"orderId": "ord_1", "milestoneId": "ms_1",
 		"eventType": "milestone_ready",
-		"payload": map[string]any{"summary": "done"},
+		"payload":   map[string]any{"summary": "done"},
 	})
 	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/events", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
@@ -684,7 +688,7 @@ func TestCarrierEvent_PauseAction(t *testing.T) {
 	payload, _ := json.Marshal(map[string]any{
 		"orderId": "ord_1", "milestoneId": "ms_1",
 		"eventType": "budget_low",
-		"payload": map[string]any{},
+		"payload":   map[string]any{},
 	})
 	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/events", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
@@ -724,7 +728,7 @@ func TestPostJSON_GatewayError(t *testing.T) {
 	payload, _ := json.Marshal(map[string]any{
 		"orderId": "ord_1", "milestoneId": "ms_1",
 		"eventType": "usage_reported",
-		"payload": map[string]any{"kind": "token", "amountCents": 100},
+		"payload":   map[string]any{"kind": "token", "amountCents": 100},
 	})
 	req := httptest.NewRequest(http.MethodPost, "/v1/carrier/events", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
@@ -757,4 +761,3 @@ func TestNewServerWithOptions_RequireExternals(t *testing.T) {
 		t.Fatal("expected non-nil server")
 	}
 }
-

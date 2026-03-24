@@ -63,6 +63,57 @@ func TestErrorContainsFold(t *testing.T) {
 	}
 }
 
+func TestEnsureProviderCarrierBindingReplacesDriftedActiveBinding(t *testing.T) {
+	var suspendedBindingID string
+	var registered bool
+	var verified bool
+
+	gatewayServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/carrier-bindings/org_demo_provider":
+			_ = json.NewEncoder(w).Encode(map[string]any{"binding": map[string]any{
+				"id":             "pcb_old",
+				"status":         "active",
+				"carrierBaseUrl": "http://carrier.local",
+				"hostId":         "host_old",
+				"agentId":        "main",
+				"backend":        "codex",
+				"workspaceRoot":  "/workspace",
+			}})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/carrier-bindings/pcb_old/suspend":
+			suspendedBindingID = "pcb_old"
+			_ = json.NewEncoder(w).Encode(map[string]any{"binding": map[string]any{"id": "pcb_old", "status": "suspended"}})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/carrier-bindings":
+			registered = true
+			_ = json.NewEncoder(w).Encode(map[string]any{"binding": map[string]any{"id": "pcb_new"}})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/carrier-bindings/pcb_new/verify":
+			verified = true
+			_ = json.NewEncoder(w).Encode(map[string]any{"binding": map[string]any{"id": "pcb_new", "status": "active"}})
+		default:
+			t.Fatalf("unexpected gateway path %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer gatewayServer.Close()
+
+	client := &smokeClient{httpClient: gatewayServer.Client()}
+	err := client.ensureProviderCarrierBinding(context.Background(), gatewayServer.URL, "org_demo_provider", USDIMarketplaceE2EConfig{
+		CarrierBaseURL:       "http://carrier.local",
+		CarrierHostID:        "host_new",
+		CarrierAgentID:       "main",
+		CarrierBackend:       "codex",
+		CarrierWorkspaceRoot: "/workspace",
+	})
+	if err != nil {
+		t.Fatalf("ensure provider carrier binding: %v", err)
+	}
+	if suspendedBindingID != "pcb_old" {
+		t.Fatalf("suspended binding = %q, want pcb_old", suspendedBindingID)
+	}
+	if !registered || !verified {
+		t.Fatalf("registered=%t verified=%t, want true true", registered, verified)
+	}
+}
+
 func TestRunDemoVerifyReturnsBlockedVerdict(t *testing.T) {
 	iamServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

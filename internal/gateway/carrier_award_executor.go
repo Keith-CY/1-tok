@@ -75,12 +75,22 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 	stderrPath := carrierStderrPath(reportPath)
 	reportDir := path.Dir(reportPath)
 	command := buildCarrierRunCommand(reportDir, reportPath, buildCarrierPrompt(input.RFQ, input.Order, milestone))
+	hostID := strings.TrimSpace(input.Binding.HostID)
+	agentID := firstNonEmptyString(strings.TrimSpace(input.Binding.AgentID), "main")
+	backend := firstNonEmptyString(strings.TrimSpace(input.Binding.Backend), "codex")
+	workspaceRoot := firstNonEmptyString(strings.TrimSpace(input.Binding.WorkspaceRoot), "/workspace")
+	client := e.clientForBinding(input.Binding)
 
-	runResult, err := e.clientForBinding(input.Binding).RunCodeAgent(ctx, carrierclient.CodeAgentRunInput{
-		HostID:        strings.TrimSpace(input.Binding.HostID),
-		AgentID:       firstNonEmptyString(strings.TrimSpace(input.Binding.AgentID), "main"),
-		Backend:       firstNonEmptyString(strings.TrimSpace(input.Binding.Backend), "codex"),
-		WorkspaceRoot: firstNonEmptyString(strings.TrimSpace(input.Binding.WorkspaceRoot), "/workspace"),
+	if err := ensureCarrierCodeAgentReady(ctx, client, hostID, agentID, backend, workspaceRoot); err != nil {
+		_, _ = e.carrier.FailJob(job.ID, err.Error())
+		return err
+	}
+
+	runResult, err := client.RunCodeAgent(ctx, carrierclient.CodeAgentRunInput{
+		HostID:        hostID,
+		AgentID:       agentID,
+		Backend:       backend,
+		WorkspaceRoot: workspaceRoot,
 		Capability:    "run_shell",
 		Command:       command,
 		CWD:           reportDir,
@@ -114,6 +124,40 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 		OccurredAt:  e.now().UTC(),
 	})
 	return err
+}
+
+func ensureCarrierCodeAgentReady(ctx context.Context, client carrierclient.CodeAgentClient, hostID, agentID, backend, workspaceRoot string) error {
+	versionInput := carrierclient.CodeAgentVersionInput{
+		HostID:  hostID,
+		AgentID: agentID,
+		Backend: backend,
+	}
+	version, err := client.GetCodeAgentVersion(ctx, versionInput)
+	if err == nil && strings.TrimSpace(version.Value) != "" {
+		return nil
+	}
+
+	installInput := carrierclient.CodeAgentInstallInput{
+		HostID:        hostID,
+		AgentID:       agentID,
+		Backend:       backend,
+		WorkspaceRoot: workspaceRoot,
+	}
+	if installErr := client.InstallCodeAgent(ctx, installInput); installErr != nil {
+		if err != nil {
+			return fmt.Errorf("carrier codeagent preflight failed for host=%s agent=%s backend=%s: version=%v install=%w", hostID, agentID, backend, err, installErr)
+		}
+		return fmt.Errorf("carrier codeagent preflight failed for host=%s agent=%s backend=%s: install=%w", hostID, agentID, backend, installErr)
+	}
+
+	version, err = client.GetCodeAgentVersion(ctx, versionInput)
+	if err != nil {
+		return fmt.Errorf("carrier codeagent version after install failed for host=%s agent=%s backend=%s: %w", hostID, agentID, backend, err)
+	}
+	if strings.TrimSpace(version.Value) == "" {
+		return fmt.Errorf("carrier codeagent version after install is empty for host=%s agent=%s backend=%s", hostID, agentID, backend)
+	}
+	return nil
 }
 
 func runningMilestone(order *core.Order) *core.Milestone {

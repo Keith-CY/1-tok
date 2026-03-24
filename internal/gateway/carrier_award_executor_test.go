@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -25,9 +26,16 @@ func (s *stubCarrierAwardExecutor) Execute(ctx context.Context, input carrierAwa
 }
 
 type stubCodeAgentClient struct {
-	runInputs []carrierclient.CodeAgentRunInput
-	runResult carrierclient.CodeAgentRunResult
-	runErr    error
+	versionInputs            []carrierclient.CodeAgentVersionInput
+	versionCalls             int
+	versionResult            carrierclient.CodeAgentVersionResult
+	versionErr               error
+	postInstallVersionResult carrierclient.CodeAgentVersionResult
+	installInputs            []carrierclient.CodeAgentInstallInput
+	installErr               error
+	runInputs                []carrierclient.CodeAgentRunInput
+	runResult                carrierclient.CodeAgentRunResult
+	runErr                   error
 }
 
 type stubGatewayCarrierSettlementProvisioner struct {
@@ -54,8 +62,27 @@ func (s *stubCodeAgentClient) GetCodeAgentHealth(context.Context, carrierclient.
 	return carrierclient.CodeAgentHealthResult{}, nil
 }
 
-func (s *stubCodeAgentClient) GetCodeAgentVersion(context.Context, carrierclient.CodeAgentVersionInput) (carrierclient.CodeAgentVersionResult, error) {
-	return carrierclient.CodeAgentVersionResult{}, nil
+func (s *stubCodeAgentClient) GetCodeAgentVersion(_ context.Context, input carrierclient.CodeAgentVersionInput) (carrierclient.CodeAgentVersionResult, error) {
+	s.versionInputs = append(s.versionInputs, input)
+	s.versionCalls++
+	if s.versionCalls == 1 && s.versionErr != nil {
+		return carrierclient.CodeAgentVersionResult{}, s.versionErr
+	}
+	if s.versionCalls > 1 && strings.TrimSpace(s.postInstallVersionResult.Value) != "" {
+		return s.postInstallVersionResult, nil
+	}
+	if strings.TrimSpace(s.versionResult.Value) != "" {
+		return s.versionResult, nil
+	}
+	return carrierclient.CodeAgentVersionResult{
+		Backend: firstNonEmptyString(input.Backend, "codex"),
+		Value:   "codex-cli 0.116.0",
+	}, nil
+}
+
+func (s *stubCodeAgentClient) InstallCodeAgent(_ context.Context, input carrierclient.CodeAgentInstallInput) error {
+	s.installInputs = append(s.installInputs, input)
+	return s.installErr
 }
 
 func (s *stubCodeAgentClient) RunCodeAgent(_ context.Context, input carrierclient.CodeAgentRunInput) (carrierclient.CodeAgentRunResult, error) {
@@ -438,6 +465,9 @@ func TestCarrierAwardExecutorFailsJobWithOutputPathsWhenCommandExitsNonZero(t *t
 	executor := &carrierOrderAutoExecutor{
 		app:     app,
 		carrier: carrierSvc,
+		now: func() time.Time {
+			return time.Date(2099, 3, 24, 15, 4, 5, 0, time.UTC)
+		},
 		clientForBinding: func(platform.ProviderCarrierBinding) carrierclient.CodeAgentClient {
 			return client
 		},
@@ -471,5 +501,126 @@ func TestCarrierAwardExecutorFailsJobWithOutputPathsWhenCommandExitsNonZero(t *t
 	}
 	if jobs[0].State != carrier.JobStateFailed {
 		t.Fatalf("job state = %s, want failed", jobs[0].State)
+	}
+}
+
+func TestCarrierAwardExecutorInstallsCodeAgentWhenVersionProbeFails(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	carrierSvc := carrier.NewService()
+
+	providerBinding, err := app.RegisterCarrierBinding(platform.ProviderCarrierBinding{
+		ProviderOrgID:  "provider_1",
+		CarrierBaseURL: "https://carrier.example.com",
+		HostID:         "host_1",
+		AgentID:        "agent_1",
+		Backend:        "codex",
+		WorkspaceRoot:  "/workspace",
+	})
+	if err != nil {
+		t.Fatalf("register binding: %v", err)
+	}
+	if _, err := app.VerifyCarrierBinding(providerBinding.ID); err != nil {
+		t.Fatalf("verify binding: %v", err)
+	}
+	settlementBinding, err := app.RegisterProviderSettlementBinding(platform.ProviderSettlementBinding{
+		ProviderOrgID: "provider_1",
+		Asset:         "USDI",
+		PeerID:        "peer_provider",
+		P2PAddress:    "/dns4/provider/tcp/8228/p2p/peer_provider",
+		NodeRPCURL:    "http://provider:8227",
+		UDTTypeScript: platform.UDTTypeScript{
+			CodeHash: "0xudt",
+			HashType: "type",
+			Args:     "0x01",
+		},
+	})
+	if err != nil {
+		t.Fatalf("register settlement binding: %v", err)
+	}
+	if _, err := app.VerifyProviderSettlementBinding(settlementBinding.ID); err != nil {
+		t.Fatalf("verify settlement binding: %v", err)
+	}
+	app.SetProviderSettlementProvisioner(&stubGatewayCarrierSettlementProvisioner{
+		result: platform.EnsureProviderLiquidityResult{
+			ChannelID:           "ch_gateway_1",
+			ReuseSource:         platform.ProviderLiquidityReuseNewChannel,
+			ReadyChannelCount:   1,
+			TotalSpendableCents: 5_000,
+		},
+	})
+
+	rfq, err := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID:         "buyer_1",
+		Title:              "Research 3 vendors",
+		Category:           "research",
+		Scope:              "Compare 3 Japanese AI call-center vendors.",
+		BudgetCents:        4_000,
+		ResponseDeadlineAt: time.Date(2099, 3, 26, 14, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("create rfq: %v", err)
+	}
+	bid, err := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "provider_1",
+		Message:       "bid",
+		Milestones: []platform.BidMilestoneInput{{
+			ID:             "ms_1",
+			Title:          "Service delivery",
+			BasePriceCents: 3_200,
+			BudgetCents:    3_200,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("create bid: %v", err)
+	}
+	awardedRFQ, order, err := app.AwardRFQ(rfq.ID, platform.AwardRFQInput{
+		BidID:       bid.ID,
+		FundingMode: "prepaid",
+	})
+	if err != nil {
+		t.Fatalf("award rfq: %v", err)
+	}
+
+	client := &stubCodeAgentClient{
+		versionErr: errors.New("not installed"),
+		postInstallVersionResult: carrierclient.CodeAgentVersionResult{
+			Backend: "codex",
+			Value:   "codex-cli 0.116.0",
+		},
+		runResult: carrierclient.CodeAgentRunResult{
+			Backend: "codex",
+			Result: carrierclient.CodeAgentRunOutput{
+				OK:             true,
+				PolicyDecision: "allow",
+			},
+		},
+	}
+	executor := &carrierOrderAutoExecutor{
+		app:     app,
+		carrier: carrierSvc,
+		now: func() time.Time {
+			return time.Date(2099, 3, 24, 15, 4, 5, 0, time.UTC)
+		},
+		clientForBinding: func(platform.ProviderCarrierBinding) carrierclient.CodeAgentClient {
+			return client
+		},
+	}
+
+	if err := executor.Execute(context.Background(), carrierAwardExecutionInput{
+		RFQ:     awardedRFQ,
+		Order:   order,
+		Binding: providerBinding,
+	}); err != nil {
+		t.Fatalf("execute carrier award: %v", err)
+	}
+
+	if len(client.installInputs) != 1 {
+		t.Fatalf("install inputs = %d, want 1", len(client.installInputs))
+	}
+	if client.installInputs[0].HostID != "host_1" || client.installInputs[0].AgentID != "agent_1" {
+		t.Fatalf("unexpected install input: %+v", client.installInputs[0])
+	}
+	if len(client.versionInputs) != 2 {
+		t.Fatalf("version inputs = %d, want 2", len(client.versionInputs))
 	}
 }
