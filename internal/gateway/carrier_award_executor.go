@@ -73,7 +73,8 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 	reportPath := carrierReportPath(input.Binding.WorkspaceRoot, input.Order.ID, milestone.ID)
 	stdoutPath := carrierStdoutPath(reportPath)
 	stderrPath := carrierStderrPath(reportPath)
-	command := buildCarrierRunCommand(reportPath, buildCarrierPrompt(input.RFQ, input.Order, milestone))
+	reportDir := path.Dir(reportPath)
+	command := buildCarrierRunCommand(reportDir, reportPath, buildCarrierPrompt(input.RFQ, input.Order, milestone))
 
 	runResult, err := e.clientForBinding(input.Binding).RunCodeAgent(ctx, carrierclient.CodeAgentRunInput{
 		HostID:        strings.TrimSpace(input.Binding.HostID),
@@ -82,6 +83,7 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 		WorkspaceRoot: firstNonEmptyString(strings.TrimSpace(input.Binding.WorkspaceRoot), "/workspace"),
 		Capability:    "run_shell",
 		Command:       command,
+		CWD:           reportDir,
 		TimeoutSec:    900,
 		StdoutPath:    stdoutPath,
 		StderrPath:    stderrPath,
@@ -178,10 +180,11 @@ func buildCarrierPrompt(rfq platform.RFQ, order *core.Order, milestone *core.Mil
 	return builder.String()
 }
 
-func buildCarrierRunCommand(reportPath, prompt string) string {
-	reportDir := path.Dir(reportPath)
+func buildCarrierRunCommand(reportDir, reportPath, prompt string) string {
 	inner := fmt.Sprintf(
-		"export HOME=/home/carrier; export CODEX_HOME=/home/carrier/.codex; . /home/carrier/.bash_profile >/dev/null 2>&1 || true; mkdir -p %s && codex exec --skip-git-repo-check --output-last-message %s %s",
+		"set -e; export HOME=/home/carrier; export CODEX_HOME=/home/carrier/.codex; . /home/carrier/.bash_profile >/dev/null 2>&1 || true; mkdir -p %s; cd %s; codex exec --cd %s --skip-git-repo-check --full-auto --output-last-message %s %s",
+		shellQuote(reportDir),
+		shellQuote(reportDir),
 		shellQuote(reportDir),
 		shellQuote(reportPath),
 		shellQuote(prompt),

@@ -305,6 +305,9 @@ func TestCarrierAwardExecutorSettlesOrderAfterSuccessfulRun(t *testing.T) {
 	if runInput.StderrPath != "/workspace/1tok/"+order.ID+"/ms_1/result.md.stderr.log" {
 		t.Fatalf("stderr path = %q, want report stderr path", runInput.StderrPath)
 	}
+	if runInput.CWD != "/workspace/1tok/"+order.ID+"/ms_1" {
+		t.Fatalf("cwd = %q, want report directory", runInput.CWD)
+	}
 	if !strings.Contains(runInput.Command, ".bash_profile") {
 		t.Fatalf("command = %q, want profile bootstrap", runInput.Command)
 	}
@@ -319,6 +322,12 @@ func TestCarrierAwardExecutorSettlesOrderAfterSuccessfulRun(t *testing.T) {
 	}
 	if !strings.Contains(runInput.Command, "codex exec") {
 		t.Fatalf("command = %q, want codex exec", runInput.Command)
+	}
+	if !strings.Contains(runInput.Command, "--cd") {
+		t.Fatalf("command = %q, want explicit codex workdir", runInput.Command)
+	}
+	if !strings.Contains(runInput.Command, "--full-auto") {
+		t.Fatalf("command = %q, want full-auto codex run", runInput.Command)
 	}
 	if !strings.Contains(runInput.Command, "Do not browse the web or use external network tools.") {
 		t.Fatalf("command = %q, want no-browsing carrier prompt", runInput.Command)
