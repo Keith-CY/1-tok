@@ -1158,14 +1158,16 @@ bootstrap_usdi_channel() {
     open_channel_from_payer "${INVOICE_PEER_ID}" "${funding_amount_hex}" "${USDI_TYPE_SCRIPT_JSON}" "${invoice_addr}" "${payer_addr}"
     accept_channel_on_invoice_node "${OPEN_CHANNEL_TEMPORARY_ID}" "${accept_funding_hex}"
     wait_rc=0
-    if ! wait_until_channel_ready "${CHANNEL_READY_ATTEMPTS_PER_ROUND}" "${OPEN_CHANNEL_TEMPORARY_ID}" "${accept_funding_hex}"; then
-      wait_rc=$?
+    set +e
+    wait_until_channel_ready "${CHANNEL_READY_ATTEMPTS_PER_ROUND}" "${OPEN_CHANNEL_TEMPORARY_ID}" "${accept_funding_hex}"
+    wait_rc=$?
+    set -e
+    if [[ "${wait_rc}" -ne 0 ]]; then
       accept_channel_on_invoice_node "${OPEN_CHANNEL_TEMPORARY_ID}" "${accept_funding_hex}"
-      if ! wait_until_channel_ready "${CHANNEL_READY_ATTEMPTS_PER_ROUND}" "${OPEN_CHANNEL_TEMPORARY_ID}" "${accept_funding_hex}"; then
-        wait_rc=$?
-      else
-        wait_rc=0
-      fi
+      set +e
+      wait_until_channel_ready "${CHANNEL_READY_ATTEMPTS_PER_ROUND}" "${OPEN_CHANNEL_TEMPORARY_ID}" "${accept_funding_hex}"
+      wait_rc=$?
+      set -e
     fi
     if [[ "${wait_rc}" -eq 0 ]]; then
       break
