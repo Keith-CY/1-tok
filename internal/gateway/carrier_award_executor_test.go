@@ -302,6 +302,12 @@ func TestCarrierAwardExecutorSettlesOrderAfterSuccessfulRun(t *testing.T) {
 	if !strings.Contains(runInput.Command, ".bash_profile") {
 		t.Fatalf("command = %q, want profile bootstrap", runInput.Command)
 	}
+	if !strings.Contains(runInput.Command, "HOME=/home/carrier") {
+		t.Fatalf("command = %q, want fixed carrier home", runInput.Command)
+	}
+	if !strings.Contains(runInput.Command, "CODEX_HOME=/home/carrier/.codex") {
+		t.Fatalf("command = %q, want fixed codex home", runInput.Command)
+	}
 	if !strings.Contains(runInput.Command, "codex exec") {
 		t.Fatalf("command = %q, want codex exec", runInput.Command)
 	}

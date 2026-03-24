@@ -163,7 +163,7 @@ func buildCarrierRunCommand(reportPath, prompt string) string {
 	return fmt.Sprintf(
 		"bash -lc %s",
 		shellQuote(fmt.Sprintf(
-			"source \"$HOME/.bash_profile\" >/dev/null 2>&1 || true; mkdir -p %s && codex exec --skip-git-repo-check --output-last-message %s %s",
+			"export HOME=/home/carrier; export CODEX_HOME=/home/carrier/.codex; source /home/carrier/.bash_profile >/dev/null 2>&1 || true; mkdir -p %s && codex exec --skip-git-repo-check --output-last-message %s %s",
 			shellQuote(reportDir),
 			shellQuote(reportPath),
 			shellQuote(prompt),
