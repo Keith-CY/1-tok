@@ -25,6 +25,7 @@ const usdiMarketplaceE2EHTTPTimeout = 2 * time.Minute
 const usdiMarketplaceCarrierInstallTimeout = 10 * time.Minute
 const usdiMarketplaceProviderPayoutRetryAttempts = 3
 const usdiMarketplaceProviderPayoutRetryDelay = 2 * time.Second
+const usdiMarketplaceBuyerTopUpAmount = "10.00"
 const usdiMarketplaceBuyerDepositCreditWaitFloor = 3 * time.Minute
 const usdiMarketplaceBuyerDepositBlockIntervalEstimate = 12 * time.Second
 const usdiMarketplaceBuyerDepositConfirmationGrace = 2 * time.Minute
@@ -239,11 +240,11 @@ func RunUSDIMarketplaceE2E(ctx context.Context, cfg USDIMarketplaceE2EConfig) (U
 		}
 	}
 
-	topUpSummary, err := client.createBuyerTopUp(ctx, cfg.SettlementBaseURL, buyer, cfg.SettlementServiceToken, "50.00")
+	topUpSummary, err := client.createBuyerTopUp(ctx, cfg.SettlementBaseURL, buyer, cfg.SettlementServiceToken, usdiMarketplaceBuyerTopUpAmount)
 	if err != nil {
 		return USDIMarketplaceE2ESummary{}, err
 	}
-	topUpSummary, err = client.waitBuyerDepositCredit(ctx, cfg, buyer, "50.00")
+	topUpSummary, err = client.waitBuyerDepositCredit(ctx, cfg, buyer, usdiMarketplaceBuyerTopUpAmount)
 	if err != nil {
 		return USDIMarketplaceE2ESummary{}, err
 	}

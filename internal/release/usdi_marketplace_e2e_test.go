@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -274,6 +275,116 @@ func TestWaitBuyerDepositCreditRetriesFaucetFailures(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(&faucetAttempts); got != 2 {
 		t.Fatalf("faucet attempts = %d, want 2", got)
+	}
+}
+
+func TestRunUSDIMarketplaceE2EAcceptsMinimumTenUSDITopup(t *testing.T) {
+	const buyerDepositAddress = "ckt1qyqfth8m4fevfzh5hhd088s78qcdjjp8cehs7z8jhw"
+	originalRequestUSDIFaucet := requestUSDIFaucetFunc
+	originalPollInterval := waitBuyerDepositCreditPollInterval
+	defer func() {
+		requestUSDIFaucetFunc = originalRequestUSDIFaucet
+		waitBuyerDepositCreditPollInterval = originalPollInterval
+	}()
+
+	waitBuyerDepositCreditPollInterval = 0
+	requestUSDIFaucetFunc = func(context.Context, *http.Client, USDIMarketplaceE2EConfig, string, string) error {
+		return nil
+	}
+
+	var settlementSummaryCalls int32
+	settlementServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/healthz":
+			_, _ = w.Write([]byte(`{"status":"ok"}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/topups":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"buyerOrgId":            "buyer_1",
+				"asset":                 "USDI",
+				"address":               buyerDepositAddress,
+				"creditedBalanceCents":  0,
+				"rawMinimumSweepUnits":  10,
+				"confirmationBlocks":   24,
+				"minimumSweepAmount":   "10.00",
+				"creditedBalance":      "0.00",
+				"onChainBalance":       "0.00",
+				"confirmedBalance":     "0.00",
+				"rawOnChainUnits":      0,
+				"rawConfirmedUnits":    0,
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/buyer/deposit-address":
+			atomic.AddInt32(&settlementSummaryCalls, 1)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"buyerOrgId":            "buyer_1",
+				"asset":                 "USDI",
+				"address":               buyerDepositAddress,
+				"creditedBalanceCents":  1000,
+				"rawMinimumSweepUnits":  10,
+				"confirmationBlocks":   24,
+				"minimumSweepAmount":   "10.00",
+				"creditedBalance":      "10.00",
+				"onChainBalance":       "10.00",
+				"confirmedBalance":     "10.00",
+				"rawOnChainUnits":      10,
+				"rawConfirmedUnits":    10,
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/funding-records":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"records": []map[string]any{
+					{
+						"id":         "fund_topup",
+						"kind":       "buyer_topup",
+						"buyerOrgId": "buyer_1",
+						"asset":      "USDI",
+						"amount":     "10.00",
+						"state":      "SETTLED",
+					},
+				},
+			})
+		default:
+			t.Fatalf("unexpected settlement request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer settlementServer.Close()
+
+	gatewayServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/healthz":
+			_, _ = w.Write([]byte(`{"status":"ok"}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/carrier-bindings":
+			http.Error(w, `{"error":"stop after topup"}`, http.StatusTeapot)
+		default:
+			t.Fatalf("unexpected gateway request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer gatewayServer.Close()
+
+	executionServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/healthz" {
+			_, _ = w.Write([]byte(`{"status":"ok"}`))
+			return
+		}
+		t.Fatalf("unexpected execution request %s %s", r.Method, r.URL.Path)
+	}))
+	defer executionServer.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	_, err := RunUSDIMarketplaceE2E(ctx, USDIMarketplaceE2EConfig{
+		APIBaseURL:             gatewayServer.URL,
+		SettlementBaseURL:      settlementServer.URL,
+		SettlementServiceToken: "settlement-token",
+		ExecutionBaseURL:       executionServer.URL,
+	})
+	if err == nil {
+		t.Fatal("expected carrier binding stop error")
+	}
+	if !strings.Contains(err.Error(), "register provider carrier binding") {
+		t.Fatalf("error = %v, want carrier binding failure after successful topup", err)
+	}
+	if got := atomic.LoadInt32(&settlementSummaryCalls); got == 0 {
+		t.Fatal("expected buyer deposit summary to be queried")
 	}
 }
 
