@@ -2,6 +2,7 @@ import Link from "next/link";
 import { RiArrowRightUpLine, RiAuctionLine, RiPriceTag3Line, RiTimeLine } from "react-icons/ri";
 
 import { formatMoney } from "@1tok/contracts";
+import { BuyerDepositPanel } from "@/components/buyer-deposit-panel";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { SectionCard, WorkspaceShell } from "@/components/workspace-shell";
@@ -131,28 +132,7 @@ export default async function BuyerPage({
             title="Deposit USDI to your buyer address"
             description="Each buyer org gets a fixed CKB address. Send at least 10 USDI there; after 24 blocks the platform sweeps confirmed USDI to treasury and credits your USD balance."
           >
-            <div className="space-y-4">
-              {deposit ? (
-                <>
-                  <div className="rounded-md border border-border bg-background px-3 py-3 font-mono text-sm break-all">{deposit.address}</div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <SpotMetric label="Address USDI" value={deposit.onChainBalance} />
-                    <SpotMetric label="Confirmed USDI" value={deposit.confirmedBalance} />
-                    <SpotMetric label="Credited USD" value={deposit.creditedBalance} />
-                    <SpotMetric label="Sweep threshold" value={`${deposit.minimumSweepAmount} / ${deposit.confirmationBlocks} blocks`} />
-                  </div>
-                </>
-              ) : (
-                <Card className="border-dashed p-6 text-sm text-muted-foreground">Settlement has not exposed a buyer deposit address yet.</Card>
-              )}
-              <div className="text-sm text-muted-foreground">
-                {topUp === "success"
-                  ? "Deposit address refreshed."
-                  : topUp === "failed"
-                    ? "Deposit address lookup failed. Try again after checking settlement connectivity."
-                    : "Transfer USDI to the address above. Credits only finalize after the deposit is confirmed and swept into treasury."}
-              </div>
-            </div>
+            <BuyerDepositPanel deposit={deposit} topUp={topUp} />
           </SectionCard>
 
           <SectionCard
