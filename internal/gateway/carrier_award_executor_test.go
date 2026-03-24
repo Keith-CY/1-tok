@@ -308,6 +308,9 @@ func TestCarrierAwardExecutorSettlesOrderAfterSuccessfulRun(t *testing.T) {
 	if !strings.Contains(runInput.Command, ".bash_profile") {
 		t.Fatalf("command = %q, want profile bootstrap", runInput.Command)
 	}
+	if strings.Contains(runInput.Command, "bash -lc") {
+		t.Fatalf("command = %q, want direct shell command without nested bash", runInput.Command)
+	}
 	if !strings.Contains(runInput.Command, "HOME=/home/carrier") {
 		t.Fatalf("command = %q, want fixed carrier home", runInput.Command)
 	}
@@ -316,6 +319,9 @@ func TestCarrierAwardExecutorSettlesOrderAfterSuccessfulRun(t *testing.T) {
 	}
 	if !strings.Contains(runInput.Command, "codex exec") {
 		t.Fatalf("command = %q, want codex exec", runInput.Command)
+	}
+	if !strings.Contains(runInput.Command, "Do not browse the web or use external network tools.") {
+		t.Fatalf("command = %q, want no-browsing carrier prompt", runInput.Command)
 	}
 
 	carrierBinding, err := carrierSvc.GetBinding(order.ID, "ms_1")

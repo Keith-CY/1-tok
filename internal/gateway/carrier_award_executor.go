@@ -155,9 +155,12 @@ func carrierJobInput(rfq platform.RFQ, order *core.Order, milestone *core.Milest
 func buildCarrierPrompt(rfq platform.RFQ, order *core.Order, milestone *core.Milestone) string {
 	var builder strings.Builder
 	builder.WriteString("You are the awarded provider on 1 Tok.\n")
-	builder.WriteString("Produce a concise execution result in markdown.\n")
+	builder.WriteString("Produce a concise buyer-facing delivery note in markdown.\n")
 	builder.WriteString("Sections: Summary, Findings, Recommendation.\n")
-	builder.WriteString("Keep it under 500 words and make it usable as a buyer-facing delivery note.\n\n")
+	builder.WriteString("Keep it under 500 words.\n")
+	builder.WriteString("Do not browse the web or use external network tools.\n")
+	builder.WriteString("Work only from the request brief and your general knowledge.\n")
+	builder.WriteString("If a detail is uncertain, label it as a directional recommendation instead of a verified fact.\n\n")
 	builder.WriteString("Request title: ")
 	builder.WriteString(strings.TrimSpace(firstNonEmptyString(rfq.Title, orderTitle(order))))
 	builder.WriteString("\n")
@@ -178,13 +181,10 @@ func buildCarrierPrompt(rfq platform.RFQ, order *core.Order, milestone *core.Mil
 func buildCarrierRunCommand(reportPath, prompt string) string {
 	reportDir := path.Dir(reportPath)
 	return fmt.Sprintf(
-		"bash -lc %s",
-		shellQuote(fmt.Sprintf(
-			"export HOME=/home/carrier; export CODEX_HOME=/home/carrier/.codex; source /home/carrier/.bash_profile >/dev/null 2>&1 || true; mkdir -p %s && codex exec --skip-git-repo-check --output-last-message %s %s",
-			shellQuote(reportDir),
-			shellQuote(reportPath),
-			shellQuote(prompt),
-		)),
+		"export HOME=/home/carrier; export CODEX_HOME=/home/carrier/.codex; source /home/carrier/.bash_profile >/dev/null 2>&1 || true; mkdir -p %s && codex exec --skip-git-repo-check --output-last-message %s %s",
+		shellQuote(reportDir),
+		shellQuote(reportPath),
+		shellQuote(prompt),
 	)
 }
 
