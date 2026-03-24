@@ -8,6 +8,10 @@ import { SectionCard, WorkspaceShell } from "@/components/workspace-shell";
 import { getProviderDashboardData } from "@/lib/api";
 import { requirePortalViewer } from "@/lib/viewer";
 
+export const metadata = {
+  title: "Provider Requests",
+};
+
 export const dynamic = "force-dynamic";
 
 export default async function ProviderRFQsPage() {

@@ -7,6 +7,10 @@ import { DetailChip, SectionCard, WorkspaceShell } from "@/components/workspace-
 import { opsApplications } from "@/lib/portal-mocks";
 import { requirePortalViewer } from "@/lib/viewer";
 
+export const metadata = {
+  title: "Ops Application",
+};
+
 export default async function OpsApplicationDetailPage({ params }: { params: Promise<{ applicationId: string }> }) {
   const { applicationId } = await params;
   await requirePortalViewer("ops", "/ops/applications");

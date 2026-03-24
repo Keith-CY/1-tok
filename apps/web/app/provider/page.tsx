@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { RiArrowRightUpLine, RiAuctionLine, RiFlashlightLine, RiPriceTag3Line, RiTimeLine } from "react-icons/ri";
+import { RiArrowRightUpLine, RiAuctionLine, RiFlashlightLine, RiPriceTag3Line, RiSearchLine, RiTimeLine } from "react-icons/ri";
 
 import { formatMoney } from "@1tok/contracts";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,10 @@ import { Card } from "@/components/ui/card";
 import { SectionCard, WorkspaceShell } from "@/components/workspace-shell";
 import { getProviderDashboardData } from "@/lib/api";
 import { requirePortalViewer } from "@/lib/viewer";
+
+export const metadata = {
+  title: "Provider",
+};
 
 export const dynamic = "force-dynamic";
 
@@ -50,17 +54,17 @@ export default async function ProviderPage({
   return (
     <WorkspaceShell
       role="provider"
-      title="Open request board"
-      description="A sharp pricing view: budget, low proposal, proposal count, and deadline in one place."
+      title="Price the open board"
+      description="Scan budgets, quote into live requests, and keep comparisons and awarded work in one provider lane."
       status={`${available.length} live requests`}
       actions={[
-        { href: "/provider/rfqs", label: "Full request feed" },
+        { href: "/provider/rfqs", label: "Open requests" },
         { href: "/provider/proposals", label: "My proposals", variant: "outline" },
       ]}
     >
       {error ? <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div> : null}
 
-      <section className="rounded-md border border-border bg-card">
+      <section className="sheet-stack overflow-hidden">
         <div className="grid gap-px bg-border lg:grid-cols-[1.15fr_0.95fr_0.9fr_0.9fr]">
           <MetricStrip
             icon={RiFlashlightLine}
@@ -89,15 +93,44 @@ export default async function ProviderPage({
         </div>
       </section>
 
+      <section className="mt-6 rounded-md bg-[var(--surface-lowest)] px-6 py-5 shadow-[0_20px_40px_rgba(0,0,0,0.06)] sm:px-7">
+        <div className="space-y-2">
+          <div className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-accent">
+            <RiSearchLine className="size-4" />
+            Demo market note
+          </div>
+          <p className="text-sm leading-7 text-foreground">
+            This demo board clears fastest when buyers post short research requests. Typical demo budgets land in the $300-$800 range, and early quotes usually have the clearest edge.
+          </p>
+        </div>
+      </section>
+
       <section className="grid gap-6 xl:grid-cols-[1.62fr_0.82fr] xl:items-start">
         <SectionCard
-          eyebrow="Live request feed"
-          title="Price-first request feed"
-          description="The main market view stays dense, not dashboard-like. Budgets stay loud. Proposal pressure stays visible."
+          eyebrow="Open board"
+          title="Requests worth pricing now"
+          description="Keep budget, current low, proposal pressure, and deadline in the same line of sight."
         >
           <div className="space-y-3">
             {available.length === 0 ? (
-              <Card className="border-dashed p-6 text-sm text-muted-foreground">No new open requests match you right now. Your live proposals are still on the right.</Card>
+              <Card className="market-card p-6">
+                <div className="space-y-5">
+                  <div className="space-y-3">
+                    <div className="eyebrow-pill">No live request</div>
+                    <h3 className="font-display text-[clamp(1.8rem,2.8vw,2.4rem)] font-medium leading-[1.02] tracking-[-0.03em] text-balance">
+                      The board is quiet right now.
+                    </h3>
+                    <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
+                      When a buyer posts a fresh research request, this feed turns back into the price-first market view. Until then, keep an eye on short analytic tasks with clear budgets and fast award windows.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-px bg-border sm:grid-cols-2">
+                    <GuideMetric label="Typical budget" value="$300-$800" detail="most demo requests" />
+                    <GuideMetric label="Award pace" value="2.4 hr" detail="common time to decision" />
+                  </div>
+                </div>
+              </Card>
             ) : (
               available.slice(0, 8).map((item, index) => (
                 <div key={item.id} className="market-row">
@@ -128,9 +161,13 @@ export default async function ProviderPage({
 
         <div className="space-y-6">
           <SectionCard
-            eyebrow="Top request now"
-            title={topRequest?.title ?? "No live request"}
-            description="This is the clearest current entry point for a provider scanning the market."
+            eyebrow={topRequest ? "Top request now" : "Demo market read"}
+            title={topRequest?.title ?? "When a fresh request lands"}
+            description={
+              topRequest
+                ? "This is the clearest current entry point for a provider scanning the market."
+                : "Use this as the provider-side calibration for the demo market before the next request opens."
+            }
           >
             {topRequest ? (
               <div className="space-y-4">
@@ -151,14 +188,40 @@ export default async function ProviderPage({
                 </Button>
               </div>
             ) : (
-              <Card className="border-dashed p-6 text-sm text-muted-foreground">No live request is available right now.</Card>
+              <div className="space-y-5">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <SpotMetric label="Task shape" value="Research" />
+                  <SpotMetric label="Typical budget" value="$300-$800" />
+                  <SpotMetric label="Award window" value="~2 hr" />
+                  <SpotMetric label="Best opening" value="Quote early" />
+                </div>
+                <Button asChild className="w-full justify-between">
+                  <Link href="/provider/rfqs">
+                    Open request feed
+                    <RiArrowRightUpLine className="size-4" />
+                  </Link>
+                </Button>
+              </div>
             )}
           </SectionCard>
 
           <SectionCard eyebrow="My proposals" title="Already in comparison" description="Prices the client is already weighing against other providers.">
             <div className="grid gap-4">
               {submitted.length === 0 ? (
-                <Card className="border-dashed p-6 text-sm text-muted-foreground">No live proposals waiting for a client decision.</Card>
+                <Card className="market-card p-5">
+                  <div className="space-y-4">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-accent">No live proposal</div>
+                    <p className="text-sm leading-7 text-muted-foreground">
+                      Once you quote, live comparisons stay here until the client awards or rejects the request.
+                    </p>
+                    <Button asChild variant="outline" className="w-full justify-between">
+                      <Link href="/provider/rfqs">
+                        Browse open requests
+                        <RiArrowRightUpLine className="size-4" />
+                      </Link>
+                    </Button>
+                  </div>
+                </Card>
               ) : (
                 submitted.map((item) => (
                   <CompactProposalCard
@@ -177,7 +240,20 @@ export default async function ProviderPage({
           <SectionCard eyebrow="Awarded work" title="Closed on price" description="These requests already moved out of market pricing and into delivery.">
             <div className="grid gap-4">
               {active.length === 0 ? (
-                <Card className="border-dashed p-6 text-sm text-muted-foreground">No awarded requests yet.</Card>
+                <Card className="market-card p-5">
+                  <div className="space-y-4">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-accent">No awarded work</div>
+                    <p className="text-sm leading-7 text-muted-foreground">
+                      Orders appear here after a client accepts your price and the request leaves the market board.
+                    </p>
+                    <Button asChild variant="outline" className="w-full justify-between">
+                      <Link href="/provider/proposals">
+                        Review my proposals
+                        <RiArrowRightUpLine className="size-4" />
+                      </Link>
+                    </Button>
+                  </div>
+                </Card>
               ) : (
                 active.map((item) => (
                   <CompactProposalCard
@@ -210,13 +286,17 @@ function MetricStrip({
   detail: string;
 }) {
   return (
-    <div className="space-y-2 bg-card px-5 py-5">
-      <div className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-        <Icon className="size-4 text-primary" />
-        {label}
+    <div className="flex min-h-[11.5rem] flex-col justify-between bg-[var(--surface-lowest)] px-5 py-6">
+      <div className="space-y-3">
+        <div className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          <Icon className="size-4 text-accent" />
+          {label}
+        </div>
+        <div className="max-w-[13rem] font-display text-[2rem] font-medium leading-[1.02] tracking-[-0.03em] text-foreground">
+          {value}
+        </div>
       </div>
-      <div className="font-mono text-3xl font-semibold tracking-tight tabular-nums text-foreground">{value}</div>
-      <div className="text-sm text-muted-foreground">{detail}</div>
+      <div className="max-w-[15rem] text-sm leading-7 text-muted-foreground">{detail}</div>
     </div>
   );
 }
@@ -240,9 +320,19 @@ function FeedMetric({
 
 function SpotMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-border bg-secondary/50 px-4 py-4">
-      <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">{label}</div>
-      <div className="mt-2 font-mono text-2xl font-semibold tracking-tight tabular-nums text-foreground">{value}</div>
+    <div className="bg-card px-5 py-5">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">{label}</div>
+      <div className="mt-3 font-mono text-2xl font-semibold tracking-tight tabular-nums text-foreground">{value}</div>
+    </div>
+  );
+}
+
+function GuideMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return (
+    <div className="bg-[var(--surface-lowest)] px-5 py-5">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">{label}</div>
+      <div className="mt-3 font-mono text-2xl font-semibold tracking-tight tabular-nums text-foreground">{value}</div>
+      <div className="mt-3 text-sm leading-7 text-muted-foreground">{detail}</div>
     </div>
   );
 }

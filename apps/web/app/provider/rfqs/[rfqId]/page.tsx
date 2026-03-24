@@ -11,6 +11,10 @@ import { DetailChip, Field, SectionCard, WorkspaceShell } from "@/components/wor
 import { getProviderRFQDetail } from "@/lib/api";
 import { requirePortalViewer } from "@/lib/viewer";
 
+export const metadata = {
+  title: "Provider Request",
+};
+
 export const dynamic = "force-dynamic";
 
 export default async function ProviderRFQDetailsPage({ params }: { params: Promise<{ rfqId: string }> }) {

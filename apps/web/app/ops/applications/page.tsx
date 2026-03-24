@@ -9,6 +9,10 @@ import { Field, SectionCard, WorkspaceShell } from "@/components/workspace-shell
 import { opsApplications } from "@/lib/portal-mocks";
 import { requirePortalViewer } from "@/lib/viewer";
 
+export const metadata = {
+  title: "Ops Applications",
+};
+
 export const dynamic = "force-dynamic";
 
 export default async function OpsApplicationsPage({
