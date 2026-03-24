@@ -57,6 +57,10 @@ Coolify carrier build / secrets:
 - `CARRIER_REF`
 - `CARRIER_E2E_REMOTE_AUTHORIZED_KEY`
 - `CARRIER_REMOTE_PRIVATE_KEY_BASE64`
+- optional remote codeagent provider env:
+  - `OPENAI_API_KEY`
+  - `OPENAI_CODEX_TOKEN`
+  - `OPENAI_BASE_URL`
 
 - `DEMO_API_BASE_URL`
 - `DEMO_IAM_BASE_URL`
@@ -105,3 +109,5 @@ Demo prep also reuses the existing USDI marketplace E2E env for Carrier, Fiber, 
 - `RELEASE_USDI_E2E_PROVIDER_SETTLEMENT_P2P_HOST`
 - `RELEASE_USDI_E2E_PROVIDER_SETTLEMENT_P2P_PORT`
 - `RELEASE_USDI_E2E_PROVIDER_SETTLEMENT_UDT_TYPE_SCRIPT_JSON`
+
+The Coolify testnet compose defaults `RELEASE_USDI_E2E_CARRIER_BACKEND` to `codex`. With `OPENAI_BASE_URL`, the remote VPS bootstrap writes a Codex config that targets the custom OpenAI-compatible gateway.

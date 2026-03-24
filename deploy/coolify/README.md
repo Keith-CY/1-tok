@@ -100,6 +100,8 @@ Demo actors:
 
 The org IDs are now optional. If omitted, the control plane resolves them by logging in with the configured demo accounts.
 
+For the testnet demo, `api-gateway` defaults `RELEASE_USDI_E2E_CARRIER_BACKEND=codex`. When `OPENAI_BASE_URL` is set, `remote-vps` writes a global `~/.codex/config.toml` that points Codex at the custom OpenAI-compatible endpoint while keeping the demo on `gpt-5.4`.
+
 ## Operator flow
 
 After the stack is healthy:
