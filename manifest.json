@@ -1,0 +1,50 @@
+[
+  {
+    "flow": "usdi-marketplace",
+    "stepKey": "explorer-proof-1",
+    "stepLabel": "Explorer Proof 1",
+    "order": 1,
+    "title": "Faucet proof 1",
+    "path": "usdi-marketplace/01-explorer-proof-1.png"
+  },
+  {
+    "flow": "usdi-marketplace",
+    "stepKey": "buyer-dashboard",
+    "stepLabel": "Buyer Dashboard",
+    "order": 2,
+    "title": "Buyer top-up and awarded request",
+    "path": "usdi-marketplace/02-buyer-dashboard.png"
+  },
+  {
+    "flow": "usdi-marketplace",
+    "stepKey": "buyer-order",
+    "stepLabel": "Buyer Order",
+    "order": 3,
+    "title": "Buyer sees completed delivery",
+    "path": "usdi-marketplace/03-buyer-order.png"
+  },
+  {
+    "flow": "usdi-marketplace",
+    "stepKey": "provider-proposals",
+    "stepLabel": "Provider Proposal",
+    "order": 4,
+    "title": "Provider awarded proposal",
+    "path": "usdi-marketplace/04-provider-proposals.png"
+  },
+  {
+    "flow": "usdi-marketplace",
+    "stepKey": "provider-order",
+    "stepLabel": "Provider Order",
+    "order": 5,
+    "title": "Provider streaming payout and completion",
+    "path": "usdi-marketplace/05-provider-order.png"
+  },
+  {
+    "flow": "usdi-marketplace",
+    "stepKey": "ops-dashboard",
+    "stepLabel": "Ops Dashboard",
+    "order": 6,
+    "title": "Ops sees payout and settlement state",
+    "path": "usdi-marketplace/06-ops-dashboard.png"
+  }
+]
