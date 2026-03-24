@@ -187,7 +187,10 @@ func USDIMarketplaceE2EConfigFromEnv() USDIMarketplaceE2EConfig {
 		CarrierRemoteHostPort:               envIntOrDefault("RELEASE_USDI_E2E_CARRIER_REMOTE_HOST_PORT", 22),
 		CarrierRemoteHostUser:               envOrDefault("RELEASE_USDI_E2E_CARRIER_REMOTE_HOST_USER", "carrier"),
 		CarrierRemoteKeyPath:                envOrDefault("RELEASE_USDI_E2E_CARRIER_REMOTE_KEY_PATH", "/keys/id_ed25519"),
-		CarrierAuthConfigured:               strings.TrimSpace(envOrDefault("OPENAI_API_KEY", "")) != "" || strings.TrimSpace(envOrDefault("OPENAI_CODEX_TOKEN", "")) != "",
+		CarrierAuthConfigured: strings.TrimSpace(envOrDefault("OPENAI_API_KEY", "")) != "" ||
+			strings.TrimSpace(envOrDefault("OPENAI_CODEX_TOKEN", "")) != "" ||
+			strings.TrimSpace(envOrDefault("ANTHROPIC_AUTH_TOKEN", "")) != "" ||
+			strings.TrimSpace(envOrDefault("ANTHROPIC_API_KEY", "")) != "",
 		CarrierCallbackSecret:               envOrDefault("RELEASE_USDI_E2E_CARRIER_CALLBACK_SECRET", "usdi-e2e-callback-secret"),
 		CarrierCallbackKeyID:                envOrDefault("RELEASE_USDI_E2E_CARRIER_CALLBACK_KEY_ID", "usdi-e2e-key"),
 		IncludeCarrierProbe:                 envBool("RELEASE_USDI_E2E_INCLUDE_CARRIER_PROBE"),
@@ -282,7 +285,7 @@ func RunUSDIMarketplaceE2E(ctx context.Context, cfg USDIMarketplaceE2EConfig) (U
 				return USDIMarketplaceE2ESummary{}, err
 			}
 		} else {
-			integrationIssues = append(integrationIssues, "carrier codeagent run probe skipped: missing OPENAI_API_KEY or OPENAI_CODEX_TOKEN")
+			integrationIssues = append(integrationIssues, "carrier codeagent run probe skipped: missing carrier provider credentials")
 		}
 	}
 

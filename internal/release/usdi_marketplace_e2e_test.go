@@ -160,6 +160,18 @@ func TestUSDIMarketplaceE2EConfigFromEnvDefaultsProviderSettlementToDedicatedNod
 	}
 }
 
+func TestUSDIMarketplaceE2EConfigFromEnvMarksAnthropicCarrierAuthConfigured(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_CODEX_TOKEN", "")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("ANTHROPIC_AUTH_TOKEN", "sk-demo-anthropic-token")
+
+	cfg := USDIMarketplaceE2EConfigFromEnv()
+	if !cfg.CarrierAuthConfigured {
+		t.Fatal("expected carrier auth to be configured when ANTHROPIC_AUTH_TOKEN is set")
+	}
+}
+
 func TestBuyerDepositCreditWaitTimeout(t *testing.T) {
 	if got := buyerDepositCreditWaitTimeout(buyerDepositSummaryResponse{}); got != usdiMarketplaceBuyerDepositCreditWaitFloor {
 		t.Fatalf("timeout without confirmation blocks = %s, want %s", got, usdiMarketplaceBuyerDepositCreditWaitFloor)
