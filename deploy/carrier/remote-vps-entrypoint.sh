@@ -12,9 +12,11 @@ chmod 600 /home/carrier/.ssh/authorized_keys
 /usr/local/bin/setup-remote-vps-home.sh
 chown carrier:carrier /home/carrier/.bash_profile
 chmod 600 /home/carrier/.bash_profile
-if [[ -d /home/carrier/.config ]]; then
-  chown -R carrier:carrier /home/carrier/.config
+if [[ -d /home/carrier/.codex ]]; then
+  chown -R carrier:carrier /home/carrier/.codex
 fi
+mkdir -p /workspace
+chown carrier:carrier /workspace
 
 export LANG=C.UTF-8
 export LC_ALL=C.UTF-8

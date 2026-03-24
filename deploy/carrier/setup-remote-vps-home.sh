@@ -2,9 +2,10 @@
 set -euo pipefail
 
 remote_home="${REMOTE_HOME:-/home/carrier}"
+remote_workspace_root="${REMOTE_WORKSPACE_ROOT:-/workspace}"
 profile_path="${remote_home}/.bash_profile"
-opencode_dir="${remote_home}/.config/opencode"
-opencode_config_path="${opencode_dir}/opencode.json"
+codex_dir="${remote_home}/.codex"
+codex_config_path="${codex_dir}/config.toml"
 
 append_export_from_env() {
   local key="$1"
@@ -14,7 +15,31 @@ append_export_from_env() {
   fi
 }
 
-mkdir -p "${remote_home}" "${opencode_dir}"
+write_default_codex_config() {
+  cat >"${codex_config_path}" <<EOF
+model_provider = "openai-custom"
+model = "gpt-5.4"
+review_model = "gpt-5.4"
+model_reasoning_effort = "xhigh"
+disable_response_storage = true
+network_access = "enabled"
+windows_wsl_setup_acknowledged = true
+model_context_window = 1000000
+model_auto_compact_token_limit = 900000
+
+[model_providers.openai-custom]
+name = "OpenAI custom"
+base_url = "${OPENAI_BASE_URL}"
+env_key = "OPENAI_API_KEY"
+wire_api = "responses"
+request_max_retries = 4
+stream_max_retries = 10
+stream_idle_timeout_ms = 300000
+websocket_connect_timeout_ms = 15000
+EOF
+}
+
+mkdir -p "${remote_home}" "${codex_dir}" "${remote_workspace_root}"
 
 cat >"${profile_path}" <<'EOF'
 export NPM_CONFIG_PREFIX="$HOME/.npm-global"
@@ -23,71 +48,25 @@ EOF
 
 for key in \
   OPENAI_API_KEY \
-  OPENAI_CODEX_TOKEN \
-  OPENAI_BASE_URL \
-  OPENAI_COMPATIBLE_API_KEY \
-  OPENAI_COMPATIBLE_BASE_URL \
-  ANTHROPIC_BASE_URL \
-  ANTHROPIC_AUTH_TOKEN \
-  ANTHROPIC_API_KEY \
-  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC; do
+  OPENAI_CODEX_TOKEN; do
   append_export_from_env "${key}"
 done
 
-if [[ -n "${ANTHROPIC_AUTH_TOKEN:-}" && -z "${ANTHROPIC_API_KEY:-}" ]]; then
-  printf 'export ANTHROPIC_API_KEY=%q\n' "${ANTHROPIC_AUTH_TOKEN}" >>"${profile_path}"
+if [[ -n "${OPENAI_API_KEY:-}" && -z "${OPENAI_CODEX_TOKEN:-}" ]]; then
+  printf 'export OPENAI_CODEX_TOKEN=%q\n' "${OPENAI_API_KEY}" >>"${profile_path}"
 fi
 
-if [[ -n "${ANTHROPIC_BASE_URL:-}" && ( -n "${ANTHROPIC_AUTH_TOKEN:-}" || -n "${ANTHROPIC_API_KEY:-}" ) ]]; then
-  provider_id="${OPENCODE_CUSTOM_PROVIDER_ID:-demo-anthropic}"
-  provider_name="${OPENCODE_CUSTOM_PROVIDER_NAME:-Demo Anthropic Gateway}"
-  provider_npm="${OPENCODE_CUSTOM_PROVIDER_NPM:-@ai-sdk/anthropic}"
-  model_id="${OPENCODE_CUSTOM_MODEL_ID:-claude-sonnet-4-20250514}"
-  model_name="${OPENCODE_CUSTOM_MODEL_NAME:-Claude Sonnet 4}"
-  api_key_ref="${OPENCODE_CUSTOM_API_KEY_REF:-{env:ANTHROPIC_API_KEY}}"
-  auth_header="${OPENCODE_CUSTOM_AUTH_HEADER:-}"
-  if [[ -z "${auth_header}" && -n "${ANTHROPIC_AUTH_TOKEN:-}" ]]; then
-    auth_header="Bearer {env:ANTHROPIC_AUTH_TOKEN}"
-  fi
+if [[ -n "${OPENAI_CODEX_TOKEN:-}" && -z "${OPENAI_API_KEY:-}" ]]; then
+  printf 'export OPENAI_API_KEY=%q\n' "${OPENAI_CODEX_TOKEN}" >>"${profile_path}"
+fi
 
-  jq -n \
-    --arg schema "https://opencode.ai/config.json" \
-    --arg provider_id "${provider_id}" \
-    --arg provider_name "${provider_name}" \
-    --arg provider_npm "${provider_npm}" \
-    --arg base_url "${ANTHROPIC_BASE_URL}" \
-    --arg model_id "${model_id}" \
-    --arg model_name "${model_name}" \
-    --arg api_key_ref "${api_key_ref}" \
-    --arg auth_header "${auth_header}" \
-    '{
-      "$schema": $schema,
-      "provider": {
-        ($provider_id): ({
-          "npm": $provider_npm,
-          "name": $provider_name,
-          "options": ({
-            "baseURL": $base_url,
-            "apiKey": $api_key_ref
-          } + (if $auth_header != "" then {
-            "headers": {
-              "Authorization": $auth_header
-            }
-          } else {} end)),
-          "models": {
-            ($model_id): {
-              "name": $model_name
-            }
-          }
-        })
-      },
-      "model": ($provider_id + "/" + $model_id)
-    }' >"${opencode_config_path}"
+if [[ -n "${OPENAI_BASE_URL:-}" ]]; then
+  write_default_codex_config
 else
-  rm -f "${opencode_config_path}"
+  rm -f "${codex_config_path}"
 fi
 
 chmod 600 "${profile_path}"
-if [[ -f "${opencode_config_path}" ]]; then
-  chmod 600 "${opencode_config_path}"
+if [[ -f "${codex_config_path}" ]]; then
+  chmod 600 "${codex_config_path}"
 fi

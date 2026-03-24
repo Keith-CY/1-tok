@@ -188,9 +188,7 @@ func USDIMarketplaceE2EConfigFromEnv() USDIMarketplaceE2EConfig {
 		CarrierRemoteHostUser:               envOrDefault("RELEASE_USDI_E2E_CARRIER_REMOTE_HOST_USER", "carrier"),
 		CarrierRemoteKeyPath:                envOrDefault("RELEASE_USDI_E2E_CARRIER_REMOTE_KEY_PATH", "/keys/id_ed25519"),
 		CarrierAuthConfigured: strings.TrimSpace(envOrDefault("OPENAI_API_KEY", "")) != "" ||
-			strings.TrimSpace(envOrDefault("OPENAI_CODEX_TOKEN", "")) != "" ||
-			strings.TrimSpace(envOrDefault("ANTHROPIC_AUTH_TOKEN", "")) != "" ||
-			strings.TrimSpace(envOrDefault("ANTHROPIC_API_KEY", "")) != "",
+			strings.TrimSpace(envOrDefault("OPENAI_CODEX_TOKEN", "")) != "",
 		CarrierCallbackSecret:               envOrDefault("RELEASE_USDI_E2E_CARRIER_CALLBACK_SECRET", "usdi-e2e-callback-secret"),
 		CarrierCallbackKeyID:                envOrDefault("RELEASE_USDI_E2E_CARRIER_CALLBACK_KEY_ID", "usdi-e2e-key"),
 		IncludeCarrierProbe:                 envBool("RELEASE_USDI_E2E_INCLUDE_CARRIER_PROBE"),

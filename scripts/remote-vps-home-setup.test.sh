@@ -13,15 +13,14 @@ TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
 export REMOTE_HOME="${TMP_DIR}"
+export REMOTE_WORKSPACE_ROOT="${TMP_DIR}/workspace"
 export OPENAI_API_KEY="sk-openai-demo"
-export ANTHROPIC_BASE_URL="https://share-ai.ckbdev.com"
-export ANTHROPIC_AUTH_TOKEN="sk-demo-anthropic-token"
-export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1"
+export OPENAI_BASE_URL="https://llm2api.owlia.ai"
 
 "${SETUP_SCRIPT}"
 
 PROFILE="${TMP_DIR}/.bash_profile"
-CONFIG="${TMP_DIR}/.config/opencode/opencode.json"
+CONFIG="${TMP_DIR}/.codex/config.toml"
 
 [[ -f "${PROFILE}" ]] || {
   echo "missing profile: ${PROFILE}" >&2
@@ -29,7 +28,7 @@ CONFIG="${TMP_DIR}/.config/opencode/opencode.json"
 }
 
 [[ -f "${CONFIG}" ]] || {
-  echo "missing opencode config: ${CONFIG}" >&2
+  echo "missing codex config: ${CONFIG}" >&2
   exit 1
 }
 
@@ -38,43 +37,48 @@ grep -q 'export OPENAI_API_KEY=' "${PROFILE}" || {
   exit 1
 }
 
-grep -q 'export ANTHROPIC_BASE_URL=' "${PROFILE}" || {
-  echo "profile missing ANTHROPIC_BASE_URL export" >&2
+grep -q 'export OPENAI_CODEX_TOKEN=' "${PROFILE}" || {
+  echo "profile missing OPENAI_CODEX_TOKEN alias export" >&2
   exit 1
 }
 
-grep -q 'export ANTHROPIC_AUTH_TOKEN=' "${PROFILE}" || {
-  echo "profile missing ANTHROPIC_AUTH_TOKEN export" >&2
+grep -q 'model_provider = "openai-custom"' "${CONFIG}" || {
+  echo "codex config missing custom model provider id" >&2
   exit 1
 }
 
-grep -q 'export ANTHROPIC_API_KEY=' "${PROFILE}" || {
-  echo "profile missing ANTHROPIC_API_KEY alias export" >&2
+grep -q 'model = "gpt-5.4"' "${CONFIG}" || {
+  echo "codex config missing default model" >&2
   exit 1
 }
 
-grep -q 'export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=' "${PROFILE}" || {
-  echo "profile missing CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC export" >&2
+grep -q 'review_model = "gpt-5.4"' "${CONFIG}" || {
+  echo "codex config missing review model" >&2
   exit 1
 }
 
-grep -q '"npm": "@ai-sdk/anthropic"' "${CONFIG}" || {
-  echo "opencode config missing anthropic provider package" >&2
+grep -q 'model_reasoning_effort = "xhigh"' "${CONFIG}" || {
+  echo "codex config missing reasoning effort" >&2
   exit 1
 }
 
-grep -q '"baseURL": "https://share-ai.ckbdev.com"' "${CONFIG}" || {
-  echo "opencode config missing anthropic base url" >&2
+grep -q '\[model_providers.openai-custom\]' "${CONFIG}" || {
+  echo "codex config missing custom provider block" >&2
   exit 1
 }
 
-grep -q '"Authorization": "Bearer {env:ANTHROPIC_AUTH_TOKEN}"' "${CONFIG}" || {
-  echo "opencode config missing authorization header template" >&2
+grep -q 'base_url = "https://llm2api.owlia.ai"' "${CONFIG}" || {
+  echo "codex config missing custom OpenAI base url" >&2
   exit 1
 }
 
-grep -q '"model": "demo-anthropic/claude-sonnet-4-20250514"' "${CONFIG}" || {
-  echo "opencode config missing default model" >&2
+grep -q 'env_key = "OPENAI_API_KEY"' "${CONFIG}" || {
+  echo "codex config missing API key env binding" >&2
+  exit 1
+}
+
+grep -q 'wire_api = "responses"' "${CONFIG}" || {
+  echo "codex config missing responses wire api" >&2
   exit 1
 }
 

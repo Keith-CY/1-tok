@@ -160,15 +160,13 @@ func TestUSDIMarketplaceE2EConfigFromEnvDefaultsProviderSettlementToDedicatedNod
 	}
 }
 
-func TestUSDIMarketplaceE2EConfigFromEnvMarksAnthropicCarrierAuthConfigured(t *testing.T) {
-	t.Setenv("OPENAI_API_KEY", "")
+func TestUSDIMarketplaceE2EConfigFromEnvMarksOpenAICarrierAuthConfigured(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "sk-demo-openai-token")
 	t.Setenv("OPENAI_CODEX_TOKEN", "")
-	t.Setenv("ANTHROPIC_API_KEY", "")
-	t.Setenv("ANTHROPIC_AUTH_TOKEN", "sk-demo-anthropic-token")
 
 	cfg := USDIMarketplaceE2EConfigFromEnv()
 	if !cfg.CarrierAuthConfigured {
-		t.Fatal("expected carrier auth to be configured when ANTHROPIC_AUTH_TOKEN is set")
+		t.Fatal("expected carrier auth to be configured when OPENAI_API_KEY is set")
 	}
 }
 

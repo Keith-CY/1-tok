@@ -88,18 +88,6 @@ Carrier / remote execution:
 - `CARRIER_E2E_REMOTE_AUTHORIZED_KEY`
 - `CARRIER_REMOTE_PRIVATE_KEY_BASE64`
 - optional: `OPENAI_API_KEY`, `OPENAI_CODEX_TOKEN`, `OPENAI_BASE_URL`
-- optional Anthropic / Claude-compatible routing:
-  - `ANTHROPIC_BASE_URL`
-  - `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_API_KEY`
-  - `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`
-  - optional OpenCode config overrides:
-    - `OPENCODE_CUSTOM_PROVIDER_ID`
-    - `OPENCODE_CUSTOM_PROVIDER_NAME`
-    - `OPENCODE_CUSTOM_PROVIDER_NPM`
-    - `OPENCODE_CUSTOM_MODEL_ID`
-    - `OPENCODE_CUSTOM_MODEL_NAME`
-    - `OPENCODE_CUSTOM_API_KEY_REF`
-    - `OPENCODE_CUSTOM_AUTH_HEADER`
 - optional build args override: `CARRIER_REPO_URL`, `CARRIER_REF`
 
 Demo actors:
@@ -112,7 +100,7 @@ Demo actors:
 
 The org IDs are now optional. If omitted, the control plane resolves them by logging in with the configured demo accounts.
 
-For the testnet demo, `api-gateway` defaults `RELEASE_USDI_E2E_CARRIER_BACKEND=opencode`. When `ANTHROPIC_BASE_URL` plus `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_API_KEY` are set, `remote-vps` writes a global `~/.config/opencode/opencode.json` that points OpenCode at the custom Anthropic-compatible gateway and demo model.
+For the testnet demo, `api-gateway` defaults `RELEASE_USDI_E2E_CARRIER_BACKEND=codex`. When `OPENAI_BASE_URL` is set, `remote-vps` writes a global `~/.codex/config.toml` that points Codex at the custom OpenAI-compatible endpoint while keeping the demo on `gpt-5.4`.
 
 ## Operator flow
 
