@@ -40,6 +40,7 @@ type Server struct {
 	executionTokens serviceauth.TokenSet
 	rateLimiter     ratelimit.Limiter
 	carrier         *carrier.Service
+	carrierAwardExecutor carrierAwardExecutor
 	webhooks        *notifications.Registry
 	evidence        *carrier.EvidenceStore
 	ledger          *carrier.EventLedger
@@ -67,6 +68,7 @@ type Options struct {
 	ExecutionTokens               serviceauth.TokenSet
 	RateLimiter                   ratelimit.Limiter
 	Carrier                       *carrier.Service
+	CarrierAwardExecutor          carrierAwardExecutor
 	ProviderSettlementProvisioner platform.ProviderSettlementProvisioner
 	DemoConfig                    *demoenv.Config
 	DemoPrepare                   func(context.Context) (release.DemoRunSummary, error)
@@ -118,6 +120,10 @@ func NewServerWithOptionsE(options Options) (*Server, error) {
 	if options.ProviderSettlementProvisioner != nil {
 		options.App.SetProviderSettlementProvisioner(options.ProviderSettlementProvisioner)
 	}
+	carrierAwardExecutor := options.CarrierAwardExecutor
+	if carrierAwardExecutor == nil {
+		carrierAwardExecutor = newCarrierOrderAutoExecutor(options.App, carrierSvc)
+	}
 	webhookSvc := notifications.NewWebhookService()
 	registry := notifications.NewRegistry(webhookSvc)
 	demoConfig := demoenv.ConfigFromEnv()
@@ -138,6 +144,7 @@ func NewServerWithOptionsE(options Options) (*Server, error) {
 		executionTokens: options.ExecutionTokens,
 		rateLimiter:     options.RateLimiter,
 		carrier:         carrierSvc,
+		carrierAwardExecutor: carrierAwardExecutor,
 		webhooks:        registry,
 		evidence:        carrier.NewEvidenceStore(),
 		ledger:          carrier.NewEventLedger(),
@@ -797,6 +804,7 @@ func (s *Server) handleAwardRFQ(w http.ResponseWriter, r *http.Request) {
 		writeGatewayError(w, err)
 		return
 	}
+	s.dispatchCarrierExecution(awardedRFQ, order)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"rfq": awardedRFQ, "order": order})
 }
 func (s *Server) resolveBuyerOrg(r *http.Request, requestedBuyerOrgID string) (string, error) {

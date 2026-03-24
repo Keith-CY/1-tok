@@ -168,6 +168,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ or
               const usageCharges = Array.isArray(milestone.usageCharges) ? milestone.usageCharges : [];
               const spent = usageCharges.reduce((sum, charge) => sum + charge.amountCents, 0) + milestone.settledCents;
               const usage = milestone.budgetCents > 0 ? Math.min((spent / milestone.budgetCents) * 100, 100) : 0;
+              const deliveryNote = milestone.summary?.trim() ?? "";
 
               return (
                 <div key={milestone.id} className="market-card p-5">
@@ -183,6 +184,12 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ or
                     <Progress value={usage} />
                     <div className="text-sm text-muted-foreground">{usage.toFixed(0)}% used</div>
                   </div>
+                  {deliveryNote ? (
+                    <div className="mt-4 bg-secondary/50 p-4">
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Delivery note</div>
+                      <div className="mt-2 whitespace-pre-wrap text-sm leading-7 text-foreground">{deliveryNote}</div>
+                    </div>
+                  ) : null}
                 </div>
               );
             })}
