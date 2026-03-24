@@ -200,13 +200,11 @@ export function StatCard({
   label,
   value,
   detail,
-  icon: _Icon,
   tone = "default",
 }: {
   label: string;
   value: string;
   detail: string;
-  icon: IconType;
   tone?: "default" | "success" | "warning" | "danger";
 }) {
   const toneClass = {

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { RiArrowRightUpLine, RiAuctionLine } from "react-icons/ri";
+import { RiArrowRightUpLine } from "react-icons/ri";
 
 import { formatMoney } from "@1tok/contracts";
 import { BuyerDepositPanel } from "@/components/buyer-deposit-panel";
@@ -50,25 +50,21 @@ export default async function BuyerPage({
     >
       <section className="grid gap-3 lg:grid-cols-[1.15fr_0.95fr_0.9fr_0.9fr]">
         <MetricStrip
-          icon={RiAuctionLine}
           label="Live request book"
           value={openRequests.length ? `${openRequests.length} requests` : "No live requests"}
           detail="Price and timing stay visible."
         />
         <MetricStrip
-          icon={RiAuctionLine}
           label="Prepaid balance"
           value={formatMoney(data.summary.prepaidBalanceCents)}
           detail={deposit ? `${deposit.creditedBalance} credited from CKB deposits` : `${data.summary.settledTopUps} settled USDI top-ups`}
         />
         <MetricStrip
-          icon={RiAuctionLine}
           label="Lowest live price"
           value={liveFloor ? formatMoney(liveFloor) : "-"}
           detail={liveFloor ? "Current market floor" : "No price yet"}
         />
         <MetricStrip
-          icon={RiAuctionLine}
           label="Closing in 72 hrs"
           value={`${closingSoon}`}
           detail="Requests nearing award"
@@ -243,12 +239,10 @@ export default async function BuyerPage({
 }
 
 function MetricStrip({
-  icon: _Icon,
   label,
   value,
   detail,
 }: {
-  icon: typeof RiAuctionLine;
   label: string;
   value: string;
   detail: string;

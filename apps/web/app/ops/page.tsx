@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { RiArrowRightUpLine, RiBankCardLine, RiCheckboxCircleLine, RiFundsLine, RiSearchEyeLine, RiShieldCheckLine, RiSparklingLine, RiTimeLine } from "react-icons/ri";
+import { RiArrowRightUpLine, RiSearchEyeLine, RiShieldCheckLine, RiSparklingLine } from "react-icons/ri";
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
@@ -47,10 +47,10 @@ export default async function OpsPage({
       ]}
     >
       <section className="grid gap-4 xl:grid-cols-4">
-        <StatCard icon={RiSearchEyeLine} label="Needs review" value={`${data.pendingReviews.length + data.summary.openDisputes}`} detail="Combined manual queue across applications, treasury, and disputes." />
-        <StatCard icon={RiFundsLine} label="Funding records" value={`${data.summary.fundingRecords}`} detail="Treasury records visible in the control plane." />
-        <StatCard icon={RiCheckboxCircleLine} label="Settled invoices" value={`${data.summary.settledInvoices}`} detail="Settlement entries already cleared." tone="success" />
-        <StatCard icon={RiTimeLine} label="Pending payouts" value={`${data.summary.pendingWithdrawals}`} detail="Cash movement still in flight." tone={data.summary.pendingWithdrawals > 0 ? "warning" : "default"} />
+        <StatCard label="Needs review" value={`${data.pendingReviews.length + data.summary.openDisputes}`} detail="Combined manual queue across applications, treasury, and disputes." />
+        <StatCard label="Funding records" value={`${data.summary.fundingRecords}`} detail="Treasury records visible in the control plane." />
+        <StatCard label="Settled invoices" value={`${data.summary.settledInvoices}`} detail="Settlement entries already cleared." tone="success" />
+        <StatCard label="Pending payouts" value={`${data.summary.pendingWithdrawals}`} detail="Cash movement still in flight." tone={data.summary.pendingWithdrawals > 0 ? "warning" : "default"} />
       </section>
 
       <section>
