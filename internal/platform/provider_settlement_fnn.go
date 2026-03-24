@@ -210,6 +210,7 @@ func (p *fnnProviderSettlementProvisioner) EnsureProviderLiquidity(input EnsureP
 			WarmUntil:           input.CurrentPool.WarmUntil,
 		}, nil
 	}
+	existingReadyChannelIDs := commonReadyChannelIDs(treasuryChannels, providerChannels, input.Binding.UDTTypeScript)
 
 	fundingUnits := neededReserveToFundingUnits(input.NeededReserveCents, p.cfg.CentsPerUnit, p.cfg.MinFundingUnits)
 	fundingHex, err := providerSettlementDecimalToHexQuantity(fundingUnits)
@@ -241,7 +242,8 @@ func (p *fnnProviderSettlementProvisioner) EnsureProviderLiquidity(input EnsureP
 			return EnsureProviderLiquidityResult{}, fmt.Errorf("accept channel: %w", err)
 		}
 
-		if err := waitForProviderSettlementChannelReady(ctx, treasuryNode, providerNode, providerPeerID, treasuryPeerID, temporaryChannelID, acceptFundingHex, input.Binding.UDTTypeScript, p.cfg.PollInterval, p.cfg.AcceptRetryEvery, p.cfg.AcceptChannelRetries); err != nil {
+		readyChannelID, err := waitForProviderSettlementChannelReady(ctx, treasuryNode, providerNode, providerPeerID, treasuryPeerID, temporaryChannelID, acceptFundingHex, input.Binding.UDTTypeScript, existingReadyChannelIDs, p.cfg.PollInterval, p.cfg.AcceptRetryEvery, p.cfg.AcceptChannelRetries)
+		if err != nil {
 			if provisionAttempt < maxInt(1, p.cfg.OpenChannelRetries) && isProviderSettlementProvisionRetryable(err) {
 				if reconnectErr := reconnect(ctx); reconnectErr != nil {
 					return EnsureProviderLiquidityResult{}, reconnectErr
@@ -249,6 +251,9 @@ func (p *fnnProviderSettlementProvisioner) EnsureProviderLiquidity(input EnsureP
 				continue
 			}
 			return EnsureProviderLiquidityResult{}, err
+		}
+		if strings.TrimSpace(readyChannelID) != "" {
+			temporaryChannelID = readyChannelID
 		}
 		break
 	}
@@ -425,7 +430,7 @@ func acceptProviderSettlementChannelWithRetry(ctx context.Context, providerNode 
 	return lastErr
 }
 
-func waitForProviderSettlementChannelReady(ctx context.Context, treasuryNode, providerNode providerSettlementRawFNNClient, providerPeerID, treasuryPeerID, temporaryChannelID, acceptFundingHex string, udtTypeScript UDTTypeScript, pollInterval time.Duration, acceptRetryEvery, acceptRetries int) error {
+func waitForProviderSettlementChannelReady(ctx context.Context, treasuryNode, providerNode providerSettlementRawFNNClient, providerPeerID, treasuryPeerID, temporaryChannelID, acceptFundingHex string, udtTypeScript UDTTypeScript, existingReadyChannelIDs map[string]struct{}, pollInterval time.Duration, acceptRetryEvery, acceptRetries int) (string, error) {
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
@@ -434,18 +439,19 @@ func waitForProviderSettlementChannelReady(ctx context.Context, treasuryNode, pr
 		attempt++
 		treasuryChannels, err := treasuryNode.ListChannels(ctx, providerPeerID)
 		if err != nil {
-			return fmt.Errorf("list treasury channels: %w", err)
+			return "", fmt.Errorf("list treasury channels: %w", err)
 		}
 		providerChannels, err := providerNode.ListChannels(ctx, treasuryPeerID)
 		if err != nil {
-			return fmt.Errorf("list provider channels: %w", err)
+			return "", fmt.Errorf("list provider channels: %w", err)
 		}
 		if strings.TrimSpace(temporaryChannelID) != "" {
 			if providerSettlementChannelReadyOnBothSides(temporaryChannelID, treasuryChannels, providerChannels, udtTypeScript) {
-				return nil
+				return temporaryChannelID, nil
 			}
-		} else if _, ok := matchingReadyChannelID(treasuryChannels, providerChannels, udtTypeScript); ok {
-			return nil
+		}
+		if readyChannelID, ok := matchingReadyChannelIDExcluding(treasuryChannels, providerChannels, udtTypeScript, existingReadyChannelIDs); ok {
+			return readyChannelID, nil
 		}
 		if strings.TrimSpace(temporaryChannelID) != "" &&
 			strings.TrimSpace(acceptFundingHex) != "" &&
@@ -453,19 +459,19 @@ func waitForProviderSettlementChannelReady(ctx context.Context, treasuryNode, pr
 			attempt%acceptRetryEvery == 0 &&
 			firstProviderSettlementChannelState(providerChannels, udtTypeScript) == "AWAITING_CHANNEL_READY" {
 			if err := acceptProviderSettlementChannelWithRetry(ctx, providerNode, temporaryChannelID, acceptFundingHex, acceptRetries, pollInterval); err != nil && !isProviderSettlementAcceptRetryable(err) {
-				return fmt.Errorf("re-accept channel: %w", err)
+				return "", fmt.Errorf("re-accept channel: %w", err)
 			}
 		}
 
 		select {
 		case <-ctx.Done():
-			return errors.New("timeout waiting provider settlement channel to reach CHANNEL_READY")
+			return "", errors.New("timeout waiting provider settlement channel to reach CHANNEL_READY")
 		case <-ticker.C:
 		}
 	}
 }
 
-func matchingReadyChannelID(treasuryChannels, providerChannels providerSettlementRawChannelList, udtTypeScript UDTTypeScript) (string, bool) {
+func commonReadyChannelIDs(treasuryChannels, providerChannels providerSettlementRawChannelList, udtTypeScript UDTTypeScript) map[string]struct{} {
 	readyOnTreasury := make(map[string]struct{}, len(treasuryChannels.Channels))
 	for _, channel := range treasuryChannels.Channels {
 		if normalizeProviderSettlementChannelState(channel.State) != "CHANNEL_READY" {
@@ -481,6 +487,7 @@ func matchingReadyChannelID(treasuryChannels, providerChannels providerSettlemen
 		readyOnTreasury[channelID] = struct{}{}
 	}
 
+	readyOnBothSides := make(map[string]struct{}, len(providerChannels.Channels))
 	for _, channel := range providerChannels.Channels {
 		if normalizeProviderSettlementChannelState(channel.State) != "CHANNEL_READY" {
 			continue
@@ -493,8 +500,22 @@ func matchingReadyChannelID(treasuryChannels, providerChannels providerSettlemen
 			continue
 		}
 		if _, ok := readyOnTreasury[channelID]; ok {
-			return channelID, true
+			readyOnBothSides[channelID] = struct{}{}
 		}
+	}
+	return readyOnBothSides
+}
+
+func matchingReadyChannelID(treasuryChannels, providerChannels providerSettlementRawChannelList, udtTypeScript UDTTypeScript) (string, bool) {
+	return matchingReadyChannelIDExcluding(treasuryChannels, providerChannels, udtTypeScript, nil)
+}
+
+func matchingReadyChannelIDExcluding(treasuryChannels, providerChannels providerSettlementRawChannelList, udtTypeScript UDTTypeScript, excluded map[string]struct{}) (string, bool) {
+	for channelID := range commonReadyChannelIDs(treasuryChannels, providerChannels, udtTypeScript) {
+		if _, skip := excluded[channelID]; skip {
+			continue
+		}
+		return channelID, true
 	}
 	return "", false
 }
