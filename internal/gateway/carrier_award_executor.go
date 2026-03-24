@@ -180,12 +180,13 @@ func buildCarrierPrompt(rfq platform.RFQ, order *core.Order, milestone *core.Mil
 
 func buildCarrierRunCommand(reportPath, prompt string) string {
 	reportDir := path.Dir(reportPath)
-	return fmt.Sprintf(
-		"export HOME=/home/carrier; export CODEX_HOME=/home/carrier/.codex; source /home/carrier/.bash_profile >/dev/null 2>&1 || true; mkdir -p %s && codex exec --skip-git-repo-check --output-last-message %s %s",
+	inner := fmt.Sprintf(
+		"export HOME=/home/carrier; export CODEX_HOME=/home/carrier/.codex; . /home/carrier/.bash_profile >/dev/null 2>&1 || true; mkdir -p %s && codex exec --skip-git-repo-check --output-last-message %s %s",
 		shellQuote(reportDir),
 		shellQuote(reportPath),
 		shellQuote(prompt),
 	)
+	return "bash -lc " + shellQuote(inner)
 }
 
 func buildCarrierCommandFailure(stdoutPath, stderrPath string) error {

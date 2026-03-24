@@ -308,8 +308,8 @@ func TestCarrierAwardExecutorSettlesOrderAfterSuccessfulRun(t *testing.T) {
 	if !strings.Contains(runInput.Command, ".bash_profile") {
 		t.Fatalf("command = %q, want profile bootstrap", runInput.Command)
 	}
-	if strings.Contains(runInput.Command, "bash -lc") {
-		t.Fatalf("command = %q, want direct shell command without nested bash", runInput.Command)
+	if !strings.HasPrefix(runInput.Command, "bash -lc ") {
+		t.Fatalf("command = %q, want bash -lc wrapper", runInput.Command)
 	}
 	if !strings.Contains(runInput.Command, "HOME=/home/carrier") {
 		t.Fatalf("command = %q, want fixed carrier home", runInput.Command)
