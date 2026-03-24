@@ -111,6 +111,8 @@ services:
 
   api-gateway:
     environment:
+      CARRIER_CALLBACK_BASE_URL: http://api-gateway:8080
+      DEMO_API_BASE_URL: http://api-gateway:8080
       PROVIDER_SETTLEMENT_FNN_TREASURY_RPC_URL: http://fnn2:8227
       PROVIDER_SETTLEMENT_FNN_TREASURY_P2P_HOST: fnn2
       PROVIDER_SETTLEMENT_FNN_TREASURY_P2P_PORT: "8228"

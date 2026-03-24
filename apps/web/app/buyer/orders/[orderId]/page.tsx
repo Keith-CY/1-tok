@@ -5,6 +5,7 @@ import { formatMoney } from "@1tok/contracts";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { DeliveryReportPanel } from "@/components/delivery-report-panel";
 import { SectionCard, WorkspaceShell } from "@/components/workspace-shell";
 import { getOrders } from "@/lib/api";
 import { requirePortalViewer } from "@/lib/viewer";
@@ -184,12 +185,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ or
                     <Progress value={usage} />
                     <div className="text-sm text-muted-foreground">{usage.toFixed(0)}% used</div>
                   </div>
-                  {deliveryNote ? (
-                    <div className="mt-4 bg-secondary/50 p-4">
-                      <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Delivery note</div>
-                      <div className="mt-2 whitespace-pre-wrap text-sm leading-7 text-foreground">{deliveryNote}</div>
-                    </div>
-                  ) : null}
+                  {deliveryNote ? <DeliveryReportPanel summary={deliveryNote} /> : null}
                 </div>
               );
             })}

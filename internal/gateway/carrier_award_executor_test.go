@@ -1,8 +1,11 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -34,6 +37,7 @@ type stubCodeAgentClient struct {
 	installInputs            []carrierclient.CodeAgentInstallInput
 	installErr               error
 	runInputs                []carrierclient.CodeAgentRunInput
+	runHook                  func(carrierclient.CodeAgentRunInput) error
 	runResult                carrierclient.CodeAgentRunResult
 	runErr                   error
 }
@@ -87,6 +91,11 @@ func (s *stubCodeAgentClient) InstallCodeAgent(_ context.Context, input carrierc
 
 func (s *stubCodeAgentClient) RunCodeAgent(_ context.Context, input carrierclient.CodeAgentRunInput) (carrierclient.CodeAgentRunResult, error) {
 	s.runInputs = append(s.runInputs, input)
+	if s.runHook != nil {
+		if err := s.runHook(input); err != nil {
+			return carrierclient.CodeAgentRunResult{}, err
+		}
+	}
 	if s.runErr != nil {
 		return carrierclient.CodeAgentRunResult{}, s.runErr
 	}
@@ -376,6 +385,181 @@ func TestCarrierAwardExecutorSettlesOrderAfterSuccessfulRun(t *testing.T) {
 	}
 }
 
+func TestCarrierAwardExecutorPersistsReportViaCarrierCallback(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	carrierSvc := carrier.NewService()
+
+	providerBinding, err := app.RegisterCarrierBinding(platform.ProviderCarrierBinding{
+		ProviderOrgID:  "provider_1",
+		CarrierBaseURL: "https://carrier.example.com",
+		HostID:         "host_1",
+		AgentID:        "agent_1",
+		Backend:        "codex",
+		WorkspaceRoot:  "/workspace",
+		CallbackSecret: "callback-secret",
+		CallbackKeyID:  "callback-key-1",
+	})
+	if err != nil {
+		t.Fatalf("register binding: %v", err)
+	}
+	if _, err := app.VerifyCarrierBinding(providerBinding.ID); err != nil {
+		t.Fatalf("verify binding: %v", err)
+	}
+	settlementBinding, err := app.RegisterProviderSettlementBinding(platform.ProviderSettlementBinding{
+		ProviderOrgID: "provider_1",
+		Asset:         "USDI",
+		PeerID:        "peer_provider",
+		P2PAddress:    "/dns4/provider/tcp/8228/p2p/peer_provider",
+		NodeRPCURL:    "http://provider:8227",
+		UDTTypeScript: platform.UDTTypeScript{
+			CodeHash: "0xudt",
+			HashType: "type",
+			Args:     "0x01",
+		},
+	})
+	if err != nil {
+		t.Fatalf("register settlement binding: %v", err)
+	}
+	if _, err := app.VerifyProviderSettlementBinding(settlementBinding.ID); err != nil {
+		t.Fatalf("verify settlement binding: %v", err)
+	}
+	app.SetProviderSettlementProvisioner(&stubGatewayCarrierSettlementProvisioner{
+		result: platform.EnsureProviderLiquidityResult{
+			ChannelID:           "ch_gateway_1",
+			ReuseSource:         platform.ProviderLiquidityReuseNewChannel,
+			ReadyChannelCount:   1,
+			TotalSpendableCents: 5_000,
+		},
+	})
+
+	rfq, err := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID:         "buyer_1",
+		Title:              "Research 3 vendors",
+		Category:           "research",
+		Scope:              "Compare 3 Japanese AI call-center vendors.",
+		BudgetCents:        4_000,
+		ResponseDeadlineAt: time.Date(2099, 3, 26, 14, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("create rfq: %v", err)
+	}
+	bid, err := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "provider_1",
+		Message:       "bid",
+		Milestones: []platform.BidMilestoneInput{{
+			ID:             "ms_1",
+			Title:          "Service delivery",
+			BasePriceCents: 3_200,
+			BudgetCents:    3_200,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("create bid: %v", err)
+	}
+
+	awardedRFQ, order, err := app.AwardRFQ(rfq.ID, platform.AwardRFQInput{
+		BidID:       bid.ID,
+		FundingMode: "prepaid",
+	})
+	if err != nil {
+		t.Fatalf("award rfq: %v", err)
+	}
+
+	srv, err := NewServerWithOptionsE(Options{App: app, Carrier: carrierSvc})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+	callbackServer := httptest.NewServer(srv)
+	defer callbackServer.Close()
+	t.Setenv("CARRIER_CALLBACK_BASE_URL", callbackServer.URL)
+
+	report := strings.TrimSpace(`
+# Summary
+Three vendors fit the brief.
+
+## Findings
+- Vendor A is the fastest to onboard.
+- Vendor B is the cheapest at pilot scale.
+
+## Recommendation
+Start with Vendor A and benchmark Vendor B in reserve.
+`)
+
+	client := &stubCodeAgentClient{
+		runHook: func(input carrierclient.CodeAgentRunInput) error {
+			binding, err := carrierSvc.GetBinding(order.ID, "ms_1")
+			if err != nil {
+				return err
+			}
+			jobs, err := carrierSvc.ListJobs(binding.ID)
+			if err != nil {
+				return err
+			}
+			if len(jobs) != 1 {
+				return errors.New("expected one carrier job")
+			}
+			return sendTestCarrierIntegrationCallback(callbackServer.URL, providerBinding.CallbackSecret, providerBinding.CallbackKeyID, carrier.IntegrationCallbackEnvelope{
+				EventID:            jobs[0].ID + "-ready",
+				Sequence:           1,
+				EventType:          "milestone.ready",
+				BindingID:          binding.ID,
+				CarrierExecutionID: jobs[0].ID,
+				CreatedAt:          time.Now().UTC().Format(time.RFC3339),
+				Payload: map[string]any{
+					"jobId":   jobs[0].ID,
+					"output":  "/workspace/1tok/" + order.ID + "/ms_1/result.md",
+					"summary": report,
+				},
+			})
+		},
+		runResult: carrierclient.CodeAgentRunResult{
+			Backend: "codex",
+			Result: carrierclient.CodeAgentRunOutput{
+				OK:             true,
+				PolicyDecision: "allow",
+			},
+		},
+	}
+	executor := &carrierOrderAutoExecutor{
+		app:     app,
+		carrier: carrierSvc,
+		now: func() time.Time {
+			return time.Date(2099, 3, 24, 15, 4, 5, 0, time.UTC)
+		},
+		clientForBinding: func(platform.ProviderCarrierBinding) carrierclient.CodeAgentClient {
+			return client
+		},
+	}
+
+	if err := executor.Execute(context.Background(), carrierAwardExecutionInput{
+		RFQ:     awardedRFQ,
+		Order:   order,
+		Binding: providerBinding,
+	}); err != nil {
+		t.Fatalf("execute carrier award: %v", err)
+	}
+
+	updatedOrder, err := app.GetOrder(order.ID)
+	if err != nil {
+		t.Fatalf("get order: %v", err)
+	}
+	if updatedOrder.Status != "completed" {
+		t.Fatalf("order status = %s, want completed", updatedOrder.Status)
+	}
+	if updatedOrder.Milestones[0].Summary != report {
+		t.Fatalf("milestone summary = %q, want callback markdown", updatedOrder.Milestones[0].Summary)
+	}
+	if len(client.runInputs) != 1 {
+		t.Fatalf("run inputs = %d, want 1", len(client.runInputs))
+	}
+	if !strings.Contains(client.runInputs[0].Command, "/api/v1/carrier/callbacks/events") {
+		t.Fatalf("command = %q, want carrier callback endpoint", client.runInputs[0].Command)
+	}
+	if !strings.Contains(client.runInputs[0].Command, "X-Carrier-Key-Id") {
+		t.Fatalf("command = %q, want callback key header", client.runInputs[0].Command)
+	}
+}
+
 func TestCarrierAwardExecutorFailsJobWithOutputPathsWhenCommandExitsNonZero(t *testing.T) {
 	app := platform.NewAppWithMemory()
 	carrierSvc := carrier.NewService()
@@ -623,4 +807,30 @@ func TestCarrierAwardExecutorInstallsCodeAgentWhenVersionProbeFails(t *testing.T
 	if len(client.versionInputs) != 2 {
 		t.Fatalf("version inputs = %d, want 2", len(client.versionInputs))
 	}
+}
+
+func sendTestCarrierIntegrationCallback(baseURL, secret, keyID string, envelope carrier.IntegrationCallbackEnvelope) error {
+	body, err := json.Marshal(envelope)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodPost, strings.TrimRight(baseURL, "/")+"/api/v1/carrier/callbacks/events", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+	if strings.TrimSpace(keyID) != "" {
+		req.Header.Set("X-Carrier-Key-Id", keyID)
+	}
+	req.Header.Set("X-Carrier-Signature", carrier.SignIntegrationCallbackBody(secret, body))
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return errors.New("carrier callback rejected")
+	}
+	return nil
 }

@@ -2,8 +2,10 @@ package gateway
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"path"
 	"strings"
 	"time"
@@ -22,6 +24,15 @@ type carrierAwardExecutionInput struct {
 
 type carrierAwardExecutor interface {
 	Execute(context.Context, carrierAwardExecutionInput) error
+}
+
+type carrierReportCallbackConfig struct {
+	BaseURL        string
+	BindingID      string
+	JobID          string
+	ReportPath     string
+	CallbackSecret string
+	CallbackKeyID  string
 }
 
 type carrierOrderAutoExecutor struct {
@@ -74,7 +85,8 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 	stdoutPath := carrierStdoutPath(reportPath)
 	stderrPath := carrierStderrPath(reportPath)
 	reportDir := path.Dir(reportPath)
-	command := buildCarrierRunCommand(reportDir, reportPath, buildCarrierPrompt(input.RFQ, input.Order, milestone))
+	callbackConfig := resolveCarrierReportCallbackConfig(input.Binding, binding.ID, job.ID, reportPath)
+	command := buildCarrierRunCommand(reportDir, reportPath, buildCarrierPrompt(input.RFQ, input.Order, milestone), callbackConfig)
 	hostID := strings.TrimSpace(input.Binding.HostID)
 	agentID := firstNonEmptyString(strings.TrimSpace(input.Binding.AgentID), "main")
 	backend := firstNonEmptyString(strings.TrimSpace(input.Binding.Backend), "codex")
@@ -111,6 +123,18 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 		err := buildCarrierCommandFailure(stdoutPath, stderrPath)
 		_, _ = e.carrier.FailJob(job.ID, err.Error())
 		return err
+	}
+	if callbackConfig.Enabled() {
+		updatedJob, err := e.carrier.GetJob(job.ID)
+		if err != nil {
+			return err
+		}
+		if updatedJob.State != carrier.JobStateCompleted {
+			err := fmt.Errorf("carrier run finished without milestone.ready callback: job=%s state=%s", job.ID, updatedJob.State)
+			_, _ = e.carrier.FailJob(job.ID, err.Error())
+			return err
+		}
+		return nil
 	}
 
 	if _, err := e.carrier.CompleteJob(job.ID, reportPath); err != nil {
@@ -224,16 +248,103 @@ func buildCarrierPrompt(rfq platform.RFQ, order *core.Order, milestone *core.Mil
 	return builder.String()
 }
 
-func buildCarrierRunCommand(reportDir, reportPath, prompt string) string {
-	inner := fmt.Sprintf(
-		"set -e; export HOME=/home/carrier; export CODEX_HOME=/home/carrier/.codex; . /home/carrier/.bash_profile >/dev/null 2>&1 || true; mkdir -p %s; cd %s; codex exec --cd %s --skip-git-repo-check --full-auto --output-last-message %s %s",
-		shellQuote(reportDir),
-		shellQuote(reportDir),
-		shellQuote(reportDir),
-		shellQuote(reportPath),
-		shellQuote(prompt),
-	)
+func buildCarrierRunCommand(reportDir, reportPath, prompt string, callbackConfig carrierReportCallbackConfig) string {
+	segments := []string{
+		"set -e",
+		"export HOME=/home/carrier",
+		"export CODEX_HOME=/home/carrier/.codex",
+		". /home/carrier/.bash_profile >/dev/null 2>&1 || true",
+		fmt.Sprintf("mkdir -p %s", shellQuote(reportDir)),
+		fmt.Sprintf("cd %s", shellQuote(reportDir)),
+		fmt.Sprintf(
+			"codex exec --cd %s --skip-git-repo-check --full-auto --output-last-message %s %s",
+			shellQuote(reportDir),
+			shellQuote(reportPath),
+			shellQuote(prompt),
+		),
+	}
+	if callbackConfig.Enabled() {
+		segments = append(segments, buildCarrierCallbackCommand(callbackConfig))
+	}
+	inner := strings.Join(segments, "; ")
 	return "bash -lc " + shellQuote(inner)
+}
+
+func buildCarrierCallbackCommand(config carrierReportCallbackConfig) string {
+	script := strings.TrimSpace(fmt.Sprintf(`
+(async () => {
+  const fs = require("node:fs");
+  const crypto = require("node:crypto");
+  const callbackBaseUrl = %s;
+  const jobId = %s;
+  const bindingId = %s;
+  const reportPath = %s;
+  const callbackSecret = %s;
+  const callbackKeyId = %s;
+  const report = fs.readFileSync(reportPath, "utf8").trim();
+  const summary = report || ("Carrier execution completed. Result saved to " + reportPath);
+  const envelope = {
+    eventId: jobId + "-ready",
+    sequence: 1,
+    eventType: "milestone.ready",
+    bindingId,
+    carrierExecutionId: jobId,
+    createdAt: new Date().toISOString(),
+    payload: {
+      jobId,
+      output: reportPath,
+      summary,
+    },
+  };
+  const body = JSON.stringify(envelope);
+  const headers = {
+    "Accept": "application/json",
+    "Content-Type": "application/json",
+    "X-Carrier-Signature": "sha256=" + crypto.createHmac("sha256", callbackSecret).update(body).digest("hex"),
+  };
+  if (callbackKeyId) headers["X-Carrier-Key-Id"] = callbackKeyId;
+  const response = await fetch(callbackBaseUrl.replace(/\/$/, "") + "/api/v1/carrier/callbacks/events", {
+    method: "POST",
+    headers,
+    body,
+  });
+  if (!response.ok) {
+    throw new Error("carrier callback failed: " + response.status + " " + (await response.text()));
+  }
+})().catch((error) => {
+  console.error(error && error.stack ? error.stack : String(error));
+  process.exit(1);
+});
+`, mustJSONJS(config.BaseURL), mustJSONJS(config.JobID), mustJSONJS(config.BindingID), mustJSONJS(config.ReportPath), mustJSONJS(config.CallbackSecret), mustJSONJS(config.CallbackKeyID)))
+	return "node -e " + shellQuote(script)
+}
+
+func resolveCarrierReportCallbackConfig(binding platform.ProviderCarrierBinding, carrierBindingID, jobID, reportPath string) carrierReportCallbackConfig {
+	callbackSecret := strings.TrimSpace(binding.CallbackSecret)
+	baseURL := strings.TrimSpace(firstNonEmptyString(
+		os.Getenv("CARRIER_CALLBACK_BASE_URL"),
+		os.Getenv("DEMO_API_BASE_URL"),
+		os.Getenv("RELEASE_USDI_E2E_API_BASE_URL"),
+	))
+	if callbackSecret == "" || baseURL == "" || strings.TrimSpace(carrierBindingID) == "" || strings.TrimSpace(jobID) == "" {
+		return carrierReportCallbackConfig{}
+	}
+	return carrierReportCallbackConfig{
+		BaseURL:        strings.TrimRight(baseURL, "/"),
+		BindingID:      strings.TrimSpace(carrierBindingID),
+		JobID:          strings.TrimSpace(jobID),
+		ReportPath:     strings.TrimSpace(reportPath),
+		CallbackSecret: callbackSecret,
+		CallbackKeyID:  strings.TrimSpace(binding.CallbackKeyID),
+	}
+}
+
+func (c carrierReportCallbackConfig) Enabled() bool {
+	return strings.TrimSpace(c.BaseURL) != "" &&
+		strings.TrimSpace(c.BindingID) != "" &&
+		strings.TrimSpace(c.JobID) != "" &&
+		strings.TrimSpace(c.ReportPath) != "" &&
+		strings.TrimSpace(c.CallbackSecret) != ""
 }
 
 func buildCarrierCommandFailure(stdoutPath, stderrPath string) error {
@@ -264,6 +375,14 @@ func shellQuote(value string) string {
 		return "''"
 	}
 	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
+}
+
+func mustJSONJS(value string) string {
+	body, err := json.Marshal(value)
+	if err != nil {
+		panic(err)
+	}
+	return string(body)
 }
 
 func (s *Server) dispatchCarrierExecution(rfq platform.RFQ, order *core.Order) {
