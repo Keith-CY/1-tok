@@ -30,6 +30,8 @@ describe("buyer deposit helpers", () => {
     expect(html).toContain("Copy address");
     expect(html).toContain("CKB deposit address QR code");
     expect(html).toContain(encodeURIComponent(demoDeposit.address));
-    expect(html).toContain("Fixed CKB address for USDI funding.");
+    expect(html).toContain("USDI Funding Address (CKB)");
+    expect(html).toContain("On-chain USDI");
+    expect(html).toContain("Sweep rule");
   });
 });
