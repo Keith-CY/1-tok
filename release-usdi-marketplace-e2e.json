@@ -1,0 +1,65 @@
+{
+  "asset": "USDI",
+  "faucetTxHash": "0xf0e37bdf592fece06bb07149fb630bfbb46d5987537d864aac5a783ee80efcbc",
+  "explorerProofUrls": [
+    "https://pudge.explorer.nervos.org/transaction/0xf0e37bdf592fece06bb07149fb630bfbb46d5987537d864aac5a783ee80efcbc"
+  ],
+  "integrationIssues": [
+    "https://github.com/Keith-CY/carrier/issues/1595",
+    "carrier codeagent run probe skipped: missing OPENAI_API_KEY or OPENAI_CODEX_TOKEN"
+  ],
+  "buyerUserEmail": "buyer-1774349567703407393@example.com",
+  "providerUserEmail": "provider-1774349567703407393@example.com",
+  "buyerOrgId": "org_1",
+  "providerOrgId": "org_2",
+  "buyerTopUpInvoice": "",
+  "buyerDepositAddress": "ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqf8f7mkr02s4rntdg34hmw9n2splgmd9gc3xr9tf",
+  "buyerTopUpFundingRecordId": "fund_1",
+  "bootstrapRfqId": "rfq_1",
+  "bootstrapBidId": "bid_1",
+  "bootstrapOrderId": "ord_1",
+  "bootstrapCarrierBindingId": "bind_1",
+  "bootstrapCarrierExecutionId": "job_1",
+  "bootstrapReservationId": "plr_1",
+  "bootstrapReservationChannel": "0x8d90627fcb71f094765f76292bb779e5e5cc37ec2a209934da63e8db5f096577",
+  "bootstrapReservationStatus": "released",
+  "bootstrapPayoutRecordIds": [
+    "fund_2",
+    "fund_3",
+    "fund_4"
+  ],
+  "reuseRfqId": "rfq_2",
+  "reuseBidId": "bid_2",
+  "reuseOrderId": "ord_2",
+  "reuseReservationId": "plr_2",
+  "reuseReservationInitialChannel": "0xb1ac928590c4cea471f81e4e4b146aa1784acee150537e90faee74fe1d336dd2",
+  "reuseReservationChannel": "0xb1ac928590c4cea471f81e4e4b146aa1784acee150537e90faee74fe1d336dd2",
+  "reuseReservationStatus": "released",
+  "reuseReservationReuseSource": "reused",
+  "reusePayoutRecordIds": [
+    "fund_5",
+    "fund_6",
+    "fund_7"
+  ],
+  "rfqId": "rfq_3",
+  "bidId": "bid_3",
+  "orderId": "ord_3",
+  "carrierProviderBindingId": "pcb_1",
+  "providerSettlementBindingId": "psb_1",
+  "carrierBindingId": "bind_3",
+  "carrierExecutionId": "job_3",
+  "reservationId": "plr_3",
+  "reservationInitialChannelId": "0xb1ac928590c4cea471f81e4e4b146aa1784acee150537e90faee74fe1d336dd2",
+  "reservationChannelId": "0xb1ac928590c4cea471f81e4e4b146aa1784acee150537e90faee74fe1d336dd2",
+  "reservationReuseSource": "reused",
+  "reservationStatus": "released",
+  "usageChargeCount": 2,
+  "providerPayoutRecordIds": [
+    "fund_8",
+    "fund_9",
+    "fund_10"
+  ],
+  "disconnectOrderStatus": "awaiting_payment_rail",
+  "recoveredOrderStatus": "running",
+  "finalOrderStatus": "completed"
+}

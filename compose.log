@@ -1,0 +1,670 @@
+postgres-1  | The files belonging to this database system will be owned by user "postgres".
+postgres-1  | This user must also own the server process.
+postgres-1  | 
+postgres-1  | The database cluster will be initialized with locale "en_US.utf8".
+postgres-1  | The default database encoding has accordingly been set to "UTF8".
+postgres-1  | The default text search configuration will be set to "english".
+postgres-1  | 
+postgres-1  | Data page checksums are disabled.
+postgres-1  | 
+postgres-1  | fixing permissions on existing directory /var/lib/postgresql/data ... ok
+postgres-1  | creating subdirectories ... ok
+postgres-1  | selecting dynamic shared memory implementation ... posix
+postgres-1  | selecting default max_connections ... 100
+postgres-1  | selecting default shared_buffers ... 128MB
+postgres-1  | selecting default time zone ... UTC
+postgres-1  | creating configuration files ... ok
+postgres-1  | running bootstrap script ... ok
+postgres-1  | sh: locale: not found
+postgres-1  | 2026-03-24 10:47:21.476 UTC [36] WARNING:  no usable system locales were found
+postgres-1  | performing post-bootstrap initialization ... ok
+postgres-1  | syncing data to disk ... ok
+postgres-1  | 
+postgres-1  | 
+postgres-1  | Success. You can now start the database server using:
+postgres-1  | 
+postgres-1  |     pg_ctl -D /var/lib/postgresql/data -l logfile start
+postgres-1  | 
+postgres-1  | initdb: warning: enabling "trust" authentication for local connections
+postgres-1  | initdb: hint: You can change this by editing pg_hba.conf or using the option -A, or --auth-local and --auth-host, the next time you run initdb.
+postgres-1  | waiting for server to start....2026-03-24 10:47:22.264 UTC [42] LOG:  starting PostgreSQL 16.13 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+postgres-1  | 2026-03-24 10:47:22.265 UTC [42] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+postgres-1  | 2026-03-24 10:47:22.268 UTC [45] LOG:  database system was shut down at 2026-03-24 10:47:22 UTC
+postgres-1  | 2026-03-24 10:47:22.274 UTC [42] LOG:  database system is ready to accept connections
+postgres-1  |  done
+postgres-1  | server started
+postgres-1  | CREATE DATABASE
+postgres-1  | 
+postgres-1  | 
+postgres-1  | /usr/local/bin/docker-entrypoint.sh: ignoring /docker-entrypoint-initdb.d/*
+postgres-1  | 
+postgres-1  | waiting for server to shut down....2026-03-24 10:47:22.442 UTC [42] LOG:  received fast shutdown request
+postgres-1  | 2026-03-24 10:47:22.443 UTC [42] LOG:  aborting any active transactions
+postgres-1  | 2026-03-24 10:47:22.454 UTC [42] LOG:  background worker "logical replication launcher" (PID 48) exited with exit code 1
+postgres-1  | 2026-03-24 10:47:22.454 UTC [43] LOG:  shutting down
+postgres-1  | 2026-03-24 10:47:22.455 UTC [43] LOG:  checkpoint starting: shutdown immediate
+postgres-1  | 2026-03-24 10:47:22.482 UTC [43] LOG:  checkpoint complete: wrote 926 buffers (5.7%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.025 s, sync=0.002 s, total=0.029 s; sync files=301, longest=0.001 s, average=0.001 s; distance=4272 kB, estimate=4272 kB; lsn=0/191E928, redo lsn=0/191E928
+postgres-1  | 2026-03-24 10:47:22.493 UTC [42] LOG:  database system is shut down
+postgres-1  |  done
+postgres-1  | server stopped
+postgres-1  | 
+postgres-1  | PostgreSQL init process complete; ready for start up.
+postgres-1  | 
+postgres-1  | 2026-03-24 10:47:22.571 UTC [1] LOG:  starting PostgreSQL 16.13 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+postgres-1  | 2026-03-24 10:47:22.572 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+postgres-1  | 2026-03-24 10:47:22.572 UTC [1] LOG:  listening on IPv6 address "::", port 5432
+postgres-1  | 2026-03-24 10:47:22.573 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+postgres-1  | 2026-03-24 10:47:22.577 UTC [58] LOG:  database system was shut down at 2026-03-24 10:47:22 UTC
+postgres-1  | 2026-03-24 10:47:22.583 UTC [1] LOG:  database system is ready to accept connections
+postgres-1  | 2026-03-24 10:52:22.636 UTC [56] LOG:  checkpoint starting: time
+postgres-1  | 2026-03-24 10:52:40.273 UTC [56] LOG:  checkpoint complete: wrote 179 buffers (1.1%); 0 WAL file(s) added, 0 removed, 0 recycled; write=17.635 s, sync=0.002 s, total=17.638 s; sync files=155, longest=0.001 s, average=0.001 s; distance=941 kB, estimate=941 kB; lsn=0/1A119A0, redo lsn=0/1A09D30
+postgres-1  | 2026-03-24 10:57:22.358 UTC [56] LOG:  checkpoint starting: time
+postgres-1  | 2026-03-24 10:57:31.379 UTC [56] LOG:  checkpoint complete: wrote 91 buffers (0.6%); 0 WAL file(s) added, 0 removed, 0 recycled; write=9.019 s, sync=0.001 s, total=9.022 s; sync files=60, longest=0.001 s, average=0.001 s; distance=49 kB, estimate=851 kB; lsn=0/1A1E810, redo lsn=0/1A16460
+redis-1     | 1:C 24 Mar 2026 10:47:20.857 # WARNING Memory overcommit must be enabled! Without it, a background save or replication may fail under low memory condition. Being disabled, it can also cause failures without low memory condition, see https://github.com/jemalloc/jemalloc/issues/1328. To fix this issue add 'vm.overcommit_memory = 1' to /etc/sysctl.conf and then reboot or run the command 'sysctl vm.overcommit_memory=1' for this to take effect.
+redis-1     | 1:C 24 Mar 2026 10:47:20.857 * oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+redis-1     | 1:C 24 Mar 2026 10:47:20.857 * Redis version=7.4.8, bits=64, commit=00000000, modified=0, pid=1, just started
+redis-1     | 1:C 24 Mar 2026 10:47:20.857 * Configuration loaded
+redis-1     | 1:M 24 Mar 2026 10:47:20.858 * monotonic clock: POSIX clock_gettime
+redis-1     | 1:M 24 Mar 2026 10:47:20.858 * Running mode=standalone, port=6379.
+redis-1     | 1:M 24 Mar 2026 10:47:20.859 * Server initialized
+redis-1     | 1:M 24 Mar 2026 10:47:20.859 * Ready to accept connections tcp
+carrier-daemon-1  | {"time":"2026-03-24T10:52:31.018000984Z","level":"INFO","msg":"initializing carrier daemon"}
+carrier-daemon-1  | {"time":"2026-03-24T10:52:31.036351004Z","level":"INFO","msg":"carrier daemon booted"}
+carrier-daemon-1  | carrier daemon booted (listen=0.0.0.0:8788 log=info/text)
+carrier-daemon-1  | catalog (active):
+carrier-daemon-1  | - Codex CLI (codex): active
+carrier-daemon-1  | - OpenClaw (openclaw): active
+carrier-daemon-1  | - OpenCode (opencode): active
+carrier-daemon-1  | - PicoClaw (picoclaw): active
+carrier-daemon-1  | - ZeroClaw (zeroclaw): active
+carrier-daemon-1  | catalog (candidate, unlisted):
+carrier-daemon-1  | - NanoClaw (nanoclaw): candidate [candidate]
+carrier-daemon-1  | - Pi Mono (pi-mono): candidate [candidate]
+carrier-daemon-1  | 
+carrier-daemon-1  |   PAIR_CODE: pair-3037036621b94cbfb244c622f5ccace8
+carrier-daemon-1  |   (expires in 5 minutes)
+carrier-daemon-1  | 
+fnn2-1            | Current database version: [20251219152333], latest db version: [20251219152333]
+fnn2-1            |   [2m2026-03-24T10:55:48.124489Z[0m [31mERROR[0m [1;31mfnn::fiber::network[0m[31m: [31mFailed to create channel: Invalid parameter: Peer PeerId(QmPpeDtTLZ6gNPT7k1VZX9img8nJgqSvhqbppFz9jHBubz)'s feature not found, waiting for peer to send Init message[0m
+fnn2-1            |     [2;3mat[0m crates/fiber-lib/src/fiber/network.rs:1700
+fnn2-1            | 
+fnn2-1            |   [2m2026-03-24T10:55:48.124622Z[0m [31mERROR[0m [1;31mfnn::rpc::channel[0m[31m: [31mchannel request params OpenChannelParams { peer_id: PeerId(QmPpeDtTLZ6gNPT7k1VZX9img8nJgqSvhqbppFz9jHBubz), funding_amount: 50, public: None, funding_udt_type_script: Some(Script { code_hash: H256 ( [ 0xcc, 0x9d, 0xc3, 0x3e, 0xf2, 0x34, 0xe1, 0x4b, 0xc7, 0x88, 0xc4, 0x3a, 0x48, 0x48, 0x55, 0x6a, 0x5f, 0xb1, 0x64, 0x01, 0xa0, 0x46, 0x62, 0xfc, 0x55, 0xdb, 0x9b, 0xb2, 0x01, 0x98, 0x70, 0x37 ] ), hash_type: Type, args: JsonBytes(b"q\xfd\x19\x85\xb2\x97\x1a\x99\x03\xe4\xd8\xed\rY\xe6q\x01f\x98R\x17\xca\x06\x81Cx\x83\x83{\x86\x16/") }), shutdown_script: None, commitment_delay_epoch: None, commitment_fee_rate: None, funding_fee_rate: None, tlc_expiry_delta: None, tlc_min_value: None, tlc_fee_proportional_millionths: Some(0), max_tlc_value_in_flight: None, max_tlc_number_in_flight: None } => error: "Invalid parameter: Peer PeerId(QmPpeDtTLZ6gNPT7k1VZX9img8nJgqSvhqbppFz9jHBubz)'s feature not found, waiting for peer to send Init message"[0m
+fnn2-1            |     [2;3mat[0m crates/fiber-lib/src/rpc/channel.rs:473
+fnn2-1            | 
+fnn2-1            |   [2m2026-03-24T10:57:05.084145Z[0m [31mERROR[0m [1;31mfnn::ckb::actor[0m[31m: [31m[ckb] send transaction Byte32(0x659e4afca8d74aba07069f0ac2e5535430948103e165a54e795e7fb7b39069ad) failed: Rpc(Error { code: ServerError(-301), message: "TransactionFailedToResolve: Resolve failed Unknown(OutPoint(0x9cdbdf87fe18b009d931a41fa5f80b510ced2e05bea5ba7f221379ef862e928e01000000))", data: Some(String("Resolve(Unknown(OutPoint(0x9cdbdf87fe18b009d931a41fa5f80b510ced2e05bea5ba7f221379ef862e928e01000000)))")) })[0m
+fnn2-1            |     [2;3mat[0m crates/fiber-lib/src/ckb/actor.rs:183
+fnn2-1            | 
+execution-1       | 2026/03/24 10:52:42 execution listening on :8085
+fnn2-1            |   [2m2026-03-24T10:57:05.084206Z[0m [31mERROR[0m [1;31mfnn::fiber::in_flight_ckb_tx_actor[0m[31m: [31mfailed to send tx Hash256(0x659e4afca8d74aba07069f0ac2e5535430948103e165a54e795e7fb7b39069ad) because of rpc error: jsonrpc error: `Server error: TransactionFailedToResolve: Resolve failed Unknown(OutPoint(0x9cdbdf87fe18b009d931a41fa5f80b510ced2e05bea5ba7f221379ef862e928e01000000))`[0m
+fnn2-1            |     [2;3mat[0m crates/fiber-lib/src/fiber/in_flight_ckb_tx_actor.rs:226
+fnn2-1            | 
+execution-1       | 2026/03/24 10:52:43 access service="execution" method="GET" path="/healthz" status=200 duration=14µs remote="172.18.0.21:34854"
+carrier-daemon-1  | HTTP API listening on 0.0.0.0:8788
+settlement-1      | 2026/03/24 10:52:42 settlement listening on :8083
+settlement-1      | 2026/03/24 10:52:43 access service="settlement" method="GET" path="/healthz" status=200 duration=54µs remote="172.18.0.21:38524"
+settlement-1      | 2026/03/24 10:52:48 access service="settlement" method="POST" path="/v1/topups" status=201 duration=427.706ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:52:48 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=337.705ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:53:14 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=524.861ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:53:17 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=525.254ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:53:21 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=524.398ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:53:25 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=524.07ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:53:28 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=521.76ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:53:32 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=525.235ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:53:35 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=523.211ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:53:39 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=524.591ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:53:42 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=524.196ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:53:46 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=525.152ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:53:49 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=540.196ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:53:53 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=524.531ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:53:56 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=522.72ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:54:00 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=533.052ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:54:03 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=522.909ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:54:07 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=524.088ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:54:10 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=524.157ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:54:14 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=525.325ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:54:17 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=524.506ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:54:21 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=523.754ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:54:25 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=525.275ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:54:28 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=525.23ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:54:32 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=523.056ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:54:35 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=523.524ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:54:39 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=523.836ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:54:42 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=524.092ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:54:46 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=523.42ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:54:49 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=542.905ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:54:53 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=524.886ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:54:56 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=523.373ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:55:00 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=529.393ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:55:03 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=524.742ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:55:07 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=525.356ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:55:10 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=524.476ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:55:14 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=522.964ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:55:17 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=523.648ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:55:21 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=525.342ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:55:24 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=523.641ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:55:28 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=523.413ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:55:32 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=523.564ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:55:35 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=525.286ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:55:39 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=522.006ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:55:42 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=507.797ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:55:44 access service="settlement" method="POST" path="/v1/buyer/deposits/sync" status=200 duration=1.572791s remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:55:48 access service="settlement" method="GET" path="/v1/buyer/deposit-address" status=200 duration=552.198ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:55:48 access service="settlement" method="GET" path="/v1/funding-records" status=200 duration=1.279ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:55:48 access service="settlement" method="GET" path="/v1/funding-records" status=200 duration=1.036ms remote="172.18.0.21:38526"
+settlement-1      | 2026/03/24 10:57:30 access service="settlement" method="POST" path="/v1/provider-payouts" status=201 duration=6.581ms remote="172.18.0.21:39128"
+settlement-1      | 2026/03/24 10:57:30 access service="settlement" method="POST" path="/v1/provider-payouts" status=201 duration=3.342ms remote="172.18.0.21:39128"
+settlement-1      | 2026/03/24 10:57:30 access service="settlement" method="POST" path="/v1/provider-payouts" status=201 duration=2.85ms remote="172.18.0.21:39128"
+settlement-1      | 2026/03/24 10:57:30 access service="settlement" method="GET" path="/v1/funding-records" status=200 duration=1.812ms remote="172.18.0.21:39128"
+settlement-1      | 2026/03/24 10:57:30 access service="settlement" method="POST" path="/v1/provider-payouts" status=201 duration=3.402ms remote="172.18.0.21:39128"
+settlement-1      | 2026/03/24 10:57:30 access service="settlement" method="POST" path="/v1/provider-payouts" status=201 duration=3.002ms remote="172.18.0.21:39128"
+settlement-1      | 2026/03/24 10:57:30 access service="settlement" method="POST" path="/v1/provider-payouts" status=201 duration=3.279ms remote="172.18.0.21:39128"
+settlement-1      | 2026/03/24 10:57:30 access service="settlement" method="GET" path="/v1/funding-records" status=200 duration=1.316ms remote="172.18.0.21:39128"
+settlement-1      | 2026/03/24 10:57:30 access service="settlement" method="POST" path="/v1/provider-payouts" status=201 duration=3.025ms remote="172.18.0.21:39128"
+settlement-1      | 2026/03/24 10:57:30 access service="settlement" method="POST" path="/v1/provider-payouts" status=201 duration=2.986ms remote="172.18.0.21:39128"
+settlement-1      | 2026/03/24 10:57:30 access service="settlement" method="POST" path="/v1/provider-payouts" status=201 duration=2.906ms remote="172.18.0.21:39128"
+settlement-1      | 2026/03/24 10:57:30 access service="settlement" method="GET" path="/v1/funding-records" status=200 duration=1.268ms remote="172.18.0.21:39128"
+carrier-gateway-1  | 2026/03/24 10:52:36 [gateway] CARRIER_DISCORD_PUBLIC_KEY is not set — all Discord webhook requests will be rejected
+carrier-gateway-1  | 2026/03/24 10:52:36 [gateway/telegram] transport disabled: missing CARRIER_TELEGRAM_BOT_TOKEN
+carrier-gateway-1  | 2026/03/24 10:52:36 [gateway] listening on http://0.0.0.0:8787
+web-1              | ▲ Next.js 16.1.6
+web-1              | - Local:         http://c16da3d01eb5:3000
+web-1              | - Network:       http://c16da3d01eb5:3000
+web-1              | 
+web-1              | ✓ Starting...
+web-1              | ✓ Ready in 451ms
+api-gateway-1      | 2026/03/24 10:52:32 api-gateway listening on :8080
+api-gateway-1            | 2026/03/24 10:52:43 access service="api-gateway" method="GET" path="/healthz" status=200 duration=39µs remote="172.18.0.21:33038"
+api-gateway-1            | 2026/03/24 10:55:48 access service="api-gateway" method="POST" path="/api/v1/carrier-bindings" status=201 duration=167µs remote="172.18.0.21:39152"
+api-gateway-1            | 2026/03/24 10:55:48 access service="api-gateway" method="POST" path="/api/v1/carrier-bindings/pcb_1/verify" status=200 duration=21µs remote="172.18.0.21:39152"
+api-gateway-1            | 2026/03/24 10:55:48 access service="api-gateway" method="POST" path="/api/v1/provider-settlement-bindings" status=201 duration=90µs remote="172.18.0.21:39158"
+api-gateway-1            | 2026/03/24 10:55:48 access service="api-gateway" method="POST" path="/api/v1/provider-settlement-bindings/psb_1/verify" status=200 duration=25µs remote="172.18.0.21:39158"
+api-gateway-1            | 2026/03/24 10:55:48 access service="api-gateway" method="POST" path="/api/v1/rfqs" status=201 duration=6.913ms remote="172.18.0.21:39168"
+api-gateway-1            | 2026/03/24 10:55:48 access service="api-gateway" method="POST" path="/api/v1/rfqs/rfq_1/bids" status=201 duration=4.946ms remote="172.18.0.21:39168"
+fiber-adapter-1          | 2026/03/24 10:52:36 fiber-adapter listening on :8091
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/rfqs/rfq_1/award" status=200 duration=1m42.020836s remote="172.18.0.21:39168"
+fiber-adapter-1          | 2026/03/24 10:52:41 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=63µs remote="127.0.0.1:35738"
+fiber-adapter-1          | 2026/03/24 10:52:46 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=86µs remote="127.0.0.1:57778"
+fiber-adapter-1          | 2026/03/24 10:52:51 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=40µs remote="127.0.0.1:57784"
+remote-vps-1             | Server listening on 0.0.0.0 port 22.
+fiber-adapter-1          | 2026/03/24 10:52:56 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=39µs remote="127.0.0.1:53790"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="GET" path="/api/v1/orders/ord_1/provider-settlement-reservation" status=200 duration=1.889ms remote="172.18.0.21:39168"
+fiber-adapter-1          | 2026/03/24 10:53:01 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=39µs remote="127.0.0.1:53792"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/orders/ord_1/milestones/ms_1/bind-carrier" status=201 duration=70µs remote="172.18.0.21:39168"
+fiber-adapter-1          | 2026/03/24 10:53:07 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=55µs remote="127.0.0.1:45212"
+mock-carrier-1           | 2026/03/24 10:52:31 mock-carrier listening on :8787
+provider-fnn-1           | No wallet key found, generating /data/ckb/key
+provider-fnn-1           |   [2m2026-03-24T10:57:05.069089Z[0m [31mERROR[0m [1;31mfnn::ckb::actor[0m[31m: [31m[ckb] send transaction Byte32(0x659e4afca8d74aba07069f0ac2e5535430948103e165a54e795e7fb7b39069ad) failed: Rpc(Error { code: ServerError(-301), message: "TransactionFailedToResolve: Resolve failed Unknown(OutPoint(0x9cdbdf87fe18b009d931a41fa5f80b510ced2e05bea5ba7f221379ef862e928e01000000))", data: Some(String("Resolve(Unknown(OutPoint(0x9cdbdf87fe18b009d931a41fa5f80b510ced2e05bea5ba7f221379ef862e928e01000000)))")) })[0m
+provider-fnn-1           |     [2;3mat[0m crates/fiber-lib/src/ckb/actor.rs:183
+provider-fnn-1           | 
+provider-fnn-1           |   [2m2026-03-24T10:57:05.069201Z[0m [31mERROR[0m [1;31mfnn::fiber::in_flight_ckb_tx_actor[0m[31m: [31mfailed to send tx Hash256(0x659e4afca8d74aba07069f0ac2e5535430948103e165a54e795e7fb7b39069ad) because of rpc error: jsonrpc error: `Server error: TransactionFailedToResolve: Resolve failed Unknown(OutPoint(0x9cdbdf87fe18b009d931a41fa5f80b510ced2e05bea5ba7f221379ef862e928e01000000))`[0m
+provider-fnn-1           |     [2;3mat[0m crates/fiber-lib/src/fiber/in_flight_ckb_tx_actor.rs:226
+provider-fnn-1           | 
+marketplace-1      | 2026/03/24 10:47:24 marketplace listening on :8082
+bootstrap-1        | 2026/03/24 10:52:31 bootstrap completed
+fiber-adapter-1          | 2026/03/24 10:53:12 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=63µs remote="127.0.0.1:45220"
+remote-vps-1             | Server listening on :: port 22.
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 55704
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+fiber-adapter-1          | 2026/03/24 10:53:17 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=41µs remote="127.0.0.1:35032"
+fiber-adapter-1          | 2026/03/24 10:53:22 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=40µs remote="127.0.0.1:40674"
+fiber-adapter-1          | 2026/03/24 10:53:27 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=40µs remote="127.0.0.1:40688"
+fiber-adapter-1          | 2026/03/24 10:53:32 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=40µs remote="127.0.0.1:39050"
+fiber-adapter-1          | 2026/03/24 10:53:37 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=38µs remote="127.0.0.1:39054"
+fiber-adapter-1          | 2026/03/24 10:53:42 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=60µs remote="127.0.0.1:34680"
+fiber-adapter-1          | 2026/03/24 10:53:47 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=130µs remote="127.0.0.1:34686"
+fiber-adapter-1          | 2026/03/24 10:53:52 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=31µs remote="127.0.0.1:60468"
+fiber-adapter-1          | 2026/03/24 10:53:57 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=41µs remote="127.0.0.1:60474"
+fiber-adapter-1          | 2026/03/24 10:54:02 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=43µs remote="127.0.0.1:37456"
+fiber-adapter-1          | 2026/03/24 10:54:07 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=63µs remote="127.0.0.1:37466"
+fiber-adapter-1          | 2026/03/24 10:54:12 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=64µs remote="127.0.0.1:36144"
+fiber-adapter-1          | 2026/03/24 10:54:17 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=84µs remote="127.0.0.1:36146"
+fiber-adapter-1          | 2026/03/24 10:54:22 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=61µs remote="127.0.0.1:51690"
+fiber-adapter-1          | 2026/03/24 10:54:27 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=45µs remote="127.0.0.1:51698"
+fiber-adapter-1          | 2026/03/24 10:54:32 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=89µs remote="127.0.0.1:58816"
+fiber-adapter-1          | 2026/03/24 10:54:37 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=32µs remote="127.0.0.1:58824"
+usdi-e2e-runner-1  | {"asset":"USDI","faucetTxHash":"0xf0e37bdf592fece06bb07149fb630bfbb46d5987537d864aac5a783ee80efcbc","explorerProofUrls":["https://pudge.explorer.nervos.org/transaction/0xf0e37bdf592fece06bb07149fb630bfbb46d5987537d864aac5a783ee80efcbc"],"integrationIssues":["https://github.com/Keith-CY/carrier/issues/1595","carrier codeagent run probe skipped: missing OPENAI_API_KEY or OPENAI_CODEX_TOKEN"],"buyerUserEmail":"buyer-1774349567703407393@example.com","providerUserEmail":"provider-1774349567703407393@example.com","buyerOrgId":"org_1","providerOrgId":"org_2","buyerTopUpInvoice":"","buyerDepositAddress":"ckt1qzda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xwsqf8f7mkr02s4rntdg34hmw9n2splgmd9gc3xr9tf","buyerTopUpFundingRecordId":"fund_1","bootstrapRfqId":"rfq_1","bootstrapBidId":"bid_1","bootstrapOrderId":"ord_1","bootstrapCarrierBindingId":"bind_1","bootstrapCarrierExecutionId":"job_1","bootstrapReservationId":"plr_1","bootstrapReservationChannel":"0x8d90627fcb71f094765f76292bb779e5e5cc37ec2a209934da63e8db5f096577","bootstrapReservationStatus":"released","bootstrapPayoutRecordIds":["fund_2","fund_3","fund_4"],"reuseRfqId":"rfq_2","reuseBidId":"bid_2","reuseOrderId":"ord_2","reuseReservationId":"plr_2","reuseReservationInitialChannel":"0xb1ac928590c4cea471f81e4e4b146aa1784acee150537e90faee74fe1d336dd2","reuseReservationChannel":"0xb1ac928590c4cea471f81e4e4b146aa1784acee150537e90faee74fe1d336dd2","reuseReservationStatus":"released","reuseReservationReuseSource":"reused","reusePayoutRecordIds":["fund_5","fund_6","fund_7"],"rfqId":"rfq_3","bidId":"bid_3","orderId":"ord_3","carrierProviderBindingId":"pcb_1","providerSettlementBindingId":"psb_1","carrierBindingId":"bind_3","carrierExecutionId":"job_3","reservationId":"plr_3","reservationInitialChannelId":"0xb1ac928590c4cea471f81e4e4b146aa1784acee150537e90faee74fe1d336dd2","reservationChannelId":"0xb1ac928590c4cea471f81e4e4b146aa1784acee150537e90faee74fe1d336dd2","reservationReuseSource":"reused","reservationStatus":"released","usageChargeCount":2,"providerPayoutRecordIds":["fund_8","fund_9","fund_10"],"disconnectOrderStatus":"awaiting_payment_rail","recoveredOrderStatus":"running","finalOrderStatus":"completed"}
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/orders/ord_1/milestones/ms_1/jobs" status=201 duration=86µs remote="172.18.0.21:39168"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=509µs remote="172.18.0.21:39168"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=1.618ms remote="172.18.0.21:59550"
+nats-1                   | [1] 2026/03/24 10:47:20.879110 [INF] Starting nats-server
+nats-1                   | [1] 2026/03/24 10:47:20.879224 [INF]   Version:  2.10.29
+nats-1                   | [1] 2026/03/24 10:47:20.879229 [INF]   Git:      [f91ddd8]
+nats-1                   | [1] 2026/03/24 10:47:20.879232 [INF]   Name:     NBKB6YAFCQ6PWYUT244XMDP4SXUH47SGQNHTSUYVSEPR2REOQ5IGB6DK
+nats-1                   | [1] 2026/03/24 10:47:20.879236 [INF]   Node:     ut00yQph
+nats-1                   | [1] 2026/03/24 10:47:20.879238 [INF]   ID:       NBKB6YAFCQ6PWYUT244XMDP4SXUH47SGQNHTSUYVSEPR2REOQ5IGB6DK
+nats-1                   | [1] 2026/03/24 10:47:20.879554 [INF] Starting JetStream
+nats-1                   | [1] 2026/03/24 10:47:20.879572 [WRN] Temporary storage directory used, data could be lost on system reboot
+nats-1                   | [1] 2026/03/24 10:47:20.880920 [INF]     _ ___ _____ ___ _____ ___ ___   _   __  __
+nats-1                   | [1] 2026/03/24 10:47:20.880985 [INF]  _ | | __|_   _/ __|_   _| _ \ __| /_\ |  \/  |
+nats-1                   | [1] 2026/03/24 10:47:20.880992 [INF] | || | _|  | | \__ \ | | |   / _| / _ \| |\/| |
+nats-1                   | [1] 2026/03/24 10:47:20.880995 [INF]  \__/|___| |_| |___/ |_| |_|_\___/_/ \_\_|  |_|
+nats-1                   | [1] 2026/03/24 10:47:20.880997 [INF] 
+nats-1                   | [1] 2026/03/24 10:47:20.881000 [INF]          https://docs.nats.io/jetstream
+nats-1                   | [1] 2026/03/24 10:47:20.881002 [INF] 
+nats-1                   | [1] 2026/03/24 10:47:20.881005 [INF] ---------------- JETSTREAM ----------------
+nats-1                   | [1] 2026/03/24 10:47:20.881011 [INF]   Max Memory:      11.71 GB
+nats-1                   | [1] 2026/03/24 10:47:20.881015 [INF]   Max Storage:     61.60 GB
+remote-vps-1             | Connection closed by 127.0.0.1 port 55708
+nats-1                   | [1] 2026/03/24 10:47:20.881018 [INF]   Store Directory: "/tmp/nats/jetstream"
+remote-vps-1             | Accepted publickey for carrier from 172.18.0.15 port 36552 ssh2: ED25519 SHA256:750EaUD1VQSWbu+rl2+8m82SAy1pLvaMDqBV+rHgI5Y
+fiber-adapter-1          | 2026/03/24 10:54:42 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=44µs remote="127.0.0.1:33446"
+remote-vps-1             | Received disconnect from 172.18.0.15 port 36552:11: disconnected by user
+fiber-adapter-1          | 2026/03/24 10:54:47 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=41µs remote="127.0.0.1:33460"
+iam-1              | 2026/03/24 10:52:32 iam listening on :8081
+fiber-adapter-1          | 2026/03/24 10:54:52 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=42µs remote="127.0.0.1:53850"
+iam-1                    | 2026/03/24 10:52:47 access service="iam" method="POST" path="/v1/signup" status=201 duration=78.895ms remote="172.18.0.21:50302"
+remote-vps-1             | Disconnected from user carrier 172.18.0.15 port 36552
+remote-vps-1             | Accepted publickey for carrier from 172.18.0.15 port 36554 ssh2: ED25519 SHA256:750EaUD1VQSWbu+rl2+8m82SAy1pLvaMDqBV+rHgI5Y
+remote-vps-1             | Received disconnect from 172.18.0.15 port 36554:11: disconnected by user
+remote-vps-1             | Disconnected from user carrier 172.18.0.15 port 36554
+remote-vps-1             | Accepted publickey for carrier from 172.18.0.15 port 36566 ssh2: ED25519 SHA256:750EaUD1VQSWbu+rl2+8m82SAy1pLvaMDqBV+rHgI5Y
+remote-vps-1             | Received disconnect from 172.18.0.15 port 36566:11: disconnected by user
+remote-vps-1             | Disconnected from user carrier 172.18.0.15 port 36566
+remote-vps-1             | Accepted publickey for carrier from 172.18.0.15 port 36582 ssh2: ED25519 SHA256:750EaUD1VQSWbu+rl2+8m82SAy1pLvaMDqBV+rHgI5Y
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 58018
+remote-vps-1             | Received disconnect from 172.18.0.15 port 36582:11: disconnected by user
+remote-vps-1             | Disconnected from user carrier 172.18.0.15 port 36582
+remote-vps-1             | Accepted publickey for carrier from 172.18.0.15 port 36594 ssh2: ED25519 SHA256:750EaUD1VQSWbu+rl2+8m82SAy1pLvaMDqBV+rHgI5Y
+remote-vps-1             | Received disconnect from 172.18.0.15 port 36594:11: disconnected by user
+remote-vps-1             | Disconnected from user carrier 172.18.0.15 port 36594
+remote-vps-1             | Accepted publickey for carrier from 172.18.0.15 port 36596 ssh2: ED25519 SHA256:750EaUD1VQSWbu+rl2+8m82SAy1pLvaMDqBV+rHgI5Y
+remote-vps-1             | Received disconnect from 172.18.0.15 port 36596:11: disconnected by user
+remote-vps-1             | Disconnected from user carrier 172.18.0.15 port 36596
+remote-vps-1             | Accepted publickey for carrier from 172.18.0.15 port 36598 ssh2: ED25519 SHA256:750EaUD1VQSWbu+rl2+8m82SAy1pLvaMDqBV+rHgI5Y
+fiber-adapter-1          | 2026/03/24 10:54:57 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=52µs remote="127.0.0.1:53854"
+remote-vps-1             | Received disconnect from 172.18.0.15 port 36598:11: disconnected by user
+fiber-adapter-1          | 2026/03/24 10:55:02 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=71µs remote="127.0.0.1:50458"
+fiber-adapter-1          | 2026/03/24 10:55:07 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=41µs remote="127.0.0.1:50460"
+fiber-adapter-1          | 2026/03/24 10:55:12 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=40µs remote="127.0.0.1:50136"
+fiber-adapter-1          | 2026/03/24 10:55:18 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=31µs remote="127.0.0.1:50140"
+fiber-adapter-1          | 2026/03/24 10:55:23 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=49µs remote="127.0.0.1:50206"
+fiber-adapter-1          | 2026/03/24 10:55:28 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=42µs remote="127.0.0.1:50212"
+fiber-adapter-1          | 2026/03/24 10:55:33 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=45µs remote="127.0.0.1:53646"
+fiber-adapter-1          | 2026/03/24 10:55:38 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=66µs remote="127.0.0.1:53656"
+fiber-adapter-1          | 2026/03/24 10:55:43 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=45µs remote="127.0.0.1:43682"
+fiber-adapter-1          | 2026/03/24 10:55:48 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=78µs remote="127.0.0.1:43690"
+fiber-adapter-1          | 2026/03/24 10:55:53 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=41µs remote="127.0.0.1:41866"
+fiber-adapter-1          | 2026/03/24 10:55:58 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=32µs remote="127.0.0.1:41876"
+fiber-adapter-1          | 2026/03/24 10:56:03 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=66µs remote="127.0.0.1:55656"
+mock-fiber-1             | 2026/03/24 10:52:31 mock-fiber listening on :8090
+nats-1                   | [1] 2026/03/24 10:47:20.881021 [INF] -------------------------------------------
+fiber-adapter-1          | 2026/03/24 10:56:08 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=42µs remote="127.0.0.1:55660"
+nats-1                   | [1] 2026/03/24 10:47:20.881703 [INF] Listening for client connections on 0.0.0.0:4222
+fiber-adapter-1          | 2026/03/24 10:56:13 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=61µs remote="127.0.0.1:59144"
+fiber-adapter-1          | 2026/03/24 10:56:18 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=62µs remote="127.0.0.1:59148"
+fiber-adapter-1          | 2026/03/24 10:56:23 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=50µs remote="127.0.0.1:35610"
+fnn-1                    | Current database version: [20251219152333], latest db version: [20251219152333]
+settlement-reconciler-1  | 2026/03/24 10:47:32 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:47:37 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:47:42 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:47:47 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:47:52 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:47:57 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:48:02 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:48:07 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:48:12 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:48:17 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:48:22 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:48:27 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:48:32 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:48:37 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:48:42 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:48:47 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:48:52 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:48:57 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:49:02 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:49:07 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:49:12 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:49:17 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:49:22 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:49:27 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:49:32 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:49:37 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:49:42 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:49:47 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:49:52 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:49:57 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:50:02 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:50:07 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:50:12 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:50:17 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:50:22 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:50:27 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:50:32 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:50:37 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+fiber-adapter-1          | 2026/03/24 10:56:28 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=41µs remote="127.0.0.1:35624"
+fiber-adapter-1          | 2026/03/24 10:56:33 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=61µs remote="127.0.0.1:58368"
+fiber-adapter-1          | 2026/03/24 10:56:38 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=42µs remote="127.0.0.1:58378"
+fiber-adapter-1          | 2026/03/24 10:56:43 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=32µs remote="127.0.0.1:50152"
+fiber-adapter-1          | 2026/03/24 10:56:48 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=45µs remote="127.0.0.1:50166"
+fiber-adapter-1          | 2026/03/24 10:56:53 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=44µs remote="127.0.0.1:35858"
+fiber-adapter-1          | 2026/03/24 10:56:58 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=100µs remote="127.0.0.1:35870"
+fiber-adapter-1          | 2026/03/24 10:57:03 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=49µs remote="127.0.0.1:34842"
+fiber-adapter-1          | 2026/03/24 10:57:08 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=40µs remote="127.0.0.1:34852"
+fiber-adapter-1          | 2026/03/24 10:57:13 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=39µs remote="127.0.0.1:46570"
+fiber-adapter-1          | 2026/03/24 10:57:18 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=33µs remote="127.0.0.1:46586"
+fiber-adapter-1          | 2026/03/24 10:57:23 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=48µs remote="127.0.0.1:43660"
+fiber-adapter-1          | 2026/03/24 10:57:29 access service="fiber-adapter" method="GET" path="/healthz" status=200 duration=101µs remote="127.0.0.1:43672"
+fiber-adapter-1          | 2026/03/24 10:57:30 access service="fiber-adapter" method="POST" path="/" status=200 duration=3.561ms remote="172.18.0.20:52336"
+fiber-adapter-1          | 2026/03/24 10:57:30 access service="fiber-adapter" method="POST" path="/" status=200 duration=2.36ms remote="172.18.0.20:52336"
+fiber-adapter-1          | 2026/03/24 10:57:30 access service="fiber-adapter" method="POST" path="/" status=200 duration=1.985ms remote="172.18.0.20:52336"
+fiber-adapter-1          | 2026/03/24 10:57:30 access service="fiber-adapter" method="POST" path="/" status=200 duration=2.055ms remote="172.18.0.20:52336"
+fiber-adapter-1          | 2026/03/24 10:57:30 access service="fiber-adapter" method="POST" path="/" status=200 duration=2.131ms remote="172.18.0.20:52336"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=1.776ms remote="172.18.0.21:59554"
+fiber-adapter-1          | 2026/03/24 10:57:30 access service="fiber-adapter" method="POST" path="/" status=200 duration=2.394ms remote="172.18.0.20:52336"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=544µs remote="172.18.0.21:59570"
+remote-vps-1             | Disconnected from user carrier 172.18.0.15 port 36598
+nats-1                   | [1] 2026/03/24 10:47:20.881970 [INF] Server is ready
+fiber-adapter-1          | 2026/03/24 10:57:30 access service="fiber-adapter" method="POST" path="/" status=200 duration=2.072ms remote="172.18.0.20:52336"
+fiber-adapter-1          | 2026/03/24 10:57:30 access service="fiber-adapter" method="POST" path="/" status=200 duration=2.061ms remote="172.18.0.20:52336"
+fiber-adapter-1          | 2026/03/24 10:57:30 access service="fiber-adapter" method="POST" path="/" status=200 duration=2.056ms remote="172.18.0.20:52336"
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 58026
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 41696
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 41708
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 56112
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 56124
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 44502
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 44504
+settlement-reconciler-1  | 2026/03/24 10:50:42 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 51622
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+settlement-reconciler-1  | 2026/03/24 10:50:47 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+iam-1                    | 2026/03/24 10:52:47 access service="iam" method="POST" path="/v1/signup" status=201 duration=71.037ms remote="172.18.0.21:50302"
+settlement-reconciler-1  | 2026/03/24 10:50:52 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=1.236ms remote="172.18.0.21:59586"
+settlement-reconciler-1  | 2026/03/24 10:50:57 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="GET" path="/api/v1/orders/ord_1" status=200 duration=1.181ms remote="172.18.0.21:59600"
+iam-1                    | 2026/03/24 10:52:47 access service="iam" method="GET" path="/v1/me" status=200 duration=2.62ms remote="172.18.0.20:57510"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="GET" path="/api/v1/orders/ord_1/provider-settlement-reservation" status=200 duration=914µs remote="172.18.0.21:59600"
+settlement-reconciler-1  | 2026/03/24 10:51:02 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:51:07 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/rfqs" status=201 duration=2.604ms remote="172.18.0.21:59600"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/rfqs/rfq_2/bids" status=201 duration=2.694ms remote="172.18.0.21:59600"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/rfqs/rfq_2/award" status=200 duration=6.63ms remote="172.18.0.21:59600"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="GET" path="/api/v1/orders/ord_2/provider-settlement-reservation" status=200 duration=862µs remote="172.18.0.21:59600"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/orders/ord_2/milestones/ms_1/bind-carrier" status=201 duration=43µs remote="172.18.0.21:59600"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/orders/ord_2/milestones/ms_1/jobs" status=201 duration=33µs remote="172.18.0.21:59600"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=387µs remote="172.18.0.21:59600"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=1.481ms remote="172.18.0.21:59610"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=1.523ms remote="172.18.0.21:59612"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=549µs remote="172.18.0.21:59626"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=1.409ms remote="172.18.0.21:59642"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="GET" path="/api/v1/orders/ord_2" status=200 duration=1.383ms remote="172.18.0.21:59648"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="GET" path="/api/v1/orders/ord_2/provider-settlement-reservation" status=200 duration=1.179ms remote="172.18.0.21:59648"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/rfqs" status=201 duration=3.128ms remote="172.18.0.21:59648"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/rfqs/rfq_3/bids" status=201 duration=3.88ms remote="172.18.0.21:59648"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/rfqs/rfq_3/award" status=200 duration=11.091ms remote="172.18.0.21:59648"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="GET" path="/api/v1/orders/ord_3/provider-settlement-reservation" status=200 duration=1.048ms remote="172.18.0.21:59648"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/orders/ord_3/milestones/ms_1/bind-carrier" status=201 duration=42µs remote="172.18.0.21:59648"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/orders/ord_3/milestones/ms_1/jobs" status=201 duration=41µs remote="172.18.0.21:59648"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=449µs remote="172.18.0.21:59648"
+settlement-reconciler-1  | 2026/03/24 10:51:12 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:51:17 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:51:22 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:51:27 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:51:32 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:51:37 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:51:42 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:51:47 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:51:52 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:51:57 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:52:02 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:52:07 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:52:12 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:52:17 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:52:22 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:52:27 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:52:32 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:52:37 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:52:42 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:52:47 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:52:52 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:52:57 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:53:02 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:53:07 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:53:12 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:53:17 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:53:22 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:53:27 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:53:32 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:53:37 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:53:42 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:53:47 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:53:52 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:53:57 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:54:02 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:54:07 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:54:12 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:54:17 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:54:22 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:54:27 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:54:32 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:54:37 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+iam-1                    | 2026/03/24 10:52:48 access service="iam" method="GET" path="/v1/me" status=200 duration=970µs remote="172.18.0.20:57510"
+remote-vps-1             | Connection closed by 127.0.0.1 port 51624
+iam-1                    | 2026/03/24 10:53:13 access service="iam" method="GET" path="/v1/me" status=200 duration=1.072ms remote="172.18.0.20:57510"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=1.583ms remote="172.18.0.21:59660"
+iam-1                    | 2026/03/24 10:53:17 access service="iam" method="GET" path="/v1/me" status=200 duration=1.161ms remote="172.18.0.20:57510"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/provider-settlement-bindings/org_2/disconnect" status=200 duration=659µs remote="172.18.0.21:59670"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="GET" path="/api/v1/orders/ord_3" status=200 duration=1.272ms remote="172.18.0.21:59670"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/provider-settlement-bindings/org_2/recover" status=200 duration=3.296ms remote="172.18.0.21:59670"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="GET" path="/api/v1/orders/ord_3" status=200 duration=1.158ms remote="172.18.0.21:59670"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=1.611ms remote="172.18.0.21:59670"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=509µs remote="172.18.0.21:59676"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="POST" path="/api/v1/carrier/callbacks/events" status=200 duration=1.434ms remote="172.18.0.21:59684"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="GET" path="/api/v1/orders/ord_3" status=200 duration=1.207ms remote="172.18.0.21:59686"
+api-gateway-1            | 2026/03/24 10:57:30 access service="api-gateway" method="GET" path="/api/v1/orders/ord_3/provider-settlement-reservation" status=200 duration=821µs remote="172.18.0.21:59686"
+settlement-reconciler-1  | 2026/03/24 10:54:42 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:54:47 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:54:52 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:54:57 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:55:02 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:55:07 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+iam-1                    | 2026/03/24 10:53:20 access service="iam" method="GET" path="/v1/me" status=200 duration=1.147ms remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:53:24 access service="iam" method="GET" path="/v1/me" status=200 duration=1.088ms remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:53:28 access service="iam" method="GET" path="/v1/me" status=200 duration=782µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:53:31 access service="iam" method="GET" path="/v1/me" status=200 duration=692µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:53:35 access service="iam" method="GET" path="/v1/me" status=200 duration=949µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:53:38 access service="iam" method="GET" path="/v1/me" status=200 duration=768µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:53:42 access service="iam" method="GET" path="/v1/me" status=200 duration=849µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:53:45 access service="iam" method="GET" path="/v1/me" status=200 duration=1.288ms remote="172.18.0.20:57510"
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 43484
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 43496
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 44986
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 45000
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 49552
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 49564
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 34296
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 34312
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 38850
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 38858
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+settlement-reconciler-1  | 2026/03/24 10:55:12 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:55:17 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:55:22 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:55:27 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:55:32 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:55:37 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:55:43 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=1
+settlement-reconciler-1  | 2026/03/24 10:55:48 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:55:53 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:55:58 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:56:03 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:56:08 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+remote-vps-1             | Connection closed by 127.0.0.1 port 57702
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 53716
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 53728
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 41818
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 41830
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 37940
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 37942
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 44428
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 44442
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 60320
+settlement-reconciler-1  | 2026/03/24 10:56:13 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:56:18 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:56:23 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:56:28 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:56:33 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:56:38 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:56:43 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:56:47 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:56:52 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:56:57 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:57:02 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:57:07 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:57:12 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:57:17 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:57:22 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+settlement-reconciler-1  | 2026/03/24 10:57:27 settlement reconciler synced invoices=0 withdrawals=0 deposit_sweeps=0
+iam-1                    | 2026/03/24 10:53:49 access service="iam" method="GET" path="/v1/me" status=200 duration=794µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:53:52 access service="iam" method="GET" path="/v1/me" status=200 duration=840µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:53:56 access service="iam" method="GET" path="/v1/me" status=200 duration=760µs remote="172.18.0.20:57510"
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 60324
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 55232
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 55244
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 58630
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 58642
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 44900
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 44902
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 54004
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 54012
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 48004
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 48020
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+iam-1                    | 2026/03/24 10:53:59 access service="iam" method="GET" path="/v1/me" status=200 duration=831µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:54:03 access service="iam" method="GET" path="/v1/me" status=200 duration=770µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:54:06 access service="iam" method="GET" path="/v1/me" status=200 duration=701µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:54:10 access service="iam" method="GET" path="/v1/me" status=200 duration=749µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:54:13 access service="iam" method="GET" path="/v1/me" status=200 duration=871µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:54:17 access service="iam" method="GET" path="/v1/me" status=200 duration=826µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:54:20 access service="iam" method="GET" path="/v1/me" status=200 duration=712µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:54:24 access service="iam" method="GET" path="/v1/me" status=200 duration=773µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:54:28 access service="iam" method="GET" path="/v1/me" status=200 duration=753µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:54:31 access service="iam" method="GET" path="/v1/me" status=200 duration=773µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:54:35 access service="iam" method="GET" path="/v1/me" status=200 duration=744µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:54:38 access service="iam" method="GET" path="/v1/me" status=200 duration=744µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:54:42 access service="iam" method="GET" path="/v1/me" status=200 duration=909µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:54:45 access service="iam" method="GET" path="/v1/me" status=200 duration=825µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:54:49 access service="iam" method="GET" path="/v1/me" status=200 duration=947µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:54:52 access service="iam" method="GET" path="/v1/me" status=200 duration=852µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:54:56 access service="iam" method="GET" path="/v1/me" status=200 duration=745µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:54:59 access service="iam" method="GET" path="/v1/me" status=200 duration=762µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:55:03 access service="iam" method="GET" path="/v1/me" status=200 duration=844µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:55:06 access service="iam" method="GET" path="/v1/me" status=200 duration=902µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:55:10 access service="iam" method="GET" path="/v1/me" status=200 duration=759µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:55:13 access service="iam" method="GET" path="/v1/me" status=200 duration=783µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:55:17 access service="iam" method="GET" path="/v1/me" status=200 duration=732µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:55:20 access service="iam" method="GET" path="/v1/me" status=200 duration=793µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:55:24 access service="iam" method="GET" path="/v1/me" status=200 duration=755µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:55:27 access service="iam" method="GET" path="/v1/me" status=200 duration=897µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:55:31 access service="iam" method="GET" path="/v1/me" status=200 duration=748µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:55:35 access service="iam" method="GET" path="/v1/me" status=200 duration=828µs remote="172.18.0.20:57510"
+remote-vps-1             | Connection closed by 127.0.0.1 port 48356
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 48362
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 51888
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 51904
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 52398
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 52406
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 40712
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 40728
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 35380
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 35394
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+iam-1                    | 2026/03/24 10:55:38 access service="iam" method="GET" path="/v1/me" status=200 duration=833µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:55:42 access service="iam" method="GET" path="/v1/me" status=200 duration=757µs remote="172.18.0.20:57510"
+remote-vps-1             | Connection closed by 127.0.0.1 port 33620
+iam-1                    | 2026/03/24 10:55:47 access service="iam" method="GET" path="/v1/me" status=200 duration=756µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:55:48 access service="iam" method="GET" path="/v1/me" status=200 duration=607µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:55:48 access service="iam" method="GET" path="/v1/me" status=200 duration=445µs remote="172.18.0.20:57510"
+iam-1                    | 2026/03/24 10:55:48 access service="iam" method="GET" path="/v1/me" status=200 duration=481µs remote="172.18.0.14:57836"
+iam-1                    | 2026/03/24 10:55:48 access service="iam" method="GET" path="/v1/me" status=200 duration=426µs remote="172.18.0.14:57836"
+iam-1                    | 2026/03/24 10:55:48 access service="iam" method="GET" path="/v1/me" status=200 duration=484µs remote="172.18.0.14:57836"
+iam-1                    | 2026/03/24 10:55:48 access service="iam" method="GET" path="/v1/me" status=200 duration=472µs remote="172.18.0.14:57836"
+iam-1                    | 2026/03/24 10:55:48 access service="iam" method="GET" path="/v1/me" status=200 duration=431µs remote="172.18.0.14:57836"
+iam-1                    | 2026/03/24 10:55:48 access service="iam" method="GET" path="/v1/me" status=200 duration=438µs remote="172.18.0.14:57836"
+iam-1                    | 2026/03/24 10:57:30 access service="iam" method="GET" path="/v1/me" status=200 duration=664µs remote="172.18.0.14:36902"
+iam-1                    | 2026/03/24 10:57:30 access service="iam" method="GET" path="/v1/me" status=200 duration=565µs remote="172.18.0.20:45134"
+iam-1                    | 2026/03/24 10:57:30 access service="iam" method="GET" path="/v1/me" status=200 duration=449µs remote="172.18.0.14:36902"
+iam-1                    | 2026/03/24 10:57:30 access service="iam" method="GET" path="/v1/me" status=200 duration=448µs remote="172.18.0.14:36902"
+iam-1                    | 2026/03/24 10:57:30 access service="iam" method="GET" path="/v1/me" status=200 duration=664µs remote="172.18.0.14:36902"
+iam-1                    | 2026/03/24 10:57:30 access service="iam" method="GET" path="/v1/me" status=200 duration=450µs remote="172.18.0.14:36902"
+iam-1                    | 2026/03/24 10:57:30 access service="iam" method="GET" path="/v1/me" status=200 duration=458µs remote="172.18.0.14:36902"
+iam-1                    | 2026/03/24 10:57:30 access service="iam" method="GET" path="/v1/me" status=200 duration=484µs remote="172.18.0.14:36902"
+iam-1                    | 2026/03/24 10:57:30 access service="iam" method="GET" path="/v1/me" status=200 duration=443µs remote="172.18.0.14:36902"
+iam-1                    | 2026/03/24 10:57:30 access service="iam" method="GET" path="/v1/me" status=200 duration=469µs remote="172.18.0.14:36902"
+iam-1                    | 2026/03/24 10:57:30 access service="iam" method="GET" path="/v1/me" status=200 duration=428µs remote="172.18.0.14:36902"
+iam-1                    | 2026/03/24 10:57:30 access service="iam" method="GET" path="/v1/me" status=200 duration=532µs remote="172.18.0.20:45134"
+iam-1                    | 2026/03/24 10:57:30 access service="iam" method="GET" path="/v1/me" status=200 duration=543µs remote="172.18.0.14:36902"
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+iam-1                    | 2026/03/24 10:57:30 access service="iam" method="GET" path="/v1/me" status=200 duration=566µs remote="172.18.0.14:36902"
+remote-vps-1             | Connection closed by 127.0.0.1 port 33632
+iam-1                    | 2026/03/24 10:57:30 access service="iam" method="GET" path="/v1/me" status=200 duration=564µs remote="172.18.0.14:36902"
+iam-1                    | 2026/03/24 10:57:30 access service="iam" method="GET" path="/v1/me" status=200 duration=515µs remote="172.18.0.14:36902"
+iam-1                    | 2026/03/24 10:57:30 access service="iam" method="GET" path="/v1/me" status=200 duration=499µs remote="172.18.0.14:36902"
+iam-1                    | 2026/03/24 10:57:30 access service="iam" method="GET" path="/v1/me" status=200 duration=563µs remote="172.18.0.14:36902"
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 45764
+iam-1                    | 2026/03/24 10:57:30 access service="iam" method="GET" path="/v1/me" status=200 duration=527µs remote="172.18.0.14:36902"
+iam-1                    | 2026/03/24 10:57:30 access service="iam" method="GET" path="/v1/me" status=200 duration=607µs remote="172.18.0.14:36902"
+iam-1                    | 2026/03/24 10:57:30 access service="iam" method="GET" path="/v1/me" status=200 duration=515µs remote="172.18.0.14:36902"
+iam-1                    | 2026/03/24 10:57:30 access service="iam" method="GET" path="/v1/me" status=200 duration=534µs remote="172.18.0.14:36902"
+iam-1                    | 2026/03/24 10:57:30 access service="iam" method="GET" path="/v1/me" status=200 duration=489µs remote="172.18.0.14:36902"
+iam-1                    | 2026/03/24 10:57:30 access service="iam" method="GET" path="/v1/me" status=200 duration=553µs remote="172.18.0.20:45134"
+iam-1                    | 2026/03/24 10:57:30 access service="iam" method="GET" path="/v1/me" status=200 duration=464µs remote="172.18.0.14:36902"
+iam-1                    | 2026/03/24 10:57:30 access service="iam" method="GET" path="/v1/me" status=200 duration=414µs remote="172.18.0.14:36902"
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 45770
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 47526
+remote-vps-1             | kex_exchange_identification: Connection closed by remote host
+remote-vps-1             | Connection closed by 127.0.0.1 port 47532
