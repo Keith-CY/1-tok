@@ -193,10 +193,15 @@ func runningMilestone(order *core.Order) *core.Milestone {
 			return &order.Milestones[i]
 		}
 	}
-	if len(order.Milestones) == 0 {
-		return nil
+	for i := range order.Milestones {
+		// Fallback to the first non-terminal milestone.
+		// Assumes "settled" is a terminal state. Other states like "failed" may also need to be checked.
+		if order.Milestones[i].State != "settled" {
+			return &order.Milestones[i]
+		}
 	}
-	return &order.Milestones[0]
+	return nil
+
 }
 
 func carrierReportPath(workspaceRoot, orderID, milestoneID string) string {
