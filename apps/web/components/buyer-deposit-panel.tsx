@@ -5,6 +5,54 @@ import { CopyDepositAddressButton } from "@/components/copy-deposit-address-butt
 import { Card } from "@/components/ui/card";
 import { buildBuyerDepositQRCodeURL } from "@/lib/buyer-deposit";
 
+const centsToAmount = (cents: number): string => {
+  const sign = cents < 0 ? "-" : "";
+  const absolute = Math.abs(cents);
+  return `${sign}${Math.floor(absolute / 100)}.${String(absolute % 100).padStart(2, "0")}`;
+};
+
+const parseAmountCents = (value: string | undefined | null): number => {
+  if (typeof value !== "string") {
+    return 0;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return 0;
+  }
+  const normalized = trimmed.replace(/^\+/, "");
+  const [whole, fractional = ""] = normalized.split(".");
+  const fraction = (fractional + "00").slice(0, 2);
+  const cents = (Number.parseInt(whole || "0", 10) || 0) * 100 + (Number.parseInt(fraction, 10) || 0);
+  return cents;
+};
+
+const inferRawUnitsPerWholeUSDI = (deposit: BuyerDepositSummary): number => {
+  if (deposit.rawMinimumSweepUnits && deposit.minimumSweepAmount) {
+    const minimumCents = parseAmountCents(deposit.minimumSweepAmount);
+    if (minimumCents > 0) {
+      return Math.round((deposit.rawMinimumSweepUnits * 100) / minimumCents);
+    }
+  }
+  return 100_000_000;
+};
+
+const normalizeOnChainBalance = (deposit: BuyerDepositSummary): string => {
+  const rawUnits = deposit.rawOnChainUnits;
+  if (typeof rawUnits !== "number" || rawUnits <= 0) {
+    return deposit.onChainBalance;
+  }
+  const rawUnitsPerWholeUSDI = inferRawUnitsPerWholeUSDI(deposit);
+  if (rawUnitsPerWholeUSDI <= 0) {
+    return deposit.onChainBalance;
+  }
+  const displayCents = parseAmountCents(deposit.onChainBalance);
+  const rawCents = Math.round((rawUnits * 100) / rawUnitsPerWholeUSDI);
+  if (displayCents > 0 && (rawCents > displayCents * 10 || rawCents < displayCents / 10)) {
+    return centsToAmount(rawCents);
+  }
+  return deposit.onChainBalance;
+};
+
 export function BuyerDepositPanel({
   deposit,
   topUp,
@@ -13,6 +61,7 @@ export function BuyerDepositPanel({
   topUp: string;
 }) {
   const sweepRule = deposit ? `Min ${deposit.minimumSweepAmount} USDI / ${deposit.confirmationBlocks} blocks` : "";
+  const onChainBalance = deposit ? normalizeOnChainBalance(deposit) : "";
 
   return (
     <div className="space-y-4">
@@ -59,7 +108,7 @@ export function BuyerDepositPanel({
               <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
                 <div className="space-x-2">
                   <span className="text-[10px] font-semibold uppercase tracking-[0.22em]">On-chain USDI</span>
-                  <span className="font-mono text-sm font-semibold text-foreground">{deposit.onChainBalance}</span>
+                  <span className="font-mono text-sm font-semibold text-foreground">{onChainBalance}</span>
                 </div>
                 <div className="space-x-2">
                   <span className="text-[10px] font-semibold uppercase tracking-[0.22em]">Sweep rule</span>

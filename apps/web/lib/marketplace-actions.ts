@@ -51,10 +51,29 @@ export async function postGatewayJSON(path: string, token: string, payload: unkn
   });
 
   if (!response.ok) {
-    throw new Error(`gateway status ${response.status}`);
+    const text = await response.text();
+    let payload: unknown;
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = text;
+    }
+    throw new GatewayRequestError(response.status, text, payload);
   }
 
   return response;
+}
+
+export class GatewayRequestError extends Error {
+  status: number;
+  payload: unknown;
+
+  constructor(status: number, message: string, payload?: unknown) {
+    super(message);
+    this.name = "GatewayRequestError";
+    this.status = status;
+    this.payload = payload;
+  }
 }
 
 export function resolveAPIBaseURL(): string | null {

@@ -297,6 +297,7 @@ func buildCarrierCallbackCommand(config carrierReportCallbackConfig) string {
   const callbackKeyId = %s;
   const report = fs.readFileSync(reportPath, "utf8").trim();
   const summary = report || ("Carrier execution completed. Result saved to " + reportPath);
+  const output = report || reportPath;
   const envelope = {
     eventId: jobId + "-ready",
     sequence: 1,
@@ -306,7 +307,7 @@ func buildCarrierCallbackCommand(config carrierReportCallbackConfig) string {
     createdAt: new Date().toISOString(),
     payload: {
       jobId,
-      output: reportPath,
+      output,
       summary,
     },
   };

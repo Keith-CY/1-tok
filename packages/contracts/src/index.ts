@@ -174,6 +174,9 @@ export interface BuyerDepositSummary {
   creditedBalanceCents: number;
   minimumSweepAmount: string;
   confirmationBlocks: number;
+  rawOnChainUnits?: number;
+  rawConfirmedUnits?: number;
+  rawMinimumSweepUnits?: number;
 }
 
 export const demoVerdicts = ["ready", "blocked"] as const;

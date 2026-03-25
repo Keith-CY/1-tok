@@ -2210,12 +2210,13 @@ func (s *Server) handleCarrierCallback(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	case "job.completed", "execution.completed":
-		output, _ := event.Payload["output"].(string)
+		output := eventPayloadStringFromKeys(event.Payload, "output", "result")
 		if _, err := s.carrier.CompleteJob(event.JobID, output); err != nil {
 			writeGatewayError(w, err)
 			return
 		}
 	case "milestone.ready":
+		summary := eventPayloadStringFromKeys(event.Payload, "summary", "result", "output")
 		// Milestone-ready event often carries end-of-work artifacts. Persist evidence first, then mark completion.
 		if _, err := s.recordArtifactFromCallback(event); err != nil {
 			if !isEvidenceAlreadySubmittedError(err) {
@@ -2223,7 +2224,7 @@ func (s *Server) handleCarrierCallback(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		if _, err := s.carrier.CompleteJob(event.JobID, eventPayloadString(event.Payload, "output")); err != nil {
+		if _, err := s.carrier.CompleteJob(event.JobID, summary); err != nil {
 			writeGatewayError(w, err)
 			return
 		}
@@ -2239,7 +2240,7 @@ func (s *Server) handleCarrierCallback(w http.ResponseWriter, r *http.Request) {
 		}
 		if _, _, err := s.app.SettleMilestone(binding.OrderID, platform.SettleMilestoneInput{
 			MilestoneID: job.MilestoneID,
-			Summary:     eventPayloadString(event.Payload, "summary"),
+			Summary:     summary,
 			Source:      "carrier",
 			OccurredAt:  time.Now().UTC(),
 		}); err != nil {
@@ -2869,8 +2870,16 @@ func jobInputDefaultUsageKind(payload map[string]any) core.UsageChargeKind {
 }
 
 func eventPayloadString(payload map[string]any, key string) string {
-	if raw, ok := payload[key].(string); ok {
-		return raw
+	return eventPayloadStringFromKeys(payload, key)
+}
+
+func eventPayloadStringFromKeys(payload map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if raw, ok := payload[key].(string); ok {
+			if trimmed := strings.TrimSpace(raw); trimmed != "" {
+				return trimmed
+			}
+		}
 	}
 	return ""
 }
@@ -2923,7 +2932,7 @@ func (s *Server) recordArtifactFromCallback(event carrier.CallbackEvent) (carrie
 	if err != nil {
 		return carrier.EvidencePackage{}, err
 	}
-	summary := eventPayloadString(event.Payload, "summary")
+	summary := eventPayloadStringFromKeys(event.Payload, "summary", "result", "output")
 	artifacts, usage, err := recordEvidenceFromCallbackPayload(summary, event.Payload["artifacts"], event.Payload["usageReport"])
 	if err != nil {
 		return carrier.EvidencePackage{}, err
