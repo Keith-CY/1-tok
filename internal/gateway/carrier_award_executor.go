@@ -286,7 +286,7 @@ func buildCarrierRunCommand(reportDir, reportPath, prompt string, callbackConfig
 
 func buildCarrierCallbackCommand(config carrierReportCallbackConfig) string {
 	script := strings.TrimSpace(fmt.Sprintf(`
-(async () => {
+(() => {
   const fs = require("node:fs");
   const crypto = require("node:crypto");
   const callbackBaseUrl = %s;
@@ -317,18 +317,23 @@ func buildCarrierCallbackCommand(config carrierReportCallbackConfig) string {
     "X-Carrier-Signature": "sha256=" + crypto.createHmac("sha256", callbackSecret).update(body).digest("hex"),
   };
   if (callbackKeyId) headers["X-Carrier-Key-Id"] = callbackKeyId;
-  const response = await fetch(callbackBaseUrl.replace(/\/$/, "") + "/api/v1/carrier/callbacks/events", {
-    method: "POST",
-    headers,
-    body,
-  });
-  if (!response.ok) {
-    throw new Error("carrier callback failed: " + response.status + " " + (await response.text()));
-  }
-})().catch((error) => {
-  console.error(error && error.stack ? error.stack : String(error));
-  process.exit(1);
-});
+  Promise.resolve()
+    .then(() => fetch(callbackBaseUrl.replace(/\/$/, "") + "/api/v1/carrier/callbacks/events", {
+      method: "POST",
+      headers,
+      body,
+    }))
+    .then((response) => {
+      if (response.ok) return null;
+      return response.text().then((message) => {
+        throw new Error("carrier callback failed: " + response.status + " " + message);
+      });
+    })
+    .catch((error) => {
+      console.error(error && error.stack ? error.stack : String(error));
+      process.exit(1);
+    });
+})();
 `, mustJSONJS(config.BaseURL), mustJSONJS(config.JobID), mustJSONJS(config.BindingID), mustJSONJS(config.ReportPath), mustJSONJS(config.CallbackSecret), mustJSONJS(config.CallbackKeyID)))
 	return "node -e " + shellQuote(script)
 }
