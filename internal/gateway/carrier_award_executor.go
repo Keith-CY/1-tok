@@ -16,6 +16,14 @@ import (
 	"github.com/chenyu/1-tok/internal/platform"
 )
 
+const (
+	defaultCarrierWorkspaceRoot     = "/workspace"
+	defaultCarrierBackend           = "codex"
+	carrierRunCapability            = "run_shell"
+	carrierRunTimeoutSec            = 900
+	carrierExecutionDispatchTimeout = 20 * time.Minute
+)
+
 type carrierAwardExecutionInput struct {
 	RFQ     platform.RFQ
 	Order   *core.Order
@@ -89,8 +97,8 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 	command := buildCarrierRunCommand(reportDir, reportPath, buildCarrierPrompt(input.RFQ, input.Order, milestone), callbackConfig)
 	hostID := strings.TrimSpace(input.Binding.HostID)
 	agentID := firstNonEmptyString(strings.TrimSpace(input.Binding.AgentID), "main")
-	backend := firstNonEmptyString(strings.TrimSpace(input.Binding.Backend), "codex")
-	workspaceRoot := firstNonEmptyString(strings.TrimSpace(input.Binding.WorkspaceRoot), "/workspace")
+	backend := firstNonEmptyString(strings.TrimSpace(input.Binding.Backend), defaultCarrierBackend)
+	workspaceRoot := firstNonEmptyString(strings.TrimSpace(input.Binding.WorkspaceRoot), defaultCarrierWorkspaceRoot)
 	client := e.clientForBinding(input.Binding)
 
 	if err := ensureCarrierCodeAgentReady(ctx, client, hostID, agentID, backend, workspaceRoot); err != nil {
@@ -103,10 +111,10 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 		AgentID:       agentID,
 		Backend:       backend,
 		WorkspaceRoot: workspaceRoot,
-		Capability:    "run_shell",
+		Capability:    carrierRunCapability,
 		Command:       command,
 		CWD:           reportDir,
-		TimeoutSec:    900,
+		TimeoutSec:    carrierRunTimeoutSec,
 		StdoutPath:    stdoutPath,
 		StderrPath:    stderrPath,
 	})
@@ -194,9 +202,10 @@ func runningMilestone(order *core.Order) *core.Milestone {
 		}
 	}
 	for i := range order.Milestones {
-		// Fallback to the first non-terminal milestone.
-		// Assumes "settled" is a terminal state. Other states like "failed" may also need to be checked.
-		if order.Milestones[i].State != "settled" {
+		// Fallback to the first milestone that is not settled.
+		// This keeps execution resilient when an award is processed before the
+		// milestone is explicitly moved to running by other services.
+		if order.Milestones[i].State != core.MilestoneStateSettled {
 			return &order.Milestones[i]
 		}
 	}
@@ -205,7 +214,7 @@ func runningMilestone(order *core.Order) *core.Milestone {
 }
 
 func carrierReportPath(workspaceRoot, orderID, milestoneID string) string {
-	root := firstNonEmptyString(strings.TrimSpace(workspaceRoot), "/workspace")
+	root := firstNonEmptyString(strings.TrimSpace(workspaceRoot), defaultCarrierWorkspaceRoot)
 	return path.Join(root, "1tok", strings.TrimSpace(orderID), strings.TrimSpace(milestoneID), "result.md")
 }
 
@@ -404,9 +413,15 @@ func (s *Server) dispatchCarrierExecution(rfq platform.RFQ, order *core.Order) {
 		Order:   order,
 		Binding: binding,
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), carrierExecutionDispatchTimeout)
 	go func() {
-		if err := s.carrierAwardExecutor.Execute(context.Background(), input); err != nil {
-			log.Printf("gateway: carrier auto execution failed for order %s: %v", order.ID, err)
+		defer cancel()
+		if err := s.carrierAwardExecutor.Execute(ctx, input); err != nil {
+			orderID := ""
+			if input.Order != nil {
+				orderID = input.Order.ID
+			}
+			log.Printf("gateway: carrier auto execution failed for order=%s provider=%s binding=%s: %v", orderID, binding.ProviderOrgID, input.Binding.ID, err)
 		}
 	}()
 }
