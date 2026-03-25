@@ -4281,6 +4281,9 @@ func (failingOrderRepo) NextID() (string, error)         { return "", errors.New
 func (failingOrderRepo) Get(string) (*core.Order, error) { return nil, core.ErrOrderNotFound }
 func (failingOrderRepo) Save(*core.Order) error          { return errors.New("broken") }
 func (failingOrderRepo) List() ([]*core.Order, error)    { return nil, errors.New("broken") }
+func (failingOrderRepo) ListByFilter(filter platform.OrderListFilter) ([]*core.Order, error) {
+	return nil, errors.New("broken")
+}
 
 type failingDisputeRepo struct{}
 
@@ -5312,6 +5315,9 @@ func (internalErrorOrderRepo) Get(string) (*core.Order, error) {
 }
 func (internalErrorOrderRepo) Save(*core.Order) error       { return errors.New("broken") }
 func (internalErrorOrderRepo) List() ([]*core.Order, error) { return nil, errors.New("broken") }
+func (internalErrorOrderRepo) ListByFilter(filter platform.OrderListFilter) ([]*core.Order, error) {
+	return nil, errors.New("broken")
+}
 
 func TestGetOrder_InternalError(t *testing.T) {
 	app := platform.NewApp(internalErrorOrderRepo{}, nil, nil, nil, nil, nil, nil)

@@ -35,17 +35,17 @@ var (
 )
 
 type Server struct {
-	app             *platform.App
-	auth            iamclient.Client
-	executionTokens serviceauth.TokenSet
-	rateLimiter     ratelimit.Limiter
-	carrier         *carrier.Service
+	app                  *platform.App
+	auth                 iamclient.Client
+	executionTokens      serviceauth.TokenSet
+	rateLimiter          ratelimit.Limiter
+	carrier              *carrier.Service
 	carrierAwardExecutor carrierAwardExecutor
-	webhooks        *notifications.Registry
-	evidence        *carrier.EvidenceStore
-	ledger          *carrier.EventLedger
-	demoConfig      demoenv.Config
-	demoPrepare     func(context.Context) (release.DemoRunSummary, error)
+	webhooks             *notifications.Registry
+	evidence             *carrier.EvidenceStore
+	ledger               *carrier.EventLedger
+	demoConfig           demoenv.Config
+	demoPrepare          func(context.Context) (release.DemoRunSummary, error)
 }
 
 func NewServer() *Server {
@@ -139,17 +139,17 @@ func NewServerWithOptionsE(options Options) (*Server, error) {
 	// Wire notifications to the app via adapter
 	options.App.SetNotifier(&webhookNotifierAdapter{svc: webhookSvc})
 	return &Server{
-		app:             options.App,
-		auth:            options.IAM,
-		executionTokens: options.ExecutionTokens,
-		rateLimiter:     options.RateLimiter,
-		carrier:         carrierSvc,
+		app:                  options.App,
+		auth:                 options.IAM,
+		executionTokens:      options.ExecutionTokens,
+		rateLimiter:          options.RateLimiter,
+		carrier:              carrierSvc,
 		carrierAwardExecutor: carrierAwardExecutor,
-		webhooks:        registry,
-		evidence:        carrier.NewEvidenceStore(),
-		ledger:          carrier.NewEventLedger(),
-		demoConfig:      demoConfig,
-		demoPrepare:     demoPrepare,
+		webhooks:             registry,
+		evidence:             carrier.NewEvidenceStore(),
+		ledger:               carrier.NewEventLedger(),
+		demoConfig:           demoConfig,
+		demoPrepare:          demoPrepare,
 	}, nil
 }
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -837,6 +837,7 @@ func (s *Server) ensureBuyerPrepaidAvailability(ctx context.Context, authHeader,
 	records, err := fetchSettlementFundingRecords(ctx, settlementBaseURL, authHeader, map[string]string{
 		"buyerOrgId": buyerOrgID,
 		"kind":       "buyer_topup",
+		"state":      "SETTLED",
 	})
 	if err != nil {
 		return fmt.Errorf("load buyer prepaid balance: %w", err)
@@ -844,13 +845,14 @@ func (s *Server) ensureBuyerPrepaidAvailability(ctx context.Context, authHeader,
 
 	var creditedCents int64
 	for _, record := range records {
-		if record.Kind != "buyer_topup" || !strings.EqualFold(record.State, "SETTLED") {
-			continue
-		}
 		creditedCents += parseAmountToCents(record.Amount)
 	}
 
-	orders, err := s.app.ListOrders()
+	orders, err := s.app.ListOrdersByFilter(platform.OrderListFilter{
+		BuyerOrgID:  buyerOrgID,
+		FundingMode: core.FundingModePrepaid,
+		Statuses:    []core.OrderStatus{core.OrderStatusRunning, core.OrderStatusAwaitingBudget, core.OrderStatusAwaitingPaymentRail},
+	})
 	if err != nil {
 		return fmt.Errorf("load buyer prepaid commitments: %w", err)
 	}
@@ -895,14 +897,18 @@ func totalMilestoneBudgetCents(milestones []platform.CreateMilestoneInput) int64
 }
 
 func buyerCommittedPrepaidCents(orders []*core.Order, buyerOrgID string) int64 {
+	committedStatuses := map[core.OrderStatus]struct{}{
+		core.OrderStatusRunning:             {},
+		core.OrderStatusAwaitingBudget:      {},
+		core.OrderStatusAwaitingPaymentRail: {},
+	}
+
 	var committed int64
 	for _, order := range orders {
-		if order == nil || order.BuyerOrgID != buyerOrgID || order.FundingMode != core.FundingModePrepaid {
+		if order == nil || order.BuyerOrgID != buyerOrgID || !order.IsPrepaidCommitted() {
 			continue
 		}
-		if order.Status != core.OrderStatusRunning &&
-			order.Status != core.OrderStatusAwaitingBudget &&
-			order.Status != core.OrderStatusAwaitingPaymentRail {
+		if _, ok := committedStatuses[order.Status]; !ok {
 			continue
 		}
 		for _, milestone := range order.Milestones {

@@ -16,6 +16,12 @@ export interface CollectionRequestOptions {
   requireLive?: boolean;
 }
 
+export interface FundingRecordsRequestOptions extends CollectionRequestOptions {
+  buyerOrgId?: string;
+  kind?: FundingRecord["kind"];
+  state?: string;
+}
+
 export interface BuyerDashboardData {
   summary: {
     activeOrders: number;
@@ -125,13 +131,17 @@ export async function getRFQBids(rfqId: string, options?: CollectionRequestOptio
   return readCollection(`/api/v1/rfqs/${rfqId}/bids`, "bids", demoBids.filter((bid) => bid.rfqId === rfqId), options);
 }
 
-export async function getFundingRecords(options?: CollectionRequestOptions): Promise<FundingRecord[]> {
+export async function getFundingRecords(options?: FundingRecordsRequestOptions): Promise<FundingRecord[]> {
   const baseUrl = resolveBaseUrl("settlement");
   if (!baseUrl) {
     return options?.requireLive ? [] : demoFundingRecords;
   }
 
-  return readCollectionFromBase(baseUrl, "/v1/funding-records", "records", demoFundingRecords, options);
+  return readCollectionFromBase(baseUrl, "/v1/funding-records", "records", demoFundingRecords, options, {
+    buyerOrgId: options?.buyerOrgId,
+    kind: options?.kind,
+    state: options?.state,
+  });
 }
 
 export async function getDisputes(options?: CollectionRequestOptions): Promise<Dispute[]> {
@@ -147,7 +157,13 @@ export async function getBuyerDashboardData(options: {
     getListings({ authToken: options.authToken, requireLive: options.requireLive }),
     getOrders({ authToken: options.authToken, requireLive: options.requireLive }),
     getRFQs({ authToken: options.authToken, requireLive: options.requireLive }),
-    getFundingRecords({ authToken: options.authToken, requireLive: options.requireLive }),
+    getFundingRecords({
+      authToken: options.authToken,
+      buyerOrgId: options.buyerOrgId,
+      kind: "buyer_topup",
+      state: "SETTLED",
+      requireLive: options.requireLive,
+    }),
     getBuyerDepositSummary({
       authToken: options.authToken,
       buyerOrgId: options.buyerOrgId,
@@ -161,11 +177,7 @@ export async function getBuyerDashboardData(options: {
   const pendingTopUps = buyerFunding.filter((record) => record.kind === "buyer_topup" && record.state !== "SETTLED");
   const committedPrepaidCents = activeOrders.reduce((sum, order) => {
     if (order.fundingMode !== "prepaid") return sum;
-    if (
-      order.status !== "running" &&
-      order.status !== "awaiting_budget" &&
-      order.status !== "awaiting_payment_rail"
-    ) {
+    if (!["running", "awaiting_budget", "awaiting_payment_rail"].includes(order.status)) {
       return sum;
     }
     return sum + order.milestones.reduce((milestoneSum, milestone) => {
@@ -470,10 +482,20 @@ async function readCollectionFromBase<T>(
   key: string,
   fallback: T[],
   options?: CollectionRequestOptions,
+  query: Record<string, string | undefined> = {},
 ): Promise<T[]> {
   const empty: T[] = [];
+  const queryParams = new URLSearchParams();
+  for (const [k, value] of Object.entries(query)) {
+    if (typeof value !== "string" || value.trim() === "") {
+      continue;
+    }
+    queryParams.set(k, value);
+  }
+  const queryString = queryParams.toString();
+  const endpoint = `${baseUrl}${path}${queryString ? `?${queryString}` : ""}`;
   try {
-    const response = await fetch(`${baseUrl}${path}`, {
+    const response = await fetch(endpoint, {
       headers: {
         Accept: "application/json",
         ...(options?.authToken ? { Authorization: `Bearer ${options.authToken}` } : {}),

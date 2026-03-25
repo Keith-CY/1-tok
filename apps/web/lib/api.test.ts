@@ -53,6 +53,34 @@ describe("api fallback", () => {
     expect(records[0]?.state).toBe("SETTLED");
   });
 
+  it("passes buyer topup filters when requested for funding records", async () => {
+    process.env.NEXT_PUBLIC_SETTLEMENT_BASE_URL = "http://localhost:8083";
+    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      expect(url).toBe("http://localhost:8083/v1/funding-records?buyerOrgId=buyer_1&kind=buyer_topup&state=SETTLED");
+
+      return new Response(
+        JSON.stringify({
+          records: [{ id: "fund_1", kind: "buyer_topup", buyerOrgId: "buyer_1", amount: "50.00", state: "SETTLED" }],
+        }),
+        {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        },
+      );
+    }) as unknown as typeof fetch;
+
+    const records = await getFundingRecords({
+      authToken: "tok_123",
+      buyerOrgId: "buyer_1",
+      kind: "buyer_topup",
+      state: "SETTLED",
+    });
+
+    expect(records).toHaveLength(1);
+    expect(records[0]?.id).toBe("fund_1");
+  });
+
   it("forwards bearer auth when reading funding records", async () => {
     process.env.NEXT_PUBLIC_SETTLEMENT_BASE_URL = "http://localhost:8083";
     globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -273,7 +301,7 @@ describe("api fallback", () => {
         );
       }
 
-      if (url.endsWith("/v1/funding-records")) {
+      if (url.startsWith(`${process.env.NEXT_PUBLIC_SETTLEMENT_BASE_URL}/v1/funding-records`)) {
         return new Response(
           JSON.stringify({
             records: [{ id: "fund_1", kind: "buyer_topup", buyerOrgId: "buyer_1", amount: "50.00", state: "SETTLED" }],
@@ -329,7 +357,7 @@ describe("api fallback", () => {
         );
       }
 
-      if (url.endsWith("/v1/funding-records")) {
+      if (url.startsWith(`${process.env.NEXT_PUBLIC_SETTLEMENT_BASE_URL}/v1/funding-records`)) {
         return new Response(
           JSON.stringify({
             records: [{ id: "fund_1", kind: "invoice", providerOrgId: "provider_1", amount: "12.5", state: "SETTLED" }],

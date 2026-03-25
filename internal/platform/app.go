@@ -138,11 +138,18 @@ type ResolveDisputeInput struct {
 	ResolvedBy string
 }
 
+type OrderListFilter struct {
+	BuyerOrgID  string
+	FundingMode core.FundingMode
+	Statuses    []core.OrderStatus
+}
+
 type OrderRepository interface {
 	NextID() (string, error)
 	Save(order *core.Order) error
 	Get(id string) (*core.Order, error)
 	List() ([]*core.Order, error)
+	ListByFilter(filter OrderListFilter) ([]*core.Order, error)
 }
 
 type ProviderRepository interface {
@@ -368,6 +375,10 @@ func (a *App) GetRFQ(id string) (RFQ, error) {
 
 func (a *App) ListOrders() ([]*core.Order, error) {
 	return a.orders.List()
+}
+
+func (a *App) ListOrdersByFilter(filter OrderListFilter) ([]*core.Order, error) {
+	return a.orders.ListByFilter(filter)
 }
 
 func (a *App) ListDisputes() ([]Dispute, error) {
@@ -847,6 +858,37 @@ func (r *memoryOrderRepository) List() ([]*core.Order, error) {
 	defer r.mu.RUnlock()
 	orders := make([]*core.Order, 0, len(r.data))
 	for _, order := range r.data {
+		orders = append(orders, cloneOrder(order))
+	}
+	slices.SortFunc(orders, func(a, b *core.Order) int {
+		return compareStrings(a.ID, b.ID)
+	})
+	return orders, nil
+}
+
+func (r *memoryOrderRepository) ListByFilter(filter OrderListFilter) ([]*core.Order, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	orders := make([]*core.Order, 0)
+	for _, order := range r.data {
+		if filter.BuyerOrgID != "" && order.BuyerOrgID != filter.BuyerOrgID {
+			continue
+		}
+		if filter.FundingMode != "" && order.FundingMode != filter.FundingMode {
+			continue
+		}
+		if len(filter.Statuses) > 0 {
+			matches := false
+			for _, status := range filter.Statuses {
+				if order.Status == status {
+					matches = true
+					break
+				}
+			}
+			if !matches {
+				continue
+			}
+		}
 		orders = append(orders, cloneOrder(order))
 	}
 	slices.SortFunc(orders, func(a, b *core.Order) int {
