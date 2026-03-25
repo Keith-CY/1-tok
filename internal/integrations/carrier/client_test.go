@@ -53,6 +53,48 @@ func TestClientGetsCodeAgentHealth(t *testing.T) {
 	}
 }
 
+func TestClientInstallsCodeAgent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST, got %s", r.Method)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer gateway-token" {
+			t.Fatalf("expected bearer token, got %q", got)
+		}
+		if r.URL.Path != "/api/v1/remote/hosts/host_1/instances/agent_1/codeagent/install" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+
+		payload, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		var body struct {
+			Backend       string `json:"backend"`
+			WorkspaceRoot string `json:"workspaceRoot"`
+		}
+		if err := json.Unmarshal(payload, &body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if body.Backend != "codex" || body.WorkspaceRoot != "/workspace" {
+			t.Fatalf("unexpected install body: %+v", body)
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "gateway-token")
+	if err := client.InstallCodeAgent(context.Background(), CodeAgentInstallInput{
+		HostID:        "host_1",
+		AgentID:       "agent_1",
+		Backend:       "codex",
+		WorkspaceRoot: "/workspace",
+	}); err != nil {
+		t.Fatalf("install codeagent: %v", err)
+	}
+}
+
 func TestClientRunsCodeAgent(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

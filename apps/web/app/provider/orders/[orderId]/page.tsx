@@ -5,6 +5,7 @@ import { formatMoney } from "@1tok/contracts";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { DeliveryReportPanel } from "@/components/delivery-report-panel";
 import { DetailChip, SectionCard, WorkspaceShell } from "@/components/workspace-shell";
 import { getProviderOrderDetail } from "@/lib/api";
 import { requirePortalViewer } from "@/lib/viewer";
@@ -110,6 +111,7 @@ export default async function ProviderOrderPage({ params }: { params: Promise<{ 
               const usageCharges = Array.isArray(milestone.usageCharges) ? milestone.usageCharges : [];
               const spent = usageCharges.reduce((sum, charge) => sum + charge.amountCents, 0) + milestone.settledCents;
               const usage = milestone.budgetCents > 0 ? Math.min((spent / milestone.budgetCents) * 100, 100) : 0;
+              const deliveryNote = milestone.summary?.trim() ?? "";
 
               return (
                 <div key={milestone.id} className="market-card p-5">
@@ -125,6 +127,7 @@ export default async function ProviderOrderPage({ params }: { params: Promise<{ 
                     <Progress value={usage} />
                     <div className="text-sm text-muted-foreground">{usage.toFixed(0)}% consumed</div>
                   </div>
+                  {deliveryNote ? <DeliveryReportPanel summary={deliveryNote} /> : null}
                 </div>
               );
             })}

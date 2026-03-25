@@ -400,11 +400,16 @@ func (c *smokeClient) warmDemoProviderLiquidity(ctx context.Context, baseURL, op
 
 func (c *smokeClient) ensureProviderCarrierBinding(ctx context.Context, baseURL, providerOrgID string, cfg USDIMarketplaceE2EConfig) error {
 	binding, err := c.getProviderCarrierBinding(ctx, baseURL, providerOrgID)
-	if err == nil && strings.EqualFold(binding.Status, "active") {
+	if err == nil && strings.EqualFold(binding.Status, "active") && carrierBindingMatchesConfig(binding, cfg) {
 		return nil
 	}
 	if err != nil && !isStatusCode(err, http.StatusNotFound) {
 		return err
+	}
+	if err == nil && strings.EqualFold(binding.Status, "active") {
+		if suspendErr := c.suspendProviderCarrierBinding(ctx, baseURL, binding.ID); suspendErr != nil {
+			return suspendErr
+		}
 	}
 	bindingID, err := c.registerProviderCarrierBinding(ctx, baseURL, providerOrgID, cfg)
 	if err != nil {
@@ -418,6 +423,14 @@ func (c *smokeClient) ensureProviderCarrierBinding(ctx context.Context, baseURL,
 		bindingID = binding.ID
 	}
 	return c.verifyProviderCarrierBinding(ctx, baseURL, bindingID)
+}
+
+func carrierBindingMatchesConfig(binding platform.ProviderCarrierBinding, cfg USDIMarketplaceE2EConfig) bool {
+	return strings.TrimSpace(binding.CarrierBaseURL) == strings.TrimSpace(cfg.CarrierBaseURL) &&
+		strings.TrimSpace(binding.HostID) == strings.TrimSpace(cfg.CarrierHostID) &&
+		firstNonEmptyString(strings.TrimSpace(binding.AgentID), "main") == firstNonEmptyString(strings.TrimSpace(cfg.CarrierAgentID), "main") &&
+		firstNonEmptyString(strings.TrimSpace(binding.Backend), "codex") == firstNonEmptyString(strings.TrimSpace(cfg.CarrierBackend), "codex") &&
+		firstNonEmptyString(strings.TrimSpace(binding.WorkspaceRoot), "/workspace") == firstNonEmptyString(strings.TrimSpace(cfg.CarrierWorkspaceRoot), "/workspace")
 }
 
 func (c *smokeClient) ensureProviderSettlementBinding(ctx context.Context, baseURL, providerOrgID string, cfg USDIMarketplaceE2EConfig) error {
@@ -477,6 +490,10 @@ func (c *smokeClient) getProviderSettlementBinding(ctx context.Context, baseURL,
 		return platform.ProviderSettlementBinding{}, err
 	}
 	return payload.Binding, nil
+}
+
+func (c *smokeClient) suspendProviderCarrierBinding(ctx context.Context, baseURL, bindingID string) error {
+	return c.postJSON(ctx, strings.TrimRight(baseURL, "/")+"/api/v1/carrier-bindings/"+bindingID+"/suspend", map[string]any{}, nil)
 }
 
 func postJSONBytes(body any) (*bytes.Reader, error) {
