@@ -43,6 +43,7 @@ export interface BuyerDashboardData {
     budgetCents: number;
     bidCount: number;
     responseDeadlineAt: string;
+    createdAt: string;
     bids: Array<{ id: string; providerOrgId: string; quoteCents: number; status: string }>;
   }>;
   inbox: Array<{ id: string; title: string; detail: string }>;
@@ -204,6 +205,7 @@ export async function getBuyerDashboardData(options: {
         budgetCents: rfq.budgetCents,
         bidCount: bids.length,
         responseDeadlineAt: rfq.responseDeadlineAt,
+        createdAt: rfq.createdAt,
         bids: bids.map((bid) => ({
           id: bid.id,
           providerOrgId: bid.providerOrgId,

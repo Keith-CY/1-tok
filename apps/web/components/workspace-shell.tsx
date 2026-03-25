@@ -36,7 +36,7 @@ const shellConfig: Record<
     nav: [
       { href: "/buyer", label: "Requests" },
       { href: "/buyer/rfqs/create", label: "Post request" },
-      { href: "/buyer", label: "Delivery" },
+      { href: "/buyer/delivery", label: "Delivery" },
     ],
   },
   provider: {
