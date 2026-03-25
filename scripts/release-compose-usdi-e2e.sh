@@ -244,6 +244,19 @@ Known issue: ${FIBER_TESTNET_CONTRACTS_ISSUE_URL}
 Current impact: true-chain USDI e2e cannot reach faucet/top-up/order flow because fnn/fnn2 exits during startup.
 EOF
     cat "${hint_file}" >&2
+  elif grep -iqE "feature not found.*waiting for peer to send init message|waiting for peer to send init message" "${log_file}"; then
+    cat >"${hint_file}" <<EOF
+Detected FNN peer connectivity failure: peers failed to exchange Init messages.
+Known issue: ${FIBER_TESTNET_CONTRACTS_ISSUE_URL}
+Current impact: true-chain USDI e2e cannot open payment channels because FNN nodes cannot connect to each other.
+EOF
+    cat "${hint_file}" >&2
+  elif grep -Fq "usdi faucet command failed" "${log_file}"; then
+    cat >"${hint_file}" <<EOF
+Detected CKB/USDI testnet faucet failure.
+Current impact: true-chain USDI e2e cannot fund wallets because the faucet is unreachable or rejected the request.
+EOF
+    cat "${hint_file}" >&2
   fi
 }
 
