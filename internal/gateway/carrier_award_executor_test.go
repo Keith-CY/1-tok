@@ -558,6 +558,30 @@ Start with Vendor A and benchmark Vendor B in reserve.
 	if !strings.Contains(client.runInputs[0].Command, "X-Carrier-Key-Id") {
 		t.Fatalf("command = %q, want callback key header", client.runInputs[0].Command)
 	}
+	assertCarrierStrictPolicySafeCommand(t, client.runInputs[0].Command)
+}
+
+func TestBuildCarrierRunCommandWithCallbackAvoidsStrictPolicyAskPatterns(t *testing.T) {
+	t.Parallel()
+
+	command := buildCarrierRunCommand(
+		"/workspace/1tok/ord_99/ms_1",
+		"/workspace/1tok/ord_99/ms_1/result.md",
+		"Return only the delivery note markdown.",
+		carrierReportCallbackConfig{
+			BaseURL:        "https://api.1-tok.pro",
+			BindingID:      "bind_1",
+			JobID:          "job_1",
+			ReportPath:     "/workspace/1tok/ord_99/ms_1/result.md",
+			CallbackSecret: "callback-secret",
+			CallbackKeyID:  "callback-key-1",
+		},
+	)
+
+	if !strings.Contains(command, "/api/v1/carrier/callbacks/events") {
+		t.Fatalf("command = %q, want callback endpoint", command)
+	}
+	assertCarrierStrictPolicySafeCommand(t, command)
 }
 
 func TestCarrierAwardExecutorFailsJobWithOutputPathsWhenCommandExitsNonZero(t *testing.T) {
@@ -833,4 +857,15 @@ func sendTestCarrierIntegrationCallback(baseURL, secret, keyID string, envelope 
 		return errors.New("carrier callback rejected")
 	}
 	return nil
+}
+
+func assertCarrierStrictPolicySafeCommand(t *testing.T, command string) {
+	t.Helper()
+
+	lowered := strings.ToLower(command)
+	for _, pattern := range []string{"curl ", "wget ", "nc ", "ssh ", "scp "} {
+		if strings.Contains(lowered, pattern) {
+			t.Fatalf("command = %q, unexpectedly matched strict policy ask pattern %q", command, pattern)
+		}
+	}
 }
