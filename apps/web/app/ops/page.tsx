@@ -32,8 +32,17 @@ export default async function OpsPage({
   const disputeStatus = String(params?.disputeStatus ?? "");
   const demoPrepared = String(params?.demoPrepared ?? "");
   const error = String(params?.error ?? "");
+  const demoPrepareError = safeDecodeURIComponent(String(params?.demoPrepareError ?? ""));
 
   const openDisputes = data.disputes.filter((item) => item.status !== "resolved").slice(0, 3);
+
+  function safeDecodeURIComponent(value: string): string {
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  }
 
   return (
     <WorkspaceShell
@@ -74,7 +83,7 @@ export default async function OpsPage({
           ) : null}
           {error === "demo-prepare-failed" ? (
             <div className="mb-4 rounded-[24px] border border-rose-200 bg-rose-50/90 p-4 text-sm text-rose-900">
-              Demo prepare failed. Inspect blockers below before retrying.
+              Demo prepare failed: {demoPrepareError || "Inspect blockers below before retrying."}
             </div>
           ) : null}
           {data.demoStatus ? (
