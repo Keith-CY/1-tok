@@ -5,6 +5,7 @@ export const orderStatuses = [
   "draft",
   "running",
   "awaiting_budget",
+  "awaiting_payment_rail",
   "completed",
   "failed",
 ] as const;

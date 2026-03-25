@@ -278,7 +278,10 @@ function SpotMetric({ label, value }: { label: string; value: string }) {
 }
 
 function orderStatusLabel(value: string) {
-  return value === "awaiting_budget" ? "Waiting on budget" : value === "running" ? "In delivery" : value;
+  if (value === "awaiting_budget") return "Waiting on budget";
+  if (value === "awaiting_payment_rail") return "Waiting on payment rail";
+  if (value === "running") return "In delivery";
+  return value;
 }
 
 function milestoneStatusLabel(value: string) {

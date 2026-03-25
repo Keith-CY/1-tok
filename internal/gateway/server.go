@@ -580,6 +580,12 @@ func (s *Server) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 			BudgetCents:    milestone.BudgetCents,
 		})
 	}
+	if input.FundingMode == core.FundingModePrepaid {
+		if err := s.ensureBuyerPrepaidAvailability(r.Context(), r.Header.Get("Authorization"), buyerOrgID, totalMilestoneBudgetCents(input.Milestones)); err != nil {
+			httputil.WriteError(w, http.StatusConflict, httputil.ErrCodeConflict, err.Error())
+			return
+		}
+	}
 	order, err := s.app.CreateOrder(input)
 	if err != nil {
 		writeCallbackError(w, http.StatusBadRequest, httputil.ErrCodeBadRequest, err.Error())
@@ -795,6 +801,17 @@ func (s *Server) handleAwardRFQ(w http.ResponseWriter, r *http.Request) {
 	}); blocked {
 		return
 	}
+	if payload.FundingMode == string(core.FundingModePrepaid) {
+		if bidBudgetCents, found, bidErr := s.findBidBudgetCents(rfqID, payload.BidID); bidErr != nil {
+			writeGatewayError(w, bidErr)
+			return
+		} else if found {
+			if err := s.ensureBuyerPrepaidAvailability(r.Context(), r.Header.Get("Authorization"), buyerOrgID, bidBudgetCents); err != nil {
+				httputil.WriteError(w, http.StatusConflict, httputil.ErrCodeConflict, err.Error())
+				return
+			}
+		}
+	}
 	awardedRFQ, order, err := s.app.AwardRFQ(rfqID, platform.AwardRFQInput{
 		BidID:        payload.BidID,
 		FundingMode:  core.FundingMode(payload.FundingMode),
@@ -807,6 +824,100 @@ func (s *Server) handleAwardRFQ(w http.ResponseWriter, r *http.Request) {
 	s.dispatchCarrierExecution(awardedRFQ, order)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"rfq": awardedRFQ, "order": order})
 }
+
+func (s *Server) ensureBuyerPrepaidAvailability(ctx context.Context, authHeader, buyerOrgID string, requestedCents int64) error {
+	if s == nil || requestedCents <= 0 {
+		return nil
+	}
+	settlementBaseURL := strings.TrimSpace(s.demoConfig.SettlementBaseURL)
+	if settlementBaseURL == "" {
+		return nil
+	}
+
+	records, err := fetchSettlementFundingRecords(ctx, settlementBaseURL, authHeader, map[string]string{
+		"buyerOrgId": buyerOrgID,
+		"kind":       "buyer_topup",
+	})
+	if err != nil {
+		return fmt.Errorf("load buyer prepaid balance: %w", err)
+	}
+
+	var creditedCents int64
+	for _, record := range records {
+		if record.Kind != "buyer_topup" || !strings.EqualFold(record.State, "SETTLED") {
+			continue
+		}
+		creditedCents += parseAmountToCents(record.Amount)
+	}
+
+	orders, err := s.app.ListOrders()
+	if err != nil {
+		return fmt.Errorf("load buyer prepaid commitments: %w", err)
+	}
+	availableCents := creditedCents - buyerCommittedPrepaidCents(orders, buyerOrgID)
+	if availableCents < requestedCents {
+		return fmt.Errorf("insufficient prepaid balance: available %d, requested %d", availableCents, requestedCents)
+	}
+	return nil
+}
+
+func (s *Server) findBidBudgetCents(rfqID, bidID string) (int64, bool, error) {
+	if strings.TrimSpace(bidID) == "" {
+		return 0, false, nil
+	}
+	bids, err := s.app.ListRFQBids(rfqID)
+	if err != nil {
+		return 0, false, err
+	}
+	for _, bid := range bids {
+		if bid.ID != bidID {
+			continue
+		}
+		return totalBidBudgetCents(bid.Milestones), true, nil
+	}
+	return 0, false, nil
+}
+
+func totalBidBudgetCents(milestones []platform.BidMilestone) int64 {
+	var total int64
+	for _, milestone := range milestones {
+		total += milestone.BudgetCents
+	}
+	return total
+}
+
+func totalMilestoneBudgetCents(milestones []platform.CreateMilestoneInput) int64 {
+	var total int64
+	for _, milestone := range milestones {
+		total += milestone.BudgetCents
+	}
+	return total
+}
+
+func buyerCommittedPrepaidCents(orders []*core.Order, buyerOrgID string) int64 {
+	var committed int64
+	for _, order := range orders {
+		if order == nil || order.BuyerOrgID != buyerOrgID || order.FundingMode != core.FundingModePrepaid {
+			continue
+		}
+		if order.Status != core.OrderStatusRunning &&
+			order.Status != core.OrderStatusAwaitingBudget &&
+			order.Status != core.OrderStatusAwaitingPaymentRail {
+			continue
+		}
+		for _, milestone := range order.Milestones {
+			if milestone.State == core.MilestoneStateSettled {
+				continue
+			}
+			unsettled := milestone.BudgetCents - milestone.SettledCents
+			if unsettled > 0 {
+				committed += unsettled
+			}
+		}
+	}
+	return committed
+}
+
 func (s *Server) resolveBuyerOrg(r *http.Request, requestedBuyerOrgID string) (string, error) {
 	if s.auth == nil || iamclient.IsNoop(s.auth) {
 		return requestedBuyerOrgID, nil

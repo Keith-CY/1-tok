@@ -159,6 +159,22 @@ export async function getBuyerDashboardData(options: {
   const buyerFunding = fundingRecords.filter((record) => record.buyerOrgId === options.buyerOrgId);
   const settledTopUps = buyerFunding.filter((record) => record.kind === "buyer_topup" && record.state === "SETTLED");
   const pendingTopUps = buyerFunding.filter((record) => record.kind === "buyer_topup" && record.state !== "SETTLED");
+  const committedPrepaidCents = activeOrders.reduce((sum, order) => {
+    if (order.fundingMode !== "prepaid") return sum;
+    if (
+      order.status !== "running" &&
+      order.status !== "awaiting_budget" &&
+      order.status !== "awaiting_payment_rail"
+    ) {
+      return sum;
+    }
+    return sum + order.milestones.reduce((milestoneSum, milestone) => {
+      if (milestone.state === "settled") return milestoneSum;
+      const unsettled = Number(milestone.budgetCents ?? 0) - Number(milestone.settledCents ?? 0);
+      return unsettled > 0 ? milestoneSum + unsettled : milestoneSum;
+    }, 0);
+  }, 0);
+  const creditedTopUpCents = settledTopUps.reduce((sum, record) => sum + parseAmountToCents(record.amount), 0);
   const pausedOrders = activeOrders.filter(
     (order) =>
       order.status === "awaiting_budget" || order.milestones.some((milestone) => milestone.state === "paused"),
@@ -193,7 +209,7 @@ export async function getBuyerDashboardData(options: {
       openRFQs: buyerRFQs.filter((rfq) => rfq.status === "open").length,
       pausedOrders,
       buyerOrgId: options.buyerOrgId,
-      prepaidBalanceCents: settledTopUps.reduce((sum, record) => sum + parseAmountToCents(record.amount), 0),
+      prepaidBalanceCents: Math.max(0, creditedTopUpCents - committedPrepaidCents),
       settledTopUps: settledTopUps.length,
       pendingTopUps: pendingTopUps.length,
     },
