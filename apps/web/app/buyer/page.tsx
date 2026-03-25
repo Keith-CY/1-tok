@@ -32,14 +32,13 @@ export default async function BuyerPage({
 
   const openRequests = [...data.rfqBook]
     .filter((item) => item.status === "open")
-    .sort((left, right) => right.budgetCents - left.budgetCents || Date.parse(left.responseDeadlineAt) - Date.parse(right.responseDeadlineAt));
+    .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
   const topRequest = openRequests[0] ?? null;
   const liveFloor = openRequests
     .flatMap((item) => item.bids.map((bid) => bid.quoteCents))
     .sort((left, right) => left - right)[0] ?? null;
   const closingSoon = openRequests.filter((item) => Date.parse(item.responseDeadlineAt) - Date.now() <= 1000 * 60 * 60 * 72).length;
   const awarded = data.activeOrders.slice(0, 3);
-  const awardedWorkHref = awarded[0] ? `/buyer/orders/${awarded[0].id}` : "/buyer";
 
   return (
     <WorkspaceShell
@@ -134,7 +133,7 @@ export default async function BuyerPage({
                 </Link>
               </Button>
               <Button asChild variant="outline" className="w-full justify-between">
-                <Link href={awardedWorkHref}>
+                <Link href="/buyer/delivery">
                   Review delivery
                   <RiArrowRightUpLine className="size-4" />
                 </Link>
