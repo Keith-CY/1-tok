@@ -285,9 +285,15 @@ jobs:
         env:
           E2E_USDI_SCREENSHOT_OUTPUT_DIR: ${{ github.workspace }}/.artifacts/usdi-e2e
         run: |
+          cp .artifacts/usdi-e2e/failure-hints.txt /tmp/usdi-e2e-failure-hints.bak 2>/dev/null || true
           rm -rf .artifacts/usdi-e2e
           mkdir -p .artifacts/usdi-e2e
-          ./scripts/release-compose-usdi-e2e-screenshots.sh
+          ./scripts/release-compose-usdi-e2e-screenshots.sh || {
+            if [ ! -f .artifacts/usdi-e2e/failure-hints.txt ] && [ -f /tmp/usdi-e2e-failure-hints.bak ]; then
+              cp /tmp/usdi-e2e-failure-hints.bak .artifacts/usdi-e2e/failure-hints.txt
+            fi
+            exit 1
+          }
 
       - name: Resolve USDI e2e result
         if: always()

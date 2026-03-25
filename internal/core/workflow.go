@@ -70,6 +70,15 @@ type Order struct {
 	Milestones     []Milestone `json:"milestones"`
 }
 
+func (o *Order) IsPrepaidCommitted() bool {
+	if o == nil || o.FundingMode != FundingModePrepaid {
+		return false
+	}
+	return o.Status == OrderStatusRunning ||
+		o.Status == OrderStatusAwaitingBudget ||
+		o.Status == OrderStatusAwaitingPaymentRail
+}
+
 type Milestone struct {
 	ID             string         `json:"id"`
 	Title          string         `json:"title"`

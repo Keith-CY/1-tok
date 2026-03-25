@@ -212,6 +212,7 @@ function providerDeliveryStatus(value: string, allSettled: boolean) {
   if (allSettled || value === "completed") return "Completed";
   if (value === "running") return "In delivery";
   if (value === "awaiting_budget") return "Waiting on budget";
+  if (value === "awaiting_payment_rail") return "Waiting on payment rail";
   return value;
 }
 
