@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
 	"log"
+	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/chenyu/1-tok/internal/bootstrap"
@@ -10,6 +13,7 @@ import (
 	"github.com/chenyu/1-tok/internal/httputil"
 	"github.com/chenyu/1-tok/internal/observability"
 	"github.com/chenyu/1-tok/internal/platform"
+	"github.com/chenyu/1-tok/internal/release"
 	"github.com/chenyu/1-tok/internal/server"
 )
 
@@ -44,11 +48,47 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if os.Getenv("DEMO_AUTO_PREPARE") == "true" {
+		go autoDemoPrepare(addr)
+	}
+
 	corsOrigin := envOrDefault("CORS_ALLOWED_ORIGIN", "*")
 	handler := httputil.CORS(corsOrigin, httputil.LimitBody(gw, 0))
 	if err := server.Run(addr, httputil.AccessLog("api-gateway", observability.WrapHTTP("api-gateway", handler)), 0); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func autoDemoPrepare(listenAddr string) {
+	cfg := release.DemoRunConfigFromEnv()
+	healthURL := "http://localhost" + listenAddr + "/healthz"
+	if !strings.Contains(listenAddr, ":") {
+		healthURL = "http://localhost:" + listenAddr + "/healthz"
+	}
+
+	// Wait until the server is accepting connections.
+	for i := 0; i < 30; i++ {
+		time.Sleep(time.Second)
+		resp, err := http.Get(healthURL)
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				break
+			}
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	summary, err := release.RunDemoPrepare(ctx, cfg)
+	if err != nil {
+		log.Printf("demo-auto-prepare: error: %v", err)
+		return
+	}
+	log.Printf("demo-auto-prepare: ready (carrier=%s settlement=%s)",
+		summary.Status.ProviderSettlement.CarrierBindingStatus,
+		summary.Status.ProviderSettlement.SettlementBindingStatus)
 }
 
 func envOrDefault(key, fallback string) string {
