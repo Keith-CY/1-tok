@@ -802,14 +802,18 @@ func (s *Server) handleAwardRFQ(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if payload.FundingMode == string(core.FundingModePrepaid) {
-		if bidBudgetCents, found, bidErr := s.findBidBudgetCents(rfqID, payload.BidID); bidErr != nil {
+		bidBudgetCents, found, bidErr := s.findBidBudgetCents(rfqID, payload.BidID)
+		if bidErr != nil {
 			writeGatewayError(w, bidErr)
 			return
-		} else if found {
-			if err := s.ensureBuyerPrepaidAvailability(r.Context(), r.Header.Get("Authorization"), buyerOrgID, bidBudgetCents); err != nil {
-				httputil.WriteError(w, http.StatusConflict, httputil.ErrCodeConflict, err.Error())
-				return
-			}
+		}
+		if !found {
+			httputil.WriteError(w, http.StatusBadRequest, httputil.ErrCodeBadRequest, "bid not found for prepaid balance check")
+			return
+		}
+		if err := s.ensureBuyerPrepaidAvailability(r.Context(), r.Header.Get("Authorization"), buyerOrgID, bidBudgetCents); err != nil {
+			httputil.WriteError(w, http.StatusConflict, httputil.ErrCodeConflict, err.Error())
+			return
 		}
 	}
 	awardedRFQ, order, err := s.app.AwardRFQ(rfqID, platform.AwardRFQInput{
