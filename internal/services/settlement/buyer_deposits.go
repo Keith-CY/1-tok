@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const defaultBuyerDepositRawUnitsPerWholeUSDI int64 = 100_000_000
+const defaultBuyerDepositRawUnitsPerWholeUSDI int64 = 1_000_000
 
 type BuyerDepositAddress struct {
 	ID              string    `json:"id"`
