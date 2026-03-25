@@ -251,12 +251,6 @@ Known issue: ${FIBER_TESTNET_CONTRACTS_ISSUE_URL}
 Current impact: true-chain USDI e2e cannot open payment channels because FNN nodes cannot connect to each other.
 EOF
     cat "${hint_file}" >&2
-  elif grep -Fq "usdi faucet command failed" "${log_file}"; then
-    cat >"${hint_file}" <<EOF
-Detected CKB/USDI testnet faucet failure.
-Current impact: true-chain USDI e2e cannot fund wallets because the faucet is unreachable or rejected the request.
-EOF
-    cat "${hint_file}" >&2
   fi
 }
 
@@ -803,6 +797,10 @@ request_usdi_faucet_for_lock_script() {
     set -e
     if [[ "${rc}" -ne 0 ]]; then
       echo "usdi faucet command failed" >&2
+      cat >"${ARTIFACT_DIR}/failure-hints.txt" <<HINT
+Detected CKB/USDI testnet faucet failure (label=${label}, attempt=${attempt}).
+Current impact: true-chain USDI e2e cannot fund wallets because the faucet is unreachable or rejected the request.
+HINT
       exit 1
     fi
     faucet_tx_hash="$(extract_tx_hash_from_file "${stdout_file}" || true)"
