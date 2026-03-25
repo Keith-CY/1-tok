@@ -44,9 +44,9 @@ func TestBuyerDepositServiceEnsureAddressReusesBuyerOrgAddress(t *testing.T) {
 		Wallet:               wallet,
 		Asset:                "USDI",
 		TreasuryAddress:      "ckt1qyqtreasuryaddress",
-		MinSweepAmountRaw:    1_000_000_000,
+		MinSweepAmountRaw:    10_000_000,
 		ConfirmationBlocks:   24,
-		RawUnitsPerWholeUSDI: 100_000_000,
+		RawUnitsPerWholeUSDI: 1_000_000,
 	})
 
 	first, err := service.EnsureAddress(context.Background(), "buyer_1")
@@ -74,15 +74,15 @@ func TestBuyerDepositServiceSyncCreditsEntireConfirmedBalanceOnceThresholdReache
 		balances: map[string]BuyerDepositChainBalance{
 			"ckt1qyqbuyer0address": {
 				Address:            "ckt1qyqbuyer0address",
-				RawOnChainUnits:    1_300_000_000,
-				RawConfirmedUnits:  1_300_000_000,
+				RawOnChainUnits:    13_000_000,
+				RawConfirmedUnits:  13_000_000,
 				ConfirmationBlocks: 24,
 			},
 		},
 		sweepResults: map[string]BuyerDepositSweepResult{
 			"ckt1qyqbuyer0address": {
 				SweepTxHash:     "0xsweep123",
-				SweptRawUnits:   1_300_000_000,
+				SweptRawUnits:   13_000_000,
 				TreasuryAddress: "ckt1qyqtreasuryaddress",
 			},
 		},
@@ -96,9 +96,9 @@ func TestBuyerDepositServiceSyncCreditsEntireConfirmedBalanceOnceThresholdReache
 		Wallet:               wallet,
 		Asset:                "USDI",
 		TreasuryAddress:      "ckt1qyqtreasuryaddress",
-		MinSweepAmountRaw:    1_000_000_000,
+		MinSweepAmountRaw:    10_000_000,
 		ConfirmationBlocks:   24,
-		RawUnitsPerWholeUSDI: 100_000_000,
+		RawUnitsPerWholeUSDI: 1_000_000,
 		Now: func() time.Time {
 			return time.Date(2026, 3, 23, 12, 0, 0, 0, time.UTC)
 		},
@@ -129,7 +129,7 @@ func TestBuyerDepositServiceSyncCreditsEntireConfirmedBalanceOnceThresholdReache
 	if len(sweepRecords) != 1 {
 		t.Fatalf("expected one sweep record, got %+v", sweepRecords)
 	}
-	if sweepRecords[0].AmountRaw != 1_300_000_000 || sweepRecords[0].TreasuryAddress != "ckt1qyqtreasuryaddress" {
+	if sweepRecords[0].AmountRaw != 13_000_000 || sweepRecords[0].TreasuryAddress != "ckt1qyqtreasuryaddress" {
 		t.Fatalf("unexpected sweep record: %+v", sweepRecords[0])
 	}
 	if len(wallet.sweepCalls) != 1 {
@@ -145,15 +145,15 @@ func TestBuyerDepositServiceSyncIsIdempotentForExistingSweepTxHash(t *testing.T)
 		balances: map[string]BuyerDepositChainBalance{
 			"ckt1qyqbuyer0address": {
 				Address:            "ckt1qyqbuyer0address",
-				RawOnChainUnits:    1_300_000_000,
-				RawConfirmedUnits:  1_300_000_000,
+				RawOnChainUnits:    13_000_000,
+				RawConfirmedUnits:  13_000_000,
 				ConfirmationBlocks: 24,
 			},
 		},
 		sweepResults: map[string]BuyerDepositSweepResult{
 			"ckt1qyqbuyer0address": {
 				SweepTxHash:     "0xsweep123",
-				SweptRawUnits:   1_300_000_000,
+				SweptRawUnits:   13_000_000,
 				TreasuryAddress: "ckt1qyqtreasuryaddress",
 			},
 		},
@@ -167,9 +167,9 @@ func TestBuyerDepositServiceSyncIsIdempotentForExistingSweepTxHash(t *testing.T)
 		Wallet:               wallet,
 		Asset:                "USDI",
 		TreasuryAddress:      "ckt1qyqtreasuryaddress",
-		MinSweepAmountRaw:    1_000_000_000,
+		MinSweepAmountRaw:    10_000_000,
 		ConfirmationBlocks:   24,
-		RawUnitsPerWholeUSDI: 100_000_000,
+		RawUnitsPerWholeUSDI: 1_000_000,
 		Now: func() time.Time {
 			return time.Date(2026, 3, 23, 12, 0, 0, 0, time.UTC)
 		},
@@ -213,8 +213,8 @@ func TestBuyerDepositServiceSyncLeavesBelowThresholdPending(t *testing.T) {
 		balances: map[string]BuyerDepositChainBalance{
 			"ckt1qyqbuyer0address": {
 				Address:            "ckt1qyqbuyer0address",
-				RawOnChainUnits:    500_000_000,
-				RawConfirmedUnits:  500_000_000,
+				RawOnChainUnits:    5_000_000,
+				RawConfirmedUnits:  5_000_000,
 				ConfirmationBlocks: 24,
 			},
 		},
@@ -227,9 +227,9 @@ func TestBuyerDepositServiceSyncLeavesBelowThresholdPending(t *testing.T) {
 		Wallet:               wallet,
 		Asset:                "USDI",
 		TreasuryAddress:      "ckt1qyqtreasuryaddress",
-		MinSweepAmountRaw:    1_000_000_000,
+		MinSweepAmountRaw:    10_000_000,
 		ConfirmationBlocks:   24,
-		RawUnitsPerWholeUSDI: 100_000_000,
+		RawUnitsPerWholeUSDI: 1_000_000,
 	})
 
 	if _, err := service.EnsureAddress(context.Background(), "buyer_1"); err != nil {

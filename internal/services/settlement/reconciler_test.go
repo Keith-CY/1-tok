@@ -221,24 +221,24 @@ func TestReconcilerSyncDepositsSweepsConfirmedBuyerBalance(t *testing.T) {
 			balances: map[string]BuyerDepositChainBalance{
 				"ckt1qyqbuyer0address": {
 					Address:            "ckt1qyqbuyer0address",
-					RawOnChainUnits:    1_300_000_000,
-					RawConfirmedUnits:  1_300_000_000,
+					RawOnChainUnits:    13_000_000,
+					RawConfirmedUnits:  13_000_000,
 					ConfirmationBlocks: 24,
 				},
 			},
 			sweepResults: map[string]BuyerDepositSweepResult{
 				"ckt1qyqbuyer0address": {
 					SweepTxHash:     "0xsweep123",
-					SweptRawUnits:   1_300_000_000,
+					SweptRawUnits:   13_000_000,
 					TreasuryAddress: "ckt1qyqtreasuryaddress",
 				},
 			},
 		},
 		Asset:                "USDI",
 		TreasuryAddress:      "ckt1qyqtreasuryaddress",
-		MinSweepAmountRaw:    1_000_000_000,
+		MinSweepAmountRaw:    10_000_000,
 		ConfirmationBlocks:   24,
-		RawUnitsPerWholeUSDI: 100_000_000,
+		RawUnitsPerWholeUSDI: 1_000_000,
 	})
 	if _, err := deposits.EnsureAddress(context.Background(), "buyer_1"); err != nil {
 		t.Fatalf("ensure address: %v", err)
