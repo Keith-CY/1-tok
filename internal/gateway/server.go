@@ -251,6 +251,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleListRFQMessages(w, r)
 	case r.Method == http.MethodPost && isRFQMessagesPath(r.URL.Path):
 		s.handleCreateRFQMessage(w, r)
+	case r.Method == http.MethodPost && isOrderCarrierRetryPath(r.URL.Path):
+		s.handleRetryCarrierExecution(w, r)
 	case r.Method == http.MethodGet && isOrderRatingPath(r.URL.Path):
 		s.handleGetOrderRating(w, r)
 	case r.Method == http.MethodGet && isOrderMessagesPath(r.URL.Path):
@@ -580,6 +582,39 @@ func (s *Server) handleCreateOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{"order": order})
 }
+
+func (s *Server) handleRetryCarrierExecution(w http.ResponseWriter, r *http.Request) {
+	orderID, err := orderIDFromCarrierRetryPath(r.URL.Path)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	order, err := s.app.GetOrder(orderID)
+	if err != nil {
+		writeGatewayError(w, err)
+		return
+	}
+	if s.auth != nil && !iamclient.IsNoop(s.auth) {
+		actor, err := s.authenticatedActor(r)
+		if err != nil {
+			httputil.WriteAuthError(w, err)
+			return
+		}
+		if err := authorizeOrderForActor(order, actor); err != nil {
+			httputil.WriteAuthError(w, err)
+			return
+		}
+	}
+
+	s.dispatchCarrierExecution(platform.RFQ{
+		Title: strings.TrimSpace(order.Title),
+	}, order)
+	httputil.WriteJSON(w, http.StatusAccepted, map[string]any{
+		"order":  order,
+		"status": "carrier_retry_queued",
+	})
+}
+
 func (s *Server) handleCreateRFQ(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		BuyerOrgID         string `json:"buyerOrgId"`
@@ -1838,6 +1873,17 @@ func (s *Server) handleProviderRevenue(w http.ResponseWriter, r *http.Request) {
 func isOrderTimelinePath(path string) bool {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	return len(parts) == 5 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "orders" && parts[4] == "timeline"
+}
+func isOrderCarrierRetryPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 6 && parts[0] == "api" && parts[1] == "v1" && parts[2] == "orders" && parts[4] == "carrier" && parts[5] == "retry"
+}
+func orderIDFromCarrierRetryPath(path string) (string, error) {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) != 6 || parts[2] != "orders" || parts[4] != "carrier" || parts[5] != "retry" {
+		return "", errors.New("invalid carrier retry path")
+	}
+	return parts[3], nil
 }
 func (s *Server) handleOrderTimeline(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
