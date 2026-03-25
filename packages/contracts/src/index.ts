@@ -5,6 +5,7 @@ export const orderStatuses = [
   "draft",
   "running",
   "awaiting_budget",
+  "awaiting_payment_rail",
   "completed",
   "failed",
 ] as const;
@@ -161,6 +162,18 @@ export interface FundingRecord {
   state: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface BuyerDepositSummary {
+  buyerOrgId: string;
+  asset: string;
+  address: string;
+  onChainBalance: string;
+  confirmedBalance: string;
+  creditedBalance: string;
+  creditedBalanceCents: number;
+  minimumSweepAmount: string;
+  confirmationBlocks: number;
 }
 
 export const demoVerdicts = ["ready", "blocked"] as const;

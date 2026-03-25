@@ -9,20 +9,22 @@ import (
 )
 
 type databaseBootstrapOptions struct {
-	open           func(dsn string) (*sql.DB, error)
-	migrateCore    func(db *sql.DB) error
-	seedCatalog    func(db *sql.DB) error
-	migrateFunding func(db *sql.DB) error
-	closeDB        func(db *sql.DB) error
+	open            func(dsn string) (*sql.DB, error)
+	migrateCore     func(db *sql.DB) error
+	seedCatalog     func(db *sql.DB) error
+	migrateFunding  func(db *sql.DB) error
+	migrateDeposits func(db *sql.DB) error
+	closeDB         func(db *sql.DB) error
 }
 
 func BootstrapDatabase(dsn string) error {
 	return runDatabaseBootstrap(dsn, databaseBootstrapOptions{
-		open:           postgresstore.Open,
-		migrateCore:    postgresstore.Migrate,
-		seedCatalog:    postgresstore.SeedCatalog,
-		migrateFunding: settlement.MigrateFundingRecordStore,
-		closeDB:        closeDB,
+		open:            postgresstore.Open,
+		migrateCore:     postgresstore.Migrate,
+		seedCatalog:     postgresstore.SeedCatalog,
+		migrateFunding:  settlement.MigrateFundingRecordStore,
+		migrateDeposits: settlement.MigrateBuyerDepositStore,
+		closeDB:         closeDB,
 	})
 }
 
@@ -49,6 +51,9 @@ func runDatabaseBootstrap(dsn string, options databaseBootstrapOptions) (err err
 		return err
 	}
 	if err := options.migrateFunding(db); err != nil {
+		return err
+	}
+	if err := options.migrateDeposits(db); err != nil {
 		return err
 	}
 

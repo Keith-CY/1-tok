@@ -9,6 +9,10 @@ import { formatShortDate } from "@/lib/utils";
 import { getOpsDashboardData } from "@/lib/api";
 import { requirePortalViewer } from "@/lib/viewer";
 
+export const metadata = {
+  title: "Ops Disputes",
+};
+
 export const dynamic = "force-dynamic";
 
 export default async function OpsDisputesPage({

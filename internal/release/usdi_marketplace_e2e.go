@@ -15,7 +15,6 @@ import (
 
 	"github.com/chenyu/1-tok/internal/carrier"
 	"github.com/chenyu/1-tok/internal/core"
-	fiberclient "github.com/chenyu/1-tok/internal/integrations/fiber"
 	"github.com/chenyu/1-tok/internal/platform"
 	"github.com/chenyu/1-tok/internal/serviceauth"
 	"github.com/chenyu/1-tok/internal/usageproof"
@@ -26,6 +25,15 @@ const usdiMarketplaceE2EHTTPTimeout = 2 * time.Minute
 const usdiMarketplaceCarrierInstallTimeout = 10 * time.Minute
 const usdiMarketplaceProviderPayoutRetryAttempts = 3
 const usdiMarketplaceProviderPayoutRetryDelay = 2 * time.Second
+const usdiMarketplaceBuyerTopUpAmount = "10.00"
+const usdiMarketplaceBuyerDepositCreditWaitFloor = 3 * time.Minute
+const usdiMarketplaceBuyerDepositBlockIntervalEstimate = 12 * time.Second
+const usdiMarketplaceBuyerDepositConfirmationGrace = 2 * time.Minute
+const usdiMarketplaceBuyerDepositSweepCKBThreshold = int64(20_000_000_000)
+
+var waitBuyerDepositCreditPollInterval = 3 * time.Second
+var waitBuyerDepositCreditFaucetRetryDelay = 10 * time.Second
+var ensureBuyerDepositSweepCKBFeeBalanceFunc = ensureBuyerDepositSweepCKBFeeBalance
 
 type USDIMarketplaceE2EConfig struct {
 	APIBaseURL                          string
@@ -56,6 +64,15 @@ type USDIMarketplaceE2EConfig struct {
 	IncludeCarrierProbe                 bool
 	FaucetTxHash                        string
 	ExplorerProofURLs                   []string
+	CKBRPCURL                           string
+	CKBFaucetAPIBase                    string
+	CKBFaucetFallbackAPIBase            string
+	USDIFaucetAPIBase                   string
+	PayerRPCURL                         string
+	BuyerTopUpInvoiceRPCURL             string
+	BuyerTopUpInvoiceP2PHost            string
+	BuyerTopUpInvoiceP2PPort            int
+	BuyerTopUpUDTTypeScriptJSON         string
 	ProviderSettlementRPCURL            string
 	ProviderSettlementP2PHost           string
 	ProviderSettlementP2PPort           int
@@ -72,6 +89,7 @@ type USDIMarketplaceE2ESummary struct {
 	BuyerOrgID                  string   `json:"buyerOrgId"`
 	ProviderOrgID               string   `json:"providerOrgId"`
 	BuyerTopUpInvoice           string   `json:"buyerTopUpInvoice"`
+	BuyerDepositAddress         string   `json:"buyerDepositAddress,omitempty"`
 	BuyerTopUpFundingRecordID   string   `json:"buyerTopUpFundingRecordId"`
 	BuyerTopUpPaymentID         string   `json:"buyerTopUpPaymentId,omitempty"`
 	BootstrapRFQID              string   `json:"bootstrapRfqId,omitempty"`
@@ -169,12 +187,22 @@ func USDIMarketplaceE2EConfigFromEnv() USDIMarketplaceE2EConfig {
 		CarrierRemoteHostPort:               envIntOrDefault("RELEASE_USDI_E2E_CARRIER_REMOTE_HOST_PORT", 22),
 		CarrierRemoteHostUser:               envOrDefault("RELEASE_USDI_E2E_CARRIER_REMOTE_HOST_USER", "carrier"),
 		CarrierRemoteKeyPath:                envOrDefault("RELEASE_USDI_E2E_CARRIER_REMOTE_KEY_PATH", "/keys/id_ed25519"),
-		CarrierAuthConfigured:               strings.TrimSpace(envOrDefault("OPENAI_API_KEY", "")) != "" || strings.TrimSpace(envOrDefault("OPENAI_CODEX_TOKEN", "")) != "",
+		CarrierAuthConfigured: strings.TrimSpace(envOrDefault("OPENAI_API_KEY", "")) != "" ||
+			strings.TrimSpace(envOrDefault("OPENAI_CODEX_TOKEN", "")) != "",
 		CarrierCallbackSecret:               envOrDefault("RELEASE_USDI_E2E_CARRIER_CALLBACK_SECRET", "usdi-e2e-callback-secret"),
 		CarrierCallbackKeyID:                envOrDefault("RELEASE_USDI_E2E_CARRIER_CALLBACK_KEY_ID", "usdi-e2e-key"),
 		IncludeCarrierProbe:                 envBool("RELEASE_USDI_E2E_INCLUDE_CARRIER_PROBE"),
 		FaucetTxHash:                        strings.TrimSpace(envOrDefault("RELEASE_USDI_E2E_FAUCET_TX_HASH", "")),
 		ExplorerProofURLs:                   splitCSV(envOrDefault("RELEASE_USDI_E2E_EXPLORER_PROOF_URLS", "")),
+		CKBRPCURL:                           envOrDefault("RELEASE_USDI_E2E_CKB_RPC_URL", envOrDefault("FNN_CKB_RPC_URL", envOrDefault("FNN2_CKB_RPC_URL", "https://testnet.ckbapp.dev/"))),
+		CKBFaucetAPIBase:                    envOrDefault("RELEASE_USDI_E2E_CKB_FAUCET_API_BASE", "https://faucet-api.nervos.org"),
+		CKBFaucetFallbackAPIBase:            envOrDefault("RELEASE_USDI_E2E_CKB_FAUCET_FALLBACK_API_BASE", "https://ckb-utilities.random-walk.co.jp/api"),
+		USDIFaucetAPIBase:                   envOrDefault("RELEASE_USDI_E2E_USDI_FAUCET_API_BASE", "https://ckb-utilities.random-walk.co.jp/api"),
+		PayerRPCURL:                         envOrDefault("RELEASE_USDI_E2E_PAYER_RPC_URL", envOrDefault("PROVIDER_SETTLEMENT_FNN_TREASURY_RPC_URL", "http://fnn2:8227")),
+		BuyerTopUpInvoiceRPCURL:             envOrDefault("RELEASE_USDI_E2E_TOPUP_INVOICE_RPC_URL", envOrDefault("FNN_INVOICE_RPC_URL", "http://fnn:8227")),
+		BuyerTopUpInvoiceP2PHost:            envOrDefault("RELEASE_USDI_E2E_TOPUP_INVOICE_P2P_HOST", "fnn"),
+		BuyerTopUpInvoiceP2PPort:            envIntOrDefault("RELEASE_USDI_E2E_TOPUP_INVOICE_P2P_PORT", 8228),
+		BuyerTopUpUDTTypeScriptJSON:         envOrDefault("RELEASE_USDI_E2E_TOPUP_UDT_TYPE_SCRIPT_JSON", envOrDefault("FIBER_USDI_UDT_TYPE_SCRIPT_JSON", "")),
 		ProviderSettlementRPCURL:            envOrDefault("RELEASE_USDI_E2E_PROVIDER_SETTLEMENT_RPC_URL", "http://provider-fnn:8227"),
 		ProviderSettlementP2PHost:           envOrDefault("RELEASE_USDI_E2E_PROVIDER_SETTLEMENT_P2P_HOST", "provider-fnn"),
 		ProviderSettlementP2PPort:           envIntOrDefault("RELEASE_USDI_E2E_PROVIDER_SETTLEMENT_P2P_PORT", 8228),
@@ -213,15 +241,12 @@ func RunUSDIMarketplaceE2E(ctx context.Context, cfg USDIMarketplaceE2EConfig) (U
 		}
 	}
 
-	topUpInvoice, topUpRecordID, err := client.createBuyerTopUp(ctx, cfg.SettlementBaseURL, buyer, cfg.SettlementServiceToken, "50.00")
+	topUpSummary, err := client.createBuyerTopUp(ctx, cfg.SettlementBaseURL, buyer, cfg.SettlementServiceToken, usdiMarketplaceBuyerTopUpAmount)
 	if err != nil {
 		return USDIMarketplaceE2ESummary{}, err
 	}
-	topUpPaymentID, err := client.payInvoiceViaFiber(ctx, cfg, buyer.OrgID, topUpInvoice, "50.00", "USDI")
+	topUpSummary, err = client.waitBuyerDepositCredit(ctx, cfg, buyer, usdiMarketplaceBuyerTopUpAmount)
 	if err != nil {
-		return USDIMarketplaceE2ESummary{}, err
-	}
-	if err := client.syncSettledFeed(ctx, cfg.SettlementBaseURL, cfg.SettlementServiceToken); err != nil {
 		return USDIMarketplaceE2ESummary{}, err
 	}
 	if _, err := client.waitFundingRecordState(ctx, cfg.SettlementBaseURL, buyer.Token, map[string]string{
@@ -229,6 +254,13 @@ func RunUSDIMarketplaceE2E(ctx context.Context, cfg USDIMarketplaceE2EConfig) (U
 		"buyerOrgId": buyer.OrgID,
 	}, 30*time.Second, "SETTLED"); err != nil {
 		return USDIMarketplaceE2ESummary{}, fmt.Errorf("buyer topup not settled: %w", err)
+	}
+	topUpRecordID := ""
+	if records, err := client.listFundingRecords(ctx, cfg.SettlementBaseURL, buyer.Token, map[string]string{
+		"kind":       "buyer_topup",
+		"buyerOrgId": buyer.OrgID,
+	}); err == nil && len(records) > 0 {
+		topUpRecordID = records[len(records)-1].ID
 	}
 
 	providerCarrierBindingID, err := client.registerProviderCarrierBinding(ctx, cfg.APIBaseURL, provider.OrgID, cfg)
@@ -251,7 +283,7 @@ func RunUSDIMarketplaceE2E(ctx context.Context, cfg USDIMarketplaceE2EConfig) (U
 				return USDIMarketplaceE2ESummary{}, err
 			}
 		} else {
-			integrationIssues = append(integrationIssues, "carrier codeagent run probe skipped: missing OPENAI_API_KEY or OPENAI_CODEX_TOKEN")
+			integrationIssues = append(integrationIssues, "carrier codeagent run probe skipped: missing carrier provider credentials")
 		}
 	}
 
@@ -288,9 +320,10 @@ func RunUSDIMarketplaceE2E(ctx context.Context, cfg USDIMarketplaceE2EConfig) (U
 		ProviderUserEmail:           provider.Email,
 		BuyerOrgID:                  buyer.OrgID,
 		ProviderOrgID:               provider.OrgID,
-		BuyerTopUpInvoice:           topUpInvoice,
+		BuyerTopUpInvoice:           "",
+		BuyerDepositAddress:         topUpSummary.Address,
 		BuyerTopUpFundingRecordID:   topUpRecordID,
-		BuyerTopUpPaymentID:         topUpPaymentID,
+		BuyerTopUpPaymentID:         "",
 		BootstrapRFQID:              bootstrapOrder.RFQID,
 		BootstrapBidID:              bootstrapOrder.BidID,
 		BootstrapOrderID:            bootstrapOrder.OrderID,
@@ -547,53 +580,188 @@ func (c *smokeClient) awardRFQPrepaid(ctx context.Context, baseURL, token, rfqID
 	return response.Order.ID, nil
 }
 
-func (c *smokeClient) createBuyerTopUp(ctx context.Context, baseURL string, buyer actorIdentity, serviceToken string, amount string) (string, string, error) {
-	var response struct {
-		Invoice  string `json:"invoice"`
-		RecordID string `json:"recordId"`
-	}
+type buyerDepositSummaryResponse struct {
+	BuyerOrgID           string `json:"buyerOrgId"`
+	Asset                string `json:"asset"`
+	Address              string `json:"address"`
+	OnChainBalance       string `json:"onChainBalance"`
+	ConfirmedBalance     string `json:"confirmedBalance"`
+	CreditedBalance      string `json:"creditedBalance"`
+	CreditedBalanceCents int64  `json:"creditedBalanceCents"`
+	MinimumSweepAmount   string `json:"minimumSweepAmount"`
+	ConfirmationBlocks   uint64 `json:"confirmationBlocks"`
+	RawOnChainUnits      int64  `json:"rawOnChainUnits"`
+	RawConfirmedUnits    int64  `json:"rawConfirmedUnits"`
+	RawMinimumSweepUnits int64  `json:"rawMinimumSweepUnits"`
+}
+
+func (c *smokeClient) createBuyerTopUp(ctx context.Context, baseURL string, buyer actorIdentity, serviceToken string, amount string) (buyerDepositSummaryResponse, error) {
+	var response buyerDepositSummaryResponse
 	headers := authHeaders(buyer.Token)
 	if strings.TrimSpace(buyer.Token) == "" && strings.TrimSpace(serviceToken) != "" {
 		headers = map[string]string{serviceauth.HeaderName: strings.TrimSpace(serviceToken)}
 	}
 	payload := map[string]any{
-		"asset":  "USDI",
-		"amount": amount,
+		"asset": "USDI",
 	}
 	if strings.TrimSpace(buyer.Token) == "" {
 		payload["buyerOrgId"] = buyer.OrgID
 	}
 	err := c.postJSONWithHeaders(ctx, strings.TrimRight(baseURL, "/")+"/v1/topups", headers, payload, &response)
 	if err != nil {
-		return "", "", fmt.Errorf("create buyer topup: %w", err)
+		return buyerDepositSummaryResponse{}, fmt.Errorf("create buyer topup: %w", err)
 	}
-	if response.Invoice == "" || response.RecordID == "" {
-		return "", "", errors.New("create buyer topup: missing invoice or record id")
+	if response.Address == "" {
+		return buyerDepositSummaryResponse{}, errors.New("create buyer topup: missing deposit address")
 	}
-	return response.Invoice, response.RecordID, nil
+	return response, nil
 }
 
-func (c *smokeClient) payInvoiceViaFiber(ctx context.Context, cfg USDIMarketplaceE2EConfig, userID, invoice, amount, asset string) (string, error) {
-	if strings.TrimSpace(cfg.FiberAdapterBaseURL) == "" || strings.TrimSpace(cfg.FiberAdapterAppID) == "" || strings.TrimSpace(cfg.FiberAdapterHMACSecret) == "" {
-		return "", errors.New("fiber adapter config is required for usdi marketplace e2e")
-	}
-	client := fiberclient.NewClient(cfg.FiberAdapterBaseURL, cfg.FiberAdapterAppID, cfg.FiberAdapterHMACSecret)
-	result, err := client.RequestPayout(ctx, fiberclient.RequestPayoutInput{
-		UserID: userID,
-		Asset:  asset,
-		Amount: amount,
-		Destination: fiberclient.WithdrawalDestination{
-			Kind:           "PAYMENT_REQUEST",
-			PaymentRequest: invoice,
-		},
-	})
+func (c *smokeClient) getBuyerDepositSummary(ctx context.Context, baseURL string, buyer actorIdentity, serviceToken string) (buyerDepositSummaryResponse, error) {
+	var response buyerDepositSummaryResponse
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(baseURL, "/")+"/v1/buyer/deposit-address", nil)
 	if err != nil {
-		return "", fmt.Errorf("pay invoice via fiber adapter: %w", err)
+		return buyerDepositSummaryResponse{}, err
 	}
-	if strings.TrimSpace(result.ID) == "" {
-		return "", errors.New("pay invoice via fiber adapter: missing payout id")
+	headers := authHeaders(buyer.Token)
+	if strings.TrimSpace(buyer.Token) == "" && strings.TrimSpace(serviceToken) != "" {
+		headers = map[string]string{serviceauth.HeaderName: strings.TrimSpace(serviceToken)}
 	}
-	return result.ID, nil
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+	query := req.URL.Query()
+	if strings.TrimSpace(buyer.Token) == "" {
+		query.Set("buyerOrgId", buyer.OrgID)
+	}
+	req.URL.RawQuery = query.Encode()
+	res, err := c.httpClient.Do(req)
+	if err != nil {
+		return buyerDepositSummaryResponse{}, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode >= http.StatusBadRequest {
+		return buyerDepositSummaryResponse{}, statusError{StatusCode: res.StatusCode}
+	}
+	if err := json.NewDecoder(res.Body).Decode(&response); err != nil {
+		return buyerDepositSummaryResponse{}, err
+	}
+	return response, nil
+}
+
+func (c *smokeClient) syncBuyerDeposits(ctx context.Context, baseURL, serviceToken string) (struct {
+	CreditedCents int64 `json:"creditedCents"`
+	SweepCount    int   `json:"sweepCount"`
+}, error) {
+	var response struct {
+		CreditedCents int64 `json:"creditedCents"`
+		SweepCount    int   `json:"sweepCount"`
+	}
+	err := c.postJSONWithHeaders(ctx, strings.TrimRight(baseURL, "/")+"/v1/buyer/deposits/sync", map[string]string{
+		serviceauth.HeaderName: strings.TrimSpace(serviceToken),
+	}, map[string]any{}, &response)
+	if err != nil {
+		return struct {
+			CreditedCents int64 `json:"creditedCents"`
+			SweepCount    int   `json:"sweepCount"`
+		}{}, fmt.Errorf("sync buyer deposits: %w", err)
+	}
+	return response, nil
+}
+
+func (c *smokeClient) waitBuyerDepositCredit(ctx context.Context, cfg USDIMarketplaceE2EConfig, buyer actorIdentity, amount string) (buyerDepositSummaryResponse, error) {
+	targetCents := parseDemoAmountToCents(amount)
+	httpClient := &http.Client{Timeout: 15 * time.Second}
+	ckbClient := newReleaseCKBRPCClient(firstNonEmptyString(cfg.CKBRPCURL, "https://testnet.ckbapp.dev/"))
+	var deadline time.Time
+	successfulFaucetRounds := 0
+	feeBalanceReady := false
+	var nextFaucetAttemptAt time.Time
+	var lastFaucetErr error
+	for {
+		summary, err := c.getBuyerDepositSummary(ctx, cfg.SettlementBaseURL, buyer, cfg.SettlementServiceToken)
+		if err != nil {
+			return buyerDepositSummaryResponse{}, err
+		}
+		if deadline.IsZero() {
+			deadline = extendBuyerDepositDeadline(deadline, time.Now(), summary)
+		}
+		if summary.CreditedBalanceCents >= targetCents {
+			return summary, nil
+		}
+		now := time.Now()
+		if summary.RawOnChainUnits < summary.RawMinimumSweepUnits && successfulFaucetRounds < 3 && (nextFaucetAttemptAt.IsZero() || !now.Before(nextFaucetAttemptAt)) {
+			if err := requestUSDIFaucetFunc(ctx, httpClient, cfg, summary.Address, "buyer-topup"); err != nil {
+				lastFaucetErr = err
+				nextFaucetAttemptAt = now.Add(waitBuyerDepositCreditFaucetRetryDelay)
+			} else {
+				successfulFaucetRounds++
+				lastFaucetErr = nil
+				nextFaucetAttemptAt = time.Time{}
+				deadline = extendBuyerDepositDeadline(deadline, now, summary)
+			}
+		}
+		if summary.RawConfirmedUnits >= summary.RawMinimumSweepUnits {
+			if !feeBalanceReady {
+				if err := ensureBuyerDepositSweepCKBFeeBalanceFunc(ctx, ckbClient, httpClient, cfg, summary.Address); err != nil {
+					return buyerDepositSummaryResponse{}, err
+				}
+				feeBalanceReady = true
+			}
+			if _, err := c.syncBuyerDeposits(ctx, cfg.SettlementBaseURL, cfg.SettlementServiceToken); err != nil {
+				if isStatusCode(err, http.StatusInternalServerError) {
+					if err := ensureBuyerDepositSweepCKBFeeBalanceFunc(ctx, ckbClient, httpClient, cfg, summary.Address); err != nil {
+						return buyerDepositSummaryResponse{}, fmt.Errorf("sync buyer deposits after rechecking fee balance: %w (fee balance: %v)", err, err)
+					}
+					feeBalanceReady = true
+					continue
+				}
+				return buyerDepositSummaryResponse{}, err
+			}
+		}
+		if time.Now().After(deadline) {
+			if lastFaucetErr != nil {
+				return buyerDepositSummaryResponse{}, fmt.Errorf("timeout waiting buyer deposit credit >= %s after faucet error: %w", amount, lastFaucetErr)
+			}
+			return buyerDepositSummaryResponse{}, fmt.Errorf("timeout waiting buyer deposit credit >= %s", amount)
+		}
+		select {
+		case <-ctx.Done():
+			return buyerDepositSummaryResponse{}, ctx.Err()
+		case <-time.After(waitBuyerDepositCreditPollInterval):
+		}
+	}
+}
+
+func buyerDepositCreditWaitTimeout(summary buyerDepositSummaryResponse) time.Duration {
+	timeout := usdiMarketplaceBuyerDepositCreditWaitFloor
+	if summary.ConfirmationBlocks == 0 {
+		return timeout
+	}
+	estimated := time.Duration(summary.ConfirmationBlocks)*usdiMarketplaceBuyerDepositBlockIntervalEstimate + usdiMarketplaceBuyerDepositConfirmationGrace
+	if estimated > timeout {
+		return estimated
+	}
+	return timeout
+}
+
+func extendBuyerDepositDeadline(deadline, now time.Time, summary buyerDepositSummaryResponse) time.Time {
+	candidate := now.Add(buyerDepositCreditWaitTimeout(summary))
+	if deadline.IsZero() || candidate.After(deadline) {
+		return candidate
+	}
+	return deadline
+}
+
+func ensureBuyerDepositSweepCKBFeeBalance(ctx context.Context, ckbClient *releaseCKBRPCClient, httpClient *http.Client, cfg USDIMarketplaceE2EConfig, address string) error {
+	lockScript, err := decodeCKBAddressToRawScript(address)
+	if err != nil {
+		return fmt.Errorf("decode buyer deposit address for ckb fee balance: %w", err)
+	}
+	if err := ensureCKBBalanceOrRequestFaucet(ctx, ckbClient, httpClient, cfg, address, lockScript, usdiMarketplaceBuyerDepositSweepCKBThreshold, "buyer-topup-fee"); err != nil {
+		return fmt.Errorf("ensure buyer deposit sweep fee balance: %w", err)
+	}
+	return nil
 }
 
 func (c *smokeClient) createProviderInvoiceViaProviderSettlementNode(ctx context.Context, cfg USDIMarketplaceE2EConfig, amount string) (string, error) {
@@ -934,8 +1102,16 @@ func (c *smokeClient) registerProviderSettlementBinding(ctx context.Context, bas
 
 func parseProviderSettlementUDTTypeScriptJSON(raw string) (platform.UDTTypeScript, error) {
 	var payload map[string]any
-	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
-		return platform.UDTTypeScript{}, err
+	trimmed := strings.TrimSpace(raw)
+	if err := json.Unmarshal([]byte(trimmed), &payload); err != nil {
+		if strings.Contains(trimmed, `\"`) {
+			normalized := strings.ReplaceAll(trimmed, `\"`, `"`)
+			if retryErr := json.Unmarshal([]byte(normalized), &payload); retryErr != nil {
+				return platform.UDTTypeScript{}, err
+			}
+		} else {
+			return platform.UDTTypeScript{}, err
+		}
 	}
 	readString := func(keys ...string) string {
 		for _, key := range keys {

@@ -63,6 +63,57 @@ func TestErrorContainsFold(t *testing.T) {
 	}
 }
 
+func TestEnsureProviderCarrierBindingReplacesDriftedActiveBinding(t *testing.T) {
+	var suspendedBindingID string
+	var registered bool
+	var verified bool
+
+	gatewayServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/carrier-bindings/org_demo_provider":
+			_ = json.NewEncoder(w).Encode(map[string]any{"binding": map[string]any{
+				"id":             "pcb_old",
+				"status":         "active",
+				"carrierBaseUrl": "http://carrier.local",
+				"hostId":         "host_old",
+				"agentId":        "main",
+				"backend":        "codex",
+				"workspaceRoot":  "/workspace",
+			}})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/carrier-bindings/pcb_old/suspend":
+			suspendedBindingID = "pcb_old"
+			_ = json.NewEncoder(w).Encode(map[string]any{"binding": map[string]any{"id": "pcb_old", "status": "suspended"}})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/carrier-bindings":
+			registered = true
+			_ = json.NewEncoder(w).Encode(map[string]any{"binding": map[string]any{"id": "pcb_new"}})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/carrier-bindings/pcb_new/verify":
+			verified = true
+			_ = json.NewEncoder(w).Encode(map[string]any{"binding": map[string]any{"id": "pcb_new", "status": "active"}})
+		default:
+			t.Fatalf("unexpected gateway path %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer gatewayServer.Close()
+
+	client := &smokeClient{httpClient: gatewayServer.Client()}
+	err := client.ensureProviderCarrierBinding(context.Background(), gatewayServer.URL, "org_demo_provider", USDIMarketplaceE2EConfig{
+		CarrierBaseURL:       "http://carrier.local",
+		CarrierHostID:        "host_new",
+		CarrierAgentID:       "main",
+		CarrierBackend:       "codex",
+		CarrierWorkspaceRoot: "/workspace",
+	})
+	if err != nil {
+		t.Fatalf("ensure provider carrier binding: %v", err)
+	}
+	if suspendedBindingID != "pcb_old" {
+		t.Fatalf("suspended binding = %q, want pcb_old", suspendedBindingID)
+	}
+	if !registered || !verified {
+		t.Fatalf("registered=%t verified=%t, want true true", registered, verified)
+	}
+}
+
 func TestRunDemoVerifyReturnsBlockedVerdict(t *testing.T) {
 	iamServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -139,6 +190,12 @@ func TestRunDemoVerifyReturnsBlockedVerdict(t *testing.T) {
 }
 
 func TestRunDemoPrepareEnsuresBindingsAndWarmup(t *testing.T) {
+	originalEnsureDemoFNNBootstrap := ensureDemoFNNBootstrapFunc
+	defer func() {
+		ensureDemoFNNBootstrapFunc = originalEnsureDemoFNNBootstrap
+	}()
+	ensureDemoFNNBootstrapFunc = func(_ context.Context, _ DemoRunConfig) error { return nil }
+
 	var carrierRegistered bool
 	var warmupCalled bool
 	demoStatusCalls := 0
@@ -182,7 +239,14 @@ func TestRunDemoPrepareEnsuresBindingsAndWarmup(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]any{"binding": map[string]any{"id": "psb_existing", "status": "active"}})
 		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/ops/demo/warmup":
 			warmupCalled = true
-			_ = json.NewEncoder(w).Encode(map[string]any{"pool": map[string]any{"providerOrgId": "org_demo_provider", "availableToAllocateCents": 8000}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"pool": map[string]any{
+				"providerOrgId":               "org_demo_provider",
+				"providerSettlementBindingId": "psb_existing",
+				"status":                      "healthy",
+				"readyChannelCount":           1,
+				"availableToAllocateCents":    8000,
+				"reservedOutstandingCents":    0,
+			}})
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/ops/demo/status":
 			demoStatusCalls++
 			ready := demoStatusCalls >= 2
@@ -250,5 +314,312 @@ func TestRunDemoPrepareEnsuresBindingsAndWarmup(t *testing.T) {
 	}
 	if !carrierRegistered || !warmupCalled {
 		t.Fatalf("carrierRegistered=%t warmupCalled=%t", carrierRegistered, warmupCalled)
+	}
+}
+
+func TestRunDemoPrepareCreditsBuyerDepositBeforeReady(t *testing.T) {
+	originalEnsureDemoFNNBootstrap := ensureDemoFNNBootstrapFunc
+	originalEnsureBuyerDepositSweepCKBFeeBalance := ensureBuyerDepositSweepCKBFeeBalanceFunc
+	defer func() {
+		ensureDemoFNNBootstrapFunc = originalEnsureDemoFNNBootstrap
+		ensureBuyerDepositSweepCKBFeeBalanceFunc = originalEnsureBuyerDepositSweepCKBFeeBalance
+	}()
+
+	callSequence := make([]string, 0, 2)
+	ensureDemoFNNBootstrapFunc = func(_ context.Context, cfg DemoRunConfig) error {
+		callSequence = append(callSequence, "bootstrap")
+		if cfg.USDI.PayerRPCURL != "http://fnn2:8227" {
+			t.Fatalf("payer rpc url = %q, want http://fnn2:8227", cfg.USDI.PayerRPCURL)
+		}
+		return nil
+	}
+	ensureBuyerDepositSweepCKBFeeBalanceFunc = func(context.Context, *releaseCKBRPCClient, *http.Client, USDIMarketplaceE2EConfig, string) error {
+		return nil
+	}
+
+	iamServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/sessions":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"session": map[string]any{"token": "tok"},
+			})
+		case "/v1/me":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"memberships": []map[string]any{
+					{"organization": map[string]any{"id": "org_demo_buyer", "kind": "buyer"}},
+					{"organization": map[string]any{"id": "org_demo_provider", "kind": "provider"}},
+					{"organization": map[string]any{"id": "org_demo_ops", "kind": "ops"}},
+				},
+			})
+		default:
+			t.Fatalf("unexpected iam path %s", r.URL.Path)
+		}
+	}))
+	defer iamServer.Close()
+
+	depositSummaryCalls := 0
+	depositSynced := false
+	const demoBuyerDepositAddress = "ckt1qyqfth8m4fevfzh5hhd088s78qcdjjp8cehs7z8jhw"
+	settlementServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/topups":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"buyerOrgId":         "org_demo_buyer",
+				"asset":              "USDI",
+				"address":            demoBuyerDepositAddress,
+				"confirmationBlocks": 24,
+				"minimumSweepAmount": "10.00",
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/buyer/deposit-address":
+			depositSummaryCalls++
+			payload := map[string]any{
+				"buyerOrgId":           "org_demo_buyer",
+				"asset":                "USDI",
+				"address":              demoBuyerDepositAddress,
+				"onChainBalance":       "50.00",
+				"confirmedBalance":     "50.00",
+				"creditedBalance":      "0.00",
+				"creditedBalanceCents": 0,
+				"minimumSweepAmount":   "10.00",
+				"confirmationBlocks":   24,
+				"rawOnChainUnits":      5_000_000_000,
+				"rawConfirmedUnits":    5_000_000_000,
+				"rawMinimumSweepUnits": 1_000_000_000,
+			}
+			if depositSynced {
+				payload["creditedBalance"] = "50.00"
+				payload["creditedBalanceCents"] = 5000
+			}
+			_ = json.NewEncoder(w).Encode(payload)
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/buyer/deposits/sync":
+			depositSynced = true
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"creditedCents": 5000,
+				"sweepCount":    1,
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/funding-records":
+			records := []map[string]any{}
+			if depositSynced {
+				records = append(records, map[string]any{
+					"id":         "fund_demo_topup",
+					"kind":       "buyer_topup",
+					"buyerOrgId": "org_demo_buyer",
+					"amount":     "50.00",
+					"state":      "SETTLED",
+				})
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"records": records})
+		default:
+			t.Fatalf("unexpected settlement path %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer settlementServer.Close()
+
+	statusCalls := 0
+	gatewayServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/carrier-bindings/org_demo_provider":
+			_ = json.NewEncoder(w).Encode(map[string]any{"binding": map[string]any{"id": "pcb_1", "status": "active"}})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/provider-settlement-bindings/org_demo_provider":
+			_ = json.NewEncoder(w).Encode(map[string]any{"binding": map[string]any{"id": "psb_1", "status": "active"}})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/ops/demo/status":
+			statusCalls++
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status": map[string]any{
+					"checkedAt":      "2026-03-23T00:00:00Z",
+					"resourcePrefix": "demo-live",
+					"verdict":        "blocked",
+					"blockerReasons": []string{"buyer prefund balance is below the demo threshold"},
+					"actors": []map[string]any{
+						{"role": "buyer", "ready": true},
+						{"role": "provider", "ready": true},
+						{"role": "ops", "ready": true},
+					},
+					"buyerBalance": map[string]any{
+						"buyerOrgId":            "org_demo_buyer",
+						"settledTopUpCents":     0,
+						"pendingTopUpCount":     0,
+						"minimumRequiredCents":  5000,
+						"meetsMinimumThreshold": false,
+					},
+					"providerSettlement": map[string]any{
+						"providerOrgId":            "org_demo_provider",
+						"minimumRequiredCents":     5500,
+						"meetsMinimumThreshold":    true,
+						"carrierBindingStatus":     "active",
+						"settlementBindingStatus":  "active",
+						"poolStatus":               "healthy",
+						"readyChannelCount":        1,
+						"availableToAllocateCents": 8000,
+					},
+				},
+			})
+		default:
+			t.Fatalf("unexpected gateway path %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer gatewayServer.Close()
+
+	summary, err := RunDemoPrepare(context.Background(), DemoRunConfig{
+		Demo: demoenv.Config{
+			APIBaseURL:                gatewayServer.URL,
+			IAMBaseURL:                iamServer.URL,
+			SettlementBaseURL:         settlementServer.URL,
+			SettlementServiceToken:    "settlement-token",
+			Buyer:                     demoenv.ActorConfig{Email: "buyer@example.com", Password: "correct horse battery staple 123", OrganizationKind: "buyer", OrganizationID: "org_demo_buyer"},
+			Provider:                  demoenv.ActorConfig{Email: "provider@example.com", Password: "correct horse battery staple 123", OrganizationKind: "provider", OrganizationID: "org_demo_provider"},
+			Ops:                       demoenv.ActorConfig{Email: "ops@example.com", Password: "correct horse battery staple 123", OrganizationKind: "ops", OrganizationID: "org_demo_ops"},
+			MinBuyerBalanceCents:      5000,
+			MinProviderLiquidityCents: 5500,
+			BuyerTopUpAmount:          "50.00",
+			ResourcePrefix:            "demo-live",
+		},
+		USDI: USDIMarketplaceE2EConfig{
+			PayerRPCURL:       "http://fnn2:8227",
+			SettlementBaseURL: settlementServer.URL,
+			USDIFaucetAPIBase: "http://faucet.invalid",
+		},
+	})
+	if err != nil {
+		t.Fatalf("run demo prepare: %v", err)
+	}
+	if summary.Status.Verdict != demoenv.VerdictReady {
+		t.Fatalf("verdict = %s, blockers=%v", summary.Status.Verdict, summary.Status.BlockerReasons)
+	}
+	if summary.DepositAddress != demoBuyerDepositAddress {
+		t.Fatalf("deposit address = %q, want %s", summary.DepositAddress, demoBuyerDepositAddress)
+	}
+	if summary.TopUpRecordID != "fund_demo_topup" {
+		t.Fatalf("top up record id = %q, want fund_demo_topup", summary.TopUpRecordID)
+	}
+	if !depositSynced || depositSummaryCalls < 2 {
+		t.Fatalf("depositSynced=%t depositSummaryCalls=%d", depositSynced, depositSummaryCalls)
+	}
+	if len(callSequence) != 1 || callSequence[0] != "bootstrap" {
+		t.Fatalf("call sequence = %v, want [bootstrap]", callSequence)
+	}
+	if statusCalls != 1 {
+		t.Fatalf("statusCalls = %d, want 1", statusCalls)
+	}
+}
+
+func TestRunDemoPrepareBuildsFinalStatusWithoutSecondStatusFetch(t *testing.T) {
+	originalEnsureDemoFNNBootstrap := ensureDemoFNNBootstrapFunc
+	defer func() {
+		ensureDemoFNNBootstrapFunc = originalEnsureDemoFNNBootstrap
+	}()
+	ensureDemoFNNBootstrapFunc = func(_ context.Context, _ DemoRunConfig) error { return nil }
+
+	statusCalls := 0
+	var warmupCalled bool
+
+	iamServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/sessions":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"session": map[string]any{"token": "tok"},
+			})
+		case "/v1/me":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"memberships": []map[string]any{
+					{"organization": map[string]any{"id": "org_demo_buyer", "kind": "buyer"}},
+					{"organization": map[string]any{"id": "org_demo_provider", "kind": "provider"}},
+					{"organization": map[string]any{"id": "org_demo_ops", "kind": "ops"}},
+				},
+			})
+		default:
+			t.Fatalf("unexpected iam path %s", r.URL.Path)
+		}
+	}))
+	defer iamServer.Close()
+
+	gatewayServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/carrier-bindings/org_demo_provider":
+			_ = json.NewEncoder(w).Encode(map[string]any{"binding": map[string]any{"id": "pcb_1", "status": "active"}})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/provider-settlement-bindings/org_demo_provider":
+			_ = json.NewEncoder(w).Encode(map[string]any{"binding": map[string]any{"id": "psb_1", "status": "active"}})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/ops/demo/warmup":
+			warmupCalled = true
+			_ = json.NewEncoder(w).Encode(map[string]any{"pool": map[string]any{
+				"providerOrgId":               "org_demo_provider",
+				"providerSettlementBindingId": "psb_1",
+				"status":                      "healthy",
+				"readyChannelCount":           2,
+				"availableToAllocateCents":    8000,
+				"reservedOutstandingCents":    0,
+			}})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/ops/demo/status":
+			statusCalls++
+			if statusCalls > 1 {
+				http.Error(w, `{"error":"iam session status 429"}`, http.StatusTooManyRequests)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status": map[string]any{
+					"checkedAt":      "2026-03-23T00:00:00Z",
+					"resourcePrefix": "demo-live",
+					"verdict":        "blocked",
+					"blockerReasons": []string{"provider liquidity pool is below the demo threshold"},
+					"services": []map[string]any{
+						{"id": "api-gateway", "label": "API Gateway", "healthy": true},
+						{"id": "settlement", "label": "Settlement", "healthy": true},
+					},
+					"actors": []map[string]any{
+						{"role": "buyer", "orgId": "org_demo_buyer", "ready": true, "detail": "resolved via IAM login"},
+						{"role": "provider", "orgId": "org_demo_provider", "ready": true, "detail": "resolved via IAM login"},
+						{"role": "ops", "orgId": "org_demo_ops", "ready": true, "detail": "resolved via IAM login"},
+					},
+					"buyerBalance": map[string]any{
+						"buyerOrgId":            "org_demo_buyer",
+						"settledTopUpCents":     6000,
+						"minimumRequiredCents":  5000,
+						"meetsMinimumThreshold": true,
+					},
+					"providerSettlement": map[string]any{
+						"providerOrgId":            "org_demo_provider",
+						"minimumRequiredCents":     5500,
+						"meetsMinimumThreshold":    false,
+						"carrierBindingStatus":     "active",
+						"settlementBindingStatus":  "active",
+						"poolStatus":               "degraded",
+						"readyChannelCount":        0,
+						"availableToAllocateCents": 0,
+					},
+				},
+			})
+		default:
+			t.Fatalf("unexpected gateway path %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer gatewayServer.Close()
+
+	summary, err := RunDemoPrepare(context.Background(), DemoRunConfig{
+		Demo: demoenv.Config{
+			APIBaseURL:                gatewayServer.URL,
+			IAMBaseURL:                iamServer.URL,
+			Buyer:                     demoenv.ActorConfig{Email: "buyer@example.com", Password: "correct horse battery staple 123", OrganizationKind: "buyer", OrganizationID: "org_demo_buyer"},
+			Provider:                  demoenv.ActorConfig{Email: "provider@example.com", Password: "correct horse battery staple 123", OrganizationKind: "provider", OrganizationID: "org_demo_provider"},
+			Ops:                       demoenv.ActorConfig{Email: "ops@example.com", Password: "correct horse battery staple 123", OrganizationKind: "ops", OrganizationID: "org_demo_ops"},
+			MinBuyerBalanceCents:      5000,
+			MinProviderLiquidityCents: 5500,
+			ResourcePrefix:            "demo-live",
+		},
+	})
+	if err != nil {
+		t.Fatalf("run demo prepare: %v", err)
+	}
+	if !warmupCalled {
+		t.Fatal("expected provider warmup to be called")
+	}
+	if statusCalls != 1 {
+		t.Fatalf("statusCalls = %d, want 1", statusCalls)
+	}
+	if summary.Status.Verdict != demoenv.VerdictReady {
+		t.Fatalf("verdict = %s, blockers=%v", summary.Status.Verdict, summary.Status.BlockerReasons)
 	}
 }

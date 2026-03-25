@@ -19,6 +19,23 @@ This file documents common environment variables used by 1-tok services.
 - `FIBER_RPC_URL`, `FIBER_APP_ID`, `FIBER_HMAC_SECRET`
 - `CARRIER_GATEWAY_URL`, `CARRIER_GATEWAY_API_TOKEN`
 
+## Buyer CKB deposit top-up
+
+These variables enable the buyer prefund flow where each buyer org gets a fixed CKB deposit address, deposits USDI on-chain, and receives USD credit only after the deposit is swept into treasury.
+
+- `BUYER_DEPOSIT_ENABLE`
+- `BUYER_DEPOSIT_WALLET_MASTER_SEED` (or `BUYER_DEPOSIT_WALLET_SEED`)
+- `BUYER_DEPOSIT_CKB_RPC_URL`
+- `BUYER_DEPOSIT_CKB_NETWORK`
+- `BUYER_DEPOSIT_TREASURY_ADDRESS`
+- `BUYER_DEPOSIT_UDT_TYPE_SCRIPT_JSON` or `FIBER_USDI_UDT_TYPE_SCRIPT_JSON`
+- `BUYER_DEPOSIT_UDT_CELL_DEP_TX_HASH`
+- `BUYER_DEPOSIT_UDT_CELL_DEP_INDEX`
+- optional: `BUYER_DEPOSIT_ASSET`
+- optional: `BUYER_DEPOSIT_MIN_USDI`
+- optional: `BUYER_DEPOSIT_CONFIRMATION_BLOCKS`
+- optional: `BUYER_DEPOSIT_RAW_UNITS_PER_WHOLE_USDI`
+
 ## Observability
 - `SENTRY_DSN`
 - `SENTRY_ENVIRONMENT`
@@ -40,6 +57,10 @@ Coolify carrier build / secrets:
 - `CARRIER_REF`
 - `CARRIER_E2E_REMOTE_AUTHORIZED_KEY`
 - `CARRIER_REMOTE_PRIVATE_KEY_BASE64`
+- optional remote codeagent provider env:
+  - `OPENAI_API_KEY`
+  - `OPENAI_CODEX_TOKEN`
+  - `OPENAI_BASE_URL`
 
 - `DEMO_API_BASE_URL`
 - `DEMO_IAM_BASE_URL`
@@ -88,3 +109,5 @@ Demo prep also reuses the existing USDI marketplace E2E env for Carrier, Fiber, 
 - `RELEASE_USDI_E2E_PROVIDER_SETTLEMENT_P2P_HOST`
 - `RELEASE_USDI_E2E_PROVIDER_SETTLEMENT_P2P_PORT`
 - `RELEASE_USDI_E2E_PROVIDER_SETTLEMENT_UDT_TYPE_SCRIPT_JSON`
+
+The Coolify testnet compose defaults `RELEASE_USDI_E2E_CARRIER_BACKEND` to `codex`. With `OPENAI_BASE_URL`, the remote VPS bootstrap writes a Codex config that targets the custom OpenAI-compatible gateway.

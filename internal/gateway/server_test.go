@@ -16,6 +16,7 @@ import (
 
 	"github.com/chenyu/1-tok/internal/carrier"
 	"github.com/chenyu/1-tok/internal/core"
+	"github.com/chenyu/1-tok/internal/demoenv"
 	iamclient "github.com/chenyu/1-tok/internal/integrations/iam"
 	"github.com/chenyu/1-tok/internal/platform"
 	"github.com/chenyu/1-tok/internal/ratelimit"
@@ -30,6 +31,18 @@ type stubIAMClient struct {
 func (s *stubIAMClient) GetActor(_ context.Context, bearerToken string) (iamclient.Actor, error) {
 	s.token = bearerToken
 	return s.actor, nil
+}
+
+type stubSettlementProvisioner struct {
+	result platform.EnsureProviderLiquidityResult
+	err    error
+}
+
+func (s *stubSettlementProvisioner) EnsureProviderLiquidity(input platform.EnsureProviderLiquidityInput) (platform.EnsureProviderLiquidityResult, error) {
+	if s.err != nil {
+		return platform.EnsureProviderLiquidityResult{}, s.err
+	}
+	return s.result, nil
 }
 
 func TestCreateOrderReturnsCreditFundingAndMilestones(t *testing.T) {
@@ -87,6 +100,230 @@ func TestCreateOrderReturnsCreditFundingAndMilestones(t *testing.T) {
 
 	if response.Order.Status != "running" {
 		t.Fatalf("expected running order, got %s", response.Order.Status)
+	}
+}
+
+func TestCreateOrderRejectsPrepaidWhenBuyerBalanceIsInsufficient(t *testing.T) {
+	settlementServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/funding-records":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"records": []map[string]any{
+					{"id": "fund_1", "kind": "buyer_topup", "buyerOrgId": "buyer_auth_1", "amount": "50.00", "state": "SETTLED"},
+				},
+			})
+		default:
+			t.Fatalf("unexpected settlement path %s", r.URL.Path)
+		}
+	}))
+	defer settlementServer.Close()
+
+	server, err := NewServerWithOptionsE(Options{
+		App: platform.NewAppWithMemory(),
+		IAM: &stubIAMClient{
+			actor: iamclient.Actor{
+				UserID: "usr_buyer_1",
+				Memberships: []iamclient.ActorMembership{{
+					OrganizationID:   "buyer_auth_1",
+					OrganizationKind: "buyer",
+					Role:             "procurement",
+				}},
+			},
+		},
+		DemoConfig: &demoenv.Config{
+			SettlementBaseURL: settlementServer.URL,
+		},
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	payload := map[string]any{
+		"buyerOrgId":    "buyer_auth_1",
+		"providerOrgId": "provider_1",
+		"title":         "Operate agent",
+		"fundingMode":   "prepaid",
+		"milestones": []map[string]any{{
+			"id":             "ms_1",
+			"title":          "Plan",
+			"basePriceCents": 7000,
+			"budgetCents":    7000,
+		}},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer buyer-session-token")
+	res := httptest.NewRecorder()
+
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d body=%s", res.Code, res.Body.String())
+	}
+	if !strings.Contains(res.Body.String(), "insufficient prepaid balance") {
+		t.Fatalf("body = %s, want prepaid balance error", res.Body.String())
+	}
+}
+
+func TestCreateOrderRejectsPrepaidWhenAwaitingPaymentRailAlreadyConsumesBalance(t *testing.T) {
+	settlementServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/funding-records":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"records": []map[string]any{
+					{"id": "fund_1", "kind": "buyer_topup", "buyerOrgId": "buyer_auth_1", "amount": "50.00", "state": "SETTLED"},
+				},
+			})
+		default:
+			t.Fatalf("unexpected settlement path %s", r.URL.Path)
+		}
+	}))
+	defer settlementServer.Close()
+
+	app := platform.NewAppWithMemory()
+	carrierBinding, err := app.RegisterCarrierBinding(platform.ProviderCarrierBinding{
+		ProviderOrgID:  "provider_1",
+		CarrierBaseURL: "https://carrier.example.com",
+		HostID:         "host_1",
+	})
+	if err != nil {
+		t.Fatalf("register carrier binding: %v", err)
+	}
+	if _, err := app.VerifyCarrierBinding(carrierBinding.ID); err != nil {
+		t.Fatalf("verify carrier binding: %v", err)
+	}
+
+	settlementBinding, err := app.RegisterProviderSettlementBinding(platform.ProviderSettlementBinding{
+		ProviderOrgID:         "provider_1",
+		Asset:                 "USDI",
+		PeerID:                "peer_provider",
+		P2PAddress:            "/dns4/provider/tcp/8228/p2p/peer_provider",
+		PaymentRequestBaseURL: "https://carrier.example.com/payment-requests",
+		UDTTypeScript: platform.UDTTypeScript{
+			CodeHash: "0xudt",
+			HashType: "type",
+			Args:     "0x01",
+		},
+		OwnershipProof: "proof_1",
+	})
+	if err != nil {
+		t.Fatalf("register settlement binding: %v", err)
+	}
+	if _, err := app.VerifyProviderSettlementBinding(settlementBinding.ID); err != nil {
+		t.Fatalf("verify settlement binding: %v", err)
+	}
+
+	app.SetProviderSettlementProvisioner(&stubSettlementProvisioner{
+		result: platform.EnsureProviderLiquidityResult{
+			ChannelID:           "ch_1",
+			ReuseSource:         platform.ProviderLiquidityReuseNewChannel,
+			ReadyChannelCount:   1,
+			TotalSpendableCents: 7_000,
+		},
+	})
+
+	rfq, err := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID:         "buyer_auth_1",
+		Title:              "Existing prepaid order",
+		Category:           "research",
+		Scope:              "Benchmark vendors.",
+		BudgetCents:        4_000,
+		ResponseDeadlineAt: time.Date(2099, 3, 15, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("create rfq: %v", err)
+	}
+	bid, err := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "provider_1",
+		Message:       "We can handle this.",
+		QuoteCents:    4_000,
+		Milestones: []platform.BidMilestoneInput{{
+			ID:             "ms_existing",
+			Title:          "Existing milestone",
+			BasePriceCents: 4_000,
+			BudgetCents:    4_000,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("create bid: %v", err)
+	}
+	orderRFQ, order, err := app.AwardRFQ(rfq.ID, platform.AwardRFQInput{
+		BidID:       bid.ID,
+		FundingMode: core.FundingModePrepaid,
+	})
+	if err != nil {
+		t.Fatalf("award existing rfq: %v", err)
+	}
+	if orderRFQ.Status != "awarded" {
+		t.Fatalf("rfq status = %s, want awarded", orderRFQ.Status)
+	}
+	if err := app.ReportProviderSettlementDisconnect("provider_1", "test"); err != nil {
+		t.Fatalf("disconnect provider settlement: %v", err)
+	}
+	order, err = app.GetOrder(order.ID)
+	if err != nil {
+		t.Fatalf("reload existing order: %v", err)
+	}
+	if order.Status != core.OrderStatusAwaitingPaymentRail {
+		t.Fatalf("existing order status = %s, want %s", order.Status, core.OrderStatusAwaitingPaymentRail)
+	}
+
+	server, err := NewServerWithOptionsE(Options{
+		App: app,
+		IAM: &stubIAMClient{
+			actor: iamclient.Actor{
+				UserID: "usr_buyer_1",
+				Memberships: []iamclient.ActorMembership{{
+					OrganizationID:   "buyer_auth_1",
+					OrganizationKind: "buyer",
+					Role:             "procurement",
+				}},
+			},
+		},
+		DemoConfig: &demoenv.Config{
+			SettlementBaseURL: settlementServer.URL,
+		},
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	payload := map[string]any{
+		"buyerOrgId":    "buyer_auth_1",
+		"providerOrgId": "provider_1",
+		"title":         "Second order",
+		"fundingMode":   "prepaid",
+		"milestones": []map[string]any{{
+			"id":             "ms_2",
+			"title":          "Fresh scope",
+			"basePriceCents": 2000,
+			"budgetCents":    2000,
+		}},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer buyer-session-token")
+	res := httptest.NewRecorder()
+
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d body=%s", res.Code, res.Body.String())
+	}
+	if !strings.Contains(res.Body.String(), "insufficient prepaid balance") {
+		t.Fatalf("body = %s, want prepaid balance error", res.Body.String())
 	}
 }
 
@@ -458,6 +695,94 @@ func TestAwardRFQCreatesOrderFromWinningBid(t *testing.T) {
 
 	if response.Order.ProviderOrgID != "provider_1" || response.Order.FundingMode != "credit" {
 		t.Fatalf("unexpected order response: %+v", response.Order)
+	}
+}
+
+func TestAwardRFQRejectsPrepaidWhenBuyerBalanceIsInsufficient(t *testing.T) {
+	settlementServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/funding-records":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"records": []map[string]any{
+					{"id": "fund_1", "kind": "buyer_topup", "buyerOrgId": "buyer_auth_1", "amount": "50.00", "state": "SETTLED"},
+				},
+			})
+		default:
+			t.Fatalf("unexpected settlement path %s", r.URL.Path)
+		}
+	}))
+	defer settlementServer.Close()
+
+	app := platform.NewAppWithMemory()
+	rfq, err := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID:         "buyer_auth_1",
+		Title:              "Need market research",
+		Category:           "research",
+		Scope:              "Benchmark three vendors.",
+		BudgetCents:        34_000,
+		ResponseDeadlineAt: time.Date(2099, 3, 15, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("create rfq: %v", err)
+	}
+
+	bid, err := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "provider_1",
+		Message:       "We can deliver the memo.",
+		QuoteCents:    34_000,
+		Milestones: []platform.BidMilestoneInput{{
+			ID:             "ms_1",
+			Title:          "Research memo",
+			BasePriceCents: 34_000,
+			BudgetCents:    34_000,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("create bid: %v", err)
+	}
+
+	server, err := NewServerWithOptionsE(Options{
+		App: app,
+		IAM: &stubIAMClient{
+			actor: iamclient.Actor{
+				UserID: "usr_buyer_1",
+				Memberships: []iamclient.ActorMembership{{
+					OrganizationID:   "buyer_auth_1",
+					OrganizationKind: "buyer",
+					Role:             "procurement",
+				}},
+			},
+		},
+		DemoConfig: &demoenv.Config{
+			SettlementBaseURL: settlementServer.URL,
+		},
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	payload := map[string]any{
+		"bidId":       bid.ID,
+		"fundingMode": "prepaid",
+	}
+	body, _ := json.Marshal(payload)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rfqs/"+rfq.ID+"/award", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer buyer-session-token")
+	res := httptest.NewRecorder()
+
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d body=%s", res.Code, res.Body.String())
+	}
+	if !strings.Contains(res.Body.String(), "insufficient prepaid balance") {
+		t.Fatalf("body = %s, want prepaid balance error", res.Body.String())
+	}
+	if _, err := app.GetOrder("ord_1"); !errors.Is(err, core.ErrOrderNotFound) {
+		t.Fatalf("expected no order to be created, got err=%v", err)
 	}
 }
 
@@ -2457,6 +2782,8 @@ func TestWriteGatewayError_NotFound(t *testing.T) {
 		platform.ErrRFQNotFound,
 		platform.ErrBidNotFound,
 		platform.ErrDisputeNotFound,
+		platform.ErrProviderCarrierBindingNotFound,
+		platform.ErrProviderSettlementBindingNotFound,
 	} {
 		rec := httptest.NewRecorder()
 		writeGatewayError(rec, err)
@@ -3954,6 +4281,9 @@ func (failingOrderRepo) NextID() (string, error)         { return "", errors.New
 func (failingOrderRepo) Get(string) (*core.Order, error) { return nil, core.ErrOrderNotFound }
 func (failingOrderRepo) Save(*core.Order) error          { return errors.New("broken") }
 func (failingOrderRepo) List() ([]*core.Order, error)    { return nil, errors.New("broken") }
+func (failingOrderRepo) ListByFilter(filter platform.OrderListFilter) ([]*core.Order, error) {
+	return nil, errors.New("broken")
+}
 
 type failingDisputeRepo struct{}
 
@@ -4985,6 +5315,9 @@ func (internalErrorOrderRepo) Get(string) (*core.Order, error) {
 }
 func (internalErrorOrderRepo) Save(*core.Order) error       { return errors.New("broken") }
 func (internalErrorOrderRepo) List() ([]*core.Order, error) { return nil, errors.New("broken") }
+func (internalErrorOrderRepo) ListByFilter(filter platform.OrderListFilter) ([]*core.Order, error) {
+	return nil, errors.New("broken")
+}
 
 func TestGetOrder_InternalError(t *testing.T) {
 	app := platform.NewApp(internalErrorOrderRepo{}, nil, nil, nil, nil, nil, nil)
@@ -8552,9 +8885,8 @@ func TestCarrierBinding_GetNotFound(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/carrier-bindings/nonexistent", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
-	// Should return error (no binding for this org)
-	if w.Code == http.StatusCreated {
-		t.Error("should not succeed for nonexistent binding")
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%s", w.Code, w.Body.String())
 	}
 }
 

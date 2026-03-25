@@ -1,23 +1,23 @@
-import { RiAuctionLine, RiFlashlightLine, RiPulseLine, RiTimeLine } from "react-icons/ri";
+import { RiAuctionLine, RiPulseLine, RiTimeLine } from "react-icons/ri";
 
 const featuredRequest = {
   title: "Carrier dispute response package",
-  budget: "$8.4k",
-  currentLow: "$6.8k",
+  budget: "$780",
+  currentLow: "$620",
   proposals: 12,
-  deadline: "36 hrs",
+  deadline: "2 hrs",
 };
 
 const requestRows = [
-  { title: "Carrier onboarding pack", budget: "$4.2k", currentLow: "$3.9k", proposals: 8, deadline: "5 days" },
-  { title: "Settlement reconciliation sprint", budget: "$5.1k", currentLow: "$4.6k", proposals: 6, deadline: "72 hrs" },
-  { title: "Milestone delivery audit", budget: "$6.1k", currentLow: "$5.2k", proposals: 5, deadline: "4 days" },
+  { title: "Carrier onboarding pack", budget: "$420", currentLow: "$360", proposals: 8, deadline: "2 hrs" },
+  { title: "Settlement reconciliation sprint", budget: "$560", currentLow: "$480", proposals: 6, deadline: "2 hrs" },
+  { title: "Milestone delivery audit", budget: "$720", currentLow: "$640", proposals: 5, deadline: "2 hrs" },
 ] as const;
 
 const latestProposals = [
-  { provider: "North Studio", request: "Incident review", price: "$6.8k" },
-  { provider: "Kite Works", request: "Onboarding pack", price: "$3.9k" },
-  { provider: "Mono Labs", request: "Delivery audit", price: "$5.2k" },
+  { provider: "North Studio", request: "Incident review", price: "$620" },
+  { provider: "Kite Works", request: "Onboarding pack", price: "$360" },
+  { provider: "Mono Labs", request: "Delivery audit", price: "$640" },
 ] as const;
 
 export function RoleShowcase({ compact = false }: { compact?: boolean }) {
@@ -25,38 +25,35 @@ export function RoleShowcase({ compact = false }: { compact?: boolean }) {
   const proposals = compact ? latestProposals.slice(0, 2) : latestProposals;
 
   return (
-    <section className="rounded-md border border-border bg-card shadow-[0_18px_44px_-22px_rgba(15,23,42,0.18)]">
-      <div className="border-b border-border px-6 py-5">
+    <section className="bg-card shadow-[0_20px_40px_rgba(0,0,0,0.06)]">
+      <div className="bg-secondary px-6 py-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-2">
-            <div className="eyebrow-pill">
-              <RiFlashlightLine className="size-3.5" />
-              Live request board
-            </div>
+            <div className="eyebrow-pill">Request board</div>
             <div className="space-y-2">
-              <h2 className="max-w-2xl text-4xl font-semibold tracking-tight text-balance">
-                Budgets are public. Providers are already pricing against them.
+              <h2 className="max-w-2xl font-display text-[clamp(2.2rem,3.2vw,3.4rem)] font-medium leading-[1.02] tracking-[-0.03em] text-balance">
+                Budgets stay visible. Providers price against the same sheet.
               </h2>
               <p className="text-sm leading-7 text-muted-foreground">
-                The market stays readable because 1-tok keeps four signals together: budget, low proposal, proposal count, and delivery timing.
+                The board stays readable because 1-tok keeps four signals together: budget, low proposal, proposal count, and delivery timing.
               </p>
             </div>
           </div>
-          <div className="rounded-md border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-foreground">
-            Pricing live now
+          <div className="bg-card px-3 py-2 text-xs font-medium text-foreground shadow-[0_20px_40px_rgba(0,0,0,0.06)]">
+            Price in view
           </div>
         </div>
       </div>
 
       <div className="space-y-6 px-6 py-6">
-        <div className="rounded-md border border-primary/15 bg-primary/5 p-5">
+        <div className="bg-secondary p-5">
           <div className="grid gap-5 lg:grid-cols-[1.25fr_0.75fr] lg:items-end">
             <div className="min-w-0 space-y-3">
-              <div className="text-xs font-medium text-primary">Highest live budget</div>
-              <div className="max-w-[16ch] text-[2.1rem] font-semibold leading-[1.02] tracking-tight text-balance">{featuredRequest.title}</div>
+              <div className="text-xs font-medium text-primary">Highest budget</div>
+              <div className="max-w-[16ch] font-display text-[2.4rem] font-medium leading-[1.02] tracking-[-0.03em] text-balance">{featuredRequest.title}</div>
               <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                <span className="rounded-md border border-white/70 bg-white px-2 py-1">{featuredRequest.proposals} proposals</span>
-                <span className="rounded-md border border-white/70 bg-white px-2 py-1">{featuredRequest.deadline}</span>
+                <span className="bg-card px-2 py-1 shadow-[0_20px_40px_rgba(0,0,0,0.06)]">{featuredRequest.proposals} proposals</span>
+                <span className="bg-card px-2 py-1 shadow-[0_20px_40px_rgba(0,0,0,0.06)]">{featuredRequest.deadline}</span>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -67,8 +64,8 @@ export function RoleShowcase({ compact = false }: { compact?: boolean }) {
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-md border border-border">
-          <div className="grid gap-px bg-border">
+        <div className="overflow-hidden bg-secondary">
+          <div className="grid gap-px bg-background/50">
             <div className="hidden grid-cols-[1.7fr_0.7fr_0.7fr_0.7fr_0.72fr] bg-secondary px-4 py-3 text-[11px] uppercase tracking-[0.16em] text-muted-foreground md:grid">
               <div>Request</div>
               <div>Budget</div>
@@ -79,11 +76,11 @@ export function RoleShowcase({ compact = false }: { compact?: boolean }) {
             {rows.map((item) => (
               <div
                 key={item.title}
-                className="grid gap-4 bg-card px-4 py-4 transition-colors duration-150 hover:bg-secondary/45 md:grid-cols-[1.7fr_0.7fr_0.7fr_0.7fr_0.72fr] md:items-center"
+                className="grid gap-4 bg-card px-4 py-4 transition-colors duration-150 hover:bg-secondary md:grid-cols-[1.7fr_0.7fr_0.7fr_0.7fr_0.72fr] md:items-center"
               >
                 <div className="min-w-0 space-y-1">
                   <div className="text-sm font-medium leading-5 text-foreground break-words">{item.title}</div>
-                  <div className="text-xs text-muted-foreground">Live pricing on 1-tok</div>
+                  <div className="text-xs text-muted-foreground">Board pricing on 1-tok</div>
                 </div>
                 <ValueBlock label="Budget" value={item.budget} />
                 <ValueBlock label="Low proposal" value={item.currentLow} />
@@ -100,13 +97,13 @@ export function RoleShowcase({ compact = false }: { compact?: boolean }) {
           </div>
         </div>
 
-        <div className="rounded-md border border-border">
-          <div className="border-b border-border px-4 py-3 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+        <div className="bg-secondary">
+          <div className="px-4 py-3 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
             Latest proposals
           </div>
-          <div className="divide-y divide-border">
+          <div className="grid gap-px bg-background/50">
             {proposals.map((proposal) => (
-              <div key={`${proposal.provider}-${proposal.request}`} className="flex items-center justify-between gap-3 px-4 py-4">
+              <div key={`${proposal.provider}-${proposal.request}`} className="flex items-center justify-between gap-3 bg-card px-4 py-4">
                 <div className="space-y-1">
                   <div className="text-sm font-medium text-foreground">{proposal.provider}</div>
                   <div className="text-xs text-muted-foreground">{proposal.request}</div>
@@ -133,7 +130,7 @@ function MetricTile({
   className?: string;
 }) {
   return (
-    <div className={`rounded-md border border-white/70 bg-white px-4 py-3 ${className ?? ""}`}>
+    <div className={`bg-card px-4 py-3 shadow-[0_20px_40px_rgba(0,0,0,0.06)] ${className ?? ""}`}>
       <div className="inline-flex items-center gap-1 text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
         {Icon ? <Icon className="size-4 text-primary" /> : null}
         {label}

@@ -1156,6 +1156,9 @@ func (f failingOrderRepo) Get(string) (*core.Order, error) {
 func (f failingOrderRepo) List() ([]*core.Order, error) {
 	return nil, errors.New("list failed")
 }
+func (f failingOrderRepo) ListByFilter(filter OrderListFilter) ([]*core.Order, error) {
+	return nil, errors.New("list failed")
+}
 
 func TestCreateOrder_NextIDError(t *testing.T) {
 	app := NewApp(failingOrderRepo{}, nil, nil, nil, nil, nil, nil)
@@ -1293,6 +1296,9 @@ type failAfterFirstSaveOrderRepo struct {
 func (f *failAfterFirstSaveOrderRepo) NextID() (string, error)            { return f.real.NextID() }
 func (f *failAfterFirstSaveOrderRepo) Get(id string) (*core.Order, error) { return f.real.Get(id) }
 func (f *failAfterFirstSaveOrderRepo) List() ([]*core.Order, error)       { return f.real.List() }
+func (f *failAfterFirstSaveOrderRepo) ListByFilter(filter OrderListFilter) ([]*core.Order, error) {
+	return f.real.ListByFilter(filter)
+}
 func (f *failAfterFirstSaveOrderRepo) Save(o *core.Order) error {
 	f.saveCount++
 	if f.saveCount > 1 {

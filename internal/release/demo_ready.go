@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,16 +28,17 @@ type DemoRunConfig struct {
 }
 
 type DemoRunSummary struct {
-	Status        demoenv.Status `json:"status"`
-	Actions       []string       `json:"actions,omitempty"`
-	BuyerOrgID    string         `json:"buyerOrgId,omitempty"`
-	ProviderOrgID string         `json:"providerOrgId,omitempty"`
-	OpsOrgID      string         `json:"opsOrgId,omitempty"`
-	BuyerEmail    string         `json:"buyerEmail,omitempty"`
-	ProviderEmail string         `json:"providerEmail,omitempty"`
-	OpsEmail      string         `json:"opsEmail,omitempty"`
-	TopUpInvoice  string         `json:"topUpInvoice,omitempty"`
-	TopUpRecordID string         `json:"topUpRecordId,omitempty"`
+	Status         demoenv.Status `json:"status"`
+	Actions        []string       `json:"actions,omitempty"`
+	BuyerOrgID     string         `json:"buyerOrgId,omitempty"`
+	ProviderOrgID  string         `json:"providerOrgId,omitempty"`
+	OpsOrgID       string         `json:"opsOrgId,omitempty"`
+	BuyerEmail     string         `json:"buyerEmail,omitempty"`
+	ProviderEmail  string         `json:"providerEmail,omitempty"`
+	OpsEmail       string         `json:"opsEmail,omitempty"`
+	TopUpInvoice   string         `json:"topUpInvoice,omitempty"`
+	DepositAddress string         `json:"depositAddress,omitempty"`
+	TopUpRecordID  string         `json:"topUpRecordId,omitempty"`
 }
 
 func DemoRunConfigFromEnv() DemoRunConfig {
@@ -114,15 +116,26 @@ func runDemoReady(ctx context.Context, cfg DemoRunConfig, mutate bool) (DemoRunS
 		return summary, err
 	}
 	summary.Status = status
+	buyerTopUpSettledCents := int64(0)
+	providerPoolWarmed := (*platform.ProviderLiquidityPool)(nil)
+
+	if mutate && (!status.BuyerBalance.MeetsMinimumThreshold || !status.ProviderSettlement.MeetsMinimumThreshold) {
+		if err := ensureDemoFNNBootstrapFunc(ctx, cfg); err != nil {
+			return summary, fmt.Errorf("ensure demo fnn funding: %w", err)
+		}
+	}
 
 	if mutate && !status.BuyerBalance.MeetsMinimumThreshold {
-		topUpInvoice, topUpRecordID, err := client.createBuyerTopUp(ctx, cfg.Demo.SettlementBaseURL, buyer, cfg.Demo.SettlementServiceToken, cfg.Demo.BuyerTopUpAmount)
+		topUpSummary, err := client.createBuyerTopUp(ctx, cfg.Demo.SettlementBaseURL, buyer, cfg.Demo.SettlementServiceToken, cfg.Demo.BuyerTopUpAmount)
 		if err != nil {
 			return summary, err
 		}
-		summary.TopUpInvoice = topUpInvoice
-		summary.TopUpRecordID = topUpRecordID
-		if _, err := client.payInvoiceViaFiber(ctx, cfg.USDI, buyer.OrgID, topUpInvoice, cfg.Demo.BuyerTopUpAmount, "USDI"); err != nil {
+		summary.DepositAddress = topUpSummary.Address
+		topUpNeededCents := cfg.Demo.MinBuyerBalanceCents
+		if topUpAmountCents := parseDemoAmountToCents(cfg.Demo.BuyerTopUpAmount); topUpAmountCents > topUpNeededCents {
+			topUpNeededCents = topUpAmountCents
+		}
+		if _, err := client.waitBuyerDepositCredit(ctx, cfg.USDI, buyer, cfg.Demo.BuyerTopUpAmount); err != nil {
 			return summary, err
 		}
 		if _, err := client.waitFundingRecordState(ctx, cfg.Demo.SettlementBaseURL, buyer.Token, map[string]string{
@@ -131,25 +144,87 @@ func runDemoReady(ctx context.Context, cfg DemoRunConfig, mutate bool) (DemoRunS
 		}, 90*time.Second, "SETTLED"); err != nil {
 			return summary, err
 		}
+		if records, err := client.listFundingRecords(ctx, cfg.Demo.SettlementBaseURL, buyer.Token, map[string]string{
+			"buyerOrgId": summary.BuyerOrgID,
+			"kind":       "buyer_topup",
+		}); err == nil && len(records) > 0 {
+			summary.TopUpRecordID = records[len(records)-1].ID
+		}
+		buyerTopUpSettledCents = parseDemoAmountToCents(cfg.Demo.BuyerTopUpAmount)
 		summary.Actions = append(summary.Actions, "buyer top-up settled")
 	}
 
 	if mutate && !status.ProviderSettlement.MeetsMinimumThreshold {
-		if _, err := client.warmDemoProviderLiquidity(ctx, cfg.Demo.APIBaseURL, ops.Token, summary.ProviderOrgID, cfg.Demo.MinProviderLiquidityCents); err != nil {
+		pool, err := client.warmDemoProviderLiquidity(ctx, cfg.Demo.APIBaseURL, ops.Token, summary.ProviderOrgID, cfg.Demo.MinProviderLiquidityCents)
+		if err != nil {
 			return summary, err
 		}
+		providerPoolWarmed = &pool
 		summary.Actions = append(summary.Actions, "provider liquidity warmed")
 	}
 
-	status, err = client.getDemoStatus(ctx, cfg.Demo.APIBaseURL, ops.Token)
-	if err != nil {
-		return summary, err
+	if mutate {
+		summary.Status = buildPreparedDemoStatus(cfg, summary, status, buyerTopUpSettledCents, providerPoolWarmed)
+	} else {
+		summary.Status = status
 	}
-	summary.Status = status
 	if summary.Status.Verdict != demoenv.VerdictReady {
 		return summary, ErrDemoNotReady
 	}
 	return summary, nil
+}
+
+func buildPreparedDemoStatus(cfg DemoRunConfig, summary DemoRunSummary, current demoenv.Status, buyerTopUpSettledCents int64, providerPoolWarmed *platform.ProviderLiquidityPool) demoenv.Status {
+	status := demoenv.Status{
+		ResourcePrefix: firstNonEmptyString(current.ResourcePrefix, cfg.Demo.ResourcePrefix),
+		Services:       append([]demoenv.ServiceStatus(nil), current.Services...),
+		Actors: []demoenv.ActorStatus{
+			preparedDemoActorStatus("buyer", summary.BuyerEmail, summary.BuyerOrgID),
+			preparedDemoActorStatus("provider", summary.ProviderEmail, summary.ProviderOrgID),
+			preparedDemoActorStatus("ops", summary.OpsEmail, summary.OpsOrgID),
+		},
+		BuyerBalance:       current.BuyerBalance,
+		ProviderSettlement: current.ProviderSettlement,
+	}
+
+	status.BuyerBalance.BuyerOrgID = summary.BuyerOrgID
+	status.BuyerBalance.MinimumRequiredCents = cfg.Demo.MinBuyerBalanceCents
+	if buyerTopUpSettledCents > 0 {
+		status.BuyerBalance.SettledTopUpCents += buyerTopUpSettledCents
+		status.BuyerBalance.SettledTopUpCount++
+		if status.BuyerBalance.PendingTopUpCount > 0 {
+			status.BuyerBalance.PendingTopUpCount--
+		}
+	}
+	status.BuyerBalance.MeetsMinimumThreshold = status.BuyerBalance.SettledTopUpCents >= status.BuyerBalance.MinimumRequiredCents
+
+	status.ProviderSettlement.ProviderOrgID = summary.ProviderOrgID
+	status.ProviderSettlement.MinimumRequiredCents = cfg.Demo.MinProviderLiquidityCents
+	status.ProviderSettlement.CarrierBindingStatus = firstNonEmptyString(status.ProviderSettlement.CarrierBindingStatus, "active")
+	status.ProviderSettlement.SettlementBindingStatus = firstNonEmptyString(status.ProviderSettlement.SettlementBindingStatus, "active")
+	if providerPoolWarmed != nil {
+		status.ProviderSettlement.PoolStatus = string(providerPoolWarmed.Status)
+		status.ProviderSettlement.ReadyChannelCount = providerPoolWarmed.ReadyChannelCount
+		status.ProviderSettlement.AvailableToAllocateCents = providerPoolWarmed.AvailableToAllocateCents
+		status.ProviderSettlement.ReservedOutstandingCents = providerPoolWarmed.ReservedOutstandingCents
+	}
+	status.ProviderSettlement.MeetsMinimumThreshold =
+		strings.EqualFold(status.ProviderSettlement.CarrierBindingStatus, "active") &&
+			strings.EqualFold(status.ProviderSettlement.SettlementBindingStatus, "active") &&
+			strings.EqualFold(status.ProviderSettlement.PoolStatus, string(platform.ProviderLiquidityPoolStatusHealthy)) &&
+			status.ProviderSettlement.AvailableToAllocateCents >= status.ProviderSettlement.MinimumRequiredCents
+
+	return demoenv.FinalizeStatus(status)
+}
+
+func preparedDemoActorStatus(role, email, orgID string) demoenv.ActorStatus {
+	return demoenv.ActorStatus{
+		Role:   role,
+		Email:  email,
+		OrgID:  orgID,
+		Ready:  strings.TrimSpace(orgID) != "",
+		Detail: "resolved during demo prepare",
+	}
 }
 
 func ensureDemoActor(ctx context.Context, client *smokeClient, baseURL string, cfg demoenv.ActorConfig, allowSignup bool) (actorIdentity, bool, error) {
@@ -325,11 +400,16 @@ func (c *smokeClient) warmDemoProviderLiquidity(ctx context.Context, baseURL, op
 
 func (c *smokeClient) ensureProviderCarrierBinding(ctx context.Context, baseURL, providerOrgID string, cfg USDIMarketplaceE2EConfig) error {
 	binding, err := c.getProviderCarrierBinding(ctx, baseURL, providerOrgID)
-	if err == nil && strings.EqualFold(binding.Status, "active") {
+	if err == nil && strings.EqualFold(binding.Status, "active") && carrierBindingMatchesConfig(binding, cfg) {
 		return nil
 	}
 	if err != nil && !isStatusCode(err, http.StatusNotFound) {
 		return err
+	}
+	if err == nil && strings.EqualFold(binding.Status, "active") {
+		if suspendErr := c.suspendProviderCarrierBinding(ctx, baseURL, binding.ID); suspendErr != nil {
+			return suspendErr
+		}
 	}
 	bindingID, err := c.registerProviderCarrierBinding(ctx, baseURL, providerOrgID, cfg)
 	if err != nil {
@@ -343,6 +423,14 @@ func (c *smokeClient) ensureProviderCarrierBinding(ctx context.Context, baseURL,
 		bindingID = binding.ID
 	}
 	return c.verifyProviderCarrierBinding(ctx, baseURL, bindingID)
+}
+
+func carrierBindingMatchesConfig(binding platform.ProviderCarrierBinding, cfg USDIMarketplaceE2EConfig) bool {
+	return strings.TrimSpace(binding.CarrierBaseURL) == strings.TrimSpace(cfg.CarrierBaseURL) &&
+		strings.TrimSpace(binding.HostID) == strings.TrimSpace(cfg.CarrierHostID) &&
+		firstNonEmptyString(strings.TrimSpace(binding.AgentID), "main") == firstNonEmptyString(strings.TrimSpace(cfg.CarrierAgentID), "main") &&
+		firstNonEmptyString(strings.TrimSpace(binding.Backend), "codex") == firstNonEmptyString(strings.TrimSpace(cfg.CarrierBackend), "codex") &&
+		firstNonEmptyString(strings.TrimSpace(binding.WorkspaceRoot), "/workspace") == firstNonEmptyString(strings.TrimSpace(cfg.CarrierWorkspaceRoot), "/workspace")
 }
 
 func (c *smokeClient) ensureProviderSettlementBinding(ctx context.Context, baseURL, providerOrgID string, cfg USDIMarketplaceE2EConfig) error {
@@ -404,6 +492,10 @@ func (c *smokeClient) getProviderSettlementBinding(ctx context.Context, baseURL,
 	return payload.Binding, nil
 }
 
+func (c *smokeClient) suspendProviderCarrierBinding(ctx context.Context, baseURL, bindingID string) error {
+	return c.postJSON(ctx, strings.TrimRight(baseURL, "/")+"/api/v1/carrier-bindings/"+bindingID+"/suspend", map[string]any{}, nil)
+}
+
 func postJSONBytes(body any) (*bytes.Reader, error) {
 	encoded, err := json.Marshal(body)
 	if err != nil {
@@ -417,4 +509,16 @@ func errorContainsFold(err error, fragment string) bool {
 		return false
 	}
 	return strings.Contains(strings.ToLower(err.Error()), strings.ToLower(fragment))
+}
+
+func parseDemoAmountToCents(raw string) int64 {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0
+	}
+	parsed, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return 0
+	}
+	return int64(parsed * 100)
 }

@@ -151,7 +151,8 @@ func (p *fnnProviderSettlementProvisioner) EnsureProviderLiquidity(input EnsureP
 		return EnsureProviderLiquidityResult{}, errors.New("provider settlement binding p2pAddress is required")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), p.cfg.WaitTimeout)
+	overallTimeout := p.cfg.WaitTimeout * time.Duration(maxInt(1, p.cfg.OpenChannelRetries))
+	ctx, cancel := context.WithTimeout(context.Background(), overallTimeout)
 	defer cancel()
 
 	treasuryNode := newProviderSettlementRawFNNClient(p.cfg.TreasuryRPCURL)
@@ -209,29 +210,52 @@ func (p *fnnProviderSettlementProvisioner) EnsureProviderLiquidity(input EnsureP
 			WarmUntil:           input.CurrentPool.WarmUntil,
 		}, nil
 	}
+	existingReadyChannelIDs := commonReadyChannelIDs(treasuryChannels, providerChannels, input.Binding.UDTTypeScript)
 
 	fundingUnits := neededReserveToFundingUnits(input.NeededReserveCents, p.cfg.CentsPerUnit, p.cfg.MinFundingUnits)
 	fundingHex, err := providerSettlementDecimalToHexQuantity(fundingUnits)
 	if err != nil {
 		return EnsureProviderLiquidityResult{}, fmt.Errorf("funding amount: %w", err)
 	}
-	temporaryChannelID, err := openProviderSettlementChannelWithRetry(ctx, treasuryNode, providerPeerID, fundingHex, input.Binding.UDTTypeScript, p.cfg.OpenChannelRetries, p.cfg.PollInterval, func(ctx context.Context) error {
-		return connectProviderSettlementPeers(ctx, treasuryNode, providerNode, providerP2PAddress, treasuryP2PAddress)
-	})
-	if err != nil {
-		return EnsureProviderLiquidityResult{}, fmt.Errorf("open channel: %w", err)
-	}
-
 	acceptFundingHex := providerSettlementAcceptFundingHex(providerInfo, input.Binding.UDTTypeScript)
 	if acceptFundingHex == "" {
 		acceptFundingHex = "0x1"
 	}
-	if err := acceptProviderSettlementChannelWithRetry(ctx, providerNode, temporaryChannelID, acceptFundingHex, p.cfg.AcceptChannelRetries, p.cfg.PollInterval); err != nil {
-		return EnsureProviderLiquidityResult{}, fmt.Errorf("accept channel: %w", err)
+
+	reconnect := func(ctx context.Context) error {
+		return connectProviderSettlementPeers(ctx, treasuryNode, providerNode, providerP2PAddress, treasuryP2PAddress)
 	}
 
-	if err := waitForProviderSettlementChannelReady(ctx, treasuryNode, providerNode, providerPeerID, treasuryPeerID, temporaryChannelID, acceptFundingHex, input.Binding.UDTTypeScript, p.cfg.PollInterval, p.cfg.AcceptRetryEvery, p.cfg.AcceptChannelRetries); err != nil {
-		return EnsureProviderLiquidityResult{}, err
+	var temporaryChannelID string
+	for provisionAttempt := 1; provisionAttempt <= maxInt(1, p.cfg.OpenChannelRetries); provisionAttempt++ {
+		temporaryChannelID, err = openProviderSettlementChannelWithRetry(ctx, treasuryNode, providerPeerID, fundingHex, input.Binding.UDTTypeScript, p.cfg.OpenChannelRetries, p.cfg.PollInterval, reconnect)
+		if err != nil {
+			return EnsureProviderLiquidityResult{}, fmt.Errorf("open channel: %w", err)
+		}
+		if err := acceptProviderSettlementChannelWithRetry(ctx, providerNode, temporaryChannelID, acceptFundingHex, p.cfg.AcceptChannelRetries, p.cfg.PollInterval); err != nil {
+			if provisionAttempt < maxInt(1, p.cfg.OpenChannelRetries) && isProviderSettlementProvisionRetryable(err) {
+				if reconnectErr := reconnect(ctx); reconnectErr != nil {
+					return EnsureProviderLiquidityResult{}, reconnectErr
+				}
+				continue
+			}
+			return EnsureProviderLiquidityResult{}, fmt.Errorf("accept channel: %w", err)
+		}
+
+		readyChannelID, err := waitForProviderSettlementChannelReady(ctx, treasuryNode, providerNode, providerPeerID, treasuryPeerID, temporaryChannelID, acceptFundingHex, input.Binding.UDTTypeScript, existingReadyChannelIDs, p.cfg.PollInterval, p.cfg.AcceptRetryEvery, p.cfg.AcceptChannelRetries)
+		if err != nil {
+			if provisionAttempt < maxInt(1, p.cfg.OpenChannelRetries) && isProviderSettlementProvisionRetryable(err) {
+				if reconnectErr := reconnect(ctx); reconnectErr != nil {
+					return EnsureProviderLiquidityResult{}, reconnectErr
+				}
+				continue
+			}
+			return EnsureProviderLiquidityResult{}, err
+		}
+		if strings.TrimSpace(readyChannelID) != "" {
+			temporaryChannelID = readyChannelID
+		}
+		break
 	}
 
 	fundingCents := fundingUnitsToCents(fundingUnits, p.cfg.CentsPerUnit)
@@ -406,7 +430,7 @@ func acceptProviderSettlementChannelWithRetry(ctx context.Context, providerNode 
 	return lastErr
 }
 
-func waitForProviderSettlementChannelReady(ctx context.Context, treasuryNode, providerNode providerSettlementRawFNNClient, providerPeerID, treasuryPeerID, temporaryChannelID, acceptFundingHex string, udtTypeScript UDTTypeScript, pollInterval time.Duration, acceptRetryEvery, acceptRetries int) error {
+func waitForProviderSettlementChannelReady(ctx context.Context, treasuryNode, providerNode providerSettlementRawFNNClient, providerPeerID, treasuryPeerID, temporaryChannelID, acceptFundingHex string, udtTypeScript UDTTypeScript, existingReadyChannelIDs map[string]struct{}, pollInterval time.Duration, acceptRetryEvery, acceptRetries int) (string, error) {
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
@@ -415,14 +439,19 @@ func waitForProviderSettlementChannelReady(ctx context.Context, treasuryNode, pr
 		attempt++
 		treasuryChannels, err := treasuryNode.ListChannels(ctx, providerPeerID)
 		if err != nil {
-			return fmt.Errorf("list treasury channels: %w", err)
+			return "", fmt.Errorf("list treasury channels: %w", err)
 		}
 		providerChannels, err := providerNode.ListChannels(ctx, treasuryPeerID)
 		if err != nil {
-			return fmt.Errorf("list provider channels: %w", err)
+			return "", fmt.Errorf("list provider channels: %w", err)
 		}
-		if _, ok := matchingReadyChannelID(treasuryChannels, providerChannels, udtTypeScript); ok {
-			return nil
+		if strings.TrimSpace(temporaryChannelID) != "" {
+			if providerSettlementChannelReadyOnBothSides(temporaryChannelID, treasuryChannels, providerChannels, udtTypeScript) {
+				return temporaryChannelID, nil
+			}
+		}
+		if readyChannelID, ok := matchingReadyChannelIDExcluding(treasuryChannels, providerChannels, udtTypeScript, existingReadyChannelIDs); ok {
+			return readyChannelID, nil
 		}
 		if strings.TrimSpace(temporaryChannelID) != "" &&
 			strings.TrimSpace(acceptFundingHex) != "" &&
@@ -430,28 +459,94 @@ func waitForProviderSettlementChannelReady(ctx context.Context, treasuryNode, pr
 			attempt%acceptRetryEvery == 0 &&
 			firstProviderSettlementChannelState(providerChannels, udtTypeScript) == "AWAITING_CHANNEL_READY" {
 			if err := acceptProviderSettlementChannelWithRetry(ctx, providerNode, temporaryChannelID, acceptFundingHex, acceptRetries, pollInterval); err != nil && !isProviderSettlementAcceptRetryable(err) {
-				return fmt.Errorf("re-accept channel: %w", err)
+				return "", fmt.Errorf("re-accept channel: %w", err)
 			}
 		}
 
 		select {
 		case <-ctx.Done():
-			return errors.New("timeout waiting provider settlement channel to reach CHANNEL_READY")
+			return "", errors.New("timeout waiting provider settlement channel to reach CHANNEL_READY")
 		case <-ticker.C:
 		}
 	}
 }
 
+func commonReadyChannelIDs(treasuryChannels, providerChannels providerSettlementRawChannelList, udtTypeScript UDTTypeScript) map[string]struct{} {
+	readyOnTreasury := make(map[string]struct{}, len(treasuryChannels.Channels))
+	for _, channel := range treasuryChannels.Channels {
+		if normalizeProviderSettlementChannelState(channel.State) != "CHANNEL_READY" {
+			continue
+		}
+		if hasProviderSettlementUDTScript(udtTypeScript) && !providerSettlementUDTScriptsMatch(channel.FundingUDTTypeScript, udtTypeScript) {
+			continue
+		}
+		channelID := strings.TrimSpace(channel.ChannelID)
+		if channelID == "" {
+			continue
+		}
+		readyOnTreasury[channelID] = struct{}{}
+	}
+
+	readyOnBothSides := make(map[string]struct{}, len(providerChannels.Channels))
+	for _, channel := range providerChannels.Channels {
+		if normalizeProviderSettlementChannelState(channel.State) != "CHANNEL_READY" {
+			continue
+		}
+		if hasProviderSettlementUDTScript(udtTypeScript) && !providerSettlementUDTScriptsMatch(channel.FundingUDTTypeScript, udtTypeScript) {
+			continue
+		}
+		channelID := strings.TrimSpace(channel.ChannelID)
+		if channelID == "" {
+			continue
+		}
+		if _, ok := readyOnTreasury[channelID]; ok {
+			readyOnBothSides[channelID] = struct{}{}
+		}
+	}
+	return readyOnBothSides
+}
+
 func matchingReadyChannelID(treasuryChannels, providerChannels providerSettlementRawChannelList, udtTypeScript UDTTypeScript) (string, bool) {
-	treasuryID := firstReadyProviderSettlementChannelID(treasuryChannels, udtTypeScript)
-	providerID := firstReadyProviderSettlementChannelID(providerChannels, udtTypeScript)
-	if treasuryID == "" || providerID == "" {
-		return "", false
+	return matchingReadyChannelIDExcluding(treasuryChannels, providerChannels, udtTypeScript, nil)
+}
+
+func matchingReadyChannelIDExcluding(treasuryChannels, providerChannels providerSettlementRawChannelList, udtTypeScript UDTTypeScript, excluded map[string]struct{}) (string, bool) {
+	for channelID := range commonReadyChannelIDs(treasuryChannels, providerChannels, udtTypeScript) {
+		if _, skip := excluded[channelID]; skip {
+			continue
+		}
+		return channelID, true
 	}
-	if treasuryID != "" {
-		return treasuryID, true
+	return "", false
+}
+
+func providerSettlementChannelReadyOnBothSides(channelID string, treasuryChannels, providerChannels providerSettlementRawChannelList, udtTypeScript UDTTypeScript) bool {
+	target := strings.TrimSpace(channelID)
+	if target == "" {
+		return false
 	}
-	return providerID, true
+	return providerSettlementSpecificChannelReady(treasuryChannels, target, udtTypeScript) &&
+		providerSettlementSpecificChannelReady(providerChannels, target, udtTypeScript)
+}
+
+func providerSettlementSpecificChannelReady(channels providerSettlementRawChannelList, channelID string, udtTypeScript UDTTypeScript) bool {
+	target := strings.TrimSpace(channelID)
+	if target == "" {
+		return false
+	}
+	for _, channel := range channels.Channels {
+		if strings.TrimSpace(channel.ChannelID) != target {
+			continue
+		}
+		if normalizeProviderSettlementChannelState(channel.State) != "CHANNEL_READY" {
+			return false
+		}
+		if hasProviderSettlementUDTScript(udtTypeScript) && !providerSettlementUDTScriptsMatch(channel.FundingUDTTypeScript, udtTypeScript) {
+			return false
+		}
+		return true
+	}
+	return false
 }
 
 func providerSettlementAcceptFundingHex(info providerSettlementNodeInfo, udtTypeScript UDTTypeScript) string {
@@ -629,6 +724,17 @@ func isProviderSettlementAcceptRetryable(err error) bool {
 	message := strings.ToLower(err.Error())
 	return strings.Contains(message, "no channel with temp id") ||
 		strings.Contains(message, "temporary_channel_id") && strings.Contains(message, "not found")
+}
+
+func isProviderSettlementProvisionRetryable(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return isProviderSettlementAcceptRetryable(err) ||
+		strings.Contains(message, "timeout waiting provider settlement channel to reach channel_ready") ||
+		strings.Contains(message, "failed to fund channel") ||
+		strings.Contains(message, "error decoding response body")
 }
 
 func deriveProviderSettlementPeerIDFromNodeID(nodeID string) (string, error) {

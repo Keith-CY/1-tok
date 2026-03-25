@@ -70,6 +70,19 @@ Core platform:
 - `CARRIER_SERVER_API_TOKEN`
 - `CARRIER_GATEWAY_API_TOKEN`
 
+Buyer deposit sweep:
+
+- `BUYER_DEPOSIT_ENABLE=true`
+- `BUYER_DEPOSIT_WALLET_MASTER_SEED`
+- `BUYER_DEPOSIT_CKB_RPC_URL`
+- `BUYER_DEPOSIT_CKB_NETWORK`
+- `BUYER_DEPOSIT_TREASURY_ADDRESS`
+- `BUYER_DEPOSIT_UDT_TYPE_SCRIPT_JSON` or `FIBER_USDI_UDT_TYPE_SCRIPT_JSON`
+- `BUYER_DEPOSIT_UDT_CELL_DEP_TX_HASH`
+- `BUYER_DEPOSIT_UDT_CELL_DEP_INDEX`
+- optional: `BUYER_DEPOSIT_MIN_USDI`
+- optional: `BUYER_DEPOSIT_CONFIRMATION_BLOCKS`
+
 Carrier / remote execution:
 
 - `CARRIER_E2E_REMOTE_AUTHORIZED_KEY`
@@ -86,6 +99,8 @@ Demo actors:
 - optional pinned org IDs: `DEMO_BUYER_ORG_ID`, `DEMO_PROVIDER_ORG_ID`, `DEMO_OPS_ORG_ID`
 
 The org IDs are now optional. If omitted, the control plane resolves them by logging in with the configured demo accounts.
+
+For the testnet demo, `api-gateway` defaults `RELEASE_USDI_E2E_CARRIER_BACKEND=codex`. When `OPENAI_BASE_URL` is set, `remote-vps` writes a global `~/.codex/config.toml` that points Codex at the custom OpenAI-compatible endpoint while keeping the demo on `gpt-5.4`.
 
 ## Operator flow
 

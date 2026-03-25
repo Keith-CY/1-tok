@@ -147,15 +147,39 @@ func TestCreateInvoiceUsesFiberClient(t *testing.T) {
 	}
 }
 
-func TestCreateTopUpUsesBuyerActorAndStoresBuyerTopUpRecord(t *testing.T) {
+func TestCreateTopUpEnsuresBuyerDepositAddressForBuyerActor(t *testing.T) {
 	stub := &stubFiberClient{
 		createResult: fiberclient.CreateInvoiceResult{Invoice: "inv_topup_123"},
 	}
 	funding := NewMemoryFundingRecordRepository()
+	deposits := NewBuyerDepositService(BuyerDepositServiceOptions{
+		Addresses: NewMemoryBuyerDepositAddressRepository(),
+		Sweeps:    NewMemoryBuyerDepositSweepRepository(),
+		Funding:   funding,
+		Wallet: &stubBuyerDepositWallet{
+			derivedAddresses: map[int]string{
+				0: "ckt1qyqbuyer0address",
+			},
+			balances: map[string]BuyerDepositChainBalance{
+				"ckt1qyqbuyer0address": {
+					Address:            "ckt1qyqbuyer0address",
+					RawOnChainUnits:    0,
+					RawConfirmedUnits:  0,
+					ConfirmationBlocks: 0,
+				},
+			},
+		},
+		Asset:                "USDI",
+		TreasuryAddress:      "ckt1qyqtreasuryaddress",
+		MinSweepAmountRaw:    1_000_000_000,
+		ConfirmationBlocks:   24,
+		RawUnitsPerWholeUSDI: 100_000_000,
+	})
 	server := NewServerWithOptions(Options{
 		Upstream: "http://127.0.0.1:8080",
 		Fiber:    stub,
 		Funding:  funding,
+		Deposits: deposits,
 		Auth: &stubIAMClient{
 			actor: iamclient.Actor{
 				UserID: "usr_buyer_1",
@@ -178,36 +202,175 @@ func TestCreateTopUpUsesBuyerActorAndStoresBuyerTopUpRecord(t *testing.T) {
 	if res.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d body=%s", res.Code, res.Body.String())
 	}
-	if stub.createInput.FromUserID != "buyer_auth_1" {
-		t.Fatalf("expected buyer auth org to fund the invoice, got %q", stub.createInput.FromUserID)
-	}
-	if stub.createInput.ToUserID != "platform_treasury" {
-		t.Fatalf("expected platform treasury target, got %q", stub.createInput.ToUserID)
-	}
-	if stub.createInput.Asset != "USDI" || stub.createInput.Amount != "25.00" {
-		t.Fatalf("unexpected topup invoice input: %+v", stub.createInput)
+	if stub.createInput != (fiberclient.CreateInvoiceInput{}) {
+		t.Fatalf("expected address-based topup to avoid invoice creation, got %+v", stub.createInput)
 	}
 
-	listReq := httptest.NewRequest(http.MethodGet, "/v1/funding-records?buyerOrgId=buyer_auth_1", nil)
-	listReq.Header.Set("Authorization", "Bearer buyer-token")
-	listRes := httptest.NewRecorder()
-	server.ServeHTTP(listRes, listReq)
-	if listRes.Code != http.StatusOK {
-		t.Fatalf("expected 200 from buyer funding list, got %d body=%s", listRes.Code, listRes.Body.String())
+	var response struct {
+		Address            string `json:"address"`
+		Asset              string `json:"asset"`
+		ConfirmationBlocks uint64 `json:"confirmationBlocks"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Address != "ckt1qyqbuyer0address" || response.Asset != "USDI" || response.ConfirmationBlocks != 24 {
+		t.Fatalf("unexpected topup response: %+v", response)
+	}
+}
+
+func TestGetBuyerDepositAddressReturnsCurrentSummary(t *testing.T) {
+	funding := NewMemoryFundingRecordRepository()
+	if err := funding.Save(FundingRecord{
+		ID:         "fund_credited_1",
+		Kind:       FundingRecordKindBuyerTopUp,
+		BuyerOrgID: "buyer_auth_1",
+		Asset:      "USDI",
+		Amount:     "13.00",
+		State:      "SETTLED",
+		CreatedAt:  time.Now().UTC(),
+		UpdatedAt:  time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("seed credited topup: %v", err)
+	}
+	deposits := NewBuyerDepositService(BuyerDepositServiceOptions{
+		Addresses: NewMemoryBuyerDepositAddressRepository(),
+		Sweeps:    NewMemoryBuyerDepositSweepRepository(),
+		Funding:   funding,
+		Wallet: &stubBuyerDepositWallet{
+			derivedAddresses: map[int]string{
+				0: "ckt1qyqbuyer0address",
+			},
+			balances: map[string]BuyerDepositChainBalance{
+				"ckt1qyqbuyer0address": {
+					Address:            "ckt1qyqbuyer0address",
+					RawOnChainUnits:    500_000_000,
+					RawConfirmedUnits:  300_000_000,
+					ConfirmationBlocks: 12,
+				},
+			},
+		},
+		Asset:                "USDI",
+		TreasuryAddress:      "ckt1qyqtreasuryaddress",
+		MinSweepAmountRaw:    1_000_000_000,
+		ConfirmationBlocks:   24,
+		RawUnitsPerWholeUSDI: 100_000_000,
+	})
+	server := NewServerWithOptions(Options{
+		Upstream: "http://127.0.0.1:8080",
+		Funding:  funding,
+		Deposits: deposits,
+		Auth: &stubIAMClient{
+			actor: iamclient.Actor{
+				UserID: "usr_buyer_1",
+				Memberships: []iamclient.ActorMembership{{
+					OrganizationID:   "buyer_auth_1",
+					OrganizationKind: "buyer",
+					Role:             "procurement",
+				}},
+			},
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/buyer/deposit-address", nil)
+	req.Header.Set("Authorization", "Bearer buyer-token")
+	res := httptest.NewRecorder()
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", res.Code, res.Body.String())
 	}
 
-	var listResponse struct {
-		Records []FundingRecord `json:"records"`
+	var response struct {
+		BuyerOrgID         string `json:"buyerOrgId"`
+		Address            string `json:"address"`
+		OnChainBalance     string `json:"onChainBalance"`
+		ConfirmedBalance   string `json:"confirmedBalance"`
+		CreditedBalance    string `json:"creditedBalance"`
+		ConfirmationBlocks uint64 `json:"confirmationBlocks"`
+		MinimumSweepAmount string `json:"minimumSweepAmount"`
 	}
-	if err := json.Unmarshal(listRes.Body.Bytes(), &listResponse); err != nil {
-		t.Fatalf("decode funding records: %v", err)
+	if err := json.Unmarshal(res.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
 	}
-	if len(listResponse.Records) != 1 {
-		t.Fatalf("expected one topup record, got %+v", listResponse.Records)
+	if response.BuyerOrgID != "buyer_auth_1" ||
+		response.Address != "ckt1qyqbuyer0address" ||
+		response.OnChainBalance != "5.00" ||
+		response.ConfirmedBalance != "3.00" ||
+		response.CreditedBalance != "13.00" ||
+		response.ConfirmationBlocks != 24 ||
+		response.MinimumSweepAmount != "10.00" {
+		t.Fatalf("unexpected buyer deposit summary: %+v", response)
 	}
-	record := listResponse.Records[0]
-	if record.Kind != FundingRecordKindBuyerTopUp || record.Invoice != "inv_topup_123" || record.BuyerOrgID != "buyer_auth_1" {
-		t.Fatalf("unexpected buyer topup record: %+v", record)
+}
+
+func TestSyncBuyerDepositsCreditsConfirmedBalance(t *testing.T) {
+	funding := NewMemoryFundingRecordRepository()
+	deposits := NewBuyerDepositService(BuyerDepositServiceOptions{
+		Addresses: NewMemoryBuyerDepositAddressRepository(),
+		Sweeps:    NewMemoryBuyerDepositSweepRepository(),
+		Funding:   funding,
+		Wallet: &stubBuyerDepositWallet{
+			derivedAddresses: map[int]string{
+				0: "ckt1qyqbuyer0address",
+			},
+			balances: map[string]BuyerDepositChainBalance{
+				"ckt1qyqbuyer0address": {
+					Address:            "ckt1qyqbuyer0address",
+					RawOnChainUnits:    1_300_000_000,
+					RawConfirmedUnits:  1_300_000_000,
+					ConfirmationBlocks: 24,
+				},
+			},
+			sweepResults: map[string]BuyerDepositSweepResult{
+				"ckt1qyqbuyer0address": {
+					SweepTxHash:     "0xsweep123",
+					SweptRawUnits:   1_300_000_000,
+					TreasuryAddress: "ckt1qyqtreasuryaddress",
+				},
+			},
+		},
+		Asset:                "USDI",
+		TreasuryAddress:      "ckt1qyqtreasuryaddress",
+		MinSweepAmountRaw:    1_000_000_000,
+		ConfirmationBlocks:   24,
+		RawUnitsPerWholeUSDI: 100_000_000,
+	})
+	if _, err := deposits.EnsureAddress(context.Background(), "buyer_auth_1"); err != nil {
+		t.Fatalf("ensure address: %v", err)
+	}
+
+	server := NewServerWithOptions(Options{
+		Upstream:      "http://api.internal",
+		Fiber:         &stubFiberClient{},
+		Funding:       funding,
+		Deposits:      deposits,
+		Auth:          &stubIAMClient{},
+		ServiceTokens: serviceauth.NewTokenSet("settlement-service-token"),
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/buyer/deposits/sync", nil)
+	req.Header.Set(serviceauth.HeaderName, "settlement-service-token")
+	res := httptest.NewRecorder()
+
+	server.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", res.Code, res.Body.String())
+	}
+	var payload BuyerDepositSyncSummary
+	if err := json.NewDecoder(res.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload.SweepCount != 1 || payload.CreditedCents != 1300 {
+		t.Fatalf("unexpected sync summary: %+v", payload)
+	}
+	records, err := funding.List(FundingRecordFilter{Kind: FundingRecordKindBuyerTopUp, BuyerOrgID: "buyer_auth_1"})
+	if err != nil {
+		t.Fatalf("list funding records: %v", err)
+	}
+	if len(records) != 1 || records[0].State != "SETTLED" || records[0].Amount != "13.00" {
+		t.Fatalf("unexpected funding records: %+v", records)
 	}
 }
 
@@ -1290,7 +1453,6 @@ func TestSettledFeed_WithLimit(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
-
 
 func TestIsProviderFinanceRole(t *testing.T) {
 	for _, role := range []string{"org_owner", "sales", "delivery_operator", "finance_viewer"} {

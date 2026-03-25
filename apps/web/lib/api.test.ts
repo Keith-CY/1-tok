@@ -53,6 +53,34 @@ describe("api fallback", () => {
     expect(records[0]?.state).toBe("SETTLED");
   });
 
+  it("passes buyer topup filters when requested for funding records", async () => {
+    process.env.NEXT_PUBLIC_SETTLEMENT_BASE_URL = "http://localhost:8083";
+    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      expect(url).toBe("http://localhost:8083/v1/funding-records?buyerOrgId=buyer_1&kind=buyer_topup&state=SETTLED");
+
+      return new Response(
+        JSON.stringify({
+          records: [{ id: "fund_1", kind: "buyer_topup", buyerOrgId: "buyer_1", amount: "50.00", state: "SETTLED" }],
+        }),
+        {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        },
+      );
+    }) as unknown as typeof fetch;
+
+    const records = await getFundingRecords({
+      authToken: "tok_123",
+      buyerOrgId: "buyer_1",
+      kind: "buyer_topup",
+      state: "SETTLED",
+    });
+
+    expect(records).toHaveLength(1);
+    expect(records[0]?.id).toBe("fund_1");
+  });
+
   it("forwards bearer auth when reading funding records", async () => {
     process.env.NEXT_PUBLIC_SETTLEMENT_BASE_URL = "http://localhost:8083";
     globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -99,6 +127,7 @@ describe("api fallback", () => {
 
   it("builds buyer dashboard data from live listings and buyer-scoped orders", async () => {
     process.env.NEXT_PUBLIC_API_BASE_URL = "http://localhost:8080";
+    process.env.NEXT_PUBLIC_SETTLEMENT_BASE_URL = "http://localhost:8083";
     globalThis.fetch = mock(async (input: RequestInfo | URL) => {
       const url = String(input);
 
@@ -158,6 +187,26 @@ describe("api fallback", () => {
         );
       }
 
+      if (url.includes("/v1/buyer/deposit-address")) {
+        return new Response(
+          JSON.stringify({
+            buyerOrgId: "buyer_1",
+            asset: "USDI",
+            address: "ckt1qyqbuyer0address",
+            onChainBalance: "13.00",
+            confirmedBalance: "13.00",
+            creditedBalance: "10.00",
+            creditedBalanceCents: 1000,
+            minimumSweepAmount: "10.00",
+            confirmationBlocks: 24,
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          },
+        );
+      }
+
       throw new Error(`unexpected url ${url}`);
     }) as unknown as typeof fetch;
 
@@ -176,6 +225,104 @@ describe("api fallback", () => {
     expect(data.rfqBook[0]?.bidCount).toBe(2);
     expect(data.rfqBook[0]?.id).toBe("rfq_live_1");
     expect(data.rfqBook[0]?.bids[0]?.id).toBe("bid_live_1");
+    expect(data.deposit?.address).toBe("ckt1qyqbuyer0address");
+    expect(data.deposit?.onChainBalance).toBe("13.00");
+  });
+
+  it("derives buyer prepaid balance from settled topups minus active prepaid commitments", async () => {
+    process.env.NEXT_PUBLIC_API_BASE_URL = "http://localhost:8080";
+    process.env.NEXT_PUBLIC_SETTLEMENT_BASE_URL = "http://localhost:8083";
+    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.endsWith("/api/v1/listings")) {
+        return new Response(JSON.stringify({ listings: [] }), {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+
+      if (url.endsWith("/api/v1/orders")) {
+        return new Response(
+          JSON.stringify({
+            orders: [
+              {
+                id: "ord_live_1",
+                buyerOrgId: "buyer_1",
+                providerOrgId: "provider_1",
+                fundingMode: "prepaid",
+                platformWallet: "platform_main",
+                status: "running",
+                milestones: [
+                  {
+                    id: "ms_1",
+                    title: "Research memo",
+                    basePriceCents: 3000,
+                    budgetCents: 3000,
+                    settledCents: 0,
+                    state: "running",
+                    disputeStatus: "none",
+                  },
+                ],
+              },
+            ],
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          },
+        );
+      }
+
+      if (url.endsWith("/api/v1/rfqs")) {
+        return new Response(JSON.stringify({ rfqs: [] }), {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+
+      if (url.includes("/v1/buyer/deposit-address")) {
+        return new Response(
+          JSON.stringify({
+            buyerOrgId: "buyer_1",
+            asset: "USDI",
+            address: "ckt1qyqbuyer0address",
+            onChainBalance: "50.00",
+            confirmedBalance: "50.00",
+            creditedBalance: "50.00",
+            creditedBalanceCents: 5000,
+            minimumSweepAmount: "10.00",
+            confirmationBlocks: 24,
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          },
+        );
+      }
+
+      if (url.startsWith(`${process.env.NEXT_PUBLIC_SETTLEMENT_BASE_URL}/v1/funding-records`)) {
+        return new Response(
+          JSON.stringify({
+            records: [{ id: "fund_1", kind: "buyer_topup", buyerOrgId: "buyer_1", amount: "50.00", state: "SETTLED" }],
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          },
+        );
+      }
+
+      throw new Error(`unexpected url ${url}`);
+    }) as unknown as typeof fetch;
+
+    const data = await getBuyerDashboardData({
+      authToken: "tok_123",
+      buyerOrgId: "buyer_1",
+      requireLive: true,
+    });
+
+    expect(data.summary.prepaidBalanceCents).toBe(2000);
   });
 
   it("builds provider dashboard data from live rfqs and provider bids", async () => {
@@ -210,7 +357,7 @@ describe("api fallback", () => {
         );
       }
 
-      if (url.endsWith("/v1/funding-records")) {
+      if (url.startsWith(`${process.env.NEXT_PUBLIC_SETTLEMENT_BASE_URL}/v1/funding-records`)) {
         return new Response(
           JSON.stringify({
             records: [{ id: "fund_1", kind: "invoice", providerOrgId: "provider_1", amount: "12.5", state: "SETTLED" }],
