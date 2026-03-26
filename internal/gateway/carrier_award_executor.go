@@ -138,7 +138,7 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 
 	_, _, err = e.app.SettleMilestone(input.Order.ID, platform.SettleMilestoneInput{
 		MilestoneID: milestone.ID,
-		Summary:     fmt.Sprintf("Carrier execution completed. Result saved to %s", reportPath),
+		Summary:     carrierMilestoneSummary(reportPath),
 		Source:      "carrier-auto",
 		OccurredAt:  e.now().UTC(),
 	})
@@ -211,6 +211,19 @@ func carrierStdoutPath(reportPath string) string {
 
 func carrierStderrPath(reportPath string) string {
 	return strings.TrimSpace(reportPath) + ".stderr.log"
+}
+
+func carrierMilestoneSummary(reportPath string) string {
+	receipt := fmt.Sprintf("Carrier execution completed. Result saved to %s", reportPath)
+	report, err := os.ReadFile(reportPath)
+	if err != nil {
+		return receipt
+	}
+	trimmed := strings.TrimSpace(string(report))
+	if trimmed == "" {
+		return receipt
+	}
+	return trimmed
 }
 
 func carrierJobInput(rfq platform.RFQ, order *core.Order, milestone *core.Milestone) string {
