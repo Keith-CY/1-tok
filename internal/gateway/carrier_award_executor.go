@@ -22,6 +22,7 @@ const (
 	carrierRunCapability            = "run_shell"
 	carrierRunTimeoutSec            = 900
 	carrierExecutionDispatchTimeout = 20 * time.Minute
+	carrierMaxConcurrentExecutions  = 4
 )
 
 type carrierAwardExecutionInput struct {
@@ -48,6 +49,7 @@ type carrierOrderAutoExecutor struct {
 	carrier          *carrier.Service
 	now              func() time.Time
 	clientForBinding func(platform.ProviderCarrierBinding) carrierclient.CodeAgentClient
+	sem              chan struct{}
 }
 
 func newCarrierOrderAutoExecutor(app *platform.App, carrierSvc *carrier.Service) *carrierOrderAutoExecutor {
@@ -58,12 +60,21 @@ func newCarrierOrderAutoExecutor(app *platform.App, carrierSvc *carrier.Service)
 		clientForBinding: func(binding platform.ProviderCarrierBinding) carrierclient.CodeAgentClient {
 			return carrierclient.NewClient(binding.CarrierBaseURL, binding.IntegrationToken)
 		},
+		sem: make(chan struct{}, carrierMaxConcurrentExecutions),
 	}
 }
 
 func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwardExecutionInput) error {
 	if input.Order == nil {
 		return fmt.Errorf("order is required")
+	}
+	if e.sem != nil {
+		select {
+		case e.sem <- struct{}{}:
+			defer func() { <-e.sem }()
+		case <-ctx.Done():
+			return fmt.Errorf("carrier execution queue full, context cancelled: %w", ctx.Err())
+		}
 	}
 	milestone := runningMilestone(input.Order)
 	if milestone == nil {
@@ -137,12 +148,10 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 		if err != nil {
 			return err
 		}
-		if updatedJob.State != carrier.JobStateCompleted {
-			err := fmt.Errorf("carrier run finished without milestone.ready callback: job=%s state=%s", job.ID, updatedJob.State)
-			_, _ = e.carrier.FailJob(job.ID, err.Error())
-			return err
+		if updatedJob.State == carrier.JobStateCompleted {
+			return nil
 		}
-		return nil
+		log.Printf("gateway: carrier callback not received for job=%s state=%s, falling back to direct completion", job.ID, updatedJob.State)
 	}
 
 	if _, err := e.carrier.CompleteJob(job.ID, reportPath); err != nil {
