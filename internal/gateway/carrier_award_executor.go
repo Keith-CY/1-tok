@@ -23,6 +23,7 @@ const (
 	carrierRunCapability            = "run_shell"
 	carrierWriteModeOverwrite       = "overwrite"
 	carrierRunTimeoutSec            = 900
+	carrierReadbackTimeoutSec       = 30
 	carrierExecutionDispatchTimeout = 20 * time.Minute
 )
 
@@ -160,6 +161,7 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 		_, _ = e.carrier.FailJob(job.ID, err.Error())
 		return err
 	}
+	summaryResult := carrierReportReadbackResult(ctx, client, input.Binding, reportDir, reportPath, runResult.Result)
 
 	if _, err := e.carrier.CompleteJob(job.ID, reportPath); err != nil {
 		return err
@@ -167,7 +169,7 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 
 	_, _, err = e.app.SettleMilestone(input.Order.ID, platform.SettleMilestoneInput{
 		MilestoneID: milestone.ID,
-		Summary:     carrierMilestoneSummary(reportPath, runResult.Result),
+		Summary:     carrierMilestoneSummary(reportPath, summaryResult),
 		Source:      "carrier-auto",
 		OccurredAt:  e.now().UTC(),
 	})
@@ -255,6 +257,41 @@ func carrierMilestoneSummary(reportPath string, result carrierclient.CodeAgentRu
 		return output
 	}
 	return receipt
+}
+
+func carrierReportReadbackResult(
+	ctx context.Context,
+	client carrierclient.CodeAgentClient,
+	binding platform.ProviderCarrierBinding,
+	reportDir, reportPath string,
+	result carrierclient.CodeAgentRunOutput,
+) carrierclient.CodeAgentRunOutput {
+	if strings.TrimSpace(result.Summary) != "" || strings.TrimSpace(result.Output) != "" {
+		return result
+	}
+
+	readback, err := client.RunCodeAgent(ctx, carrierclient.CodeAgentRunInput{
+		HostID:        strings.TrimSpace(binding.HostID),
+		AgentID:       firstNonEmptyString(strings.TrimSpace(binding.AgentID), "main"),
+		Backend:       firstNonEmptyString(strings.TrimSpace(binding.Backend), defaultCarrierBackend),
+		WorkspaceRoot: firstNonEmptyString(strings.TrimSpace(binding.WorkspaceRoot), defaultCarrierWorkspaceRoot),
+		Capability:    carrierRunCapability,
+		Command:       "bash -lc " + shellQuote("cat " + shellQuote(reportPath)),
+		CWD:           reportDir,
+		TimeoutSec:    carrierReadbackTimeoutSec,
+	})
+	if err != nil {
+		log.Printf("gateway: carrier report readback failed for binding=%s path=%s: %v", binding.ID, reportPath, err)
+		return result
+	}
+	if decision := strings.TrimSpace(readback.Result.PolicyDecision); decision != "" && !strings.EqualFold(decision, "allow") {
+		log.Printf("gateway: carrier report readback rejected for binding=%s path=%s: ok=%t decision=%s", binding.ID, reportPath, readback.Result.OK, decision)
+		return result
+	}
+	if strings.TrimSpace(readback.Result.Summary) == "" && strings.TrimSpace(readback.Result.Output) == "" {
+		return result
+	}
+	return readback.Result
 }
 
 func carrierJobInput(rfq platform.RFQ, order *core.Order, milestone *core.Milestone) string {
