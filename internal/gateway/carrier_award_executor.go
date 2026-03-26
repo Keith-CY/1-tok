@@ -93,8 +93,7 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 	stdoutPath := carrierStdoutPath(reportPath)
 	stderrPath := carrierStderrPath(reportPath)
 	reportDir := path.Dir(reportPath)
-	callbackConfig := resolveCarrierReportCallbackConfig(input.Binding, binding.ID, job.ID, reportPath)
-	command := buildCarrierRunCommand(reportDir, reportPath, buildCarrierPrompt(input.RFQ, input.Order, milestone), callbackConfig)
+	command := buildCarrierRunCommand(reportDir, reportPath, buildCarrierPrompt(input.RFQ, input.Order, milestone), carrierReportCallbackConfig{})
 	hostID := strings.TrimSpace(input.Binding.HostID)
 	agentID := firstNonEmptyString(strings.TrimSpace(input.Binding.AgentID), "main")
 	backend := firstNonEmptyString(strings.TrimSpace(input.Binding.Backend), defaultCarrierBackend)
@@ -131,18 +130,6 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 		err := buildCarrierCommandFailure(stdoutPath, stderrPath)
 		_, _ = e.carrier.FailJob(job.ID, err.Error())
 		return err
-	}
-	if callbackConfig.Enabled() {
-		updatedJob, err := e.carrier.GetJob(job.ID)
-		if err != nil {
-			return err
-		}
-		if updatedJob.State != carrier.JobStateCompleted {
-			err := fmt.Errorf("carrier run finished without milestone.ready callback: job=%s state=%s", job.ID, updatedJob.State)
-			_, _ = e.carrier.FailJob(job.ID, err.Error())
-			return err
-		}
-		return nil
 	}
 
 	if _, err := e.carrier.CompleteJob(job.ID, reportPath); err != nil {
