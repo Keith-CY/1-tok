@@ -333,10 +333,24 @@ Proceed with the shortlisted provider.
 		t.Fatalf("milestone summary = %q, want execution output markdown", updatedOrder.Milestones[0].Summary)
 	}
 
-	if len(client.runInputs) != 1 {
-		t.Fatalf("run inputs = %d, want 1", len(client.runInputs))
+	if len(client.runInputs) != 2 {
+		t.Fatalf("run inputs = %d, want 2", len(client.runInputs))
 	}
-	runInput := client.runInputs[0]
+	promptInput := client.runInputs[0]
+	if promptInput.Capability != "write_file" {
+		t.Fatalf("prompt capability = %s, want write_file", promptInput.Capability)
+	}
+	if promptInput.Path != "/workspace/1tok/"+order.ID+"/ms_1/prompt.md" {
+		t.Fatalf("prompt path = %q, want prompt path", promptInput.Path)
+	}
+	if promptInput.WriteMode != "overwrite" {
+		t.Fatalf("prompt write mode = %q, want overwrite", promptInput.WriteMode)
+	}
+	if !strings.Contains(promptInput.Content, "Do not browse the web or use external network tools.") {
+		t.Fatalf("prompt content = %q, want no-browsing instruction", promptInput.Content)
+	}
+
+	runInput := client.runInputs[1]
 	if runInput.HostID != "host_1" || runInput.AgentID != "agent_1" || runInput.Backend != "codex" {
 		t.Fatalf("unexpected run input routing: %+v", runInput)
 	}
@@ -370,14 +384,17 @@ Proceed with the shortlisted provider.
 	if !strings.Contains(runInput.Command, "--cd") {
 		t.Fatalf("command = %q, want explicit codex workdir", runInput.Command)
 	}
-	if !strings.Contains(runInput.Command, "--full-auto") {
-		t.Fatalf("command = %q, want full-auto codex run", runInput.Command)
+	if !strings.Contains(runInput.Command, "-a never") {
+		t.Fatalf("command = %q, want non-interactive codex run", runInput.Command)
 	}
 	if !strings.Contains(runInput.Command, "; cat ") {
 		t.Fatalf("command = %q, want sync report capture", runInput.Command)
 	}
-	if !strings.Contains(runInput.Command, "Do not browse the web or use external network tools.") {
-		t.Fatalf("command = %q, want no-browsing carrier prompt", runInput.Command)
+	if !strings.Contains(runInput.Command, "prompt=$(cat '/workspace/1tok/"+order.ID+"/ms_1/prompt.md')") {
+		t.Fatalf("command = %q, want prompt file staging", runInput.Command)
+	}
+	if strings.Contains(runInput.Command, "Do not browse the web or use external network tools.") {
+		t.Fatalf("command = %q, unexpectedly inlined prompt text", runInput.Command)
 	}
 
 	carrierBinding, err := carrierSvc.GetBinding(order.ID, "ms_1")
@@ -498,6 +515,9 @@ Start with Vendor A and benchmark Vendor B in reserve.
 
 	client := &stubCodeAgentClient{
 		runHook: func(input carrierclient.CodeAgentRunInput) error {
+			if input.Capability != carrierRunCapability {
+				return nil
+			}
 			binding, err := carrierSvc.GetBinding(order.ID, "ms_1")
 			if err != nil {
 				return err
@@ -560,16 +580,22 @@ Start with Vendor A and benchmark Vendor B in reserve.
 	if updatedOrder.Milestones[0].Summary != report {
 		t.Fatalf("milestone summary = %q, want callback markdown", updatedOrder.Milestones[0].Summary)
 	}
-	if len(client.runInputs) != 1 {
-		t.Fatalf("run inputs = %d, want 1", len(client.runInputs))
+	if len(client.runInputs) != 2 {
+		t.Fatalf("run inputs = %d, want 2", len(client.runInputs))
 	}
-	if !strings.Contains(client.runInputs[0].Command, "/api/v1/carrier/callbacks/events") {
-		t.Fatalf("command = %q, want carrier callback endpoint", client.runInputs[0].Command)
+	if client.runInputs[0].Capability != "write_file" {
+		t.Fatalf("prompt capability = %s, want write_file", client.runInputs[0].Capability)
 	}
-	if !strings.Contains(client.runInputs[0].Command, "X-Carrier-Key-Id") {
-		t.Fatalf("command = %q, want callback key header", client.runInputs[0].Command)
+	if !strings.Contains(client.runInputs[1].Command, "/api/v1/carrier/callbacks/events") {
+		t.Fatalf("command = %q, want carrier callback endpoint", client.runInputs[1].Command)
 	}
-	assertCarrierStrictPolicySafeCommand(t, client.runInputs[0].Command)
+	if !strings.Contains(client.runInputs[1].Command, "X-Carrier-Key-Id") {
+		t.Fatalf("command = %q, want callback key header", client.runInputs[1].Command)
+	}
+	if strings.Contains(client.runInputs[1].Command, "Return only the delivery note markdown.") {
+		t.Fatalf("command = %q, unexpectedly inlined prompt text", client.runInputs[1].Command)
+	}
+	assertCarrierStrictPolicySafeCommand(t, client.runInputs[1].Command)
 }
 
 func TestBuildCarrierRunCommandWithCallbackAvoidsStrictPolicyAskPatterns(t *testing.T) {
@@ -577,8 +603,8 @@ func TestBuildCarrierRunCommandWithCallbackAvoidsStrictPolicyAskPatterns(t *test
 
 	command := buildCarrierRunCommand(
 		"/workspace/1tok/ord_99/ms_1",
+		"/workspace/1tok/ord_99/ms_1/prompt.md",
 		"/workspace/1tok/ord_99/ms_1/result.md",
-		"Return only the delivery note markdown.",
 		carrierReportCallbackConfig{
 			BaseURL:        "https://api.1-tok.pro",
 			BindingID:      "bind_1",
@@ -591,6 +617,9 @@ func TestBuildCarrierRunCommandWithCallbackAvoidsStrictPolicyAskPatterns(t *test
 
 	if !strings.Contains(command, "/api/v1/carrier/callbacks/events") {
 		t.Fatalf("command = %q, want callback endpoint", command)
+	}
+	if !strings.Contains(command, "prompt=$(cat '/workspace/1tok/ord_99/ms_1/prompt.md')") {
+		t.Fatalf("command = %q, want prompt file staging", command)
 	}
 	assertCarrierStrictPolicySafeCommand(t, command)
 }

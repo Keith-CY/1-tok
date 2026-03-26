@@ -19,7 +19,9 @@ import (
 const (
 	defaultCarrierWorkspaceRoot     = "/workspace"
 	defaultCarrierBackend           = "codex"
+	carrierWriteFileCapability      = "write_file"
 	carrierRunCapability            = "run_shell"
+	carrierWriteModeOverwrite       = "overwrite"
 	carrierRunTimeoutSec            = 900
 	carrierExecutionDispatchTimeout = 20 * time.Minute
 )
@@ -93,8 +95,10 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 	stdoutPath := carrierStdoutPath(reportPath)
 	stderrPath := carrierStderrPath(reportPath)
 	reportDir := path.Dir(reportPath)
+	promptPath := carrierPromptPath(reportDir)
+	prompt := buildCarrierPrompt(input.RFQ, input.Order, milestone)
 	callbackConfig := resolveCarrierReportCallbackConfig(input.Binding, binding.ID, job.ID, reportPath)
-	command := buildCarrierRunCommand(reportDir, reportPath, buildCarrierPrompt(input.RFQ, input.Order, milestone), callbackConfig)
+	command := buildCarrierRunCommand(reportDir, promptPath, reportPath, callbackConfig)
 	hostID := strings.TrimSpace(input.Binding.HostID)
 	agentID := firstNonEmptyString(strings.TrimSpace(input.Binding.AgentID), "main")
 	backend := firstNonEmptyString(strings.TrimSpace(input.Binding.Backend), defaultCarrierBackend)
@@ -102,6 +106,31 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 	client := e.clientForBinding(input.Binding)
 
 	if err := ensureCarrierCodeAgentReady(ctx, client, hostID, agentID, backend, workspaceRoot); err != nil {
+		_, _ = e.carrier.FailJob(job.ID, err.Error())
+		return err
+	}
+
+	writePromptResult, err := client.RunCodeAgent(ctx, carrierclient.CodeAgentRunInput{
+		HostID:        hostID,
+		AgentID:       agentID,
+		Backend:       backend,
+		WorkspaceRoot: workspaceRoot,
+		Capability:    carrierWriteFileCapability,
+		Path:          promptPath,
+		Content:       prompt,
+		WriteMode:     carrierWriteModeOverwrite,
+	})
+	if err != nil {
+		_, _ = e.carrier.FailJob(job.ID, err.Error())
+		return err
+	}
+	if !strings.EqualFold(strings.TrimSpace(writePromptResult.Result.PolicyDecision), "allow") {
+		err := fmt.Errorf("carrier policy decision rejected prompt write: ok=%t decision=%s", writePromptResult.Result.OK, writePromptResult.Result.PolicyDecision)
+		_, _ = e.carrier.FailJob(job.ID, err.Error())
+		return err
+	}
+	if !writePromptResult.Result.OK {
+		err := fmt.Errorf("carrier prompt write failed: path=%s", promptPath)
 		_, _ = e.carrier.FailJob(job.ID, err.Error())
 		return err
 	}
@@ -217,6 +246,10 @@ func carrierStderrPath(reportPath string) string {
 	return strings.TrimSpace(reportPath) + ".stderr.log"
 }
 
+func carrierPromptPath(reportDir string) string {
+	return path.Join(strings.TrimSpace(reportDir), "prompt.md")
+}
+
 func carrierMilestoneSummary(reportPath string, result carrierclient.CodeAgentRunOutput) string {
 	receipt := fmt.Sprintf("Carrier execution completed. Result saved to %s", reportPath)
 	if summary := strings.TrimSpace(result.Summary); summary != "" {
@@ -264,7 +297,7 @@ func buildCarrierPrompt(rfq platform.RFQ, order *core.Order, milestone *core.Mil
 	return builder.String()
 }
 
-func buildCarrierRunCommand(reportDir, reportPath, prompt string, callbackConfig carrierReportCallbackConfig) string {
+func buildCarrierRunCommand(reportDir, promptPath, reportPath string, callbackConfig carrierReportCallbackConfig) string {
 	segments := []string{
 		"set -e",
 		"export HOME=/home/carrier",
@@ -272,11 +305,11 @@ func buildCarrierRunCommand(reportDir, reportPath, prompt string, callbackConfig
 		". /home/carrier/.bash_profile >/dev/null 2>&1 || true",
 		fmt.Sprintf("mkdir -p %s", shellQuote(reportDir)),
 		fmt.Sprintf("cd %s", shellQuote(reportDir)),
+		fmt.Sprintf("prompt=$(cat %s)", shellQuote(promptPath)),
 		fmt.Sprintf(
-			"codex exec --cd %s --skip-git-repo-check -a never --sandbox workspace-write --output-last-message %s %s",
+			"codex exec --cd %s --skip-git-repo-check -a never --sandbox workspace-write --output-last-message %s \"$prompt\"",
 			shellQuote(reportDir),
 			shellQuote(reportPath),
-			shellQuote(prompt),
 		),
 	}
 	if callbackConfig.Enabled() {
