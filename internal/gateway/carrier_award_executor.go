@@ -93,7 +93,8 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 	stdoutPath := carrierStdoutPath(reportPath)
 	stderrPath := carrierStderrPath(reportPath)
 	reportDir := path.Dir(reportPath)
-	command := buildCarrierRunCommand(reportDir, reportPath, buildCarrierPrompt(input.RFQ, input.Order, milestone), carrierReportCallbackConfig{})
+	callbackConfig := resolveCarrierReportCallbackConfig(input.Binding, binding.ID, job.ID, reportPath)
+	command := buildCarrierRunCommand(reportDir, reportPath, buildCarrierPrompt(input.RFQ, input.Order, milestone), callbackConfig)
 	hostID := strings.TrimSpace(input.Binding.HostID)
 	agentID := firstNonEmptyString(strings.TrimSpace(input.Binding.AgentID), "main")
 	backend := firstNonEmptyString(strings.TrimSpace(input.Binding.Backend), defaultCarrierBackend)
@@ -134,6 +135,9 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 
 	if _, err := e.carrier.CompleteJob(job.ID, reportPath); err != nil {
 		return err
+	}
+	if callbackConfig.Enabled() {
+		return nil
 	}
 
 	_, _, err = e.app.SettleMilestone(input.Order.ID, platform.SettleMilestoneInput{
