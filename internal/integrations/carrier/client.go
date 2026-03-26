@@ -90,6 +90,7 @@ type Client struct {
 }
 
 const defaultCodeAgentGatewayTimeout = 2 * time.Minute
+const defaultCodeAgentRunTimeoutBuffer = 30 * time.Second
 
 func NewClient(baseURL, apiToken string) *Client {
 	trimmed := strings.TrimRight(strings.TrimSpace(baseURL), "/")
@@ -195,13 +196,17 @@ func (c *Client) RunCodeAgent(ctx context.Context, input CodeAgentRunInput) (Cod
 	var response struct {
 		Run CodeAgentRunResult `json:"run"`
 	}
-	if err := c.doJSON(ctx, http.MethodPost, codeAgentPath(input.HostID, input.AgentID, "run"), nil, body, &response); err != nil {
+	if err := c.doJSONWithClient(c.httpClientForRun(input.TimeoutSec), ctx, http.MethodPost, codeAgentPath(input.HostID, input.AgentID, "run"), nil, body, &response); err != nil {
 		return CodeAgentRunResult{}, err
 	}
 	return response.Run, nil
 }
 
 func (c *Client) doJSON(ctx context.Context, method, path string, query url.Values, body any, target any) error {
+	return c.doJSONWithClient(c.httpClient, ctx, method, path, query, body, target)
+}
+
+func (c *Client) doJSONWithClient(client *http.Client, ctx context.Context, method, path string, query url.Values, body any, target any) error {
 	var reader io.Reader
 	if body != nil {
 		payload, err := json.Marshal(body)
@@ -227,7 +232,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, query url.Valu
 		req.Header.Set("Authorization", "Bearer "+c.apiToken)
 	}
 
-	res, err := c.httpClient.Do(req)
+	res, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -242,6 +247,15 @@ func (c *Client) doJSON(ctx context.Context, method, path string, query url.Valu
 	}
 
 	return json.Unmarshal(responseBody, target)
+}
+
+func (c *Client) httpClientForRun(timeoutSec int) *http.Client {
+	if timeoutSec <= 0 {
+		return c.httpClient
+	}
+	runClient := *c.httpClient
+	runClient.Timeout = time.Duration(timeoutSec)*time.Second + defaultCodeAgentRunTimeoutBuffer
+	return &runClient
 }
 
 func codeAgentPath(hostID, agentID, action string) string {
