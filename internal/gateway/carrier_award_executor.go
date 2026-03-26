@@ -273,7 +273,7 @@ func buildCarrierRunCommand(reportDir, reportPath, prompt string, callbackConfig
 		fmt.Sprintf("mkdir -p %s", shellQuote(reportDir)),
 		fmt.Sprintf("cd %s", shellQuote(reportDir)),
 		fmt.Sprintf(
-			"codex exec --cd %s --skip-git-repo-check --full-auto --output-last-message %s %s",
+			"codex exec --cd %s --skip-git-repo-check -a never --sandbox workspace-write --output-last-message %s %s",
 			shellQuote(reportDir),
 			shellQuote(reportPath),
 			shellQuote(prompt),
