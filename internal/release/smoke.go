@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -46,9 +47,13 @@ type smokeClient struct {
 
 type statusError struct {
 	StatusCode int
+	Body       string
 }
 
 func (e statusError) Error() string {
+	if body := strings.TrimSpace(e.Body); body != "" {
+		return fmt.Sprintf("unexpected status %d: %s", e.StatusCode, body)
+	}
 	return fmt.Sprintf("unexpected status %d", e.StatusCode)
 }
 
@@ -494,13 +499,20 @@ func (c *smokeClient) postJSONWithHeaders(ctx context.Context, url string, heade
 		return err
 	}
 	defer res.Body.Close()
+	bodyBytes, err := io.ReadAll(io.LimitReader(res.Body, 64<<10))
+	if err != nil {
+		return err
+	}
 	if res.StatusCode >= http.StatusBadRequest {
-		return statusError{StatusCode: res.StatusCode}
+		return statusError{StatusCode: res.StatusCode, Body: string(bodyBytes)}
 	}
 	if target == nil {
 		return nil
 	}
-	return json.NewDecoder(res.Body).Decode(target)
+	if len(bodyBytes) == 0 {
+		return nil
+	}
+	return json.Unmarshal(bodyBytes, target)
 }
 
 func isStatusCode(err error, statusCode int) bool {
