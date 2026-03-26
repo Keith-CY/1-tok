@@ -21,4 +21,4 @@ chown carrier:carrier /workspace
 export LANG=C.UTF-8
 export LC_ALL=C.UTF-8
 
-exec /usr/sbin/sshd -D -e -p "${SSH_PORT:-22}"
+exec /usr/sbin/sshd -D -e -p "${SSH_PORT:-22}" -o "MaxStartups=100:30:200"
