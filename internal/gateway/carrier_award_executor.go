@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
 	"path"
 	"strings"
 	"time"
@@ -138,7 +137,7 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 
 	_, _, err = e.app.SettleMilestone(input.Order.ID, platform.SettleMilestoneInput{
 		MilestoneID: milestone.ID,
-		Summary:     carrierMilestoneSummary(reportPath),
+		Summary:     carrierMilestoneSummary(reportPath, runResult.Result),
 		Source:      "carrier-auto",
 		OccurredAt:  e.now().UTC(),
 	})
@@ -213,17 +212,15 @@ func carrierStderrPath(reportPath string) string {
 	return strings.TrimSpace(reportPath) + ".stderr.log"
 }
 
-func carrierMilestoneSummary(reportPath string) string {
+func carrierMilestoneSummary(reportPath string, result carrierclient.CodeAgentRunOutput) string {
 	receipt := fmt.Sprintf("Carrier execution completed. Result saved to %s", reportPath)
-	report, err := os.ReadFile(reportPath)
-	if err != nil {
-		return receipt
+	if summary := strings.TrimSpace(result.Summary); summary != "" {
+		return summary
 	}
-	trimmed := strings.TrimSpace(string(report))
-	if trimmed == "" {
-		return receipt
+	if output := strings.TrimSpace(result.Output); output != "" {
+		return output
 	}
-	return trimmed
+	return receipt
 }
 
 func carrierJobInput(rfq platform.RFQ, order *core.Order, milestone *core.Milestone) string {
@@ -279,6 +276,8 @@ func buildCarrierRunCommand(reportDir, reportPath, prompt string, callbackConfig
 	}
 	if callbackConfig.Enabled() {
 		segments = append(segments, buildCarrierCallbackCommand(callbackConfig))
+	} else {
+		segments = append(segments, fmt.Sprintf("cat %s", shellQuote(reportPath)))
 	}
 	inner := strings.Join(segments, "; ")
 	return "bash -lc " + shellQuote(inner)

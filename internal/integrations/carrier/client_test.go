@@ -297,6 +297,12 @@ func TestRunCodeAgent_Success(t *testing.T) {
 	if result.Backend != "codex" {
 		t.Errorf("backend = %s", result.Backend)
 	}
+	if !result.Result.Completed {
+		t.Error("expected completed result")
+	}
+	if result.Result.Output != "done" {
+		t.Errorf("output = %q, want done", result.Result.Output)
+	}
 }
 
 func TestGetCodeAgentHealth_WithQueryParams(t *testing.T) {

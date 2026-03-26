@@ -205,6 +205,16 @@ func TestHandleAwardRFQDispatchesCarrierExecutionForActiveProviderBinding(t *tes
 func TestCarrierAwardExecutorSettlesOrderAfterSuccessfulRun(t *testing.T) {
 	app := platform.NewAppWithMemory()
 	carrierSvc := carrier.NewService()
+	report := strings.TrimSpace(`
+# Summary
+Shortlisted one provider.
+
+## Findings
+- Pricing fit the posted budget.
+
+## Recommendation
+Proceed with the shortlisted provider.
+`)
 
 	providerBinding, err := app.RegisterCarrierBinding(platform.ProviderCarrierBinding{
 		ProviderOrgID:  "provider_1",
@@ -285,6 +295,7 @@ func TestCarrierAwardExecutorSettlesOrderAfterSuccessfulRun(t *testing.T) {
 			Backend: "codex",
 			Result: carrierclient.CodeAgentRunOutput{
 				OK:             true,
+				Output:         report,
 				PolicyDecision: "allow",
 			},
 		},
@@ -318,11 +329,8 @@ func TestCarrierAwardExecutorSettlesOrderAfterSuccessfulRun(t *testing.T) {
 	if updatedOrder.Milestones[0].State != "settled" {
 		t.Fatalf("milestone state = %s, want settled", updatedOrder.Milestones[0].State)
 	}
-	if !strings.Contains(updatedOrder.Milestones[0].Summary, "Carrier execution completed.") {
-		t.Fatalf("milestone summary = %q, want carrier completion summary", updatedOrder.Milestones[0].Summary)
-	}
-	if !strings.Contains(updatedOrder.Milestones[0].Summary, "/workspace/1tok/"+order.ID+"/ms_1/result.md") {
-		t.Fatalf("milestone summary = %q, want result path", updatedOrder.Milestones[0].Summary)
+	if updatedOrder.Milestones[0].Summary != report {
+		t.Fatalf("milestone summary = %q, want execution output markdown", updatedOrder.Milestones[0].Summary)
 	}
 
 	if len(client.runInputs) != 1 {
@@ -364,6 +372,9 @@ func TestCarrierAwardExecutorSettlesOrderAfterSuccessfulRun(t *testing.T) {
 	}
 	if !strings.Contains(runInput.Command, "--full-auto") {
 		t.Fatalf("command = %q, want full-auto codex run", runInput.Command)
+	}
+	if !strings.Contains(runInput.Command, "; cat ") {
+		t.Fatalf("command = %q, want sync report capture", runInput.Command)
 	}
 	if !strings.Contains(runInput.Command, "Do not browse the web or use external network tools.") {
 		t.Fatalf("command = %q, want no-browsing carrier prompt", runInput.Command)
