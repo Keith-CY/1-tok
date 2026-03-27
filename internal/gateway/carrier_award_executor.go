@@ -20,6 +20,7 @@ const (
 	defaultCarrierWorkspaceRoot     = "/workspace"
 	defaultCarrierBackend           = "codex"
 	carrierWriteFileCapability      = "write_file"
+	carrierReadFileCapability       = "read_file"
 	carrierRunCapability            = "run_shell"
 	carrierWriteModeOverwrite       = "overwrite"
 	carrierRunTimeoutSec            = 900
@@ -310,6 +311,27 @@ func carrierReportReadbackResult(
 		return result
 	}
 
+	readFile, err := client.RunCodeAgent(ctx, carrierclient.CodeAgentRunInput{
+		HostID:        strings.TrimSpace(binding.HostID),
+		AgentID:       firstNonEmptyString(strings.TrimSpace(binding.AgentID), "main"),
+		Backend:       firstNonEmptyString(strings.TrimSpace(binding.Backend), defaultCarrierBackend),
+		WorkspaceRoot: firstNonEmptyString(strings.TrimSpace(binding.WorkspaceRoot), defaultCarrierWorkspaceRoot),
+		Capability:    carrierReadFileCapability,
+		Path:          reportPath,
+		TimeoutSec:    carrierReadbackTimeoutSec,
+	})
+	if err != nil {
+		log.Printf("gateway: carrier read_file failed for binding=%s path=%s: %v", binding.ID, reportPath, err)
+	} else {
+		if decision := strings.TrimSpace(readFile.Result.PolicyDecision); decision != "" && !strings.EqualFold(decision, "allow") {
+			log.Printf("gateway: carrier read_file rejected for binding=%s path=%s: ok=%t decision=%s", binding.ID, reportPath, readFile.Result.OK, decision)
+		} else if inline := carrierInlineSummary(reportPath, readFile.Result); inline != "" {
+			return readFile.Result
+		} else {
+			log.Printf("gateway: carrier read_file returned no inline summary for binding=%s path=%s: output=%q summary=%q", binding.ID, reportPath, strings.TrimSpace(readFile.Result.Output), strings.TrimSpace(readFile.Result.Summary))
+		}
+	}
+
 	readback, err := client.RunCodeAgent(ctx, carrierclient.CodeAgentRunInput{
 		HostID:        strings.TrimSpace(binding.HostID),
 		AgentID:       firstNonEmptyString(strings.TrimSpace(binding.AgentID), "main"),
@@ -332,6 +354,7 @@ func carrierReportReadbackResult(
 		return result
 	}
 	if carrierInlineSummary(reportPath, readback.Result) == "" {
+		log.Printf("gateway: carrier run_shell readback returned no inline summary for binding=%s path=%s: output=%q summary=%q", binding.ID, reportPath, strings.TrimSpace(readback.Result.Output), strings.TrimSpace(readback.Result.Summary))
 		return result
 	}
 	return readback.Result
