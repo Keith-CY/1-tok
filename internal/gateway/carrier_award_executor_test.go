@@ -384,8 +384,8 @@ Proceed with the shortlisted provider.
 	if !strings.Contains(runInput.Command, "--cd") {
 		t.Fatalf("command = %q, want explicit codex workdir", runInput.Command)
 	}
-	if !strings.Contains(runInput.Command, "-a never") {
-		t.Fatalf("command = %q, want non-interactive codex run", runInput.Command)
+	if strings.Contains(runInput.Command, "-a never") {
+		t.Fatalf("command = %q, want legacy codex approval flag removed", runInput.Command)
 	}
 	if strings.Contains(runInput.Command, "--sandbox") {
 		t.Fatalf("command = %q, want sandbox selection to come from remote codex config", runInput.Command)
@@ -636,7 +636,7 @@ func TestBuildCarrierRunCommandWithCallbackAvoidsStrictPolicyAskPatterns(t *test
 	if !strings.Contains(command, "set -eo pipefail") {
 		t.Fatalf("command = %q, want pipefail", command)
 	}
-	if !strings.Contains(command, "codex exec --cd '/workspace/1tok/ord_99/ms_1' --skip-git-repo-check -a never \"$prompt\" | tee '/workspace/1tok/ord_99/ms_1/result.md'") {
+	if !strings.Contains(command, "codex exec --cd '/workspace/1tok/ord_99/ms_1' --skip-git-repo-check \"$prompt\" | tee '/workspace/1tok/ord_99/ms_1/result.md'") {
 		t.Fatalf("command = %q, want stdout tee capture", command)
 	}
 	assertCarrierStrictPolicySafeCommand(t, command)
