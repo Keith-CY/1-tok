@@ -21,7 +21,6 @@ import (
 	"github.com/chenyu/1-tok/internal/validation"
 	"io"
 	"net/http"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
