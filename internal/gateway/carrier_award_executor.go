@@ -99,7 +99,7 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 	promptPath := carrierPromptPath(reportDir)
 	prompt := buildCarrierPrompt(input.RFQ, input.Order, milestone)
 	callbackConfig := resolveCarrierReportCallbackConfig(input.Binding, binding.ID, job.ID, reportPath)
-	command := buildCarrierRunCommand(reportDir, promptPath, reportPath, callbackConfig)
+	command := buildCarrierRunCommand(reportDir, promptPath, reportPath, stdoutPath, stderrPath, callbackConfig)
 	hostID := strings.TrimSpace(input.Binding.HostID)
 	agentID := firstNonEmptyString(strings.TrimSpace(input.Binding.AgentID), "main")
 	backend := firstNonEmptyString(strings.TrimSpace(input.Binding.Backend), defaultCarrierBackend)
@@ -145,8 +145,6 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 		Command:       command,
 		CWD:           reportDir,
 		TimeoutSec:    carrierRunTimeoutSec,
-		StdoutPath:    stdoutPath,
-		StderrPath:    stderrPath,
 	})
 	if err != nil {
 		_, _ = e.carrier.FailJob(job.ID, err.Error())
@@ -287,7 +285,7 @@ func carrierReportReadbackResult(
 	reportDir, reportPath string,
 	result carrierclient.CodeAgentRunOutput,
 ) carrierclient.CodeAgentRunOutput {
-	if strings.TrimSpace(result.Summary) != "" {
+	if carrierInlineSummary(reportPath, result) != "" {
 		return result
 	}
 
@@ -309,7 +307,7 @@ func carrierReportReadbackResult(
 		log.Printf("gateway: carrier report readback rejected for binding=%s path=%s: ok=%t decision=%s", binding.ID, reportPath, readback.Result.OK, decision)
 		return result
 	}
-	if strings.TrimSpace(readback.Result.Summary) == "" && strings.TrimSpace(readback.Result.Output) == "" {
+	if carrierInlineSummary(reportPath, readback.Result) == "" {
 		return result
 	}
 	return readback.Result
@@ -351,25 +349,27 @@ func buildCarrierPrompt(rfq platform.RFQ, order *core.Order, milestone *core.Mil
 	return builder.String()
 }
 
-func buildCarrierRunCommand(reportDir, promptPath, reportPath string, callbackConfig carrierReportCallbackConfig) string {
+func buildCarrierRunCommand(reportDir, promptPath, reportPath, stdoutPath, stderrPath string, callbackConfig carrierReportCallbackConfig) string {
 	segments := []string{
 		"set -e",
 		"export HOME=/home/carrier",
 		"export CODEX_HOME=/home/carrier/.codex",
 		". /home/carrier/.bash_profile >/dev/null 2>&1 || true",
 		fmt.Sprintf("mkdir -p %s", shellQuote(reportDir)),
+		fmt.Sprintf(": > %s", shellQuote(stdoutPath)),
+		fmt.Sprintf(": > %s", shellQuote(stderrPath)),
+		fmt.Sprintf("exec 2>>%s", shellQuote(stderrPath)),
 		fmt.Sprintf("cd %s", shellQuote(reportDir)),
 		fmt.Sprintf("prompt=$(cat %s)", shellQuote(promptPath)),
 		fmt.Sprintf(
-			"codex exec --cd %s --skip-git-repo-check -a never --sandbox workspace-write --output-last-message %s \"$prompt\"",
+			"codex exec --cd %s --skip-git-repo-check -a never --sandbox workspace-write --output-last-message %s \"$prompt\" >/dev/null",
 			shellQuote(reportDir),
 			shellQuote(reportPath),
 		),
+		fmt.Sprintf("tee %s < %s", shellQuote(stdoutPath), shellQuote(reportPath)),
 	}
 	if callbackConfig.Enabled() {
 		segments = append(segments, buildCarrierCallbackCommand(callbackConfig))
-	} else {
-		segments = append(segments, fmt.Sprintf("cat %s", shellQuote(reportPath)))
 	}
 	inner := strings.Join(segments, "; ")
 	return "bash -lc " + shellQuote(inner)

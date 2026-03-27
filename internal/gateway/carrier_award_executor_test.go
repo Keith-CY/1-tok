@@ -357,11 +357,11 @@ Proceed with the shortlisted provider.
 	if runInput.Capability != "run_shell" {
 		t.Fatalf("capability = %s, want run_shell", runInput.Capability)
 	}
-	if runInput.StdoutPath != "/workspace/1tok/"+order.ID+"/ms_1/result.md.stdout.log" {
-		t.Fatalf("stdout path = %q, want report stdout path", runInput.StdoutPath)
+	if runInput.StdoutPath != "" {
+		t.Fatalf("stdout path = %q, want inline output capture", runInput.StdoutPath)
 	}
-	if runInput.StderrPath != "/workspace/1tok/"+order.ID+"/ms_1/result.md.stderr.log" {
-		t.Fatalf("stderr path = %q, want report stderr path", runInput.StderrPath)
+	if runInput.StderrPath != "" {
+		t.Fatalf("stderr path = %q, want shell-managed stderr capture", runInput.StderrPath)
 	}
 	if runInput.CWD != "/workspace/1tok/"+order.ID+"/ms_1" {
 		t.Fatalf("cwd = %q, want report directory", runInput.CWD)
@@ -387,8 +387,11 @@ Proceed with the shortlisted provider.
 	if !strings.Contains(runInput.Command, "-a never") {
 		t.Fatalf("command = %q, want non-interactive codex run", runInput.Command)
 	}
-	if !strings.Contains(runInput.Command, "; cat ") {
-		t.Fatalf("command = %q, want sync report capture", runInput.Command)
+	if !strings.Contains(runInput.Command, "tee /workspace/1tok/"+order.ID+"/ms_1/result.md.stdout.log < /workspace/1tok/"+order.ID+"/ms_1/result.md") {
+		t.Fatalf("command = %q, want tee-based report capture", runInput.Command)
+	}
+	if !strings.Contains(runInput.Command, "exec 2>>/workspace/1tok/"+order.ID+"/ms_1/result.md.stderr.log") {
+		t.Fatalf("command = %q, want shell-managed stderr log", runInput.Command)
 	}
 	if !strings.Contains(runInput.Command, "prompt=$(cat '/workspace/1tok/"+order.ID+"/ms_1/prompt.md')") {
 		t.Fatalf("command = %q, want prompt file staging", runInput.Command)
