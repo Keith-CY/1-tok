@@ -162,8 +162,17 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 		return err
 	}
 	summaryResult := carrierReportReadbackResult(ctx, client, input.Binding, reportDir, reportPath, runResult.Result)
+	if currentJob, err := e.carrier.GetJob(job.ID); err == nil {
+		if output := strings.TrimSpace(currentJob.Output); output != "" {
+			summaryResult.Output = output
+		}
+	}
 
-	if _, err := e.carrier.CompleteJob(job.ID, reportPath); err != nil {
+	jobOutput := reportPath
+	if inline := carrierInlineSummary(reportPath, summaryResult); inline != "" {
+		jobOutput = inline
+	}
+	if _, err := e.carrier.CompleteJob(job.ID, jobOutput); err != nil {
 		return err
 	}
 
@@ -250,13 +259,24 @@ func carrierPromptPath(reportDir string) string {
 
 func carrierMilestoneSummary(reportPath string, result carrierclient.CodeAgentRunOutput) string {
 	receipt := fmt.Sprintf("Carrier execution completed. Result saved to %s", reportPath)
+	if summary := carrierInlineSummary(reportPath, result); summary != "" {
+		return summary
+	}
+	return receipt
+}
+
+func carrierInlineSummary(reportPath string, result carrierclient.CodeAgentRunOutput) string {
 	if summary := strings.TrimSpace(result.Summary); summary != "" {
 		return summary
 	}
-	if output := strings.TrimSpace(result.Output); output != "" {
-		return output
+	output := strings.TrimSpace(result.Output)
+	if output == "" || output == reportPath {
+		return ""
 	}
-	return receipt
+	if strings.HasPrefix(output, "/workspace/") && !strings.Contains(output, "\n") {
+		return ""
+	}
+	return output
 }
 
 func carrierReportReadbackResult(
@@ -371,7 +391,7 @@ func buildCarrierCallbackCommand(config carrierReportCallbackConfig) string {
   const envelope = {
     eventId: jobId + "-ready",
     sequence: 1,
-    eventType: "milestone.ready",
+    eventType: "job.completed",
     bindingId,
     carrierExecutionId: jobId,
     createdAt: new Date().toISOString(),
@@ -400,14 +420,17 @@ func buildCarrierCallbackCommand(config carrierReportCallbackConfig) string {
   });
 })().catch((error) => {
   console.error(error && error.stack ? error.stack : String(error));
-  process.exit(1);
+  process.exit(0);
 });
 `, mustJSONJS(config.BaseURL), mustJSONJS(config.JobID), mustJSONJS(config.BindingID), mustJSONJS(config.ReportPath), mustJSONJS(config.CallbackSecret), mustJSONJS(config.CallbackKeyID)))
 	return "node -e " + shellQuote(script)
 }
 
 func resolveCarrierReportCallbackConfig(binding platform.ProviderCarrierBinding, carrierBindingID, jobID, reportPath string) carrierReportCallbackConfig {
-	callbackSecret := strings.TrimSpace(binding.CallbackSecret)
+	callbackSecret := strings.TrimSpace(firstNonEmptyString(
+		binding.CallbackSecret,
+		os.Getenv("CARRIER_CALLBACK_SECRET"),
+	))
 	baseURL := strings.TrimSpace(firstNonEmptyString(
 		os.Getenv("CARRIER_CALLBACK_BASE_URL"),
 		os.Getenv("DEMO_API_BASE_URL"),
