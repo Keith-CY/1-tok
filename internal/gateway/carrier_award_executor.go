@@ -290,12 +290,6 @@ func carrierInlineSummary(reportPath string, result carrierclient.CodeAgentRunOu
 	if summary := strings.TrimSpace(result.Summary); summary != "" {
 		return summary
 	}
-	stdout := strings.TrimSpace(result.Stdout)
-	if stdout != "" && stdout != reportPath {
-		if !(strings.HasPrefix(stdout, "/workspace/") && !strings.Contains(stdout, "\n")) {
-			return stdout
-		}
-	}
 	output := strings.TrimSpace(result.Output)
 	if output == "" || output == reportPath {
 		return ""
@@ -304,6 +298,21 @@ func carrierInlineSummary(reportPath string, result carrierclient.CodeAgentRunOu
 		return ""
 	}
 	return output
+}
+
+func carrierReadbackSummaryResult(reportPath string, result carrierclient.CodeAgentRunOutput) carrierclient.CodeAgentRunOutput {
+	if strings.TrimSpace(result.Summary) != "" {
+		return result
+	}
+	stdout := strings.TrimSpace(result.Stdout)
+	if stdout == "" || stdout == reportPath {
+		return result
+	}
+	if strings.HasPrefix(stdout, "/workspace/") && !strings.Contains(stdout, "\n") {
+		return result
+	}
+	result.Summary = stdout
+	return result
 }
 
 func carrierReportReadbackResult(
@@ -329,6 +338,7 @@ func carrierReportReadbackResult(
 	if err != nil {
 		log.Printf("gateway: carrier read_file failed for binding=%s path=%s: %v", binding.ID, reportPath, err)
 	} else {
+		readFile.Result = carrierReadbackSummaryResult(reportPath, readFile.Result)
 		if decision := strings.TrimSpace(readFile.Result.PolicyDecision); decision != "" && !strings.EqualFold(decision, "allow") {
 			log.Printf("gateway: carrier read_file rejected for binding=%s path=%s: ok=%t decision=%s", binding.ID, reportPath, readFile.Result.OK, decision)
 		} else if inline := carrierInlineSummary(reportPath, readFile.Result); inline != "" {
@@ -355,6 +365,7 @@ func carrierReportReadbackResult(
 		log.Printf("gateway: carrier report readback failed for binding=%s path=%s: %v", binding.ID, reportPath, err)
 		return result
 	}
+	readback.Result = carrierReadbackSummaryResult(reportPath, readback.Result)
 	if decision := strings.TrimSpace(readback.Result.PolicyDecision); decision != "" && !strings.EqualFold(decision, "allow") {
 		log.Printf("gateway: carrier report readback rejected for binding=%s path=%s: ok=%t decision=%s", binding.ID, reportPath, readback.Result.OK, decision)
 		return result
