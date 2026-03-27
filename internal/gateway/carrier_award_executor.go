@@ -426,7 +426,7 @@ func buildCarrierRunCommand(reportDir, promptPath, reportPath, stdoutPath, stder
 		fmt.Sprintf("cd %s", shellQuote(reportDir)),
 		fmt.Sprintf("prompt=$(cat %s)", shellQuote(promptPath)),
 		fmt.Sprintf(
-			"codex exec --cd %s --skip-git-repo-check -a never --sandbox workspace-write --output-last-message %s \"$prompt\" >/dev/null",
+			"codex exec --cd %s --skip-git-repo-check -a never --output-last-message %s \"$prompt\" >/dev/null",
 			shellQuote(reportDir),
 			shellQuote(reportPath),
 		),

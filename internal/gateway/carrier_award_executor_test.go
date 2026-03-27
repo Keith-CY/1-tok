@@ -387,6 +387,9 @@ Proceed with the shortlisted provider.
 	if !strings.Contains(runInput.Command, "-a never") {
 		t.Fatalf("command = %q, want non-interactive codex run", runInput.Command)
 	}
+	if strings.Contains(runInput.Command, "--sandbox") {
+		t.Fatalf("command = %q, want sandbox selection to come from remote codex config", runInput.Command)
+	}
 	if !strings.Contains(runInput.Command, "tee /workspace/1tok/"+order.ID+"/ms_1/result.md.stdout.log < /workspace/1tok/"+order.ID+"/ms_1/result.md") {
 		t.Fatalf("command = %q, want tee-based report capture", runInput.Command)
 	}
