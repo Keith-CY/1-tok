@@ -2083,10 +2083,7 @@ func (a *App) RegisterCarrierBinding(input ProviderCarrierBinding) (ProviderCarr
 	}
 
 	a.carrierBindings = append(a.carrierBindings, binding)
-	if a.carrierBindingsByOrg == nil {
-		a.carrierBindingsByOrg = make(map[string]int)
-	}
-	a.carrierBindingsByOrg[input.ProviderOrgID] = len(a.carrierBindings) - 1
+	a.reindexCarrierBindings()
 
 	a.notify("provider.carrier.binding.registered", input.ProviderOrgID, map[string]any{
 		"bindingId": binding.ID,
@@ -2112,7 +2109,15 @@ func (a *App) GetProviderCarrierBinding(providerOrgID string) (ProviderCarrierBi
 func (a *App) reindexCarrierBindings() {
 	a.carrierBindingsByOrg = make(map[string]int)
 	for i, binding := range a.carrierBindings {
-		a.carrierBindingsByOrg[binding.ProviderOrgID] = i
+		currentIdx, ok := a.carrierBindingsByOrg[binding.ProviderOrgID]
+		if !ok {
+			a.carrierBindingsByOrg[binding.ProviderOrgID] = i
+			continue
+		}
+		current := a.carrierBindings[currentIdx]
+		if strings.EqualFold(binding.Status, "active") || !strings.EqualFold(current.Status, "active") {
+			a.carrierBindingsByOrg[binding.ProviderOrgID] = i
+		}
 	}
 }
 
@@ -2126,6 +2131,7 @@ func (a *App) VerifyCarrierBinding(bindingID string) (ProviderCarrierBinding, er
 			now := a.now()
 			a.carrierBindings[i].Status = "active"
 			a.carrierBindings[i].VerifiedAt = &now
+			a.reindexCarrierBindings()
 			return a.carrierBindings[i], nil
 		}
 	}
@@ -2140,6 +2146,7 @@ func (a *App) SuspendCarrierBinding(bindingID string) (ProviderCarrierBinding, e
 	for i := range a.carrierBindings {
 		if a.carrierBindings[i].ID == bindingID {
 			a.carrierBindings[i].Status = "suspended"
+			a.reindexCarrierBindings()
 			return a.carrierBindings[i], nil
 		}
 	}

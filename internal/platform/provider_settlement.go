@@ -133,10 +133,7 @@ func (a *App) RegisterProviderSettlementBinding(input ProviderSettlementBinding)
 	}
 
 	a.settlementBindings = append(a.settlementBindings, binding)
-	if a.settlementBindingsByOrg == nil {
-		a.settlementBindingsByOrg = make(map[string]int)
-	}
-	a.settlementBindingsByOrg[binding.ProviderOrgID] = len(a.settlementBindings) - 1
+	a.reindexSettlementBindings()
 	return binding, nil
 }
 
@@ -169,6 +166,7 @@ func (a *App) VerifyProviderSettlementBinding(bindingID string) (ProviderSettlem
 				Status:                      ProviderLiquidityPoolStatusHealthy,
 				LastHealthyAt:               &now,
 			}
+			a.reindexSettlementBindings()
 			return a.settlementBindings[i], nil
 		}
 	}
@@ -191,6 +189,7 @@ func (a *App) SuspendProviderSettlementBinding(bindingID string) (ProviderSettle
 			pool.Status = ProviderLiquidityPoolStatusSuspended
 			pool.LastFailureAt = &now
 			a.settlementPools[a.settlementBindings[i].ProviderOrgID] = pool
+			a.reindexSettlementBindings()
 			return a.settlementBindings[i], nil
 		}
 	}
@@ -593,7 +592,15 @@ func (a *App) providerSettlementBufferBPSLocked() int64 {
 func (a *App) reindexSettlementBindings() {
 	a.settlementBindingsByOrg = make(map[string]int)
 	for i, binding := range a.settlementBindings {
-		a.settlementBindingsByOrg[binding.ProviderOrgID] = i
+		currentIdx, ok := a.settlementBindingsByOrg[binding.ProviderOrgID]
+		if !ok {
+			a.settlementBindingsByOrg[binding.ProviderOrgID] = i
+			continue
+		}
+		current := a.settlementBindings[currentIdx]
+		if strings.EqualFold(binding.Status, "active") || !strings.EqualFold(current.Status, "active") {
+			a.settlementBindingsByOrg[binding.ProviderOrgID] = i
+		}
 	}
 }
 

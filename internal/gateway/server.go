@@ -21,7 +21,6 @@ import (
 	"github.com/chenyu/1-tok/internal/validation"
 	"io"
 	"net/http"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -2341,7 +2340,7 @@ func (s *Server) resolveCarrierCallbackSecret(r *http.Request, event carrier.Cal
 		if overrideKeyID != "" {
 			return "", fmt.Errorf("callback key id provided but no binding secret configured")
 		}
-		return os.Getenv("CARRIER_CALLBACK_SECRET"), nil
+		return runtimeCarrierCallbackSecret(), nil
 	}
 
 	binding, err := s.carrier.GetBindingByID(event.BindingID)
@@ -2349,7 +2348,7 @@ func (s *Server) resolveCarrierCallbackSecret(r *http.Request, event carrier.Cal
 		if overrideKeyID != "" {
 			return "", fmt.Errorf("callback key id provided but no binding secret configured")
 		}
-		return os.Getenv("CARRIER_CALLBACK_SECRET"), nil
+		return runtimeCarrierCallbackSecret(), nil
 	}
 
 	order, err := s.app.GetOrder(binding.OrderID)
@@ -2357,7 +2356,7 @@ func (s *Server) resolveCarrierCallbackSecret(r *http.Request, event carrier.Cal
 		if overrideKeyID != "" {
 			return "", fmt.Errorf("callback key id provided but no binding secret configured")
 		}
-		return os.Getenv("CARRIER_CALLBACK_SECRET"), nil
+		return runtimeCarrierCallbackSecret(), nil
 	}
 
 	providerBinding, err := s.app.GetProviderCarrierBinding(order.ProviderOrgID)
@@ -2365,7 +2364,7 @@ func (s *Server) resolveCarrierCallbackSecret(r *http.Request, event carrier.Cal
 		if overrideKeyID != "" {
 			return "", fmt.Errorf("callback key id provided but no binding secret configured")
 		}
-		return os.Getenv("CARRIER_CALLBACK_SECRET"), nil
+		return runtimeCarrierCallbackSecret(), nil
 	}
 
 	if overrideKeyID != "" && providerBinding.CallbackKeyID != "" && overrideKeyID != providerBinding.CallbackKeyID {
@@ -2381,7 +2380,7 @@ func (s *Server) resolveCarrierCallbackSecret(r *http.Request, event carrier.Cal
 		return secret, nil
 	}
 
-	return os.Getenv("CARRIER_CALLBACK_SECRET"), nil
+	return runtimeCarrierCallbackSecret(), nil
 }
 
 func parseCarrierCallback(rawBody []byte) (carrier.CallbackEvent, bool, error) {
@@ -2842,7 +2841,7 @@ func (s *Server) verifyUsageProofBindingSecret(job *carrier.ExecutionJob, bindin
 
 	secret := strings.TrimSpace(providerBinding.CallbackSecret)
 	if secret == "" {
-		secret = os.Getenv("CARRIER_CALLBACK_SECRET")
+		secret = runtimeCarrierCallbackSecret()
 	}
 	if secret == "" {
 		return nil

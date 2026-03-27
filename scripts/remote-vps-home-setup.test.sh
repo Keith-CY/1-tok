@@ -10,7 +10,8 @@ SETUP_SCRIPT="${ROOT_DIR}/deploy/carrier/setup-remote-vps-home.sh"
 }
 
 TMP_DIR="$(mktemp -d)"
-trap 'rm -rf "${TMP_DIR}"' EXIT
+TMP_DIR_NO_BASE="$(mktemp -d)"
+trap 'rm -rf "${TMP_DIR}" "${TMP_DIR_NO_BASE}"' EXIT
 
 export REMOTE_HOME="${TMP_DIR}"
 export REMOTE_WORKSPACE_ROOT="${TMP_DIR}/workspace"
@@ -62,6 +63,16 @@ grep -q 'model_reasoning_effort = "xhigh"' "${CONFIG}" || {
   exit 1
 }
 
+grep -q 'approval_policy = "never"' "${CONFIG}" || {
+  echo "codex config missing approval policy" >&2
+  exit 1
+}
+
+grep -q 'sandbox_mode = "danger-full-access"' "${CONFIG}" || {
+  echo "codex config missing sandbox mode" >&2
+  exit 1
+}
+
 grep -q '\[model_providers.openai-custom\]' "${CONFIG}" || {
   echo "codex config missing custom provider block" >&2
   exit 1
@@ -83,3 +94,49 @@ grep -q 'wire_api = "responses"' "${CONFIG}" || {
 }
 
 echo "remote vps home setup checks passed"
+
+export REMOTE_HOME="${TMP_DIR_NO_BASE}"
+export REMOTE_WORKSPACE_ROOT="${TMP_DIR_NO_BASE}/workspace"
+unset OPENAI_BASE_URL
+
+"${SETUP_SCRIPT}"
+
+PROFILE_NO_BASE="${TMP_DIR_NO_BASE}/.bash_profile"
+CONFIG_NO_BASE="${TMP_DIR_NO_BASE}/.codex/config.toml"
+
+[[ -f "${PROFILE_NO_BASE}" ]] || {
+  echo "missing profile without custom base url: ${PROFILE_NO_BASE}" >&2
+  exit 1
+}
+
+[[ -f "${CONFIG_NO_BASE}" ]] || {
+  echo "missing codex config without custom base url: ${CONFIG_NO_BASE}" >&2
+  exit 1
+}
+
+grep -q 'export OPENAI_API_KEY=' "${PROFILE_NO_BASE}" || {
+  echo "profile without custom base url missing OPENAI_API_KEY export" >&2
+  exit 1
+}
+
+grep -q 'approval_policy = "never"' "${CONFIG_NO_BASE}" || {
+  echo "codex config without custom base url missing approval policy" >&2
+  exit 1
+}
+
+grep -q 'sandbox_mode = "danger-full-access"' "${CONFIG_NO_BASE}" || {
+  echo "codex config without custom base url missing sandbox mode" >&2
+  exit 1
+}
+
+if grep -q 'model_provider = "openai-custom"' "${CONFIG_NO_BASE}"; then
+  echo "codex config without custom base url should not force openai-custom provider" >&2
+  exit 1
+fi
+
+if grep -q '\[model_providers.openai-custom\]' "${CONFIG_NO_BASE}"; then
+  echo "codex config without custom base url should not include custom provider block" >&2
+  exit 1
+fi
+
+echo "remote vps home setup checks without custom base url passed"

@@ -205,6 +205,16 @@ func TestHandleAwardRFQDispatchesCarrierExecutionForActiveProviderBinding(t *tes
 func TestCarrierAwardExecutorSettlesOrderAfterSuccessfulRun(t *testing.T) {
 	app := platform.NewAppWithMemory()
 	carrierSvc := carrier.NewService()
+	report := strings.TrimSpace(`
+# Summary
+Shortlisted one provider.
+
+## Findings
+- Pricing fit the posted budget.
+
+## Recommendation
+Proceed with the shortlisted provider.
+`)
 
 	providerBinding, err := app.RegisterCarrierBinding(platform.ProviderCarrierBinding{
 		ProviderOrgID:  "provider_1",
@@ -285,6 +295,7 @@ func TestCarrierAwardExecutorSettlesOrderAfterSuccessfulRun(t *testing.T) {
 			Backend: "codex",
 			Result: carrierclient.CodeAgentRunOutput{
 				OK:             true,
+				Output:         report,
 				PolicyDecision: "allow",
 			},
 		},
@@ -318,28 +329,39 @@ func TestCarrierAwardExecutorSettlesOrderAfterSuccessfulRun(t *testing.T) {
 	if updatedOrder.Milestones[0].State != "settled" {
 		t.Fatalf("milestone state = %s, want settled", updatedOrder.Milestones[0].State)
 	}
-	if !strings.Contains(updatedOrder.Milestones[0].Summary, "Carrier execution completed.") {
-		t.Fatalf("milestone summary = %q, want carrier completion summary", updatedOrder.Milestones[0].Summary)
-	}
-	if !strings.Contains(updatedOrder.Milestones[0].Summary, "/workspace/1tok/"+order.ID+"/ms_1/result.md") {
-		t.Fatalf("milestone summary = %q, want result path", updatedOrder.Milestones[0].Summary)
+	if updatedOrder.Milestones[0].Summary != report {
+		t.Fatalf("milestone summary = %q, want execution output markdown", updatedOrder.Milestones[0].Summary)
 	}
 
-	if len(client.runInputs) != 1 {
-		t.Fatalf("run inputs = %d, want 1", len(client.runInputs))
+	if len(client.runInputs) != 2 {
+		t.Fatalf("run inputs = %d, want 2", len(client.runInputs))
 	}
-	runInput := client.runInputs[0]
+	promptInput := client.runInputs[0]
+	if promptInput.Capability != "write_file" {
+		t.Fatalf("prompt capability = %s, want write_file", promptInput.Capability)
+	}
+	if promptInput.Path != "/workspace/1tok/"+order.ID+"/ms_1/prompt.md" {
+		t.Fatalf("prompt path = %q, want prompt path", promptInput.Path)
+	}
+	if promptInput.WriteMode != "overwrite" {
+		t.Fatalf("prompt write mode = %q, want overwrite", promptInput.WriteMode)
+	}
+	if !strings.Contains(promptInput.Content, "Do not browse the web or use external network tools.") {
+		t.Fatalf("prompt content = %q, want no-browsing instruction", promptInput.Content)
+	}
+
+	runInput := client.runInputs[1]
 	if runInput.HostID != "host_1" || runInput.AgentID != "agent_1" || runInput.Backend != "codex" {
 		t.Fatalf("unexpected run input routing: %+v", runInput)
 	}
 	if runInput.Capability != "run_shell" {
 		t.Fatalf("capability = %s, want run_shell", runInput.Capability)
 	}
-	if runInput.StdoutPath != "/workspace/1tok/"+order.ID+"/ms_1/result.md.stdout.log" {
-		t.Fatalf("stdout path = %q, want report stdout path", runInput.StdoutPath)
+	if runInput.StdoutPath != "" {
+		t.Fatalf("stdout path = %q, want inline output capture", runInput.StdoutPath)
 	}
-	if runInput.StderrPath != "/workspace/1tok/"+order.ID+"/ms_1/result.md.stderr.log" {
-		t.Fatalf("stderr path = %q, want report stderr path", runInput.StderrPath)
+	if runInput.StderrPath != "" {
+		t.Fatalf("stderr path = %q, want shell-managed stderr capture", runInput.StderrPath)
 	}
 	if runInput.CWD != "/workspace/1tok/"+order.ID+"/ms_1" {
 		t.Fatalf("cwd = %q, want report directory", runInput.CWD)
@@ -362,11 +384,23 @@ func TestCarrierAwardExecutorSettlesOrderAfterSuccessfulRun(t *testing.T) {
 	if !strings.Contains(runInput.Command, "--cd") {
 		t.Fatalf("command = %q, want explicit codex workdir", runInput.Command)
 	}
-	if !strings.Contains(runInput.Command, "--full-auto") {
-		t.Fatalf("command = %q, want full-auto codex run", runInput.Command)
+	if strings.Contains(runInput.Command, "-a never") {
+		t.Fatalf("command = %q, want legacy codex approval flag removed", runInput.Command)
 	}
-	if !strings.Contains(runInput.Command, "Do not browse the web or use external network tools.") {
-		t.Fatalf("command = %q, want no-browsing carrier prompt", runInput.Command)
+	if strings.Contains(runInput.Command, "--sandbox") {
+		t.Fatalf("command = %q, want sandbox selection to come from remote codex config", runInput.Command)
+	}
+	if !strings.Contains(runInput.Command, "tee /workspace/1tok/"+order.ID+"/ms_1/result.md.stdout.log < /workspace/1tok/"+order.ID+"/ms_1/result.md") {
+		t.Fatalf("command = %q, want tee-based report capture", runInput.Command)
+	}
+	if !strings.Contains(runInput.Command, "exec 2>>/workspace/1tok/"+order.ID+"/ms_1/result.md.stderr.log") {
+		t.Fatalf("command = %q, want shell-managed stderr log", runInput.Command)
+	}
+	if !strings.Contains(runInput.Command, "prompt=$(cat '/workspace/1tok/"+order.ID+"/ms_1/prompt.md')") {
+		t.Fatalf("command = %q, want prompt file staging", runInput.Command)
+	}
+	if strings.Contains(runInput.Command, "Do not browse the web or use external network tools.") {
+		t.Fatalf("command = %q, unexpectedly inlined prompt text", runInput.Command)
 	}
 
 	carrierBinding, err := carrierSvc.GetBinding(order.ID, "ms_1")
@@ -487,6 +521,9 @@ Start with Vendor A and benchmark Vendor B in reserve.
 
 	client := &stubCodeAgentClient{
 		runHook: func(input carrierclient.CodeAgentRunInput) error {
+			if input.Capability != carrierRunCapability {
+				return nil
+			}
 			binding, err := carrierSvc.GetBinding(order.ID, "ms_1")
 			if err != nil {
 				return err
@@ -549,16 +586,28 @@ Start with Vendor A and benchmark Vendor B in reserve.
 	if updatedOrder.Milestones[0].Summary != report {
 		t.Fatalf("milestone summary = %q, want callback markdown", updatedOrder.Milestones[0].Summary)
 	}
-	if len(client.runInputs) != 1 {
-		t.Fatalf("run inputs = %d, want 1", len(client.runInputs))
+	if len(client.runInputs) != 2 {
+		t.Fatalf("run inputs = %d, want 2", len(client.runInputs))
 	}
-	if !strings.Contains(client.runInputs[0].Command, "/api/v1/carrier/callbacks/events") {
-		t.Fatalf("command = %q, want carrier callback endpoint", client.runInputs[0].Command)
+	if client.runInputs[0].Capability != "write_file" {
+		t.Fatalf("prompt capability = %s, want write_file", client.runInputs[0].Capability)
 	}
-	if !strings.Contains(client.runInputs[0].Command, "X-Carrier-Key-Id") {
-		t.Fatalf("command = %q, want callback key header", client.runInputs[0].Command)
+	if client.runInputs[1].StdoutPath == "" || client.runInputs[1].StderrPath == "" {
+		t.Fatalf("run stdout/stderr paths = %q/%q, want both set", client.runInputs[1].StdoutPath, client.runInputs[1].StderrPath)
 	}
-	assertCarrierStrictPolicySafeCommand(t, client.runInputs[0].Command)
+	if !strings.Contains(client.runInputs[1].Command, "/api/v1/carrier/callbacks/events") {
+		t.Fatalf("command = %q, want carrier callback endpoint", client.runInputs[1].Command)
+	}
+	if !strings.Contains(client.runInputs[1].Command, "milestone.ready") {
+		t.Fatalf("command = %q, want milestone.ready callback event", client.runInputs[1].Command)
+	}
+	if !strings.Contains(client.runInputs[1].Command, "X-Carrier-Key-Id") {
+		t.Fatalf("command = %q, want callback key header", client.runInputs[1].Command)
+	}
+	if strings.Contains(client.runInputs[1].Command, "Return only the delivery note markdown.") {
+		t.Fatalf("command = %q, unexpectedly inlined prompt text", client.runInputs[1].Command)
+	}
+	assertCarrierStrictPolicySafeCommand(t, client.runInputs[1].Command)
 }
 
 func TestBuildCarrierRunCommandWithCallbackAvoidsStrictPolicyAskPatterns(t *testing.T) {
@@ -566,8 +615,8 @@ func TestBuildCarrierRunCommandWithCallbackAvoidsStrictPolicyAskPatterns(t *test
 
 	command := buildCarrierRunCommand(
 		"/workspace/1tok/ord_99/ms_1",
+		"/workspace/1tok/ord_99/ms_1/prompt.md",
 		"/workspace/1tok/ord_99/ms_1/result.md",
-		"Return only the delivery note markdown.",
 		carrierReportCallbackConfig{
 			BaseURL:        "https://api.1-tok.pro",
 			BindingID:      "bind_1",
@@ -581,7 +630,158 @@ func TestBuildCarrierRunCommandWithCallbackAvoidsStrictPolicyAskPatterns(t *test
 	if !strings.Contains(command, "/api/v1/carrier/callbacks/events") {
 		t.Fatalf("command = %q, want callback endpoint", command)
 	}
+	if !strings.Contains(command, "prompt=$(cat '/workspace/1tok/ord_99/ms_1/prompt.md')") {
+		t.Fatalf("command = %q, want prompt file staging", command)
+	}
+	if !strings.Contains(command, "set -eo pipefail") {
+		t.Fatalf("command = %q, want pipefail", command)
+	}
+	if !strings.Contains(command, "codex exec --cd '/workspace/1tok/ord_99/ms_1' --skip-git-repo-check \"$prompt\" | tee '/workspace/1tok/ord_99/ms_1/result.md'") {
+		t.Fatalf("command = %q, want stdout tee capture", command)
+	}
 	assertCarrierStrictPolicySafeCommand(t, command)
+}
+
+func TestCarrierAwardExecutorReadsBackReportWhenRunResultOmitsOutput(t *testing.T) {
+	app := platform.NewAppWithMemory()
+	carrierSvc := carrier.NewService()
+
+	providerBinding, err := app.RegisterCarrierBinding(platform.ProviderCarrierBinding{
+		ProviderOrgID:  "provider_1",
+		CarrierBaseURL: "https://carrier.example.com",
+		HostID:         "host_1",
+		AgentID:        "agent_1",
+		Backend:        "codex",
+		WorkspaceRoot:  "/workspace",
+	})
+	if err != nil {
+		t.Fatalf("register binding: %v", err)
+	}
+	if _, err := app.VerifyCarrierBinding(providerBinding.ID); err != nil {
+		t.Fatalf("verify binding: %v", err)
+	}
+	settlementBinding, err := app.RegisterProviderSettlementBinding(platform.ProviderSettlementBinding{
+		ProviderOrgID: "provider_1",
+		Asset:         "USDI",
+		PeerID:        "peer_provider",
+		P2PAddress:    "/dns4/provider/tcp/8228/p2p/peer_provider",
+		NodeRPCURL:    "http://provider:8227",
+		UDTTypeScript: platform.UDTTypeScript{
+			CodeHash: "0xudt",
+			HashType: "type",
+			Args:     "0x01",
+		},
+	})
+	if err != nil {
+		t.Fatalf("register settlement binding: %v", err)
+	}
+	if _, err := app.VerifyProviderSettlementBinding(settlementBinding.ID); err != nil {
+		t.Fatalf("verify settlement binding: %v", err)
+	}
+	app.SetProviderSettlementProvisioner(&stubGatewayCarrierSettlementProvisioner{
+		result: platform.EnsureProviderLiquidityResult{
+			ChannelID:           "ch_gateway_1",
+			ReuseSource:         platform.ProviderLiquidityReuseNewChannel,
+			ReadyChannelCount:   1,
+			TotalSpendableCents: 5_000,
+		},
+	})
+
+	rfq, err := app.CreateRFQ(platform.CreateRFQInput{
+		BuyerOrgID:         "buyer_1",
+		Title:              "Research 3 vendors",
+		Category:           "research",
+		Scope:              "Compare 3 Japanese AI call-center vendors.",
+		BudgetCents:        4_000,
+		ResponseDeadlineAt: time.Date(2099, 3, 26, 14, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("create rfq: %v", err)
+	}
+	bid, err := app.CreateBid(rfq.ID, platform.CreateBidInput{
+		ProviderOrgID: "provider_1",
+		Message:       "bid",
+		Milestones: []platform.BidMilestoneInput{{
+			ID:             "ms_1",
+			Title:          "Service delivery",
+			BasePriceCents: 3_200,
+			BudgetCents:    3_200,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("create bid: %v", err)
+	}
+
+	awardedRFQ, order, err := app.AwardRFQ(rfq.ID, platform.AwardRFQInput{
+		BidID:       bid.ID,
+		FundingMode: "prepaid",
+	})
+	if err != nil {
+		t.Fatalf("award rfq: %v", err)
+	}
+
+	report := "# Delivery\n\nThe carrier returned the report body."
+	client := &stubCodeAgentClient{}
+	client.runHook = func(input carrierclient.CodeAgentRunInput) error {
+		switch len(client.runInputs) {
+		case 1, 2:
+			client.runResult = carrierclient.CodeAgentRunResult{
+				Backend: "codex",
+				Result: carrierclient.CodeAgentRunOutput{
+					OK:             true,
+					PolicyDecision: "allow",
+				},
+			}
+		case 3:
+			client.runResult = carrierclient.CodeAgentRunResult{
+				Backend: "codex",
+				Result: carrierclient.CodeAgentRunOutput{
+					OK:             true,
+					PolicyDecision: "allow",
+					Output:         report,
+				},
+			}
+		}
+		return nil
+	}
+	executor := &carrierOrderAutoExecutor{
+		app:     app,
+		carrier: carrierSvc,
+		now: func() time.Time {
+			return time.Date(2099, 3, 24, 15, 4, 5, 0, time.UTC)
+		},
+		clientForBinding: func(platform.ProviderCarrierBinding) carrierclient.CodeAgentClient {
+			return client
+		},
+	}
+
+	if err := executor.Execute(context.Background(), carrierAwardExecutionInput{
+		RFQ:     awardedRFQ,
+		Order:   order,
+		Binding: providerBinding,
+	}); err != nil {
+		t.Fatalf("execute carrier award: %v", err)
+	}
+
+	updatedOrder, err := app.GetOrder(order.ID)
+	if err != nil {
+		t.Fatalf("get order: %v", err)
+	}
+	if updatedOrder.Milestones[0].Summary != report {
+		t.Fatalf("milestone summary = %q, want readback markdown", updatedOrder.Milestones[0].Summary)
+	}
+	if len(client.runInputs) != 3 {
+		t.Fatalf("run inputs = %d, want 3", len(client.runInputs))
+	}
+	if client.runInputs[2].Capability != "run_shell" {
+		t.Fatalf("readback capability = %s, want run_shell", client.runInputs[2].Capability)
+	}
+	if client.runInputs[2].StdoutPath != "" {
+		t.Fatalf("readback stdout path = %q, want empty", client.runInputs[2].StdoutPath)
+	}
+	if !strings.Contains(client.runInputs[2].Command, "cat ") {
+		t.Fatalf("readback command = %q, want cat report", client.runInputs[2].Command)
+	}
 }
 
 func TestCarrierAwardExecutorFailsJobWithOutputPathsWhenCommandExitsNonZero(t *testing.T) {
@@ -667,6 +867,8 @@ func TestCarrierAwardExecutorFailsJobWithOutputPathsWhenCommandExitsNonZero(t *t
 			Result: carrierclient.CodeAgentRunOutput{
 				OK:             false,
 				PolicyDecision: "allow",
+				Stderr:         "unknown option '--output-last-message'",
+				Stdout:         "{\"event\":\"error\"}",
 			},
 		},
 	}
@@ -694,6 +896,12 @@ func TestCarrierAwardExecutorFailsJobWithOutputPathsWhenCommandExitsNonZero(t *t
 	}
 	if !strings.Contains(err.Error(), "result.md.stdout.log") || !strings.Contains(err.Error(), "result.md.stderr.log") {
 		t.Fatalf("error = %q, want stdout/stderr paths", err)
+	}
+	if !strings.Contains(err.Error(), "carrier_stderr=") || !strings.Contains(err.Error(), "unknown option '--output-last-message'") {
+		t.Fatalf("error = %q, want surfaced carrier stderr", err)
+	}
+	if !strings.Contains(err.Error(), "carrier_stdout=") || !strings.Contains(err.Error(), "{\"event\":\"error\"}") {
+		t.Fatalf("error = %q, want surfaced carrier stdout", err)
 	}
 
 	carrierBinding, err := carrierSvc.GetBinding(order.ID, "ms_1")

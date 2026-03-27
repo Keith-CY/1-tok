@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestClientGetsCodeAgentHealth(t *testing.T) {
@@ -296,6 +297,39 @@ func TestRunCodeAgent_Success(t *testing.T) {
 	}
 	if result.Backend != "codex" {
 		t.Errorf("backend = %s", result.Backend)
+	}
+	if !result.Result.Completed {
+		t.Error("expected completed result")
+	}
+	if result.Result.Output != "done" {
+		t.Errorf("output = %q, want done", result.Result.Output)
+	}
+}
+
+func TestRunCodeAgent_UsesRunTimeoutInsteadOfBaseClientTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"run": map[string]any{
+				"backend": "codex",
+				"result":  map[string]any{"completed": true, "output": "done"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "token")
+	c.httpClient.Timeout = 10 * time.Millisecond
+
+	result, err := c.RunCodeAgent(context.Background(), CodeAgentRunInput{
+		HostID: "h", AgentID: "a", Backend: "codex", Capability: "run", TimeoutSec: 1,
+	})
+	if err != nil {
+		t.Fatalf("expected run to override base timeout, got %v", err)
+	}
+	if !result.Result.Completed {
+		t.Fatal("expected completed result")
 	}
 }
 

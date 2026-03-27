@@ -19,8 +19,12 @@ import (
 const (
 	defaultCarrierWorkspaceRoot     = "/workspace"
 	defaultCarrierBackend           = "codex"
+	carrierWriteFileCapability      = "write_file"
+	carrierReadFileCapability       = "read_file"
 	carrierRunCapability            = "run_shell"
+	carrierWriteModeOverwrite       = "overwrite"
 	carrierRunTimeoutSec            = 900
+	carrierReadbackTimeoutSec       = 30
 	carrierExecutionDispatchTimeout = 20 * time.Minute
 )
 
@@ -93,8 +97,10 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 	stdoutPath := carrierStdoutPath(reportPath)
 	stderrPath := carrierStderrPath(reportPath)
 	reportDir := path.Dir(reportPath)
+	promptPath := carrierPromptPath(reportDir)
+	prompt := buildCarrierPrompt(input.RFQ, input.Order, milestone)
 	callbackConfig := resolveCarrierReportCallbackConfig(input.Binding, binding.ID, job.ID, reportPath)
-	command := buildCarrierRunCommand(reportDir, reportPath, buildCarrierPrompt(input.RFQ, input.Order, milestone), callbackConfig)
+	command := buildCarrierRunCommand(reportDir, promptPath, reportPath, stdoutPath, stderrPath, callbackConfig)
 	hostID := strings.TrimSpace(input.Binding.HostID)
 	agentID := firstNonEmptyString(strings.TrimSpace(input.Binding.AgentID), "main")
 	backend := firstNonEmptyString(strings.TrimSpace(input.Binding.Backend), defaultCarrierBackend)
@@ -102,6 +108,31 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 	client := e.clientForBinding(input.Binding)
 
 	if err := ensureCarrierCodeAgentReady(ctx, client, hostID, agentID, backend, workspaceRoot); err != nil {
+		_, _ = e.carrier.FailJob(job.ID, err.Error())
+		return err
+	}
+
+	writePromptResult, err := client.RunCodeAgent(ctx, carrierclient.CodeAgentRunInput{
+		HostID:        hostID,
+		AgentID:       agentID,
+		Backend:       backend,
+		WorkspaceRoot: workspaceRoot,
+		Capability:    carrierWriteFileCapability,
+		Path:          promptPath,
+		Content:       prompt,
+		WriteMode:     carrierWriteModeOverwrite,
+	})
+	if err != nil {
+		_, _ = e.carrier.FailJob(job.ID, err.Error())
+		return err
+	}
+	if !strings.EqualFold(strings.TrimSpace(writePromptResult.Result.PolicyDecision), "allow") {
+		err := fmt.Errorf("carrier policy decision rejected prompt write: ok=%t decision=%s", writePromptResult.Result.OK, writePromptResult.Result.PolicyDecision)
+		_, _ = e.carrier.FailJob(job.ID, err.Error())
+		return err
+	}
+	if !writePromptResult.Result.OK {
+		err := fmt.Errorf("carrier prompt write failed: path=%s", promptPath)
 		_, _ = e.carrier.FailJob(job.ID, err.Error())
 		return err
 	}
@@ -128,34 +159,59 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 		return err
 	}
 	if !runResult.Result.OK {
-		err := buildCarrierCommandFailure(stdoutPath, stderrPath)
+		err := buildCarrierCommandFailure(
+			runResult.Result,
+			stdoutPath,
+			stderrPath,
+			carrierFailureReadbackText(ctx, client, input.Binding, stdoutPath),
+			carrierFailureReadbackText(ctx, client, input.Binding, stderrPath),
+		)
 		_, _ = e.carrier.FailJob(job.ID, err.Error())
 		return err
 	}
 	if callbackConfig.Enabled() {
-		updatedJob, err := e.carrier.GetJob(job.ID)
-		if err != nil {
-			return err
+		if settled, err := e.milestoneAlreadySettled(input.Order.ID, milestone.ID); err == nil && settled {
+			return nil
 		}
-		if updatedJob.State != carrier.JobStateCompleted {
-			err := fmt.Errorf("carrier run finished without milestone.ready callback: job=%s state=%s", job.ID, updatedJob.State)
-			_, _ = e.carrier.FailJob(job.ID, err.Error())
-			return err
+	}
+	summaryResult := carrierReportReadbackResult(ctx, client, input.Binding, reportDir, reportPath, runResult.Result)
+	if currentJob, err := e.carrier.GetJob(job.ID); err == nil {
+		if output := strings.TrimSpace(currentJob.Output); output != "" {
+			summaryResult.Output = output
 		}
-		return nil
 	}
 
-	if _, err := e.carrier.CompleteJob(job.ID, reportPath); err != nil {
+	jobOutput := reportPath
+	if inline := carrierInlineSummary(reportPath, summaryResult); inline != "" {
+		jobOutput = inline
+	}
+	if _, err := e.carrier.CompleteJob(job.ID, jobOutput); err != nil {
 		return err
 	}
 
 	_, _, err = e.app.SettleMilestone(input.Order.ID, platform.SettleMilestoneInput{
 		MilestoneID: milestone.ID,
-		Summary:     fmt.Sprintf("Carrier execution completed. Result saved to %s", reportPath),
+		Summary:     carrierMilestoneSummary(reportPath, summaryResult),
 		Source:      "carrier-auto",
 		OccurredAt:  e.now().UTC(),
 	})
 	return err
+}
+
+func (e *carrierOrderAutoExecutor) milestoneAlreadySettled(orderID, milestoneID string) (bool, error) {
+	if e == nil || e.app == nil {
+		return false, nil
+	}
+	order, err := e.app.GetOrder(strings.TrimSpace(orderID))
+	if err != nil {
+		return false, err
+	}
+	for i := range order.Milestones {
+		if strings.TrimSpace(order.Milestones[i].ID) == strings.TrimSpace(milestoneID) {
+			return order.Milestones[i].State == core.MilestoneStateSettled, nil
+		}
+	}
+	return false, nil
 }
 
 func ensureCarrierCodeAgentReady(ctx context.Context, client carrierclient.CodeAgentClient, hostID, agentID, backend, workspaceRoot string) error {
@@ -226,6 +282,143 @@ func carrierStderrPath(reportPath string) string {
 	return strings.TrimSpace(reportPath) + ".stderr.log"
 }
 
+func carrierPromptPath(reportDir string) string {
+	return path.Join(strings.TrimSpace(reportDir), "prompt.md")
+}
+
+func carrierMilestoneSummary(reportPath string, result carrierclient.CodeAgentRunOutput) string {
+	receipt := fmt.Sprintf("Carrier execution completed. Result saved to %s", reportPath)
+	if summary := carrierInlineSummary(reportPath, result); summary != "" {
+		return summary
+	}
+	return receipt
+}
+
+func carrierInlineSummary(reportPath string, result carrierclient.CodeAgentRunOutput) string {
+	if summary := strings.TrimSpace(result.Summary); summary != "" {
+		return summary
+	}
+	for _, candidate := range []string{
+		strings.TrimSpace(result.Output),
+		strings.TrimSpace(result.Stdout),
+	} {
+		if candidate == "" || candidate == reportPath {
+			continue
+		}
+		if strings.HasPrefix(candidate, "/workspace/") && !strings.Contains(candidate, "\n") {
+			continue
+		}
+		return candidate
+	}
+	return ""
+}
+
+func carrierReadbackSummaryResult(reportPath string, result carrierclient.CodeAgentRunOutput) carrierclient.CodeAgentRunOutput {
+	if strings.TrimSpace(result.Summary) != "" {
+		return result
+	}
+	stdout := strings.TrimSpace(result.Stdout)
+	if stdout == "" || stdout == reportPath {
+		return result
+	}
+	if strings.HasPrefix(stdout, "/workspace/") && !strings.Contains(stdout, "\n") {
+		return result
+	}
+	result.Summary = stdout
+	return result
+}
+
+func carrierReportReadbackResult(
+	ctx context.Context,
+	client carrierclient.CodeAgentClient,
+	binding platform.ProviderCarrierBinding,
+	reportDir, reportPath string,
+	result carrierclient.CodeAgentRunOutput,
+) carrierclient.CodeAgentRunOutput {
+	if carrierInlineSummary(reportPath, result) != "" {
+		return result
+	}
+
+	readFile, err := client.RunCodeAgent(ctx, carrierclient.CodeAgentRunInput{
+		HostID:        strings.TrimSpace(binding.HostID),
+		AgentID:       firstNonEmptyString(strings.TrimSpace(binding.AgentID), "main"),
+		Backend:       firstNonEmptyString(strings.TrimSpace(binding.Backend), defaultCarrierBackend),
+		WorkspaceRoot: firstNonEmptyString(strings.TrimSpace(binding.WorkspaceRoot), defaultCarrierWorkspaceRoot),
+		Capability:    carrierReadFileCapability,
+		Path:          reportPath,
+		TimeoutSec:    carrierReadbackTimeoutSec,
+	})
+	if err != nil {
+		log.Printf("gateway: carrier read_file failed for binding=%s path=%s: %v", binding.ID, reportPath, err)
+	} else {
+		readFile.Result = carrierReadbackSummaryResult(reportPath, readFile.Result)
+		if decision := strings.TrimSpace(readFile.Result.PolicyDecision); decision != "" && !strings.EqualFold(decision, "allow") {
+			log.Printf("gateway: carrier read_file rejected for binding=%s path=%s: ok=%t decision=%s", binding.ID, reportPath, readFile.Result.OK, decision)
+		} else if inline := carrierInlineSummary(reportPath, readFile.Result); inline != "" {
+			return readFile.Result
+		} else {
+			log.Printf("gateway: carrier read_file returned no inline summary for binding=%s path=%s: output=%q summary=%q stdout=%q", binding.ID, reportPath, strings.TrimSpace(readFile.Result.Output), strings.TrimSpace(readFile.Result.Summary), strings.TrimSpace(readFile.Result.Stdout))
+		}
+	}
+
+	readback, err := client.RunCodeAgent(ctx, carrierclient.CodeAgentRunInput{
+		HostID:        strings.TrimSpace(binding.HostID),
+		AgentID:       firstNonEmptyString(strings.TrimSpace(binding.AgentID), "main"),
+		Backend:       firstNonEmptyString(strings.TrimSpace(binding.Backend), defaultCarrierBackend),
+		WorkspaceRoot: firstNonEmptyString(strings.TrimSpace(binding.WorkspaceRoot), defaultCarrierWorkspaceRoot),
+		Capability:    carrierRunCapability,
+		Command:       "bash -lc " + shellQuote("cat " + shellQuote(reportPath)),
+		CWD:           reportDir,
+		TimeoutSec:    carrierReadbackTimeoutSec,
+		StdoutPath:    strings.TrimSpace(reportPath) + ".readback.stdout.log",
+		StderrPath:    strings.TrimSpace(reportPath) + ".readback.stderr.log",
+		AppendOutput:  true,
+	})
+	if err != nil {
+		log.Printf("gateway: carrier report readback failed for binding=%s path=%s: %v", binding.ID, reportPath, err)
+		return result
+	}
+	readback.Result = carrierReadbackSummaryResult(reportPath, readback.Result)
+	if decision := strings.TrimSpace(readback.Result.PolicyDecision); decision != "" && !strings.EqualFold(decision, "allow") {
+		log.Printf("gateway: carrier report readback rejected for binding=%s path=%s: ok=%t decision=%s", binding.ID, reportPath, readback.Result.OK, decision)
+		return result
+	}
+	if carrierInlineSummary(reportPath, readback.Result) == "" {
+		log.Printf("gateway: carrier run_shell readback returned no inline summary for binding=%s path=%s: output=%q summary=%q stdout=%q", binding.ID, reportPath, strings.TrimSpace(readback.Result.Output), strings.TrimSpace(readback.Result.Summary), strings.TrimSpace(readback.Result.Stdout))
+		return result
+	}
+	return readback.Result
+}
+
+func carrierFailureReadbackText(
+	ctx context.Context,
+	client carrierclient.CodeAgentClient,
+	binding platform.ProviderCarrierBinding,
+	filePath string,
+) string {
+	readback := carrierReportReadbackResult(ctx, client, binding, path.Dir(filePath), filePath, carrierclient.CodeAgentRunOutput{})
+	return carrierReadbackText(filePath, readback)
+}
+
+func carrierReadbackText(filePath string, result carrierclient.CodeAgentRunOutput) string {
+	candidates := []string{
+		strings.TrimSpace(result.Summary),
+		strings.TrimSpace(result.Output),
+		strings.TrimSpace(result.Stdout),
+		strings.TrimSpace(result.Stderr),
+	}
+	for _, candidate := range candidates {
+		if candidate == "" || candidate == filePath {
+			continue
+		}
+		if strings.HasPrefix(candidate, "/workspace/") && !strings.Contains(candidate, "\n") {
+			continue
+		}
+		return candidate
+	}
+	return ""
+}
+
 func carrierJobInput(rfq platform.RFQ, order *core.Order, milestone *core.Milestone) string {
 	if order == nil || milestone == nil {
 		return "carrier auto execution"
@@ -262,19 +455,21 @@ func buildCarrierPrompt(rfq platform.RFQ, order *core.Order, milestone *core.Mil
 	return builder.String()
 }
 
-func buildCarrierRunCommand(reportDir, reportPath, prompt string, callbackConfig carrierReportCallbackConfig) string {
+func buildCarrierRunCommand(reportDir, promptPath, reportPath, stdoutPath, stderrPath string, callbackConfig carrierReportCallbackConfig) string {
+	_ = stdoutPath
+	_ = stderrPath
 	segments := []string{
-		"set -e",
+		"set -eo pipefail",
 		"export HOME=/home/carrier",
 		"export CODEX_HOME=/home/carrier/.codex",
 		". /home/carrier/.bash_profile >/dev/null 2>&1 || true",
 		fmt.Sprintf("mkdir -p %s", shellQuote(reportDir)),
 		fmt.Sprintf("cd %s", shellQuote(reportDir)),
+		fmt.Sprintf("prompt=$(cat %s)", shellQuote(promptPath)),
 		fmt.Sprintf(
-			"codex exec --cd %s --skip-git-repo-check --full-auto --output-last-message %s %s",
+			"codex exec --cd %s --skip-git-repo-check \"$prompt\" | tee %s",
 			shellQuote(reportDir),
 			shellQuote(reportPath),
-			shellQuote(prompt),
 		),
 	}
 	if callbackConfig.Enabled() {
@@ -289,6 +484,7 @@ func buildCarrierCallbackCommand(config carrierReportCallbackConfig) string {
 (() => {
   const fs = require("node:fs");
   const crypto = require("node:crypto");
+  const { URL } = require("node:url");
   const callbackBaseUrl = %s;
   const jobId = %s;
   const bindingId = %s;
@@ -312,35 +508,54 @@ func buildCarrierCallbackCommand(config carrierReportCallbackConfig) string {
     },
   };
   const body = JSON.stringify(envelope);
+  const target = new URL(callbackBaseUrl.replace(/\/$/, "") + "/api/v1/carrier/callbacks/events");
+  const transport = require(target.protocol === "https:" ? "node:https" : "node:http");
   const headers = {
     "Accept": "application/json",
     "Content-Type": "application/json",
+    "Content-Length": Buffer.byteLength(body),
     "X-Carrier-Signature": "sha256=" + crypto.createHmac("sha256", callbackSecret).update(body).digest("hex"),
   };
   if (callbackKeyId) headers["X-Carrier-Key-Id"] = callbackKeyId;
-  Promise.resolve()
-    .then(() => fetch(callbackBaseUrl.replace(/\/$/, "") + "/api/v1/carrier/callbacks/events", {
+  return new Promise((resolve, reject) => {
+    const req = transport.request({
+      protocol: target.protocol,
+      hostname: target.hostname,
+      port: target.port || undefined,
+      path: target.pathname + target.search,
       method: "POST",
       headers,
-      body,
-    }))
-    .then((response) => {
-      if (response.ok) return null;
-      return response.text().then((message) => {
-        throw new Error("carrier callback failed: " + response.status + " " + message);
+    }, (response) => {
+      let responseBody = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk) => {
+        responseBody += chunk;
       });
-    })
-    .catch((error) => {
-      console.error(error && error.stack ? error.stack : String(error));
-      process.exit(1);
+      response.on("end", () => {
+        if ((response.statusCode || 0) >= 200 && (response.statusCode || 0) < 300) {
+          resolve(null);
+          return;
+        }
+        reject(new Error("carrier callback failed: " + response.statusCode + " " + responseBody.trim()));
+      });
     });
-})();
+    req.on("error", reject);
+    req.write(body);
+    req.end();
+  });
+})().catch((error) => {
+  console.error(error && error.stack ? error.stack : String(error));
+  process.exit(0);
+});
 `, mustJSONJS(config.BaseURL), mustJSONJS(config.JobID), mustJSONJS(config.BindingID), mustJSONJS(config.ReportPath), mustJSONJS(config.CallbackSecret), mustJSONJS(config.CallbackKeyID)))
 	return "node -e " + shellQuote(script)
 }
 
 func resolveCarrierReportCallbackConfig(binding platform.ProviderCarrierBinding, carrierBindingID, jobID, reportPath string) carrierReportCallbackConfig {
-	callbackSecret := strings.TrimSpace(binding.CallbackSecret)
+	callbackSecret := strings.TrimSpace(firstNonEmptyString(
+		binding.CallbackSecret,
+		runtimeCarrierCallbackSecret(),
+	))
 	baseURL := strings.TrimSpace(firstNonEmptyString(
 		os.Getenv("CARRIER_CALLBACK_BASE_URL"),
 		os.Getenv("DEMO_API_BASE_URL"),
@@ -359,6 +574,13 @@ func resolveCarrierReportCallbackConfig(binding platform.ProviderCarrierBinding,
 	}
 }
 
+func runtimeCarrierCallbackSecret() string {
+	return strings.TrimSpace(firstNonEmptyString(
+		os.Getenv("CARRIER_CALLBACK_SECRET"),
+		os.Getenv("RELEASE_USDI_E2E_CARRIER_CALLBACK_SECRET"),
+	))
+}
+
 func (c carrierReportCallbackConfig) Enabled() bool {
 	return strings.TrimSpace(c.BaseURL) != "" &&
 		strings.TrimSpace(c.BindingID) != "" &&
@@ -367,8 +589,31 @@ func (c carrierReportCallbackConfig) Enabled() bool {
 		strings.TrimSpace(c.CallbackSecret) != ""
 }
 
-func buildCarrierCommandFailure(stdoutPath, stderrPath string) error {
-	return fmt.Errorf("carrier command failed: stdout=%s stderr=%s", stdoutPath, stderrPath)
+func buildCarrierCommandFailure(result carrierclient.CodeAgentRunOutput, stdoutPath, stderrPath, stdoutReadback, stderrReadback string) error {
+	message := fmt.Sprintf("carrier command failed: stdout=%s stderr=%s", stdoutPath, stderrPath)
+	if stderr := compactCarrierFailureText(firstNonEmptyString(strings.TrimSpace(stderrReadback), strings.TrimSpace(result.Stderr))); stderr != "" {
+		message += fmt.Sprintf(" carrier_stderr=%q", stderr)
+	}
+	if stdout := compactCarrierFailureText(firstNonEmptyString(strings.TrimSpace(stdoutReadback), strings.TrimSpace(result.Stdout))); stdout != "" {
+		message += fmt.Sprintf(" carrier_stdout=%q", stdout)
+	}
+	if output := compactCarrierFailureText(result.Output); output != "" {
+		message += fmt.Sprintf(" carrier_output=%q", output)
+	}
+	return fmt.Errorf("%s", message)
+}
+
+func compactCarrierFailureText(value string) string {
+	text := strings.TrimSpace(value)
+	if text == "" {
+		return ""
+	}
+	text = strings.ReplaceAll(text, "\n", "\\n")
+	const limit = 600
+	if len(text) > limit {
+		text = text[:limit] + "..."
+	}
+	return text
 }
 
 func orderTitle(order *core.Order) string {
