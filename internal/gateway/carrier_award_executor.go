@@ -146,6 +146,8 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 		Command:       command,
 		CWD:           reportDir,
 		TimeoutSec:    carrierRunTimeoutSec,
+		StdoutPath:    stdoutPath,
+		StderrPath:    stderrPath,
 	})
 	if err != nil {
 		_, _ = e.carrier.FailJob(job.ID, err.Error())
@@ -296,14 +298,19 @@ func carrierInlineSummary(reportPath string, result carrierclient.CodeAgentRunOu
 	if summary := strings.TrimSpace(result.Summary); summary != "" {
 		return summary
 	}
-	output := strings.TrimSpace(result.Output)
-	if output == "" || output == reportPath {
-		return ""
+	for _, candidate := range []string{
+		strings.TrimSpace(result.Output),
+		strings.TrimSpace(result.Stdout),
+	} {
+		if candidate == "" || candidate == reportPath {
+			continue
+		}
+		if strings.HasPrefix(candidate, "/workspace/") && !strings.Contains(candidate, "\n") {
+			continue
+		}
+		return candidate
 	}
-	if strings.HasPrefix(output, "/workspace/") && !strings.Contains(output, "\n") {
-		return ""
-	}
-	return output
+	return ""
 }
 
 func carrierReadbackSummaryResult(reportPath string, result carrierclient.CodeAgentRunOutput) carrierclient.CodeAgentRunOutput {
@@ -449,23 +456,21 @@ func buildCarrierPrompt(rfq platform.RFQ, order *core.Order, milestone *core.Mil
 }
 
 func buildCarrierRunCommand(reportDir, promptPath, reportPath, stdoutPath, stderrPath string, callbackConfig carrierReportCallbackConfig) string {
+	_ = stdoutPath
+	_ = stderrPath
 	segments := []string{
-		"set -e",
+		"set -eo pipefail",
 		"export HOME=/home/carrier",
 		"export CODEX_HOME=/home/carrier/.codex",
 		". /home/carrier/.bash_profile >/dev/null 2>&1 || true",
 		fmt.Sprintf("mkdir -p %s", shellQuote(reportDir)),
-		fmt.Sprintf(": > %s", shellQuote(stdoutPath)),
-		fmt.Sprintf(": > %s", shellQuote(stderrPath)),
-		fmt.Sprintf("exec 2>>%s", shellQuote(stderrPath)),
 		fmt.Sprintf("cd %s", shellQuote(reportDir)),
 		fmt.Sprintf("prompt=$(cat %s)", shellQuote(promptPath)),
 		fmt.Sprintf(
-			"codex exec --cd %s --skip-git-repo-check -a never \"$prompt\" > %s",
+			"codex exec --cd %s --skip-git-repo-check -a never \"$prompt\" | tee %s",
 			shellQuote(reportDir),
 			shellQuote(reportPath),
 		),
-		fmt.Sprintf("tee %s < %s", shellQuote(stdoutPath), shellQuote(reportPath)),
 	}
 	if callbackConfig.Enabled() {
 		segments = append(segments, buildCarrierCallbackCommand(callbackConfig))

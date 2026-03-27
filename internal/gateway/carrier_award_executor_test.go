@@ -592,6 +592,9 @@ Start with Vendor A and benchmark Vendor B in reserve.
 	if client.runInputs[0].Capability != "write_file" {
 		t.Fatalf("prompt capability = %s, want write_file", client.runInputs[0].Capability)
 	}
+	if client.runInputs[1].StdoutPath == "" || client.runInputs[1].StderrPath == "" {
+		t.Fatalf("run stdout/stderr paths = %q/%q, want both set", client.runInputs[1].StdoutPath, client.runInputs[1].StderrPath)
+	}
 	if !strings.Contains(client.runInputs[1].Command, "/api/v1/carrier/callbacks/events") {
 		t.Fatalf("command = %q, want carrier callback endpoint", client.runInputs[1].Command)
 	}
@@ -629,6 +632,12 @@ func TestBuildCarrierRunCommandWithCallbackAvoidsStrictPolicyAskPatterns(t *test
 	}
 	if !strings.Contains(command, "prompt=$(cat '/workspace/1tok/ord_99/ms_1/prompt.md')") {
 		t.Fatalf("command = %q, want prompt file staging", command)
+	}
+	if !strings.Contains(command, "set -eo pipefail") {
+		t.Fatalf("command = %q, want pipefail", command)
+	}
+	if !strings.Contains(command, "codex exec --cd '/workspace/1tok/ord_99/ms_1' --skip-git-repo-check -a never \"$prompt\" | tee '/workspace/1tok/ord_99/ms_1/result.md'") {
+		t.Fatalf("command = %q, want stdout tee capture", command)
 	}
 	assertCarrierStrictPolicySafeCommand(t, command)
 }
