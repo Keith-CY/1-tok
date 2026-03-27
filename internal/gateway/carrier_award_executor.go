@@ -157,7 +157,13 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 		return err
 	}
 	if !runResult.Result.OK {
-		err := buildCarrierCommandFailure(runResult.Result, stdoutPath, stderrPath)
+		err := buildCarrierCommandFailure(
+			runResult.Result,
+			stdoutPath,
+			stderrPath,
+			carrierFailureReadbackText(ctx, client, input.Binding, stdoutPath),
+			carrierFailureReadbackText(ctx, client, input.Binding, stderrPath),
+		)
 		_, _ = e.carrier.FailJob(job.ID, err.Error())
 		return err
 	}
@@ -377,6 +383,35 @@ func carrierReportReadbackResult(
 	return readback.Result
 }
 
+func carrierFailureReadbackText(
+	ctx context.Context,
+	client carrierclient.CodeAgentClient,
+	binding platform.ProviderCarrierBinding,
+	filePath string,
+) string {
+	readback := carrierReportReadbackResult(ctx, client, binding, path.Dir(filePath), filePath, carrierclient.CodeAgentRunOutput{})
+	return carrierReadbackText(filePath, readback)
+}
+
+func carrierReadbackText(filePath string, result carrierclient.CodeAgentRunOutput) string {
+	candidates := []string{
+		strings.TrimSpace(result.Summary),
+		strings.TrimSpace(result.Output),
+		strings.TrimSpace(result.Stdout),
+		strings.TrimSpace(result.Stderr),
+	}
+	for _, candidate := range candidates {
+		if candidate == "" || candidate == filePath {
+			continue
+		}
+		if strings.HasPrefix(candidate, "/workspace/") && !strings.Contains(candidate, "\n") {
+			continue
+		}
+		return candidate
+	}
+	return ""
+}
+
 func carrierJobInput(rfq platform.RFQ, order *core.Order, milestone *core.Milestone) string {
 	if order == nil || milestone == nil {
 		return "carrier auto execution"
@@ -549,12 +584,12 @@ func (c carrierReportCallbackConfig) Enabled() bool {
 		strings.TrimSpace(c.CallbackSecret) != ""
 }
 
-func buildCarrierCommandFailure(result carrierclient.CodeAgentRunOutput, stdoutPath, stderrPath string) error {
+func buildCarrierCommandFailure(result carrierclient.CodeAgentRunOutput, stdoutPath, stderrPath, stdoutReadback, stderrReadback string) error {
 	message := fmt.Sprintf("carrier command failed: stdout=%s stderr=%s", stdoutPath, stderrPath)
-	if stderr := compactCarrierFailureText(result.Stderr); stderr != "" {
+	if stderr := compactCarrierFailureText(firstNonEmptyString(strings.TrimSpace(stderrReadback), strings.TrimSpace(result.Stderr))); stderr != "" {
 		message += fmt.Sprintf(" carrier_stderr=%q", stderr)
 	}
-	if stdout := compactCarrierFailureText(result.Stdout); stdout != "" {
+	if stdout := compactCarrierFailureText(firstNonEmptyString(strings.TrimSpace(stdoutReadback), strings.TrimSpace(result.Stdout))); stdout != "" {
 		message += fmt.Sprintf(" carrier_stdout=%q", stdout)
 	}
 	if output := compactCarrierFailureText(result.Output); output != "" {
