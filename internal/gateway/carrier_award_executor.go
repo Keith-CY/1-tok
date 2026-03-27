@@ -266,7 +266,7 @@ func carrierReportReadbackResult(
 	reportDir, reportPath string,
 	result carrierclient.CodeAgentRunOutput,
 ) carrierclient.CodeAgentRunOutput {
-	if strings.TrimSpace(result.Summary) != "" || strings.TrimSpace(result.Output) != "" {
+	if strings.TrimSpace(result.Summary) != "" {
 		return result
 	}
 
