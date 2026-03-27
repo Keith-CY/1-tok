@@ -487,32 +487,56 @@ async function readCollectionFromBase<T>(
   query: Record<string, string | undefined> = {},
 ): Promise<T[]> {
   const empty: T[] = [];
-  const queryParams = new URLSearchParams();
-  for (const [k, value] of Object.entries(query)) {
-    if (typeof value !== "string" || value.trim() === "") {
-      continue;
-    }
-    queryParams.set(k, value);
-  }
-  const queryString = queryParams.toString();
-  const endpoint = `${baseUrl}${path}${queryString ? `?${queryString}` : ""}`;
   try {
-    const response = await fetch(endpoint, {
-      headers: {
-        Accept: "application/json",
-        ...(options?.authToken ? { Authorization: `Bearer ${options.authToken}` } : {}),
-      },
-      cache: "no-store",
-    });
+    const collected: T[] = [];
+    let offset = 0;
 
-    if (!response.ok) {
-      return options?.requireLive ? empty : fallback;
+    while (true) {
+      const queryParams = new URLSearchParams();
+      for (const [k, value] of Object.entries(query)) {
+        if (typeof value !== "string" || value.trim() === "") {
+          continue;
+        }
+        queryParams.set(k, value);
+      }
+      queryParams.set("limit", "200");
+      queryParams.set("offset", String(offset));
+
+      const queryString = queryParams.toString();
+      const endpoint = `${baseUrl}${path}${queryString ? `?${queryString}` : ""}`;
+      const response = await fetch(endpoint, {
+        headers: {
+          Accept: "application/json",
+          ...(options?.authToken ? { Authorization: `Bearer ${options.authToken}` } : {}),
+        },
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        return options?.requireLive ? empty : fallback;
+      }
+
+      const payload = (await response.json()) as Record<string, unknown>;
+      const value = payload[key];
+      if (!Array.isArray(value)) {
+        return options?.requireLive ? empty : fallback;
+      }
+
+      const pageItems = value as T[];
+      collected.push(...pageItems);
+
+      const pagination = payload.pagination as
+        | { total?: unknown; limit?: unknown; offset?: unknown }
+        | undefined;
+      const total = typeof pagination?.total === "number" ? pagination.total : null;
+      const pageSize = typeof pagination?.limit === "number" && pagination.limit > 0 ? pagination.limit : pageItems.length;
+
+      if (total === null || collected.length >= total || pageItems.length === 0 || pageSize === 0) {
+        return collected;
+      }
+
+      offset += pageSize;
     }
-
-    const payload = (await response.json()) as Record<string, unknown>;
-    const value = payload[key];
-
-    return Array.isArray(value) ? (value as T[]) : options?.requireLive ? empty : fallback;
   } catch {
     return options?.requireLive ? empty : fallback;
   }
