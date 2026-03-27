@@ -430,7 +430,7 @@ func buildCarrierCallbackCommand(config carrierReportCallbackConfig) string {
 func resolveCarrierReportCallbackConfig(binding platform.ProviderCarrierBinding, carrierBindingID, jobID, reportPath string) carrierReportCallbackConfig {
 	callbackSecret := strings.TrimSpace(firstNonEmptyString(
 		binding.CallbackSecret,
-		os.Getenv("CARRIER_CALLBACK_SECRET"),
+		runtimeCarrierCallbackSecret(),
 	))
 	baseURL := strings.TrimSpace(firstNonEmptyString(
 		os.Getenv("CARRIER_CALLBACK_BASE_URL"),
@@ -448,6 +448,13 @@ func resolveCarrierReportCallbackConfig(binding platform.ProviderCarrierBinding,
 		CallbackSecret: callbackSecret,
 		CallbackKeyID:  strings.TrimSpace(binding.CallbackKeyID),
 	}
+}
+
+func runtimeCarrierCallbackSecret() string {
+	return strings.TrimSpace(firstNonEmptyString(
+		os.Getenv("CARRIER_CALLBACK_SECRET"),
+		os.Getenv("RELEASE_USDI_E2E_CARRIER_CALLBACK_SECRET"),
+	))
 }
 
 func (c carrierReportCallbackConfig) Enabled() bool {
