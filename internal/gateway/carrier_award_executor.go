@@ -290,6 +290,12 @@ func carrierInlineSummary(reportPath string, result carrierclient.CodeAgentRunOu
 	if summary := strings.TrimSpace(result.Summary); summary != "" {
 		return summary
 	}
+	stdout := strings.TrimSpace(result.Stdout)
+	if stdout != "" && stdout != reportPath {
+		if !(strings.HasPrefix(stdout, "/workspace/") && !strings.Contains(stdout, "\n")) {
+			return stdout
+		}
+	}
 	output := strings.TrimSpace(result.Output)
 	if output == "" || output == reportPath {
 		return ""
@@ -328,7 +334,7 @@ func carrierReportReadbackResult(
 		} else if inline := carrierInlineSummary(reportPath, readFile.Result); inline != "" {
 			return readFile.Result
 		} else {
-			log.Printf("gateway: carrier read_file returned no inline summary for binding=%s path=%s: output=%q summary=%q", binding.ID, reportPath, strings.TrimSpace(readFile.Result.Output), strings.TrimSpace(readFile.Result.Summary))
+			log.Printf("gateway: carrier read_file returned no inline summary for binding=%s path=%s: output=%q summary=%q stdout=%q", binding.ID, reportPath, strings.TrimSpace(readFile.Result.Output), strings.TrimSpace(readFile.Result.Summary), strings.TrimSpace(readFile.Result.Stdout))
 		}
 	}
 
@@ -354,7 +360,7 @@ func carrierReportReadbackResult(
 		return result
 	}
 	if carrierInlineSummary(reportPath, readback.Result) == "" {
-		log.Printf("gateway: carrier run_shell readback returned no inline summary for binding=%s path=%s: output=%q summary=%q", binding.ID, reportPath, strings.TrimSpace(readback.Result.Output), strings.TrimSpace(readback.Result.Summary))
+		log.Printf("gateway: carrier run_shell readback returned no inline summary for binding=%s path=%s: output=%q summary=%q stdout=%q", binding.ID, reportPath, strings.TrimSpace(readback.Result.Output), strings.TrimSpace(readback.Result.Summary), strings.TrimSpace(readback.Result.Stdout))
 		return result
 	}
 	return readback.Result

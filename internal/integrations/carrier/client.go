@@ -72,8 +72,11 @@ type CodeAgentRunInput struct {
 type CodeAgentRunOutput struct {
 	OK              bool    `json:"ok"`
 	Completed       bool    `json:"completed,omitempty"`
+	ExitCode        int     `json:"exit_code,omitempty"`
 	PolicyDecision  string  `json:"policy_decision"`
 	CostEstimateUSD float64 `json:"cost_estimate_usd,omitempty"`
+	Stdout          string  `json:"stdout,omitempty"`
+	Stderr          string  `json:"stderr,omitempty"`
 	Output          string  `json:"output,omitempty"`
 	Summary         string  `json:"summary,omitempty"`
 }
