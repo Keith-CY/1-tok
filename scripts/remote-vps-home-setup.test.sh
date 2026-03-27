@@ -62,6 +62,16 @@ grep -q 'model_reasoning_effort = "xhigh"' "${CONFIG}" || {
   exit 1
 }
 
+grep -q 'approval_policy = "never"' "${CONFIG}" || {
+  echo "codex config missing approval policy" >&2
+  exit 1
+}
+
+grep -q 'sandbox_mode = "danger-full-access"' "${CONFIG}" || {
+  echo "codex config missing sandbox mode" >&2
+  exit 1
+}
+
 grep -q '\[model_providers.openai-custom\]' "${CONFIG}" || {
   echo "codex config missing custom provider block" >&2
   exit 1
