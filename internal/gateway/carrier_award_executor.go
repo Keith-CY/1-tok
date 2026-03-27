@@ -160,6 +160,11 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 		_, _ = e.carrier.FailJob(job.ID, err.Error())
 		return err
 	}
+	if callbackConfig.Enabled() {
+		if settled, err := e.milestoneAlreadySettled(input.Order.ID, milestone.ID); err == nil && settled {
+			return nil
+		}
+	}
 	summaryResult := carrierReportReadbackResult(ctx, client, input.Binding, reportDir, reportPath, runResult.Result)
 	if currentJob, err := e.carrier.GetJob(job.ID); err == nil {
 		if output := strings.TrimSpace(currentJob.Output); output != "" {
@@ -182,6 +187,22 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 		OccurredAt:  e.now().UTC(),
 	})
 	return err
+}
+
+func (e *carrierOrderAutoExecutor) milestoneAlreadySettled(orderID, milestoneID string) (bool, error) {
+	if e == nil || e.app == nil {
+		return false, nil
+	}
+	order, err := e.app.GetOrder(strings.TrimSpace(orderID))
+	if err != nil {
+		return false, err
+	}
+	for i := range order.Milestones {
+		if strings.TrimSpace(order.Milestones[i].ID) == strings.TrimSpace(milestoneID) {
+			return order.Milestones[i].State == core.MilestoneStateSettled, nil
+		}
+	}
+	return false, nil
 }
 
 func ensureCarrierCodeAgentReady(ctx context.Context, client carrierclient.CodeAgentClient, hostID, agentID, backend, workspaceRoot string) error {
@@ -393,7 +414,7 @@ func buildCarrierCallbackCommand(config carrierReportCallbackConfig) string {
   const envelope = {
     eventId: jobId + "-ready",
     sequence: 1,
-    eventType: "job.completed",
+    eventType: "milestone.ready",
     bindingId,
     carrierExecutionId: jobId,
     createdAt: new Date().toISOString(),

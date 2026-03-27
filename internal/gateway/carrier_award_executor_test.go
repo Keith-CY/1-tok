@@ -592,6 +592,9 @@ Start with Vendor A and benchmark Vendor B in reserve.
 	if !strings.Contains(client.runInputs[1].Command, "/api/v1/carrier/callbacks/events") {
 		t.Fatalf("command = %q, want carrier callback endpoint", client.runInputs[1].Command)
 	}
+	if !strings.Contains(client.runInputs[1].Command, "milestone.ready") {
+		t.Fatalf("command = %q, want milestone.ready callback event", client.runInputs[1].Command)
+	}
 	if !strings.Contains(client.runInputs[1].Command, "X-Carrier-Key-Id") {
 		t.Fatalf("command = %q, want callback key header", client.runInputs[1].Command)
 	}
