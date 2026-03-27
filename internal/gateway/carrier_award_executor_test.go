@@ -858,6 +858,8 @@ func TestCarrierAwardExecutorFailsJobWithOutputPathsWhenCommandExitsNonZero(t *t
 			Result: carrierclient.CodeAgentRunOutput{
 				OK:             false,
 				PolicyDecision: "allow",
+				Stderr:         "unknown option '--output-last-message'",
+				Stdout:         "{\"event\":\"error\"}",
 			},
 		},
 	}
@@ -885,6 +887,12 @@ func TestCarrierAwardExecutorFailsJobWithOutputPathsWhenCommandExitsNonZero(t *t
 	}
 	if !strings.Contains(err.Error(), "result.md.stdout.log") || !strings.Contains(err.Error(), "result.md.stderr.log") {
 		t.Fatalf("error = %q, want stdout/stderr paths", err)
+	}
+	if !strings.Contains(err.Error(), "carrier_stderr=") || !strings.Contains(err.Error(), "unknown option '--output-last-message'") {
+		t.Fatalf("error = %q, want surfaced carrier stderr", err)
+	}
+	if !strings.Contains(err.Error(), "carrier_stdout=") || !strings.Contains(err.Error(), "{\"event\":\"error\"}") {
+		t.Fatalf("error = %q, want surfaced carrier stdout", err)
 	}
 
 	carrierBinding, err := carrierSvc.GetBinding(order.ID, "ms_1")

@@ -157,7 +157,7 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 		return err
 	}
 	if !runResult.Result.OK {
-		err := buildCarrierCommandFailure(stdoutPath, stderrPath)
+		err := buildCarrierCommandFailure(runResult.Result, stdoutPath, stderrPath)
 		_, _ = e.carrier.FailJob(job.ID, err.Error())
 		return err
 	}
@@ -549,8 +549,31 @@ func (c carrierReportCallbackConfig) Enabled() bool {
 		strings.TrimSpace(c.CallbackSecret) != ""
 }
 
-func buildCarrierCommandFailure(stdoutPath, stderrPath string) error {
-	return fmt.Errorf("carrier command failed: stdout=%s stderr=%s", stdoutPath, stderrPath)
+func buildCarrierCommandFailure(result carrierclient.CodeAgentRunOutput, stdoutPath, stderrPath string) error {
+	message := fmt.Sprintf("carrier command failed: stdout=%s stderr=%s", stdoutPath, stderrPath)
+	if stderr := compactCarrierFailureText(result.Stderr); stderr != "" {
+		message += fmt.Sprintf(" carrier_stderr=%q", stderr)
+	}
+	if stdout := compactCarrierFailureText(result.Stdout); stdout != "" {
+		message += fmt.Sprintf(" carrier_stdout=%q", stdout)
+	}
+	if output := compactCarrierFailureText(result.Output); output != "" {
+		message += fmt.Sprintf(" carrier_output=%q", output)
+	}
+	return fmt.Errorf("%s", message)
+}
+
+func compactCarrierFailureText(value string) string {
+	text := strings.TrimSpace(value)
+	if text == "" {
+		return ""
+	}
+	text = strings.ReplaceAll(text, "\n", "\\n")
+	const limit = 600
+	if len(text) > limit {
+		text = text[:limit] + "..."
+	}
+	return text
 }
 
 func orderTitle(order *core.Order) string {
