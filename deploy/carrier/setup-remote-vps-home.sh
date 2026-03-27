@@ -17,7 +17,6 @@ append_export_from_env() {
 
 write_default_codex_config() {
   cat >"${codex_config_path}" <<EOF
-model_provider = "openai-custom"
 model = "gpt-5.4"
 review_model = "gpt-5.4"
 model_reasoning_effort = "xhigh"
@@ -28,6 +27,11 @@ sandbox_mode = "danger-full-access"
 windows_wsl_setup_acknowledged = true
 model_context_window = 1000000
 model_auto_compact_token_limit = 900000
+EOF
+
+  if [[ -n "${OPENAI_BASE_URL:-}" ]]; then
+    cat >>"${codex_config_path}" <<EOF
+model_provider = "openai-custom"
 
 [model_providers.openai-custom]
 name = "OpenAI custom"
@@ -39,6 +43,7 @@ stream_max_retries = 10
 stream_idle_timeout_ms = 300000
 websocket_connect_timeout_ms = 15000
 EOF
+  fi
 }
 
 mkdir -p "${remote_home}" "${codex_dir}" "${remote_workspace_root}"
@@ -62,13 +67,7 @@ if [[ -n "${OPENAI_CODEX_TOKEN:-}" && -z "${OPENAI_API_KEY:-}" ]]; then
   printf 'export OPENAI_API_KEY=%q\n' "${OPENAI_CODEX_TOKEN}" >>"${profile_path}"
 fi
 
-if [[ -n "${OPENAI_BASE_URL:-}" ]]; then
-  write_default_codex_config
-else
-  rm -f "${codex_config_path}"
-fi
+write_default_codex_config
 
 chmod 600 "${profile_path}"
-if [[ -f "${codex_config_path}" ]]; then
-  chmod 600 "${codex_config_path}"
-fi
+chmod 600 "${codex_config_path}"
