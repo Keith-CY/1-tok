@@ -145,6 +145,9 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 		Command:       command,
 		CWD:           reportDir,
 		TimeoutSec:    carrierRunTimeoutSec,
+		StdoutPath:    stdoutPath,
+		StderrPath:    stderrPath,
+		AppendOutput:  true,
 	})
 	if err != nil {
 		_, _ = e.carrier.FailJob(job.ID, err.Error())
@@ -319,6 +322,9 @@ func carrierReportReadbackResult(
 		Command:       "bash -lc " + shellQuote("cat " + shellQuote(reportPath)),
 		CWD:           reportDir,
 		TimeoutSec:    carrierReadbackTimeoutSec,
+		StdoutPath:    strings.TrimSpace(reportPath) + ".readback.stdout.log",
+		StderrPath:    strings.TrimSpace(reportPath) + ".readback.stderr.log",
+		AppendOutput:  true,
 	})
 	if err != nil {
 		log.Printf("gateway: carrier report readback failed for binding=%s path=%s: %v", binding.ID, reportPath, err)
