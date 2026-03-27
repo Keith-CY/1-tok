@@ -145,9 +145,6 @@ func (e *carrierOrderAutoExecutor) Execute(ctx context.Context, input carrierAwa
 		Command:       command,
 		CWD:           reportDir,
 		TimeoutSec:    carrierRunTimeoutSec,
-		StdoutPath:    stdoutPath,
-		StderrPath:    stderrPath,
-		AppendOutput:  true,
 	})
 	if err != nil {
 		_, _ = e.carrier.FailJob(job.ID, err.Error())
