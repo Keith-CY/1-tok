@@ -380,6 +380,7 @@ func buildCarrierCallbackCommand(config carrierReportCallbackConfig) string {
 (() => {
   const fs = require("node:fs");
   const crypto = require("node:crypto");
+  const { URL } = require("node:url");
   const callbackBaseUrl = %s;
   const jobId = %s;
   const bindingId = %s;
@@ -403,21 +404,40 @@ func buildCarrierCallbackCommand(config carrierReportCallbackConfig) string {
     },
   };
   const body = JSON.stringify(envelope);
+  const target = new URL(callbackBaseUrl.replace(/\/$/, "") + "/api/v1/carrier/callbacks/events");
+  const transport = require(target.protocol === "https:" ? "node:https" : "node:http");
   const headers = {
     "Accept": "application/json",
     "Content-Type": "application/json",
+    "Content-Length": Buffer.byteLength(body),
     "X-Carrier-Signature": "sha256=" + crypto.createHmac("sha256", callbackSecret).update(body).digest("hex"),
   };
   if (callbackKeyId) headers["X-Carrier-Key-Id"] = callbackKeyId;
-  return fetch(callbackBaseUrl.replace(/\/$/, "") + "/api/v1/carrier/callbacks/events", {
-    method: "POST",
-    headers,
-    body,
-  }).then((response) => {
-    if (response.ok) return null;
-    return response.text().then((message) => {
-      throw new Error("carrier callback failed: " + response.status + " " + message);
+  return new Promise((resolve, reject) => {
+    const req = transport.request({
+      protocol: target.protocol,
+      hostname: target.hostname,
+      port: target.port || undefined,
+      path: target.pathname + target.search,
+      method: "POST",
+      headers,
+    }, (response) => {
+      let responseBody = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk) => {
+        responseBody += chunk;
+      });
+      response.on("end", () => {
+        if ((response.statusCode || 0) >= 200 && (response.statusCode || 0) < 300) {
+          resolve(null);
+          return;
+        }
+        reject(new Error("carrier callback failed: " + response.statusCode + " " + responseBody.trim()));
+      });
     });
+    req.on("error", reject);
+    req.write(body);
+    req.end();
   });
 })().catch((error) => {
   console.error(error && error.stack ? error.stack : String(error));
